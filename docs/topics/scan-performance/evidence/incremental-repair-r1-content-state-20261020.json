@@ -1,0 +1,57 @@
+{
+  "profile": "completion-evidence/v1",
+  "record_type": "node",
+  "node": {
+    "id": "scan-incremental-repair-r1-97321292d5b8d565",
+    "kind": "content_state",
+    "attributes": {
+      "repository": "github.com/kitdine/agent-deck",
+      "recorded_at": "2026-10-20T13:38:39.576643+00:00",
+      "git_commit": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+      "workspace_diff_sha256": "97321292d5b8d56591766b919c935a09a6306aa565d512c88c28d0d3f9f454f2",
+      "subject_digests": {
+        "internal/store": "b18a9d000677483d4e81f0d553c478dc2913936cab6aa1c17307a433eed35b08",
+        "internal/usage": "c0166270c86e1d6abadae34f8815cf109c1a13794702be0ab6633b4545110ad6",
+        "internal/session": "dec9ce2c59a4ccd6b3d1725e4eb787cd8dac2b757c25e3a5be31ef2c25137d69",
+        "internal/desktop": "31de6d29e1ef5f88ebe3e5c4141c0033e5068117c288191b2e0fc39244993545",
+        "internal/scanruntime": "0fbfb6836982a803d2133b8730728cbe2aa4d8d9f882a7a4922ed51481f60872",
+        "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+        "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+        "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+        "cmd/agentdeck/main_test.go": "38391b37595d2ed93fce47c573ea85de99238a1294856053e21011b6d6d5e2c4",
+        "cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json": "4c005cf1db022e7156f42ab3348711be2ed8bd8f501a669b896214b6dc065908",
+        "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee",
+        "scripts/scan-performance-incremental.py": "34965242586ecef41ea20fcd8d7b82a8335e6918c4ac59930a48fa25fb24b07a",
+        "scripts/scan-performance-incremental-engine.go.tmpl": "b4d1ff92e730adcd0e82cd6c89198cb71dc9d5e1b660e628ac7ba80414fa8b17",
+        "apps/macos/AgentDeckShared/DesktopWire.swift": "fdb36e04fda2622ccb4df8d656282c09095c008a9ff7b83bc1e962cea21d51ec",
+        "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "94222e146054a5fec809f1ddd38b2c7fb4fd271b6797dc85e320d798c8284cec",
+        "apps/macos/AgentDeckVerification/main.swift": "72fb5c8054f8797369c676f368674f1e719129f4c01938769706015dfbfb216a",
+        "apps/macos/AgentDeckTests/DesktopWireTests.swift": "96e4fdae1f741e1139a0444dd4fd41d8de5d5743242daac0bb583822f4c8bb26",
+        "apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift": "9d3be4efd316d1f40672bf2912813b4c838e4f2b166f39cad41f8b446f760d75",
+        "desktop/fixtures/v1/snapshot-complete.json": "4434dc2e3adb378f24824c3c3a6a809b7dfa395709d100d45f3a4bda93f05c20",
+        "desktop/fixtures/v1/snapshot-empty-client.json": "fd27811e12ecc83465e1044e71c3b9f862a0873631d7f1f7c559deb79ca4ec2b",
+        "desktop/fixtures/v1/snapshot-legacy.json": "b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2",
+        "desktop/fixtures/v1/snapshot-partial.json": "222b842dc5e217acfab6b42d58fd34125f32d32691c5325731fd75e8672b687f",
+        "desktop/fixtures/v1/snapshot-schema-ahead.json": "af81df1dc5703b1764123c969ca96d23c06d780a7898320f41895375f3bb8a99"
+      },
+      "toolchain": "go version go1.27.1 darwin/amd64",
+      "environment": "macOS-26.7.2-x86_64-i386-64bit-Mach-O",
+      "scope": "Task 3 product, regression tests, native wire and E2 runner; administrative phase/status records excluded",
+      "experiment_identity": {
+        "seed_sha256": {
+          "sessions.sqlite3": "26af136031f8e9d3b621d8fb525d08f55af5fcd21cea7a168cf724595a8288a1",
+          "agentdeck.sqlite3": "4267b06c0fa36ec20eb993183ae2c3ff6ea3036e2ea918312a75eb3be423909b"
+        },
+        "cohort_sha256": "050382b46811c749abb05a70bc2947ab770845bc52f3bca84f70c89a8ca19360",
+        "delta_sha256": "0252fc7ad48a8b875ff6a1ccd6348c036c443c87db96b4952cc74f0dcc852311",
+        "source_sha256": {
+          "oracle": "fe1ea44b36572f7c9d9a887e5c8c98f4691116fb0a09f6469f1c4ffea2c04051",
+          "projected": "e50dfc9c8dee66204ca3e8224641123f00c640006da08392a7db3287681ab531"
+        }
+      },
+      "digest_recipe": "SHA256 canonical sorted compact JSON of head, subject_digests and experiment_identity; directory digests SHA256 newline-joined sorted path NUL sha256 entries for Go/JSON/SQL",
+      "repair_finding": "SP-IP-R1-F1",
+      "parent_state_id": "scan-incremental-state-final-de3852a42e5e521e"
+    }
+  }
+}

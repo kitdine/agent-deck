@@ -117,6 +117,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private var periodicRefresh: Task<Void, Never>?
 	private var wakeObserver: NSObjectProtocol?
 	private var acceptanceWindow: NSWindow?
+	private let sourceHome: URL
+	private var sourceMonitor: DesktopSourceChangeMonitor?
 
 	override init() {
 		var runner = EmbeddedHelperRunner()
@@ -132,6 +134,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			.appendingPathComponent(".claude", isDirectory: true)
 			.appendingPathComponent("settings.json", isDirectory: false)
 		var automaticRefreshEnabled = true
+		var sourceHome = FileManager.default.homeDirectoryForCurrentUser
 		#if DEBUG
 		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
 		// starts this application delegate, including its initial helper refresh.
@@ -149,6 +152,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		case .real:
 			break
 		case .isolated(let testHome):
+			sourceHome = testHome
 			var isolatedEnvironment = [
 				"HOME": testHome.path, "LANG": "en_US_POSIX", "LC_ALL": "en_US_POSIX", "PATH": "/usr/bin:/bin",
 			]
@@ -156,6 +160,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 				isolatedEnvironment["TZ"] = ProcessInfo.processInfo.environment["TZ"] ?? "America/New_York"
 				isolatedEnvironment["TMPDIR"] = ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory()
 				isolatedEnvironment["AGENTDECK_SCAN_PROFILE"] = "1"
+				if let logDirectory = ProcessInfo.processInfo.environment["AGENTDECK_P07_TX_DIR"] {
+					let resolvedLog = URL(fileURLWithPath: logDirectory).resolvingSymlinksInPath().path
+					precondition(resolvedLog.hasPrefix(testHome.resolvingSymlinksInPath().path + "/"), "Private P07 log directory required")
+					isolatedEnvironment["AGENTDECK_P07_TX_DIR"] = logDirectory
+				}
 			}
 			runner = EmbeddedHelperRunner(
 				appBundleURL: Bundle.main.bundleURL,
@@ -210,6 +219,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		refreshScheduler = scheduler
 		self.periodicDriver = periodicDriver
 		self.automaticRefreshEnabled = automaticRefreshEnabled
+		self.sourceHome = sourceHome
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		self.quotaSettings = quotaSettings
@@ -254,6 +264,10 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			self?.settingsController.show()
 		}
 		if automaticRefreshEnabled {
+			sourceMonitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
+				Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: .sourceChange) }
+			}
+			sourceMonitor?.start()
 			refreshCoordinator.startInitialRefresh()
 			startPeriodicRefresh()
 		}
@@ -273,6 +287,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	}
 
 		func applicationWillTerminate(_ notification: Notification) {
+			sourceMonitor?.stop()
 			refreshCoordinator.stopAppWork()
 		periodicRefresh?.cancel()
 		periodicDriver.cancel()

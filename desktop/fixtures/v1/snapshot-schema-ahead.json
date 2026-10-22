@@ -89,7 +89,7 @@
           "status": "error",
           "code": "schema_ahead",
           "count": 99,
-          "supported_count": 30
+          "supported_count": 32
         }
       ]
     },

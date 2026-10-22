@@ -1,0 +1,92 @@
+{
+  "schema": "scan-performance/scoped-code-review/v1",
+  "round": 7,
+  "recorded_at": "2026-10-21T17:26:01.466Z",
+  "phase_token": "Au6g3ZcAf48iy2Z1",
+  "verdict": "FAIL",
+  "score": 7,
+  "task": "ad-scan-performance-incremental-projections",
+  "product_state": "scan-ip-bounded-product-e14fca302e5e8572",
+  "instrumentation_state": "scan-ip-bounded-instrumentation-df7a0429f058d27f",
+  "orchestration_state": "scan-ip-bounded-orchestration-067e1bcc6aee7761",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "identity": {
+    "files": [
+      232,
+      23,
+      4
+    ],
+    "all_match": true,
+    "all_candidate_fingerprints_match": true,
+    "scoped_source_files": 24,
+    "patch_sha256": "97489d68e6bb934674b163c4c1fb1370bd056f101bc3b5cbaafcf9f4f21e1911"
+  },
+  "findings": [
+    {
+      "id": "SP-IP-R7-F1",
+      "severity": "P1",
+      "status": "OPEN",
+      "carrier": "ad-scan-performance-incremental-projections",
+      "location": "scripts/scan_performance_p07.py:203",
+      "summary": "Known fork event does not force or establish end-cut descendant membership closure; a live unmanaged descendant is omitted from a complete frame",
+      "reproducer": "incremental-update-review-r7-membership-repro-20261021.json",
+      "reproducer_sha256": "ad7e8092a56aecbee85c5ddc16d0c77f4b968189eb55b9aa95fe2426a051bb2d",
+      "actual": {
+        "members": [
+          1,
+          9
+        ],
+        "rss_bytes": 150,
+        "complete": true,
+        "issues": []
+      },
+      "expected_members": [
+        1,
+        2,
+        9
+      ],
+      "expected_synthetic_rss_bytes": 300000150,
+      "performance_sample": false
+    }
+  ],
+  "checks": {
+    "review_structure": {
+      "chunk_id": "d8d3af",
+      "wall_time_seconds": 0.110810927,
+      "exit_code": 0,
+      "original_token_count": 0,
+      "output": ""
+    },
+    "whitespace": {
+      "chunk_id": "dcab31",
+      "wall_time_seconds": 1.720908996,
+      "exit_code": 2,
+      "original_token_count": 945,
+      "output": "whitespace scan found violations; fix them in the source file\nmake: *** [check-whitespace] Error 1\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1155\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1211\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1217\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1229\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1268\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1270\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1274\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1332\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1334\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1340\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1341\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1348\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1377\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1386\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1409\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1558\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:1559\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:2417\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:2434\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:2454\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:2456\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:456\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:489\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:553\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:558\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:630\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:647\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:685\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:707\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:721\ntrailing whitespace: docs/topics/scan-performance/evidence/incremental-update-bounded-review-delta-20261021.patch:735\n"
+    },
+    "diff_check": {
+      "chunk_id": "d8d8e7",
+      "wall_time_seconds": 1.4872e-05,
+      "exit_code": 0,
+      "original_token_count": 0,
+      "output": ""
+    },
+    "whitespace_explanation": "All31 findings are preexisting frozen unified-diff blank context lines, each exactly one space, in incremental-update-bounded-review-delta-20261021.patch. Preserved original patch identity; no code violations reported and no false PASS."
+  },
+  "reused": "Recorded state-bound Go/race/vet/native and final differential/generator evidence only; no rerun of unchanged suites or Round6.",
+  "scope_limit": "Stopped broad verification at first decisive in-scope blocker; no blanket no-defect claim for remaining delta. Reviewer did not implement this candidate, retains previous discussion context, no delegated cold-context panel claimed.",
+  "gate_before": "FAILED",
+  "gate_after_record": "incremental-update-review-r7-gate-20261021.json",
+  "authority": "Current requirements and acceptance revision preserve P07 resource/transaction budgets and P10 automatic-update correctness, withdraw click/P10 timing.",
+  "product_test_config_modified": false,
+  "real_sources_accessed": false,
+  "performance_sampling": false,
+  "gate_after": "FAILED",
+  "nodes_exact_readback": 1,
+  "relations_exact_readback": 4,
+  "all_relations_preflight_ok": true,
+  "unresolved_candidate_impacts": 0,
+  "beads_state": "in_progress",
+  "beads_comment": "b688d4ef-64e0-5e01-baff-2225bdd87f59",
+  "beads_exact_readback": true
+}

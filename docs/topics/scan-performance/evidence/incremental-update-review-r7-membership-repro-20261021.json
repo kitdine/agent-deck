@@ -1,0 +1,34 @@
+{
+  "recorded_at": "2026-10-21T17:15:47.983523+00:00",
+  "kind": "deterministic fake-metadata reproducer; no native RSS or performance sample",
+  "instrumentation_state": "scan-ip-bounded-instrumentation-df7a0429f058d27f",
+  "source_sha256": "4282cfb5560ff7bf5be2f5edb0fa5a4891aa7a4975899e511e3aa1e081217f64",
+  "setup": "After child enumeration, before RSS acquisition completes, an engine child is born and stays alive through the end-of-acquisition cut. Lifecycle observer delivers fork_observed before that cut; no Go child ledger exists for this unmanaged descendant.",
+  "expected_members_at_cut": [
+    1,
+    2,
+    9
+  ],
+  "expected_rss_bytes": 300000150,
+  "reported_members": [
+    1,
+    9
+  ],
+  "reported_rss_bytes": 150,
+  "reported_complete": true,
+  "reported_issues": [],
+  "delivered_lifecycle_events": [
+    {
+      "event": "fork_observed",
+      "pid": 1,
+      "birth": "engine",
+      "observed_ns": 220214121392865,
+      "child_identity_available": false
+    }
+  ],
+  "counterexample_confirmed": true,
+  "finding_id": "SP-IP-R7-F1",
+  "replay_artifact": "incremental-update-review-r7-membership-repro-20261021.txt",
+  "replay_sha256": "c8e9b78d91c418a7654a8c3107dcc59e79ccc068492e3bde4305393bad955311",
+  "replay_note": "Equivalent standalone replay preserved after the one executed inline reproducer; not rerun merely to format output."
+}

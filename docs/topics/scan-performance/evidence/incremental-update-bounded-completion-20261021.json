@@ -1,0 +1,66 @@
+{
+  "recorded_at": "2026-10-21T17:06:41.402618+00:00",
+  "scope": "Task3 bounded development and explicit click/P10 requirement withdrawal",
+  "implementation": "complete; independent review pending",
+  "requirements": "Click and P10 timing withdrawn; automatic update/publication/full-oracle correctness and unchanged P07 thresholds retained",
+  "beads": {
+    "task": "ad-scan-performance-incremental-projections",
+    "status": "in_review",
+    "assignee": null,
+    "acceptance_exact": true,
+    "notes_exact": true,
+    "historical_result_hash_preserved": true,
+    "private_exit_records": true,
+    "stderr_nonempty": {
+      "bounded-beads-comment": false,
+      "bounded-beads-update": false,
+      "bounded-beads-readback": false
+    }
+  },
+  "cev1_status": "FAILED",
+  "technical_criteria_reused": 3,
+  "required_criteria": 4,
+  "nodes_exact_readback": 19,
+  "relations_exact_readback": 28,
+  "unresolved_candidate_impacts": 0,
+  "correctness_trial": "PASS; one actual append, non-timed, excluded from all performance distributions",
+  "click_related_attempts": 6,
+  "private_retention_deadline": "2026-10-22T12:48:07.489352+00:00",
+  "retention_extended": false,
+  "source_home_recaptured": false,
+  "delivery_performed": false,
+  "session_records": {
+    "functional_correctness": {
+      "session_id": 42651,
+      "exit_code": 0,
+      "stdout_sha256": "823cd815f21f99c5dab7bcd05ada47f14a4d41f05d4ac329cc1e6f2c1d70b6e4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "instrumented_arm64_build": {
+      "session_id": 37112,
+      "exit_code": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "6bcbeb0fbc005aa78d988dbf4f8601deb378c4e1631da6449c03491c69bafe12"
+    },
+    "beads_handoff": {
+      "session_id": 78190,
+      "exit_code": 0,
+      "inner_command_exit_records": [
+        "bounded-beads-comment.exit.json",
+        "bounded-beads-update.exit.json",
+        "bounded-beads-readback.exit.json"
+      ]
+    }
+  },
+  "durable_artifacts": {
+    "incremental-update-bounded-result-20261021.json": "5c895c9d08d4eedaab9107572b3ca5ce5324e70ad1109d49f47635b230127e09",
+    "incremental-update-bounded-content-states-20261021.json": "eef6d5aee132a30f6e13de93ca332c2a2f832e98423d30d00dd43cdeafd00c90",
+    "incremental-update-bounded-cev1-20261021.jsonl": "d5d5989b659c296dc9598872f958a3eda06196c7613e1931d41ea4dde6037783",
+    "incremental-update-bounded-gate-20261021.json": "014ff6729957315b7fddaf52e7cceccf4647c4079803f98ba4c3fbf53dc8942a",
+    "incremental-update-bounded-handoff-20261021.md": "c4b8c17ddf93e6c8a436ef3a803c2bcdacf0ed265a86ba5b78f16bfc9594c282",
+    "incremental-update-bounded-review-scope-20261021.json": "80630d6f992105e205a99d3dcf7344159a9cad746576130e414fccc2efd7303a",
+    "incremental-update-bounded-review-delta-20261021.patch": "97489d68e6bb934674b163c4c1fb1370bd056f101bc3b5cbaafcf9f4f21e1911",
+    "incremental-update-bounded-impact-20261021.json": "820c5f567883e807709f5943305711ae582e2f5e2a96985e89b2cb5ccba924ba",
+    "incremental-update-click-requirements-revision-20261021.json": "32e5b2c75321b41fcc32381c88ab0c366be7663cebf387a2c30fea66b61f501a"
+  }
+}

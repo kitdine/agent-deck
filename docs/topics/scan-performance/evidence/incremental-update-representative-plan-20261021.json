@@ -1,0 +1,287 @@
+{
+  "schema": "scan-performance/task3-acceptance-plan/v1",
+  "fixed_at": "2026-10-21T12:55:38.299096+00:00",
+  "cohort": {
+    "status": "frozen",
+    "cohort_sha256": "d0486c1b016cb55caadce6a9ca33db2130e2b77a70e1b46bb6f4ee4e021c79cd",
+    "jsonl": {
+      "codex_sessions": {
+        "files": 82,
+        "bytes": 238545630
+      },
+      "codex_archived_sessions": {
+        "files": 1,
+        "bytes": 187042
+      },
+      "claude_projects": {
+        "files": 4634,
+        "bytes": 621157426
+      }
+    },
+    "databases": [
+      {
+        "bytes": 3924033536
+      },
+      {
+        "bytes": 4118126592
+      }
+    ],
+    "excluded": {
+      "codex_sessions": {
+        "files": 12,
+        "bytes": 41770035
+      },
+      "codex_archived_sessions": {
+        "files": 0,
+        "bytes": 0
+      },
+      "claude_projects": {
+        "files": 90,
+        "bytes": 4442547
+      }
+    },
+    "selection": {
+      "timezone": "America/New_York",
+      "excluded_local_day": "2026-10-21",
+      "cutoff_utc": "2026-10-21T04:00:00+00:00",
+      "rule": "Include JSONL only if birthtime and mtime are both before start of excluded day; no selected file skipped on drift",
+      "excluded": {
+        "codex_sessions": {
+          "files": 12,
+          "bytes": 41770035
+        },
+        "codex_archived_sessions": {
+          "files": 0,
+          "bytes": 0
+        },
+        "claude_projects": {
+          "files": 90,
+          "bytes": 4442547
+        }
+      }
+    },
+    "retention_deadline": "2026-10-22T12:48:07.489352+00:00"
+  },
+  "identity": {
+    "product_state": "scan-ip-update-repair-product-45f7482757f82715",
+    "instrumentation_state": "scan-ip-update-repair-instrumentation-d9db8dbe33f327da",
+    "build": {
+      "helper_sha256": "93cc3a232cf5943887766ff8ca4c7dd4457be35d0a76d58f85f08082ff5247b6",
+      "embedded_helper_sha256": "93cc3a232cf5943887766ff8ca4c7dd4457be35d0a76d58f85f08082ff5247b6",
+      "app_sha256": "dd5521e76f4c6f3d3c943b028fe4e39302fcaa3657edaaf4aee1f6c4fe4ab485",
+      "overlay_manifest_sha256": "173445bda7fd9bfffc65ceac676f196dedd0f9380a77d57ab0b633c54561a94e"
+    },
+    "overlay_original_source_pairs_verified": 25,
+    "runtime_swift_resources_verified": 19
+  },
+  "contracts": [
+    "requirements.md P01/P07/P10",
+    "performance-evaluation.md E1/E2/E4",
+    "tasks.md Task3"
+  ],
+  "timezone": {
+    "source_selection": "America/New_York; exclude creation/activity since 2026-10-21 00:00",
+    "measurement": "UTC, all/today, quota off, OTel off"
+  },
+  "db_starts": {
+    "p10": "New isolated databases fully imported from the frozen JSONL cohort plus explicitly identified controlled-today sentinel, then fixed baseline restored at the same source-home path before each sample; no live backup settings/credentials are loaded",
+    "p07_cold": "New empty isolated core/session DBs, actual desktop.bootstrap builds both domains from entire frozen JSONL cohort",
+    "p07_rebuild": "Fully imported baseline; actual usage rebuild against the same isolated source/state while the App retains committed in-memory data",
+    "backups": "Both approved read-only backups retained unchanged in private seed as capture artifacts; they are not reduced or edited to manufacture a workload"
+  },
+  "pilot": {
+    "feasibility": 1,
+    "counts_toward_formal": false,
+    "checks": [
+      "automatic real-source chain to visible new native value",
+      "same-input empty-DB full oracle and partial/nonadditive/All/publication",
+      "complete core/session transaction records",
+      "valid pinned process start/end windows"
+    ]
+  },
+  "p10": {
+    "scenario": "automatic one complete controlled JSONL append amid representative frozen history; same delta and committed DB start",
+    "planned_attempts": 100,
+    "p95_rank": 95,
+    "start": "FileHandle synchronize returns after complete record write",
+    "end": "Already-open real native popover layout/display/cacheDisplay has drawn matching new numeric value; OCR verifies after endpoint",
+    "timeout_seconds": 15,
+    "preparation_timeout_seconds": 150,
+    "threshold_p95_ms": 2000,
+    "invalid": "Retain attempted/errors/missed notification/timeouts and all slow values; do not replace failed samples; any failure prevents unqualified overall acceptance; no explicit refresh, model assignment or injected final notification",
+    "clocks": [
+      "source write",
+      "source durable",
+      "notification",
+      "queue",
+      "processing",
+      "App installation publication",
+      "native draw"
+    ],
+    "commit_distinction": "SQLite commit is not App installation publication"
+  },
+  "p07": {
+    "planned_attempts_per_scenario": 20,
+    "scenarios": [
+      "cold full bootstrap core+session",
+      "usage maintenance rebuild over fully imported state"
+    ],
+    "rss_interval_ms": 50,
+    "rss_limit_bytes": 268435456,
+    "process_set": "Union of pinned engine root and collector/controller root and recursively tracked descendants, dedup by PID/birth; foreground App reported separately unless it is an actual member of a counted role",
+    "window": "Overlay before-main start barrier through worker exit/flush and pinned complete final frame; no missing frames/processes/identity races admitted",
+    "transaction": "Every complete explicit/autocommit/WAL write-capable boundary from real Begin/Exec through terminal return, core/session separately and combined per scenario, nearest-rank ceil(.95*N); rejected/unknown/unmatched retain and invalidate completeness",
+    "transaction_p95_ms": 50,
+    "transaction_max_ms": 250,
+    "foreground": {
+      "baseline_frames": 100,
+      "rebuilding_frames": 100,
+      "p95_rank": 95,
+      "p99_rank": 99,
+      "p95_ms": 300,
+      "p99_ms": 600,
+      "entry": "Actual icon action to readable interactive bitmap; bitmap-only refresh frame is not P01"
+    },
+    "switch": "Direct product action under proved active rebuilding; no separate reinstatement of withdrawn P03 gate",
+    "pilot_process_timeout_seconds": 600,
+    "pilot_collector_root": "orchestration controller PID, including sampler and engine descendants with engine overlap deduplicated"
+  },
+  "cache": "Non-purged OS page cache; warm foreground/App in-memory condition; restore exact fixed DB/source baseline between formal attempts, never merge cold and warm distributions",
+  "overhead": {
+    "reused_scope": "Same frozen instrumentation; previous synthetic calibration is overhead context only, included without subtraction",
+    "prior_calibration": {
+      "actual_product_scan_pairs": {
+        "kind": "synthetic whole scan observer-overhead calibration; two alternated pairs, no significance or representative performance claim",
+        "rows": [
+          {
+            "mode": "plain",
+            "command_ns": 2395256854,
+            "through_worker_cleanup_ns": 3406084202,
+            "source_sha256": "6c6cbaf5ecb115ca8016014cafc80a5eceb35866d109d7eb75c87a4a9b854ccb"
+          },
+          {
+            "mode": "overlay",
+            "command_ns": 695749173,
+            "through_worker_cleanup_ns": 1729733339,
+            "source_sha256": "6c6cbaf5ecb115ca8016014cafc80a5eceb35866d109d7eb75c87a4a9b854ccb"
+          },
+          {
+            "mode": "overlay",
+            "command_ns": 566040907,
+            "through_worker_cleanup_ns": 1582894968,
+            "source_sha256": "6c6cbaf5ecb115ca8016014cafc80a5eceb35866d109d7eb75c87a4a9b854ccb"
+          },
+          {
+            "mode": "plain",
+            "command_ns": 595578168,
+            "through_worker_cleanup_ns": 1600931656,
+            "source_sha256": "6c6cbaf5ecb115ca8016014cafc80a5eceb35866d109d7eb75c87a4a9b854ccb"
+          }
+        ]
+      },
+      "autocommit_file_logging_calibration": [
+        {
+          "api": "exec",
+          "enabled": false,
+          "pair": 0,
+          "sink": "file",
+          "wall_ns": 3496074,
+          "writes": 100
+        },
+        {
+          "api": "exec",
+          "enabled": true,
+          "pair": 0,
+          "sink": "file",
+          "wall_ns": 8015365,
+          "writes": 100
+        },
+        {
+          "api": "exec",
+          "enabled": true,
+          "pair": 1,
+          "sink": "file",
+          "wall_ns": 7010832,
+          "writes": 100
+        },
+        {
+          "api": "exec",
+          "enabled": false,
+          "pair": 1,
+          "sink": "file",
+          "wall_ns": 3493422,
+          "writes": 100
+        },
+        {
+          "api": "exec",
+          "enabled": false,
+          "pair": 2,
+          "sink": "file",
+          "wall_ns": 3202095,
+          "writes": 100
+        },
+        {
+          "api": "exec",
+          "enabled": true,
+          "pair": 2,
+          "sink": "file",
+          "wall_ns": 6793873,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": false,
+          "pair": 0,
+          "sink": "file",
+          "wall_ns": 6644081,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": true,
+          "pair": 0,
+          "sink": "file",
+          "wall_ns": 9131960,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": true,
+          "pair": 1,
+          "sink": "file",
+          "wall_ns": 11390561,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": false,
+          "pair": 1,
+          "sink": "file",
+          "wall_ns": 7550070,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": false,
+          "pair": 2,
+          "sink": "file",
+          "wall_ns": 8941373,
+          "writes": 100
+        },
+        {
+          "api": "returning-scan",
+          "enabled": true,
+          "pair": 2,
+          "sink": "file",
+          "wall_ns": 11216939,
+          "writes": 100
+        }
+      ],
+      "interpretation": "Cold launch and two pairs cannot estimate representative overhead. File logging overhead is material (roughly 23-45 microseconds/write here); RSS collector CPU is reported directly. Barrier waits remain part of the synthetic process window and are outside timed SQL calls."
+    },
+    "representative": "Report observed collector poll CPU/wall, missed ticks and acquisition spans for each actual trace; no overhead subtraction"
+  },
+  "validity": "Freeze product/tests/instrumentation. Necessary orchestration has separate hashes. Feasibility must establish entry and correctness before batch. No batch started by this plan; missing entry or oracle mismatch stops dependent sampling.",
+  "capture_clarification": "User permits SQLite online backup consistency with concurrent size/mtime changes; device/inode stable. JSONL identity must remain unchanged during read. No credential files were captured.",
+  "orchestration_sha256": "4604b0025ef875830c904f14662057a8dae2ebbf144cf07c2e5db9a4f9481473"
+}

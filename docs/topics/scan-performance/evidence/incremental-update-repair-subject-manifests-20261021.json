@@ -1,0 +1,565 @@
+{
+  "candidate_id": "scan-ip-update-repair-product-45f7482757f82715",
+  "record_sha256": "6b87814d8a3af40e6d6e3eb97e5e1fc394818d63161438870e066856a19cdd40",
+  "python": "3.15.0 (main, Oct  9 2026, 11:16:41) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "directories": [
+    {
+      "directory": "cmd/agentdeck",
+      "file_count": 69,
+      "payload_bytes": 7180,
+      "expected": "d617597f3acdac5ddce5ff738c351ad66878e69b8b6f4d20b5115ec9210520a4",
+      "actual": "d617597f3acdac5ddce5ff738c351ad66878e69b8b6f4d20b5115ec9210520a4",
+      "matches": true,
+      "entries": [
+        {
+          "path": "cmd/agentdeck/acceptance_test.go",
+          "sha256": "b6c915006a2a608624334fc8163f7c7399ad8d79a2d05a6c4783b9021de4822a",
+          "bytes": 7070,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/claude_reload_test.go",
+          "sha256": "9f7b75b5cc4046c196a0c1a297db2bf5a4905bb7dd5112e0c307a6ed4e3d0d96",
+          "bytes": 15237,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/codex_signals_integration_test.go",
+          "sha256": "f01053c9acb9495bd9fa156713a38c86619974167648348ade0be4deefbbee92",
+          "bytes": 4139,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/contract_test.go",
+          "sha256": "3fb055f484b824f8438e74ae65f8ef6f5fdf3e6db0ab7de05ff425210128535c",
+          "bytes": 22455,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/desktop.go",
+          "sha256": "4a51b1e2a2653815962fa5b70cc2026cc803f80059e7325679aa69128aeadb5f",
+          "bytes": 10397,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/desktop_test.go",
+          "sha256": "897337c1607244473ea0374ecb8e9e24e00365766b0ea564e19c50c724dbabab",
+          "bytes": 9741,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/e2e_test.go",
+          "sha256": "1b80288965ceb0ea8e931293dba002f95b1a2f002c8e70a0753551d034ad7f0c",
+          "bytes": 23243,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/error_code_test.go",
+          "sha256": "3df3f787a71ebdd2230cc51616fd70724a8c728c11c706efcac0c52130037be1",
+          "bytes": 3853,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/hook_boundary_test.go",
+          "sha256": "10c91db1eb18560ee16e3472756791ae457231a8138d1c0a36c35ba74cf9af95",
+          "bytes": 15726,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/launchservices_test.go",
+          "sha256": "eca9a7cb9fd7962ed2615073bfc87e6782f64a3480b054362f4c76a8144142e7",
+          "bytes": 5640,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/main.go",
+          "sha256": "a7ca9874ced6647076a9a66c90105cc93646a23a5ef1a1ea1809c7472d635e82",
+          "bytes": 208250,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/main_test.go",
+          "sha256": "38391b37595d2ed93fce47c573ea85de99238a1294856053e21011b6d6d5e2c4",
+          "bytes": 174688,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/project_attribution_guidance_test.go",
+          "sha256": "61059afd2d6a538acac10edf3fe9ec77eac5722f88cf2cd05bc89f104292ca18",
+          "bytes": 12672,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/provider_route_surface_test.go",
+          "sha256": "1e2695de0e9fb69b627fadad9e1a772f982e57d5fbf7f72dee56d79d0ae331e3",
+          "bytes": 16260,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/provider_switch_advisories_test.go",
+          "sha256": "cfbb532c70ef7fcb299bf9ff6e9a2ca8b42296cf6b137b7b1193f4f1d0f947ed",
+          "bytes": 10996,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/provider_wrapper_kind_test.go",
+          "sha256": "21ccfe2ff660435ec5edcb9821386e8668482e0e74ab7187475c18eada1e911c",
+          "bytes": 11121,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/quota.go",
+          "sha256": "401adc13c73833ab1b884aef941010481e8c431b8f9d46dfecdc08e2cd2388be",
+          "bytes": 31193,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/quota_capture.go",
+          "sha256": "e9bbe9b7710c5fb9c49b5bf430e602d94a6ca4bb668bc82388e8d3eaad6f80de",
+          "bytes": 4049,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/quota_capture_test.go",
+          "sha256": "095b1eda46e796a4760f0fb3140d0bf183fd22327ec18c44b271cc86c79b5ea7",
+          "bytes": 12829,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/quota_test.go",
+          "sha256": "1bd83814d6fa79cd6eb97fe0a9fe12879c638619a2368206399802ee7f0c8626",
+          "bytes": 52561,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/release_test.go",
+          "sha256": "466bdfc7c0409daf5651c2492a34329d84e2842372bb3f7a793603c07f3d20bb",
+          "bytes": 8395,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/renderers_test.go",
+          "sha256": "3c93ea2d842ba364c1fb82cb1323ad84fbd6f7a29e2a1268f3fe31e1bbd4130d",
+          "bytes": 9932,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/reporting_clock_test.go",
+          "sha256": "6b03c9650188a274a180cda4866f41cb6c5152ccbdd73a36658ae256d7cfa3e5",
+          "bytes": 17504,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/scan_runtime_test.go",
+          "sha256": "ad9655fa12d27a21acbe9090a1d6984c6a9eb06d0ae6f7dcb5ac452a16a2fb4a",
+          "bytes": 8388,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/scanruntime_test_helper_test.go",
+          "sha256": "cddf35ae7e121fa5011b90320b596e5ef33537d1f81bdb5bfdfde6fad052904a",
+          "bytes": 714,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/schema_signal_acceptance_test.go",
+          "sha256": "c1ad8963a780ac5cc29f16345da0979f50f7cacedc00756b179fe37077c4ef6c",
+          "bytes": 7507,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_browser.go",
+          "sha256": "ce7589b51d313c64cec6c159a76f055aeeb8f97c02b8be9fec04035aac440c58",
+          "bytes": 10762,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_browser_pty_darwin_test.go",
+          "sha256": "989e6414f3a5e85865b217733498d6f0de30a721557c94976b7457a4a2bc53b3",
+          "bytes": 5082,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_browser_test.go",
+          "sha256": "6cd7ab365a44895d785ee3317728d57ef556fdfc4f1654cd017e72fec482fb8c",
+          "bytes": 6349,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_command_test.go",
+          "sha256": "6d9811d3e79a3ecb1106ef51bcb1b79c472ba7554d8cdc3524cf12e2e9dd5285",
+          "bytes": 5002,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_progress_test.go",
+          "sha256": "f7e3523e767755c189cc367ddf86c737bc1a5cf391a653755274557cdc72c5d4",
+          "bytes": 7305,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_show_text.go",
+          "sha256": "a11f034fd16a959ab596bf5a94a213355ac1b4aaa85e6497dcc5380e3e2ebf8e",
+          "bytes": 23376,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_show_text_test.go",
+          "sha256": "c7d8e42be830406ac73b9aece772e0155397910418a7530787c41c48f8b94b4a",
+          "bytes": 24484,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_usage_detail_test.go",
+          "sha256": "0b4459b2b506a5e7d6416b221338fad5b6b966b899acbd124b027f4145d92e3c",
+          "bytes": 5063,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer.go",
+          "sha256": "3e2aa38054dbad16a6264ff061e41082e59d1dca5be4a1506cb229f8959ca17b",
+          "bytes": 13010,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer_data.go",
+          "sha256": "e91a38d3bf04a8945c8ad96924671966ac81effa7dcdfe1eaa297cca64cc9b79",
+          "bytes": 16372,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer_data_test.go",
+          "sha256": "fa11edb29d328d8a8bb73a2f6e9ac4f5a3cb19d42f917ee1d992d973777a5ef1",
+          "bytes": 8552,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer_pty_darwin_test.go",
+          "sha256": "8120478cce6fcf1f4c7259ee28751dae01821a5e7cc886a37cf9132e7fe22f1c",
+          "bytes": 9333,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer_terminal.go",
+          "sha256": "884f575ee7560e85ec5bdbb76bca9f972fc12658a9810de58ac122e07266b573",
+          "bytes": 6554,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/session_viewer_test.go",
+          "sha256": "382df39d251a154342ff4c0200038d6521fa78f7283a5308e15473bdea9c2df0",
+          "bytes": 15681,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/shell_init_test.go",
+          "sha256": "66320fde075d0044a72b96c8ee03550001b9cc736e96fc84330975da0c96c49b",
+          "bytes": 39042,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/snapshot_performance_contract_test.go",
+          "sha256": "e9732e5e1be19f69462bdd3468e417f491175c2c9d43e12f98a95272f3be8f8f",
+          "bytes": 53012,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/snapshot_performance_rusage_other_test.go",
+          "sha256": "1d9ece1cfa99174164c9157d4145169609c4278878b19f238d4e8746fe8c5337",
+          "bytes": 126,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/snapshot_performance_rusage_unix_test.go",
+          "sha256": "ee42104c9b26e9bb19a8dd6cb031dd4e1b6d485618fb87ae74c059c557964f29",
+          "bytes": 330,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/source_coverage.go",
+          "sha256": "dba7be4a3c4d47d482597e0d6bb0dccc2b0b2275fd867d4537e065b2b56a0026",
+          "bytes": 269,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/source_coverage_test.go",
+          "sha256": "6b05919ecea715c06498ce49ce8a21cdd65f3a1fb73abb7183994c66ed1f0052",
+          "bytes": 4682,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/switch_time_shell_setup_test.go",
+          "sha256": "60d92b5310a2e26fcc9a95b6b6d06705c5b6ca0dab26f30a489030ef1764710d",
+          "bytes": 17807,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/terminal_detail.go",
+          "sha256": "403163d5267febe023130d8b51c1ac778b7605b342f9b34cd46cc0070c922cae",
+          "bytes": 8833,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/terminal_detail_test.go",
+          "sha256": "5cf663b678d75e471e5a761a5a23fe1ccdb15fa5ccd8bcf3dc69b70699d11ec9",
+          "bytes": 10063,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/terminal_frame.go",
+          "sha256": "cb5fd87f755d2c51ea717180100ebafa8899c8b4d1d59d71387f3baba8b2011f",
+          "bytes": 2261,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/terminal_frame_test.go",
+          "sha256": "0010c2ce3b573d74a0653d4144649913119fba82395d13f0f37b3aeb3286ed80",
+          "bytes": 1114,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/testdata/phase7/gui-json-contract.json",
+          "sha256": "8909eb2794d7989e5531051826cfbce93df4c76ec0831c8f7a1ee5c80dfa7a2e",
+          "bytes": 84188,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/testdata/snapshot-performance/README.md",
+          "sha256": "11f10535cc4620fd54610d5cd533c17d6810b9619a0957006916039203c502ea",
+          "bytes": 2699,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json",
+          "sha256": "4c005cf1db022e7156f42ab3348711be2ed8bd8f501a669b896214b6dc065908",
+          "bytes": 221582,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_family_text.go",
+          "sha256": "080d70df7e5ffbb78a360671e49916ccd70517bf5d76368f7e2c292e5998c5ae",
+          "bytes": 8399,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_family_text_test.go",
+          "sha256": "ba7d18fefc15070d28451a48b40ffe1b6373e7be30f50b64abbaf6d3daf1349b",
+          "bytes": 4017,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_route_text_test.go",
+          "sha256": "dbb62c2b13839e1ff88b47f341d428c41f6f6e2e46ea69378a569e4b7df1c9dc",
+          "bytes": 1771,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_signals_command_test.go",
+          "sha256": "d8c12ffe809f594cf477bdcf6fa7614afb3812296f827b8638568a844b18ace1",
+          "bytes": 4032,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_signals_text.go",
+          "sha256": "73404fbf04be33c95bb3dc58a7a8c2886617f1e4d5e346e092393524f3ba42b4",
+          "bytes": 5320,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_signals_text_test.go",
+          "sha256": "85623319a7c7a64c1dfe7951dc8cdeaf0ff479dcbbcad54f3e532469eba3ae1c",
+          "bytes": 4723,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_layout.go",
+          "sha256": "19e9069f1668f092b54f6bd1874dc9fb94705863c5f4d1e256f82de3a06d6cd0",
+          "bytes": 14772,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_layout_test.go",
+          "sha256": "c41ee2fc7640aa8efcdf1f9f306a066205cfcbec5361c476a91e0f3a7f36173f",
+          "bytes": 3971,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_text.go",
+          "sha256": "c7fd841163c44064e12ff2de3a6e7af00e4a5c38cac8b85714d20dd8f8346799",
+          "bytes": 36052,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_text_test.go",
+          "sha256": "217a953eed64d9221c5aadd3f0f8897d48f9f74b4b9679236bf0089eb140d5ee",
+          "bytes": 76477,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_viewer.go",
+          "sha256": "05002a1370aa62672009fb5e16b4dca954ef5ddf9cb5f75b8832ccc4100db66f",
+          "bytes": 36563,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_viewer_pty_darwin_test.go",
+          "sha256": "b957a97785d46d8ef30b52ccc487a917adf26e8dfe7e9b65ea173c8fdaf2ac4d",
+          "bytes": 11277,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_stats_viewer_test.go",
+          "sha256": "e5649b3b42a5d2418bdd53e99de518fa4de7d5e7ac941ffa2a569e437b6a1e1b",
+          "bytes": 30502,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_text_primitives.go",
+          "sha256": "6c6fff41a74f95712473c244970b746eb06cd2bbeb9a87f68d18a64d77fc975d",
+          "bytes": 6579,
+          "is_symlink": false
+        },
+        {
+          "path": "cmd/agentdeck/usage_text_primitives_test.go",
+          "sha256": "0b7ff0869c50e6d6283dc30229bc770311055e0c784fb029bf4fa6c049e045cb",
+          "bytes": 438,
+          "is_symlink": false
+        }
+      ],
+      "suffix_counts": {
+        ".go": 66,
+        ".json": 2,
+        ".md": 1
+      },
+      "reconstruction_status": "MATCHES_ORIGINAL"
+    },
+    {
+      "directory": "apps/macos/AgentDeckApp",
+      "file_count": 15,
+      "payload_bytes": 1748,
+      "expected": "7e028946ce9a591b11896a1cb83e6aea3dcb50c0641cf93f84f67e3a087e8527",
+      "actual": "7e028946ce9a591b11896a1cb83e6aea3dcb50c0641cf93f84f67e3a087e8527",
+      "matches": true,
+      "entries": [
+        {
+          "path": "apps/macos/AgentDeckApp/AgentDeckApp.swift",
+          "sha256": "2bffd34f26e5c1bca3c19def8625544847bd68df8585c551f35be9f16c0c1dda",
+          "bytes": 15564,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/Assets.xcassets/AgentDeckMenuBarIcon.imageset/Contents.json",
+          "sha256": "a4456c90d7a7a52fc910baec5e9f56d157bcd45744bb2dcec651829aa8b31423",
+          "bytes": 408,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/Assets.xcassets/AppIcon.appiconset/Contents.json",
+          "sha256": "ad82ac1bd28aa32ea2488349bfb0e8493fea8439aad7cb151bd6be57d2d2eda5",
+          "bytes": 1295,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/Assets.xcassets/Contents.json",
+          "sha256": "0fd49ba3c3585c709678e0046a821c3c60685ec7063720d30d3a3448be3a208b",
+          "bytes": 63,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/DesktopCopy.swift",
+          "sha256": "c4fd9f2cbd40463efbd202dd5f8d1dc256d5fef8e82bf2dfa1063d109c2dfec7",
+          "bytes": 37951,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/DesktopPreferences.swift",
+          "sha256": "36fe9bf49dffd8317e9aa4c167fe77ac3eadeafe75fdb05fbc795b14ea4479aa",
+          "bytes": 6397,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/Info.plist",
+          "sha256": "50c84960791778a3686339e5ec84bfee49151f239e016427415a552848a3cb67",
+          "bytes": 1033,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/Localizable.xcstrings",
+          "sha256": "a8d9a432438782b4211f4ab7fe8c0d84ed0d5ca5e6c761e8c18ad9b6fb8761a5",
+          "bytes": 115937,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/MenuBarItemController.swift",
+          "sha256": "18f53dbf758a9809ea479ae2eae1d6dd3743cb8398b9b86bf2c0aff1ac3def49",
+          "bytes": 25504,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/MenuBarPanelViews.swift",
+          "sha256": "2ab4a1d86fe65aa63e240bc554902959d989ee08f185de2dfc6a14ab6210c773",
+          "bytes": 51831,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/MenuBarSurfaceView.swift",
+          "sha256": "1b97a00ea94e2d6fc316670245353b39d2fc7a4a47c27683b64d6c8bc1275b4b",
+          "bytes": 35526,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/MenuBarViewModel.swift",
+          "sha256": "6e57d8efad80dd84c310f8abc5812873f0af21155d694e2ca800a0a2f870d12e",
+          "bytes": 59359,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/QuotaAlertNotifier.swift",
+          "sha256": "c7d52a099bf801676148651322a07c40e070edbe899a77673ea901ba5f20e2ab",
+          "bytes": 4155,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/QuotaSettingsController.swift",
+          "sha256": "e35f0648ed94b1035f9e7da83e45ec836d2502db18401e9278b140dbba522925",
+          "bytes": 21735,
+          "is_symlink": false
+        },
+        {
+          "path": "apps/macos/AgentDeckApp/SettingsWindowView.swift",
+          "sha256": "7c0dd52eb60eab4d0ecb0ba64fe5d830e6fad7c7e7669f66692eaaa9c6c507d6",
+          "bytes": 12184,
+          "is_symlink": false
+        }
+      ],
+      "suffix_counts": {
+        ".json": 3,
+        ".plist": 1,
+        ".swift": 10,
+        ".xcstrings": 1
+      },
+      "reconstruction_status": "MATCHES_ORIGINAL"
+    }
+  ],
+  "kind": "handoff evidence supplement: reconstructed original directory manifests; no new candidate or test evidence",
+  "recorded_at": "2026-10-21T11:23:03.698701+00:00",
+  "original_manifest_independently_saved_at_creation": false,
+  "provenance": "Reconstructed using the exact digest() implementation executed in the preceding repair turn. The original ContentState persisted aggregate subject hashes and a short recipe, not per-file manifests. Both reconstructed aggregates equal those original hashes.",
+  "source_record": "incremental-update-repair-content-states-20261021.json",
+  "candidate_digest_from_original_record_map": "45f7482757f8271567909e80d93980b3678ab2c3f97895ef51afa44f04e67c45",
+  "scope": "Only the two requested directory digests were re-read from current source. The whole candidate digest is recomputed from the original recorded subject_digests map; it is not a fresh audit of every other subject.",
+  "recipe": {
+    "repository_root": "/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/scan-performance",
+    "walk": "Path.rglob(\"*\") recursively, with default recurse_symlinks=False in the observed Python 3.15 POSIX runtime. No Git index, ignore, tracked/untracked, hidden-file, generated-file or test-file filter.",
+    "sort": "sorted(Path objects) BEFORE filtering: native POSIX pathlib lexicographic comparison of path component strings, case-sensitive Unicode code points, independent of locale. Not sorted hashes or filenames alone.",
+    "include": "p.is_file() AND (p.suffix in {\".go\", \".json\", \".sql\", \".swift\", \".plist\", \".xcstrings\"} OR p.name == \"README.md\"). Exact case-sensitive suffix/name comparison, identical for both requested directories.",
+    "file_sha256": "SHA256(p.read_bytes()).hexdigest(), lowercase 64 ASCII hexadecimal characters. No content decoding, line-ending, BOM, whitespace or final-newline normalization.",
+    "symlinks": "Original code has no explicit symlink-file exclusion: is_file() and read_bytes() follow a file symlink. rglob does not recursively follow symlink directories by default. Selected current files contain no symlinks.",
+    "path": "str(p.relative_to(repository_root)): repository-relative POSIX path including cmd/agentdeck/ or apps/macos/AgentDeckApp/, with / separators; no ./, absolute root or Unicode normalization.",
+    "entry": "repository-relative path + one U+0000 NUL + lowercase file SHA-256. Size and manifest metadata do not enter the hash.",
+    "join": "one U+000A LF between entries, no final LF. No JSON serialization or spaces in the directory preimage.",
+    "encoding": "str.encode() with defaults: UTF-8, strict errors, no BOM; NUL is byte 00 and LF is byte 0a.",
+    "directory_digest": "SHA256(joined UTF-8 bytes).hexdigest(). Empty selection hashes the empty byte string.",
+    "whole_candidate_digest": "SHA256(json.dumps({\"head\": recorded git_commit, \"subject_digests\": original complete map, \"experiment_kind\": recorded experiment_kind}, sort_keys=True, separators=(\",\", \":\")).encode()).hexdigest(). Python defaults ensure_ascii=True and UTF-8 apply. recorded_at, IDs and newly appended handoff artifacts are excluded."
+  }
+}

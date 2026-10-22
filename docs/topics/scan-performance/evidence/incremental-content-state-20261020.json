@@ -1,0 +1,42 @@
+{
+  "profile": "completion-evidence/v1",
+  "record_type": "node",
+  "node": {
+    "id": "scan-incremental-state-dev-6b3a5270e77740db",
+    "kind": "content_state",
+    "attributes": {
+      "repository": "github.com/kitdine/agent-deck",
+      "recorded_at": "2026-10-20T11:22:49.247411+00:00",
+      "git_commit": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+      "workspace_diff_sha256": "6b3a5270e77740db58a1da020e156f84e1421b9b2454b7fc79c218a19dffb63b",
+      "subject_digests": {
+        "internal/store": "7e43078ac98c31349a7bef508052a6cb88f32848710563078692c3aabf3e1f1b",
+        "internal/usage": "85305820f109e4e5d86e9c5a9f3cf2681e3b7d61500fdd4fbfd73204d15c4137",
+        "internal/session": "355b1dca6a85e439c4d6d8874fbfb79064daa7194e1b50eca0f674226fde3f57",
+        "internal/desktop": "ed5d2a5d96bd0d9c69ea5e39bae23548cccdfc6a35ddb27055036420e56387a8",
+        "internal/scanruntime": "0da2f67ce9e12c411a6ad0ff2389404d53089ef4bf3921abcb17153d55566711",
+        "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+        "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+        "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+        "cmd/agentdeck/main_test.go": "38391b37595d2ed93fce47c573ea85de99238a1294856053e21011b6d6d5e2c4",
+        "cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json": "4c005cf1db022e7156f42ab3348711be2ed8bd8f501a669b896214b6dc065908",
+        "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee",
+        "scripts/scan-performance-incremental.py": "700f617a8c613f949ec87cd01f2baafece431c2e2df1ddbb538ccbd2dd7ad150",
+        "scripts/scan-performance-incremental-engine.go.tmpl": "04785f4f910a4117ef2206654ca485fc0ff8ee40cc49d65ed337c9e8710aa70f",
+        "apps/macos/AgentDeckShared/DesktopWire.swift": "fdb36e04fda2622ccb4df8d656282c09095c008a9ff7b83bc1e962cea21d51ec",
+        "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "94222e146054a5fec809f1ddd38b2c7fb4fd271b6797dc85e320d798c8284cec",
+        "apps/macos/AgentDeckVerification/main.swift": "72fb5c8054f8797369c676f368674f1e719129f4c01938769706015dfbfb216a",
+        "apps/macos/AgentDeckTests/DesktopWireTests.swift": "96e4fdae1f741e1139a0444dd4fd41d8de5d5743242daac0bb583822f4c8bb26",
+        "apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift": "9d3be4efd316d1f40672bf2912813b4c838e4f2b166f39cad41f8b446f760d75",
+        "desktop/fixtures/v1/snapshot-complete.json": "4434dc2e3adb378f24824c3c3a6a809b7dfa395709d100d45f3a4bda93f05c20",
+        "desktop/fixtures/v1/snapshot-empty-client.json": "fd27811e12ecc83465e1044e71c3b9f862a0873631d7f1f7c559deb79ca4ec2b",
+        "desktop/fixtures/v1/snapshot-legacy.json": "b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2",
+        "desktop/fixtures/v1/snapshot-partial.json": "222b842dc5e217acfab6b42d58fd34125f32d32691c5325731fd75e8672b687f",
+        "desktop/fixtures/v1/snapshot-schema-ahead.json": "af81df1dc5703b1764123c969ca96d23c06d780a7898320f41895375f3bb8a99"
+      },
+      "toolchain": "go version go1.27.1 darwin/amd64",
+      "environment": "macOS-26.7.2-x86_64-i386-64bit-Mach-O",
+      "scope": "Task 3 product, regression tests, native wire and E2 runner; administrative phase/status records excluded"
+    }
+  }
+}

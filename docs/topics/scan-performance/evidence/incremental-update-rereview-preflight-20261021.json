@@ -1,0 +1,42 @@
+{
+  "schema": "agentdeck-rereview-preflight/v1",
+  "scope": "scan-performance / incremental-projections / update-latency",
+  "recorded_at": "2026-10-21T11:14:30.519845+00:00",
+  "phase_token": "2Rv1UDDqM0gg4bar",
+  "result": "BLOCKED before controlled review verdict",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "candidate_product": "scan-ip-update-repair-product-45f7482757f82715",
+  "candidate_instrumentation": "scan-ip-update-repair-instrumentation-d9db8dbe33f327da",
+  "identity_checks": {
+    "instrumentation_subjects": 8,
+    "instrumentation_mismatches": [],
+    "product_subjects": 31,
+    "product_subjects_matched": 29,
+    "unresolved_subjects": [
+      {
+        "path": "cmd/agentdeck",
+        "recorded_digest": "d617597f3acdac5ddce5ff738c351ad66878e69b8b6f4d20b5115ec9210520a4",
+        "current_runtime_go_swift_xcstrings_digest": "f25b1622626df25d86a5d97f451452eb2cff6ebf792c118a3af90fe1b0e64efb"
+      },
+      {
+        "path": "apps/macos/AgentDeckApp",
+        "recorded_digest": "7e028946ce9a591b11896a1cb83e6aea3dcb50c0641cf93f84f67e3a087e8527",
+        "current_runtime_go_swift_xcstrings_digest": "811a2fede7f33384fcbab5faa63e5a15ef187acc6c7b8ed48a1a8fa6d8f6d571"
+      }
+    ],
+    "method": "Recorded LF-joined repository-relative path NUL content-SHA256 recipe did not reproduce the two aggregates for all regular files. A bounded source-only reconciliation with Go/JSON/SQL/Swift/xcstrings and then the build-declared runtime Go/Swift/xcstrings scope also did not match. Stop further recipe variants. Canonical metadata fingerprint reproduces, but this only verifies stored metadata, not current source identity.",
+    "interpretation": "Original file selection scope is not recorded. These comparisons do not establish product drift and must not be represented as such."
+  },
+  "review_progress": "Read-only source inspection of source monitor/coordinator wiring, WAL measurement and process-barrier handling performed. No new product tests, build, native pilot or formal PASS/FAIL issued because candidate/evidence binding remains unresolved.",
+  "gate": {
+    "last_known_status": "NOT_VERIFIED",
+    "source": "incremental-update-repair-gate-20261021.json",
+    "target": "scan-ip-update-repair-product-45f7482757f82715",
+    "required": 4,
+    "covered": 3,
+    "fresh_query": false,
+    "current_source_binding": "unresolved"
+  },
+  "prerequisite": "Repair handoff must provide original per-file whitelist/hashes and exact directory digest selection/ordering/encoding recipe for the two unresolved subjects. If content actually changed, register the current candidate with scope-aware impacts and applicable verification rather than relabeling old evidence.",
+  "boundaries": "Production, tests and configuration unchanged. No real-data access, acquisition, model requests, new acceptance claims, delegation or Git delivery. Existing formal Round 2/5 verdicts and historical performance observations retained."
+}

@@ -49,6 +49,24 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		try await assertServingIdentityChange(generationChanges: ["core_epoch": 2])
 	}
 
+	func testServingDerivedOnlySchemaUpgradeKeepsFullViewDuringPartialUpdate() async throws {
+		let saved = try servingCoordinatorFixture(id: "schema31-full", full: true)
+		let partial = try servingCoordinatorFixture(id: "schema32-partial", full: false,
+			generationChanges: ["core_schema": 32, "usage_revision": 5])
+		let host = ControlledServingRefresher(restore: saved, partial: partial, final: nil)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.servingHeader?.publicationID != "schema31-full" { await Task.yield() }
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "schema31-full")
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "schema31-full")
+	}
+
 	func testServingSessionEpochChangeReplacesFullViewBeforeFailedUpdate() async throws {
 		try await assertServingIdentityChange(generationChanges: ["session_epoch": 3])
 	}
@@ -300,6 +318,25 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await passiveJoin.value
 		await providerFollowUp.value
 
+		XCTAssertEqual(host.callCount, 2)
+		XCTAssertEqual(coordinator.latestSnapshot, second)
+	}
+
+	func testSourceBurstDuringScanCreatesOneFollowUpAndRetainsPublishedValue() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, second])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .sourceChange) }
+		await host.waitForCall(1)
+		let notifications = (0..<8).map { _ in Task { await coordinator.requestFullRefresh(trigger: .sourceChange) } }
+		for _ in 0..<50 { await Task.yield() }
+		host.resumeCall(1)
+		await host.waitForCall(2)
+		XCTAssertEqual(coordinator.latestSnapshot, first)
+		host.resumeCall(2)
+		await initial.value
+		for notification in notifications { await notification.value }
 		XCTAssertEqual(host.callCount, 2)
 		XCTAssertEqual(coordinator.latestSnapshot, second)
 	}

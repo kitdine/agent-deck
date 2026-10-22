@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshSchedulerTests: XCTestCase {
+	func testSourceMonitorObservesRealWritesAndStopsWithOwner() async throws {
+		let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		let root = home.appendingPathComponent(".codex/sessions")
+		try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: home) }
+		let recorder = SchedulerRequestRecorder()
+		let monitor = DesktopSourceChangeMonitor(home: home) { recorder.triggers.append(.sourceChange) }
+		XCTAssertTrue(monitor.start())
+		defer { monitor.stop() }
+		let source = root.appendingPathComponent("synthetic.jsonl")
+		try Data("{}\n".utf8).write(to: source)
+		let deadline = ContinuousClock.now + .seconds(3)
+		while recorder.triggers.isEmpty && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertFalse(recorder.triggers.isEmpty)
+		monitor.stop()
+		let count = recorder.triggers.count
+		try Data("{}\n{}\n".utf8).write(to: source)
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertEqual(recorder.triggers.count, count)
+	}
+
 	func testCompletionSchedulesOneRequestAtSixtySecondsWithoutReplay() {
 		let clock = SchedulerClock()
 		let recorder = SchedulerRequestRecorder()

@@ -1,0 +1,287 @@
+{
+  "schema": "scan-performance/p07-bounded-repair/v1",
+  "recorded_at": "2026-10-22T05:36:23.110Z",
+  "workspace": "agent-deck.scan-performance",
+  "branch": "feature/scan-performance",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "target_content_state": "scan-ip-bounded-product-92c37854995da877",
+  "fingerprint": "92c37854995da8777f3eda52de8444bdec1bfae542274bc5fa269525c0ea962a",
+  "scope": "Complete AcceptInventory transaction max repair; user-authorized Task3 aggregate RSS validation withdrawal",
+  "implementation": {
+    "batch_rows": 128,
+    "max_parameters": 512,
+    "validation_before_begin": true,
+    "atomic_boundary": "Unchanged single BeginTx through Commit/Rollback return; inventory/checkpoints/head and per-row revision triggers remain one atomic transaction",
+    "durability_wal_and_timeouts": "unchanged"
+  },
+  "calibration": {
+    "kind": "synthetic calibration only",
+    "sources": [
+      0,
+      1,
+      127,
+      128,
+      129,
+      4717
+    ],
+    "complete_inventory_transactions": 12,
+    "phase_equations": "PASS",
+    "transactions": [
+      {
+        "domain": "core",
+        "id": 9,
+        "duration_ns": 620611,
+        "begin_call_ns": 9327,
+        "body_ns": 177396,
+        "terminal_ns": 433888,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "core",
+        "id": 10,
+        "duration_ns": 460622,
+        "begin_call_ns": 8226,
+        "body_ns": 168319,
+        "terminal_ns": 284077,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "core",
+        "id": 11,
+        "duration_ns": 1532999,
+        "begin_call_ns": 12564,
+        "body_ns": 1000506,
+        "terminal_ns": 519929,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "core",
+        "id": 12,
+        "duration_ns": 1588375,
+        "begin_call_ns": 10388,
+        "body_ns": 1011760,
+        "terminal_ns": 566227,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "core",
+        "id": 13,
+        "duration_ns": 1475442,
+        "begin_call_ns": 11671,
+        "body_ns": 1034723,
+        "terminal_ns": 429048,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "core",
+        "id": 14,
+        "duration_ns": 35875382,
+        "begin_call_ns": 9010,
+        "body_ns": 32274313,
+        "terminal_ns": 3592059,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 15,
+        "duration_ns": 1423946,
+        "begin_call_ns": 17201,
+        "body_ns": 583586,
+        "terminal_ns": 823159,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 16,
+        "duration_ns": 648234,
+        "begin_call_ns": 15168,
+        "body_ns": 281143,
+        "terminal_ns": 351923,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 17,
+        "duration_ns": 1673317,
+        "begin_call_ns": 12168,
+        "body_ns": 1169067,
+        "terminal_ns": 492082,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 18,
+        "duration_ns": 1771408,
+        "begin_call_ns": 13711,
+        "body_ns": 1256518,
+        "terminal_ns": 501179,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 19,
+        "duration_ns": 1888954,
+        "begin_call_ns": 11634,
+        "body_ns": 1330606,
+        "terminal_ns": 546714,
+        "valid": true,
+        "outcome": "commit"
+      },
+      {
+        "domain": "session",
+        "id": 20,
+        "duration_ns": 37961969,
+        "begin_call_ns": 15860,
+        "body_ns": 34552338,
+        "terminal_ns": 3393771,
+        "valid": true,
+        "outcome": "commit"
+      }
+    ]
+  },
+  "checks": {
+    "full_go": {
+      "exit_code": 0,
+      "pass": 1358,
+      "skip": 7,
+      "fail": 0,
+      "sha256": "4770fb3d4c1095911c96f5000989ccf0f6a1859b3c22a2accacbcc0a433975bf"
+    },
+    "four_package_race": {
+      "exit_code": 1,
+      "pass": 391,
+      "skip": 0,
+      "fail": 1,
+      "sha256": "39f5b7fe42e2da52fb6f24e50bfa209b13b5be45ed6754902fd935fa1d220d49",
+      "failure": "TestServingEmptyInventoryReconcilesLikeOrdinaryScan/seeded=true/serving=true: serving_test.go:466 seed not published",
+      "data_race_report": false,
+      "cause": "unresolved; not proven preexisting, environmental, or change-caused",
+      "baseline_isolated_subcase": {
+        "pass": 1,
+        "fail": 0,
+        "sha256": "8c7e5832f844b4c406377e14f4deacfc100760a7b4ff067ebe7dfc229cda05b3"
+      },
+      "candidate_isolated_subcase": {
+        "pass": 1,
+        "fail": 0,
+        "sha256": "0e0458cdf1d5534979e45e209135266866f39bf20829599a9473b5e8a7d32141"
+      },
+      "interpretation": "Original four-package FAIL retained; two single-case passes do not establish resolution."
+    },
+    "vet": {
+      "exit_code": 0,
+      "scope": [
+        "internal/store",
+        "internal/scanruntime",
+        "internal/session",
+        "internal/usage",
+        "cmd/agentdeck"
+      ]
+    },
+    "darwin_dual_build": {
+      "exit_code": 0,
+      "architectures": [
+        "arm64",
+        "amd64"
+      ]
+    },
+    "instrumented_inventory": {
+      "exit_code": 0,
+      "complete_spans": 12,
+      "begin_body_terminal_equations": "PASS"
+    },
+    "independent_regressions": {
+      "pass": 9,
+      "skip": 0,
+      "fail": 0
+    }
+  },
+  "toolchain": {
+    "go": "go1.27.1 darwin/amd64",
+    "compiler": "compile version go1.27.1",
+    "go_root": "/usr/local/Cellar/go/1.27.1/libexec; command-local override",
+    "initial_failure": "Inherited GOROOT pointed to Go1.27.3 while PATH go was1.27.1; compile rejected version mismatch before any test. No global configuration changed.",
+    "os": "macOS26.7.2/25G325",
+    "python": "3.15.0"
+  },
+  "independent_review": {
+    "verdict": "PASS",
+    "score": 9,
+    "role": "cold-context read-only subagent",
+    "agent": "/root/p07_independent_review",
+    "model_configuration": "Inherited parent model and reasoning configuration without overrides; exact backend model identifier not exposed",
+    "scope": [
+      "source_coverage.go delta",
+      "new batch tests",
+      "new requirements/evaluation RSS withdrawal sections"
+    ],
+    "main_verification": "Source Git blobs,9 raw test outcomes and final requirements/evaluation hashes checked directly; final waiver adds a copy of the exact-read-back canonical criterion, without changing the reviewed user decision.",
+    "race_followup": "Reviewer retained scoped code PASS; no specific change-caused defect identified from available evidence, but regression is not ruled out. Broad race failure remains unresolved."
+  },
+  "rss": {
+    "validation_required": false,
+    "engineering_budget_bytes": 268435456,
+    "budget_verified": false,
+    "reason": "User withdrew unavailable quantitative validation after confirming proc:::create is blocked by SIP. No further RSS experiments."
+  },
+  "acceptance": {
+    "status": "NOT_VERIFIED",
+    "transaction_p95_limit_ms": 50,
+    "transaction_max_limit_ms": 250,
+    "representative_candidate_distribution": false,
+    "synthetic_only": true,
+    "old_target_gate": "FAILED retained; no historical max/RSS/review outcome overwritten",
+    "remaining": [
+      "Representative candidate complete-transaction evidence is absent; no new real input capture authorized or performed.",
+      "Four-package race seed-publication failure cause remains unresolved."
+    ]
+  },
+  "durable_records": {
+    "content_states": "incremental-p07-repair-content-states-20261022.json",
+    "delta": "incremental-p07-repair-delta-20261022.patch.gz",
+    "rss_revision": "incremental-p07-rss-validation-withdrawal-20261022.json",
+    "gate": "incremental-p07-repair-gate-20261022.json",
+    "ce_export": "incremental-p07-repair-cev1-20261022.jsonl"
+  },
+  "authority": {
+    "new_real_input_capture": false,
+    "real_home_source_or_db_access": false,
+    "tasks4_7": false,
+    "commit": false,
+    "push": false,
+    "installation": false,
+    "release": false
+  },
+  "ce_write": {
+    "nodes": 9,
+    "relations": 19,
+    "preflight_ok": 19,
+    "exact_readback": true,
+    "processed_count_returned": false
+  },
+  "document_checks": {
+    "review_structure_exit_code": 0,
+    "scoped_diff_exit_code": 0,
+    "scoped_links": "PASS",
+    "scoped_whitespace": "PASS",
+    "ce_record_count": 29,
+    "canonical_envelope_and_vocabulary": "PASS",
+    "full_json_schema_validation": "not run; jsonschema unavailable",
+    "global_whitespace_exit_code": 2,
+    "global_whitespace_findings": 31,
+    "global_whitespace_scope": "Only preexisting frozen incremental-update-bounded-review-delta-20261021.patch blank context lines; original preserved",
+    "topic_document_audit_exit_code": 1,
+    "topic_document_audit_scope": "Two preexisting evidence handoff Markdown files not declared in Documents matrix; no new topology or scope change made."
+  }
+}

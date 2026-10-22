@@ -1,0 +1,72 @@
+{
+  "profile": "completion-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "target_content_state": "scan-incremental-repair-r1-97321292d5b8d565",
+  "instrumentation_state": "scan-p07-r3-repair-state-62eb7acb7f74a58d",
+  "instrumentation_fingerprint": "62eb7acb7f74a58d7ba41415eefcf4a3b32466cf625159a8085b2d3e8be9f758",
+  "status": "FAILED",
+  "criteria": [
+    {
+      "id": "scan-performance:incremental-projections:generation-switch",
+      "required": true,
+      "valid_evidence": [
+        "scan-performance:incremental-projections:repair-r1:generation-switch:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:partition-equivalence",
+      "required": true,
+      "valid_evidence": [
+        "scan-incremental-rereview-r2-R6isb6OR-partition-equivalence",
+        "scan-performance:incremental-projections:repair-r1:partition-equivalence:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:nonadditive-statistics",
+      "required": true,
+      "valid_evidence": [
+        "scan-performance:incremental-projections:repair-r1:nonadditive-statistics:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:update-latency",
+      "required": true,
+      "valid_evidence": [],
+      "failed_evidence": [
+        "scan-incremental-update-latency-p10-fail-20261020"
+      ],
+      "blocked_evidence": [
+        "scan-incremental-update-latency-p07-blocked-20261020",
+        "scan-incremental-update-latency-retry-blocked-20261020",
+        "scan-incremental-update-latency-blocked-20261020"
+      ]
+    }
+  ],
+  "missing_criteria": [
+    "scan-performance:incremental-projections:update-latency"
+  ],
+  "invalidated_evidence": [],
+  "unresolved_candidate_impacts": [],
+  "provider_receipt": {
+    "nodes_exact_readback": 2,
+    "relation_preflight": "3/3 ok",
+    "relations_exact_readback": 3,
+    "method": "Fixed provider upsert templates; MCP write tool exposes update statistics, so processed counts were confirmed through exact readback without replaying writes"
+  },
+  "checks": {
+    "document_structure": "PASS",
+    "review_structure": "PASS",
+    "topic_document_set": "PASS",
+    "whitespace": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "recorded_at": "2026-10-21T04:31:46.106Z",
+  "scope": "SP-IP-R3-F1 repaired in candidate, independent re-review pending. Separate instrument evidence remains not_verified for the overall update-latency criterion. P10 fail retains product gate FAILED; P07 acceptance attempted=0."
+}

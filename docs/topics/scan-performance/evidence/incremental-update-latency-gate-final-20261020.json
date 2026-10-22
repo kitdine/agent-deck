@@ -1,0 +1,55 @@
+{
+  "profile": "completion-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "target_content_state": "scan-incremental-repair-r1-97321292d5b8d565",
+  "target_content_digest": "97321292d5b8d56591766b919c935a09a6306aa565d512c88c28d0d3f9f454f2",
+  "provider": "Neo4j MCP; exact target ContentState gate read after evidence write",
+  "status": "FAILED",
+  "required_criteria": 4,
+  "passing_criteria": 3,
+  "failed_criteria": 1,
+  "blocked_criteria": 0,
+  "unverified_criteria": 0,
+  "criteria": [
+    {
+      "id": "scan-performance:incremental-projections:generation-switch",
+      "status": "PASS",
+      "evidence": [
+        "scan-performance:incremental-projections:repair-r1:generation-switch:97321292d5b8d565"
+      ]
+    },
+    {
+      "id": "scan-performance:incremental-projections:partition-equivalence",
+      "status": "PASS",
+      "evidence": [
+        "scan-incremental-rereview-r2-R6isb6OR-partition-equivalence",
+        "scan-performance:incremental-projections:repair-r1:partition-equivalence:97321292d5b8d565"
+      ]
+    },
+    {
+      "id": "scan-performance:incremental-projections:nonadditive-statistics",
+      "status": "PASS",
+      "evidence": [
+        "scan-performance:incremental-projections:repair-r1:nonadditive-statistics:97321292d5b8d565"
+      ]
+    },
+    {
+      "id": "scan-performance:incremental-projections:update-latency",
+      "status": "FAILED",
+      "evidence": [
+        "scan-incremental-update-latency-p10-fail-20261020",
+        "scan-incremental-update-latency-p07-blocked-20261020",
+        "scan-incremental-update-latency-blocked-20261020",
+        "scan-incremental-update-latency-retry-blocked-20261020",
+        "scan-performance:incremental-projections:repair-r1:update-latency:97321292d5b8d565"
+      ]
+    }
+  ],
+  "invalidated_evidence": [],
+  "unresolved_candidate_impacts": [],
+  "method": "Parameterized read over the CEv1Node/CEv1Relation graph: the WorkUnit's required criteria and evidence relationships were restricted to the exact target ContentState. Any applicable fail makes the compound criterion FAILED; blocked/not_verified facts remain attached as history.",
+  "recorded_at": "2026-10-20T16:14:31Z",
+  "task_disposition": "Task 3 remains in_review; Round 2 PASS is retained and is not performance acceptance."
+}
+

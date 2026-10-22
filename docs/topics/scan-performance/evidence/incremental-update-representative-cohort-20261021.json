@@ -1,0 +1,68 @@
+{
+  "status": "frozen",
+  "cohort_sha256": "d0486c1b016cb55caadce6a9ca33db2130e2b77a70e1b46bb6f4ee4e021c79cd",
+  "jsonl": {
+    "codex_sessions": {
+      "files": 82,
+      "bytes": 238545630
+    },
+    "codex_archived_sessions": {
+      "files": 1,
+      "bytes": 187042
+    },
+    "claude_projects": {
+      "files": 4634,
+      "bytes": 621157426
+    }
+  },
+  "databases": [
+    {
+      "bytes": 3924033536
+    },
+    {
+      "bytes": 4118126592
+    }
+  ],
+  "excluded": {
+    "codex_sessions": {
+      "files": 12,
+      "bytes": 41770035
+    },
+    "codex_archived_sessions": {
+      "files": 0,
+      "bytes": 0
+    },
+    "claude_projects": {
+      "files": 90,
+      "bytes": 4442547
+    }
+  },
+  "selection": {
+    "timezone": "America/New_York",
+    "excluded_local_day": "2026-10-21",
+    "cutoff_utc": "2026-10-21T04:00:00+00:00",
+    "rule": "Include JSONL only if birthtime and mtime are both before start of excluded day; no selected file skipped on drift",
+    "excluded": {
+      "codex_sessions": {
+        "files": 12,
+        "bytes": 41770035
+      },
+      "codex_archived_sessions": {
+        "files": 0,
+        "bytes": 0
+      },
+      "claude_projects": {
+        "files": 90,
+        "bytes": 4442547
+      }
+    }
+  },
+  "retention_deadline": "2026-10-22T12:48:07.489352+00:00",
+  "raw_data_emitted": false,
+  "recorded_at": "2026-10-21T13:06:28.197458+00:00",
+  "consistency": "Per-file unchanged complete JSONL; read-only SQLite online backup API guarantees each backup consistency, concurrent main/WAL size/time changes are explicitly allowed, device/inode must remain stable. Two DB backups are separate logical instants. Not a filesystem point-in-time snapshot.",
+  "private_before_after_records_verified": 4719,
+  "source_credentials_read": false,
+  "reproduction": "Full manifest and originals remain private; digest alone will not reproduce deleted inputs.",
+  "capture_runner_sha256": "cc48d9dfbc94b9a521ce23e9e424f4f9cc7739997cab920369cd4fde6c4d2ff9"
+}

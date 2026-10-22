@@ -1,0 +1,12 @@
+{
+  "source_write_started": false,
+  "source_durable": false,
+  "draw_endpoint": false,
+  "helper_failures": [],
+  "dropped_stages": 0,
+  "stages": [
+    "servingPublication",
+    "popoverPreparation"
+  ],
+  "app_group_snapshot_exists": false
+}

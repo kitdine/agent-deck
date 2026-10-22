@@ -252,7 +252,7 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 		}
 		return ScanResult{Skipped: len(paths)}, nil
 	}
-	return scan(ctx, db, paths, options.Progress,
+	return scanWithAffectedViews(ctx, db, paths, options.Progress,
 		func(src source) (bool, int, error) {
 			return scanSourceWithCoverage(ctx, db, src, options.Coordinator, options.CoverageInventoryID)
 		},
@@ -262,6 +262,7 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 			}
 			return removeMissingSources(ctx, db, seen)
 		},
+		!options.Batch,
 	)
 }
 
@@ -273,20 +274,41 @@ func scan(
 	scanOne func(source) (bool, int, error),
 	removeMissing func(map[string]bool) error,
 ) (ScanResult, error) {
+	return scanMode(ctx, executor, paths, progress, scanOne, removeMissing, false, true)
+}
+
+func scanWithAffectedViews(ctx context.Context, executor sessionExecutor, paths []source, progress ScanProgressReporter, scanOne func(source) (bool, int, error), removeMissing func(map[string]bool) error, fullSet bool) (ScanResult, error) {
+	return scanMode(ctx, executor, paths, progress, scanOne, removeMissing, true, fullSet)
+}
+
+func scanMode(ctx context.Context, executor sessionExecutor, paths []source, progress ScanProgressReporter, scanOne func(source) (bool, int, error), removeMissing func(map[string]bool) error, scoped, fullSet bool) (ScanResult, error) {
 	// Only new paths need an orphan check. Unchanged scans must not walk FTS
 	// merely to establish that they have no new projections to insert.
 	registered := map[string]bool{}
-	registeredRows, err := executor.QueryContext(ctx, "SELECT source_path FROM session_sources")
+	registeredIdentities := map[string][]string{}
+	observed := map[string]source{}
+	for _, p := range paths {
+		observed[filepath.Clean(p.path)] = p
+	}
+	changedPaths := map[string]bool{}
+	registeredRows, err := executor.QueryContext(ctx, "SELECT source_path,identity,size,modified_at,changed_at,priority,parser_version FROM session_sources")
 	if err != nil {
 		return ScanResult{}, err
 	}
 	for registeredRows.Next() {
 		var path string
-		if err := registeredRows.Scan(&path); err != nil {
+		var identity string
+		var size, modified, changed, priority, parser int64
+		if err := registeredRows.Scan(&path, &identity, &size, &modified, &changed, &priority, &parser); err != nil {
 			registeredRows.Close()
 			return ScanResult{}, err
 		}
 		registered[path] = true
+		registeredIdentities[identity] = append(registeredIdentities[identity], path)
+		p, found := observed[path]
+		if (!found && fullSet) || (found && (!p.stable || p.identity != identity || p.size != size || p.modifiedAt != modified || p.changedAt != changed || int64(p.priority) != priority || parser != ParserVersion)) {
+			changedPaths[path] = true
+		}
 	}
 	err = registeredRows.Err()
 	registeredRows.Close()
@@ -297,7 +319,13 @@ func scan(
 	for _, item := range paths {
 		if !registered[filepath.Clean(item.path)] {
 			needsOrphanCheck = true
-			break
+			changedPaths[filepath.Clean(item.path)] = true
+			// prepareSourceUpdate resolves new paths by identity before moving
+			// their rows. Capture moved-from owners before that mutation, even
+			// when a priority batch omits the old path from its inventory.
+			for _, oldPath := range registeredIdentities[item.identity] {
+				changedPaths[oldPath] = true
+			}
 		}
 	}
 	// FTS source_path is UNINDEXED. Find orphan projections once, rather
@@ -322,7 +350,23 @@ func scan(
 			return ScanResult{}, orphanErr
 		}
 	}
-	before, err := visibleDocuments(ctx, executor)
+	scoped = scoped && len(changedPaths) <= 128
+	var oldKeys map[string]affectedSession
+	if scoped {
+		oldKeys, err = affectedSessionKeys(ctx, executor, changedPaths)
+		if err != nil {
+			return ScanResult{}, err
+		}
+		if len(oldKeys) > 128 {
+			scoped = false
+		}
+	}
+	var before map[string][]visibleDocument
+	if scoped {
+		before, err = visibleDocumentsFiltered(ctx, executor, oldKeys, nil)
+	} else {
+		before, err = visibleDocuments(ctx, executor)
+	}
 	if err != nil {
 		return ScanResult{}, err
 	}
@@ -353,11 +397,18 @@ func scan(
 	if err = removeMissing(seen); err != nil {
 		return result, err
 	}
-	after, err := visibleDocuments(ctx, executor)
+	if scoped {
+		result.Documents, result.Removed, err = affectedViewChanges(ctx, executor, changedPaths, oldKeys, before)
+	} else {
+		after, viewErr := visibleDocuments(ctx, executor)
+		err = viewErr
+		if err == nil {
+			result.Documents, result.Removed = visibleDocumentChanges(before, after)
+		}
+	}
 	if err != nil {
 		return result, err
 	}
-	result.Documents, result.Removed = visibleDocumentChanges(before, after)
 	if progress != nil {
 		progress.Update(ScanProgress{Processed: len(paths), Total: len(paths), Documents: progressDocuments, Skipped: result.Skipped})
 	}
@@ -555,14 +606,24 @@ func commitUnchangedSessionCoverageBatch(ctx context.Context, db *sql.DB, source
 		return err
 	}
 	defer tx.Rollback()
+	lookup, err := tx.PrepareContext(ctx, `SELECT cursor-length(partial_line) FROM session_sources WHERE source_path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`)
+	if err != nil {
+		return err
+	}
+	defer lookup.Close()
+	coverage, err := store.PrepareSourceCoverage(ctx, tx)
+	if err != nil {
+		return err
+	}
+	defer coverage.Close()
 	for _, src := range sources {
 		var cursor int64
-		if err = tx.QueryRowContext(ctx, `SELECT cursor-length(partial_line) FROM session_sources WHERE source_path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, src.path, src.identity, src.size, ParserVersion, src.modifiedAt, src.changedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
+		if err = lookup.QueryRowContext(ctx, src.path, src.identity, src.size, ParserVersion, src.modifiedAt, src.changedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
 			return ingest.ErrSourceChanged
 		} else if err != nil {
 			return err
 		}
-		if err = store.CommitSourceCoverage(ctx, tx, inventoryID, src.path, src.identity, src.size, cursor); err != nil {
+		if err = coverage.Commit(ctx, inventoryID, src.path, src.identity, src.size, cursor); err != nil {
 			return err
 		}
 	}

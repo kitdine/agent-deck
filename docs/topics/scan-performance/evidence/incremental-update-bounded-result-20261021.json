@@ -1,0 +1,574 @@
+{
+  "schema": "scan-performance/task3-bounded-supplement/v1",
+  "recorded_at": "2026-10-21T16:54:26.236200+00:00",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "phase_token": "oy6iksjBkKkpUgtr",
+  "scope": "SQL cleanup/coverage statements, native complete-baseline diagnostics, complete RSS lifecycle/queue instrumentation; click measurement work withdrawn by user",
+  "states": [
+    {
+      "kind": "product",
+      "id": "scan-ip-bounded-product-e14fca302e5e8572",
+      "fingerprint": "e14fca302e5e85725a7642c210cde769ca0f170e7e66660b941bb5416df8fc72"
+    },
+    {
+      "kind": "instrumentation",
+      "id": "scan-ip-bounded-instrumentation-df7a0429f058d27f",
+      "fingerprint": "df7a0429f058d27fcec37a6e70e1ebfecb6b66ab9b91ebdd4fc1cf6dbf02482f"
+    },
+    {
+      "kind": "orchestration",
+      "id": "scan-ip-bounded-orchestration-067e1bcc6aee7761",
+      "fingerprint": "067e1bcc6aee7761744366ae826da931dba2b3a29a64955942e45799c1616921"
+    }
+  ],
+  "input_audit": {
+    "cohort_sha256": "d0486c1b016cb55caadce6a9ca33db2130e2b77a70e1b46bb6f4ee4e021c79cd",
+    "entries_verified": {
+      "sqlite_backup": 2,
+      "jsonl": 4717
+    },
+    "bytes_verified": 8902050226,
+    "retention_deadline": "2026-10-22T12:48:07.489352+00:00",
+    "source_home_read": false,
+    "retention_extended": false,
+    "recorded_at": "2026-10-21T14:13:41.872274+00:00"
+  },
+  "private_retention": {
+    "deadline": "2026-10-22T12:48:07.489352+00:00",
+    "extended": false,
+    "original_expiry_process_verified": true,
+    "no_real_home_recapture": true
+  },
+  "implementation": {
+    "core": "Within the original transaction, DISTINCT source paths use covering indexes; no DELETE without orphan paths; only associated events/tools removed; shared sessions rebuilt and rollback retained.",
+    "coverage": "Prepare inventory inserts and session unchanged-source lookup/coverage updates once inside existing transactions; no split commit, durability/WAL changes or reduced timing boundary.",
+    "native": "Retain readiness transitions and PID/bundle/isolated HOME/App Group diagnostics. All this-turn click/Quartz/AX timing additions withdrawn.",
+    "rss": "Fixed50ms/PID-birth union; parent Start/Wait records plus kqueue/SZOMB or explicit pinned-birth ESRCH proofs. errno0 absence stays invalid. Late children get bounded same-frame discovery; business children hold end window. Bounded256-record async JSONL writer; every overflow/error/loss invalidates.",
+    "transactions": "Caller function chain and exact Begin-call/body/terminal partition. All9593 explicit spans independently sum to the original Begin-to-terminal-return duration; SQL body waits are not claimed separately."
+  },
+  "checks": {
+    "full_go": {
+      "exit_code": 0,
+      "session_id": 30773,
+      "top_level_pass": 1355,
+      "top_level_skip": 7,
+      "fail": 0,
+      "log_sha256": "3552df2454face90519d16d8ce958c3a98864e40407b0eef2e9758d6e26bcc3e"
+    },
+    "race": {
+      "exit_code": 0,
+      "session_id": 85416,
+      "top_level_pass": 377,
+      "top_level_skip": 1,
+      "fail": 0,
+      "log_sha256": "e647614f2ab831cbe715e180a76a02b3f1fe8b83476c3c7e2a780778abbfe830"
+    },
+    "meter_go": {
+      "exit_code": 0,
+      "session_id": 71675,
+      "top_level_pass": 21,
+      "top_level_skip": 1,
+      "fail": 0,
+      "log_sha256": "c82659ffcb3511b667a15fe1f513c5cfb892bf948eacef14943aa00691642e19"
+    },
+    "orphan_differential": {
+      "exit_code": 0,
+      "session_id": 82873,
+      "top_level_pass": 5,
+      "top_level_skip": 0,
+      "fail": 0,
+      "log_sha256": "fa671572016b388b320d6bf26e583b115e2c30410aba639b2e115c3174967880"
+    },
+    "generator_integration": {
+      "exit_code": 0,
+      "session_id": 46509,
+      "top_level_pass": 7,
+      "top_level_skip": 0,
+      "fail": 0,
+      "log_sha256": "df0ea4a5e0b9a0692c3fc61728ede501179ce04db6ed925a7f361b72a8391678"
+    },
+    "reuse_scope": "Full Go/race precede the final equivalent DISTINCT-path SQL and generator coverage correction. Final orphan differential and generated exec-only-package regression settle those changes; all other production Go and transaction meter bodies are unchanged. Native click test/code withdrawn; its PASS is not current product verification.",
+    "rss_python": {
+      "tests": 24,
+      "failures": 0,
+      "exit_code": 0,
+      "native_short_exit": true,
+      "native_reparent": true,
+      "synthetic_pid_reuse": true,
+      "slow_log_overflow_invalidates": true,
+      "esrch_zero_errno_and_zombie_identity_controls": true,
+      "late_child_and_full_end_window": true
+    },
+    "retention_python": {
+      "tests": 3,
+      "failures": 0,
+      "exit_code": 0
+    },
+    "native_readiness": {
+      "tests": 1,
+      "failures": 0,
+      "exit_code": 0,
+      "scope": "unchanged pure complete/partial/usability predicate",
+      "session_id": 56615
+    },
+    "final_native_compile": {
+      "pid": 74075,
+      "exit_code": 0,
+      "timeout": false
+    },
+    "vet": {
+      "exit_code": 0,
+      "session_id": 39444
+    },
+    "dual_cli_build": {
+      "pid": 61705,
+      "exit_code": 0,
+      "timeout": false
+    },
+    "instrumented_arm64_build": {
+      "exit_code": 0,
+      "session_id": 37112,
+      "stderr_sha256": "6bcbeb0fbc005aa78d988dbf4f8601deb378c4e1631da6449c03491c69bafe12",
+      "note": "Built executable; nonfatal Go stat-cache write warning preserved in private stderr. No rerun."
+    }
+  },
+  "transactions": {
+    "schema": "p07-transactions/v2",
+    "write_capable": {
+      "core": {
+        "count": 5148,
+        "p95_ns": 7479613,
+        "max_ns": 384921506
+      },
+      "session": {
+        "count": 4726,
+        "p95_ns": 7851341,
+        "max_ns": 285331956
+      }
+    },
+    "boundary_counts": {
+      "explicit": 9593,
+      "autocommit": 281
+    },
+    "wal_initialization_counts": {
+      "core": 2,
+      "session": 1
+    },
+    "read_only_count": 0,
+    "rejected": [],
+    "record_count": 9874,
+    "process_count": 2,
+    "unmatched_begins": 0,
+    "complete": true,
+    "acceptance": "Complete transaction records from a single same-cohort diagnostic trial; core/session max exceed250ms. Not a formal passing distribution; RSS trial separately invalid."
+  },
+  "hotspots": [
+    {
+      "domain": "core",
+      "caller": [
+        "internal/store.(*Store).AcceptInventory",
+        "internal/scanruntime.acceptDomainInventory"
+      ],
+      "count": 1,
+      "max_record": {
+        "event": "end",
+        "run_id": "311a00bf9482a21c26ea41bdaec4b768",
+        "id": 9,
+        "pid": 66126,
+        "domain": "core",
+        "site": "internal/store/source_coverage.go:34",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 252350203,
+        "end_ns": 637271709,
+        "duration_ns": 384921506,
+        "outcome": "commit",
+        "valid": true,
+        "caller": [
+          "internal/store.(*Store).AcceptInventory",
+          "internal/scanruntime.acceptDomainInventory",
+          "internal/scanruntime.(*round).executeServingDiscovered",
+          "internal/scanruntime.(*round).executeProduction",
+          "internal/scanruntime.(*round).executeWith.func1",
+          "internal/scanruntime.(*round).executeWith"
+        ],
+        "begin_return_ns": 252362624,
+        "terminal_start_ns": 622333932,
+        "begin_call_ns": 12421,
+        "body_ns": 369971308,
+        "terminal_ns": 14937777,
+        "phases_complete": true
+      }
+    },
+    {
+      "domain": "session",
+      "caller": [
+        "internal/store.(*Store).AcceptInventory",
+        "internal/scanruntime.acceptDomainInventory"
+      ],
+      "count": 1,
+      "max_record": {
+        "event": "end",
+        "run_id": "311a00bf9482a21c26ea41bdaec4b768",
+        "id": 10,
+        "pid": 66126,
+        "domain": "session",
+        "site": "internal/store/source_coverage.go:34",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 637675884,
+        "end_ns": 923007840,
+        "duration_ns": 285331956,
+        "outcome": "commit",
+        "valid": true,
+        "caller": [
+          "internal/store.(*Store).AcceptInventory",
+          "internal/scanruntime.acceptDomainInventory",
+          "internal/scanruntime.(*round).executeServingDiscovered",
+          "internal/scanruntime.(*round).executeProduction",
+          "internal/scanruntime.(*round).executeWith.func1",
+          "internal/scanruntime.(*round).executeWith"
+        ],
+        "begin_return_ns": 637690853,
+        "terminal_start_ns": 913078316,
+        "begin_call_ns": 14969,
+        "body_ns": 275387463,
+        "terminal_ns": 9929524,
+        "phases_complete": true
+      }
+    },
+    {
+      "domain": "session",
+      "caller": [
+        "internal/session.init.func1",
+        "internal/session.scanSourceWithCoverage"
+      ],
+      "count": 4717,
+      "max_record": {
+        "event": "end",
+        "run_id": "311a00bf9482a21c26ea41bdaec4b768",
+        "id": 9469,
+        "pid": 66126,
+        "domain": "session",
+        "site": "internal/session/session.go:36",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 49274419206,
+        "end_ns": 49411531810,
+        "duration_ns": 137112604,
+        "outcome": "commit",
+        "valid": true,
+        "caller": [
+          "internal/session.init.func1",
+          "internal/session.scanSourceWithCoverage",
+          "internal/session.ScanWithOptions.func1",
+          "internal/session.scanMode",
+          "internal/session.scanWithAffectedViews",
+          "internal/session.ScanWithOptions"
+        ],
+        "begin_return_ns": 49274445870,
+        "terminal_start_ns": 49373580750,
+        "begin_call_ns": 26664,
+        "body_ns": 99134880,
+        "terminal_ns": 37951060,
+        "phases_complete": true
+      }
+    },
+    {
+      "domain": "core",
+      "caller": [
+        "internal/usage.(*Service).cleanupOrphanedEvents",
+        "internal/usage.(*Service).FinalizeInventory"
+      ],
+      "count": 1,
+      "max_record": {
+        "event": "end",
+        "run_id": "311a00bf9482a21c26ea41bdaec4b768",
+        "id": 9595,
+        "pid": 66126,
+        "domain": "core",
+        "site": "internal/usage/usage.go:1932",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 52971929746,
+        "end_ns": 53006409356,
+        "duration_ns": 34479610,
+        "outcome": "commit",
+        "valid": true,
+        "caller": [
+          "internal/usage.(*Service).cleanupOrphanedEvents",
+          "internal/usage.(*Service).FinalizeInventory",
+          "internal/scanruntime.(*round).executeServingDiscovered",
+          "internal/scanruntime.(*round).executeProduction",
+          "internal/scanruntime.(*round).executeWith.func1",
+          "internal/scanruntime.(*round).executeWith"
+        ],
+        "begin_return_ns": 52971986947,
+        "terminal_start_ns": 53006378041,
+        "begin_call_ns": 57201,
+        "body_ns": 34391094,
+        "terminal_ns": 31315,
+        "phases_complete": true
+      }
+    },
+    {
+      "domain": "session",
+      "caller": [
+        "internal/session.init.func1",
+        "internal/session.commitUnchangedSessionCoverageBatch"
+      ],
+      "count": 1,
+      "max_record": {
+        "event": "end",
+        "run_id": "311a00bf9482a21c26ea41bdaec4b768",
+        "id": 9597,
+        "pid": 66126,
+        "domain": "session",
+        "site": "internal/session/session.go:36",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 53073591124,
+        "end_ns": 53319839542,
+        "duration_ns": 246248418,
+        "outcome": "commit",
+        "valid": true,
+        "caller": [
+          "internal/session.init.func1",
+          "internal/session.commitUnchangedSessionCoverageBatch",
+          "internal/session.ScanWithOptions",
+          "internal/scanruntime.(*round).executeServingDiscovered",
+          "internal/scanruntime.(*round).executeProduction",
+          "internal/scanruntime.(*round).executeWith.func1"
+        ],
+        "begin_return_ns": 53073620310,
+        "terminal_start_ns": 53319422849,
+        "begin_call_ns": 29186,
+        "body_ns": 245802539,
+        "terminal_ns": 416693,
+        "phases_complete": true
+      }
+    }
+  ],
+  "representative": {
+    "formal_p10": 0,
+    "formal_p07": 0,
+    "new_post_append_oracle": true,
+    "reason": "One non-timed correctness trial PASS after actual fsynced append, automatic native-source update, matching App Group publication, and complete full-oracle comparison. Excluded from all performance distributions. Historical results retain original scope.",
+    "last_roster_rss": {
+      "summary": true,
+      "samples": 1159,
+      "sampled_peak_rss_bytes": 221540352,
+      "incomplete_samples": 2,
+      "missed_ticks": 0,
+      "max_gap_ns": 54920532,
+      "total_poll_ns": 7450311148,
+      "sampler_cpu_ns": 7460916000,
+      "wall_ns": 57912866545,
+      "log_records_written": 1160,
+      "log_records_dropped": 0,
+      "log_error": null,
+      "log_drain_ns": 67298,
+      "valid": false,
+      "process_barriers": {
+        "processes": [
+          {
+            "pid": 66124,
+            "birth": "1792595655:796848",
+            "start_sample": 1,
+            "end_sample": 1139
+          },
+          {
+            "pid": 66126,
+            "birth": "1792595655:948171",
+            "start_sample": 2,
+            "end_sample": 1159
+          }
+        ],
+        "complete": true
+      },
+      "window_finished": true
+    },
+    "rss_status": "INVALID representative trace, 2 gaps; peak is diagnostic only. The final cut fixes were verified by targeted tests and a separate synthetic run, not retargeted onto this old trace.",
+    "transaction_max": "FAIL: one core AcceptInventory384.921506ms and one session AcceptInventory285.331956ms exceed250ms. Session unchanged batch246.248418ms and orphan cleanup34.479610ms are single-case observations, not formal distributions.",
+    "correctness": {
+      "kind": "one non-timed correctness trial",
+      "cohort": "d0486c1b016cb55caadce6a9ca33db2130e2b77a70e1b46bb6f4ee4e021c79cd",
+      "source_write": true,
+      "clicks": 0,
+      "explicit_refresh": false,
+      "model_assignment": false,
+      "injected_notification": false,
+      "latency_sample": false,
+      "formal_distribution": false,
+      "phase": "complete",
+      "app_pid": 79719,
+      "append_sha256": "6a36c109b3df9e7a36e5eaca87f62b3d63e19647bd8978772d10c4f19e1f68be",
+      "automatic_update": true,
+      "publication_advanced": true,
+      "complete": true,
+      "app_group_matches": true,
+      "timezone": "Local",
+      "partial": false,
+      "expected_delta_tokens": 19,
+      "observed_period_deltas": [
+        {
+          "client": "all",
+          "period": "today",
+          "tokens": 0
+        },
+        {
+          "client": "all",
+          "period": "7d",
+          "tokens": 19
+        },
+        {
+          "client": "all",
+          "period": "30d",
+          "tokens": 19
+        },
+        {
+          "client": "codex",
+          "period": "today",
+          "tokens": 0
+        },
+        {
+          "client": "codex",
+          "period": "7d",
+          "tokens": 19
+        },
+        {
+          "client": "codex",
+          "period": "30d",
+          "tokens": 19
+        },
+        {
+          "client": "claude",
+          "period": "today",
+          "tokens": 0
+        },
+        {
+          "client": "claude",
+          "period": "7d",
+          "tokens": 0
+        },
+        {
+          "client": "claude",
+          "period": "30d",
+          "tokens": 0
+        }
+      ],
+      "publication_before": "144fa302bea0ad9c994f8b67014ff007",
+      "publication_after": "b37f2688eac647cd41bc4ca0c6b6ffae",
+      "app_exit_code": -15,
+      "full_oracle_equal": true,
+      "incremental_partial": false,
+      "oracle_partial": false,
+      "normalized_incremental_sha256": "b0f4ac218cef714706d09e717c5df05f55276dde603e7fe205c6797e10eb4c12",
+      "normalized_oracle_sha256": "b0f4ac218cef714706d09e717c5df05f55276dde603e7fe205c6797e10eb4c12",
+      "comparison_scope": "complete wire-v1 envelope including usage presentation, sessions, nonadditive and All; only generated_at/next_refresh_at removed",
+      "status": "PASS",
+      "script_sha256": "230c2396583e7ac7fdd7b117a490b90be0dcfad5356c318665426a79ff1ae9fe"
+    },
+    "diagnostic_observed_state": "scan-ip-bounded-diagnostic-85e8aa5d8a2c67e6",
+    "correctness_observed_state": "scan-ip-bounded-functional-b824607240713e1f",
+    "source_binding": {
+      "accept_inventory_overlay_original_matches_current": true,
+      "final_orphan_distinct_path_refinement": "The representative diagnostic preceded the final DISTINCT-path refinement; its orphan34.479610ms is historical diagnostic data only. Final SQL verified by the dedicated differential/plan regression, without re-running unchanged performance scope.",
+      "rss_final_cut": "Separate final synthetic trace; older invalid RSS never rebound to current instrumentation."
+    }
+  },
+  "final_meter_calibration": {
+    "summary": {
+      "summary": true,
+      "samples": 35,
+      "sampled_peak_rss_bytes": 124846080,
+      "incomplete_samples": 0,
+      "missed_ticks": 0,
+      "max_gap_ns": 54461365,
+      "total_poll_ns": 182117169,
+      "sampler_cpu_ns": 183701000,
+      "wall_ns": 1714554290,
+      "log_records_written": 36,
+      "log_records_dropped": 0,
+      "log_error": null,
+      "log_drain_ns": 322653,
+      "valid": true,
+      "process_barriers": {
+        "processes": [
+          {
+            "pid": 68029,
+            "birth": "1792596381:446765",
+            "start_sample": 1,
+            "end_sample": 14
+          },
+          {
+            "pid": 68031,
+            "birth": "1792596381:561681",
+            "start_sample": 2,
+            "end_sample": 35
+          }
+        ],
+        "complete": true
+      },
+      "window_finished": true,
+      "business_children_terminal": true
+    },
+    "child_starts": 5,
+    "synthetic_only": true
+  },
+  "click_attempts": {
+    "this_turn_standalone_app": 1,
+    "this_turn_hosted_xctest": 3,
+    "this_turn_formal_independent_reviews": 0,
+    "referenced_historical_native_preparation_failures": 2,
+    "total_related_attempts": 6,
+    "events": [
+      {
+        "kind": "standalone",
+        "result": "native_mouse_event_not_routed",
+        "source_write": false
+      },
+      {
+        "kind": "hosted_xctest",
+        "result": "InvalidTransition idle -> failed(deinit)"
+      },
+      {
+        "kind": "hosted_dispatch_control",
+        "result": "same failure with Cocoa sendAction; dispatch-only alternative rejected"
+      },
+      {
+        "kind": "hosted_owned_window_anchor",
+        "result": "PASS1; synthetic callback/old numeric bitmap only, no physical-click performance conclusion"
+      }
+    ],
+    "disposition": "Real user stopped unreliable click-timing work. This-turn Quartz, AX-switch capture, click clocks and hosted click test additions removed. Earlier raw failures and existing pre-turn diagnostic code retained; no more click experiments. P10 timing is also explicitly withdrawn; one separate non-timed correctness trial is not a click experiment."
+  },
+  "requirements": {
+    "p01_click_quantiles": "withdrawn",
+    "p02_click_subinterval": "withdrawn",
+    "p07_p09_click_dependency": "withdrawn",
+    "p03": "previously withdrawn; not restored",
+    "p07_rss_and_transactions": "unchanged and required",
+    "p10_2s": "withdrawn by explicit user answer; retain automatic update, publication and full-oracle correctness"
+  },
+  "historical_result_sha256": "49ab8328d1a3850441d2d129057116f9a8af5a8d6911fd0835283136565d07c3",
+  "artifacts": {
+    "incremental-update-bounded-20261021-rss-diagnostic-a.jsonl.gz": "707a722a9dacc23084de3d308efd1e4c5ff8eaba749a7386bceb0b67d38cb2db",
+    "incremental-update-bounded-20261021-rss-no-roster.jsonl.gz": "2cfa90fdf51e26d0babe7e84f2df95ace14cc0c14bbffdd3d1ca7a961a62e811",
+    "incremental-update-bounded-20261021-rss-roster.jsonl.gz": "e998c6e1e56e5c61222ede629e2eb130bca2abd54cc936c2a3c6265c7afd6b09",
+    "incremental-update-bounded-20261021-rss-final-synthetic.jsonl.gz": "40f318296d86f9e06496fb5e5e04c4641d62be8185517b2464386642eb00b94e",
+    "incremental-update-bounded-20261021-transactions.jsonl.gz": "7e2ce773dbc1288d146f325f70e3593dd2d0703b570a2a15ac5275ebba7fdaba"
+  },
+  "limitations": [
+    "No current whole Task3 acceptance or independent review PASS.",
+    "P07 transaction counterexamples remain; final representative RSS is not established. P10 timing was explicitly withdrawn.",
+    "No Tasks4-7, delegation, Git delivery, installation, publication or deployment."
+  ],
+  "review_scope": {
+    "file": "incremental-update-bounded-review-scope-20261021.json",
+    "sha256": "80630d6f992105e205a99d3dcf7344159a9cad746576130e414fccc2efd7303a",
+    "delta": "incremental-update-bounded-review-delta-20261021.patch",
+    "delta_sha256": "97489d68e6bb934674b163c4c1fb1370bd056f101bc3b5cbaafcf9f4f21e1911",
+    "independent_review": "pending"
+  }
+}

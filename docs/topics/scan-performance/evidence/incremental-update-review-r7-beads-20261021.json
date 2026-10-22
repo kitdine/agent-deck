@@ -1,0 +1,13 @@
+{
+  "recorded_at": "2026-10-21T17:30:39.504Z",
+  "phase_token": "Au6g3ZcAf48iy2Z1",
+  "task_id": "ad-scan-performance-incremental-projections",
+  "status": "in_progress",
+  "assignee": null,
+  "comment_id": "b688d4ef-64e0-5e01-baff-2225bdd87f59",
+  "exact_comment_match": true,
+  "comment_sha256": "c0b1b06a0b2f20cdb58927aef8c81434251ee36d5286b3830dc3e4fe11a34323",
+  "review": "Round7 FAIL / SP-IP-R7-F1 OPEN",
+  "review_checkbox": false,
+  "gate": "FAILED, separate from coordination status"
+}

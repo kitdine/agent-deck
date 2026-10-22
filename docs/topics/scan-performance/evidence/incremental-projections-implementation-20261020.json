@@ -1,0 +1,81 @@
+{
+  "kind": "task-implementation-record/v1",
+  "scope": "scan-performance / incremental-projections",
+  "date": "2026-10-20",
+  "phase": "IMPLEMENT",
+  "status": "implementation_ready_for_review",
+  "intro": "Task 3 implementation is ready for independent review. Three of four CEv1\ncriteria have valid technical evidence; update-latency remains NOT_VERIFIED. Independent review has not been performed. No delivery action is authorized.\n\nThe user authorized a fresh read-only capture of the three JSONL roots and two\nSQLite databases, then explicitly selected that frozen copy as the new E2\nbaseline. The older 12.045s in-place observation remains historical; its exact\ninput and database starting state are unavailable and it is not relabelled.\n\nThe new capture contains 4,630 JSONL files, 826,827,617 bytes; corpus manifest\nSHA-256 is `bc4d96dcf8d317b9ca1aff61cd983b2b37bf2d67a5dad484b19873227212456e`.\nDatabase backup SHA-256 values are\n`21e35ffea607b6f51faadc28ee9e506586dbfe00a693788f26a016396a895508`\n(core) and `3c023609c0310d3a5d846c40494f73cf1b3623310fc569f04041d46d044c148e`\n(sessions). No authentication files were captured. Private paths and source\ncontent are excluded from durable records.",
+  "sections": [
+    {
+      "title": "Source impact and migration boundary",
+      "facts": "The partition cache is derived data, not a replacement fact store. Its key is\nUTC event day, client and model; the algorithm/parser, core epoch and current-price fallback identify the cached\npayload version. Local calendar filters are applied after partition selection. Event insert/delete/update invalidates both old\nand new contributions transactionally. Session spans, run bindings and routes\ncommit coalesced scoped dirty markers with the facts. The projector flushes\nthose markers atomically before reuse; pending markers and metadata revision\nchanges reject publication. Pricing and provider timeline operations invalidate\nall pricing-dependent partitions. Provider-operation changes also advance the\nserving revision. Explicit UPSERT conflict clauses keep marker coalescing safe\ninside outer provider UPSERTs.\n\nExisting readers in usage summaries, statistics, presentation, session usage,\nsignals and desktop keep their canonical `usage_events` joins. Source writers,\norphan cleanup, rewrite and parser rebuild keep their existing logical IDs and\ntransaction boundaries. The full presentation path remains the oracle. The\nincremental reader is selected only by the background desktop projector. Existing\nreducers retain their independent distinct sets, median, peak and top semantics;\nno daily averages or medians are summed. Deterministic per-event pricing errors\nare exposed only when the event enters the selected local window, including\nUTC partition tails that fall outside a local calendar boundary.\n\nMigration adds only derived tables/triggers, without replacing facts, session\nFTS or external IDs. SQLite backup includes the cache naturally; restore mints\na different core epoch, which is part of the cache version. Older clients keep\nthe existing schema-ahead failure policy. Read-only clients continue using the\nfull oracle without creating or migrating state. No live database migration is\npart of the experiment; migration and concurrency checks use private fixtures.\n\nShadow cache publication retains the active payload while a replacement is\nbuilt. Publication compares the input revision in a short transaction; a fact\nwrite during derivation rejects the replacement. Existing serving publications\nremain independent and readable throughout."
+    },
+    {
+      "title": "Affected session views",
+      "facts": "Small updates materialize visible FTS documents only for logical sessions in\nchanged or removed source paths. Ownership is still ranked across every source\nfor each selected session. A rewrite that introduces an existing session ID\nreconstructs its pre-write winner from unchanged sources. More than 128 changed\npaths or old session keys retain the full-view oracle path. The transaction\nrebuild path remains an independent full-view oracle.\n\nSource, event and external IDs remain unchanged. Regression coverage compares\nscoped counts against complete before/after views for append, duplicate owners,\nrewrites introducing another existing ID, deletion, multiple IDs and moves."
+    },
+    {
+      "title": "Serving and native compatibility",
+      "facts": "Schema 32 changes only derived storage. Go and Swift accept a schema-31 saved\npublication against schema 32 with the same epochs and state identity, mark it\nstale, and retain its date. The exception is directional: 32 to 31, 30 to 32,\nand 31 to an unknown future schema remain invalid. Swift accepts current schema\n32 and retains a full schema-31 view during a narrower schema-32 publication.\n\nThe new dependency triggers initially increased cold read-only schema parsing\nunder race instrumentation and exposed the existing 200ms identity deadline.\nA counterfactual schema-31 control passed five runs; the final compact marker\njournal and reused generation triggers passed the same serving preservation test\nfive times without changing its deadline. The broad related race suite also\npassed with package concurrency restricted to one. These are correctness checks,\nnot native latency observations.\n\nThe native XCTest run passed 302 tests, one explicitly skipped acceptance test,\nzero failures. It includes the new coordinator schema transition test. Wire v1\nfixtures were regenerated through their producers; only schema health values\nchanged to 32. Earlier stale fixture expectations and the marker UPSERT conflict\nwere corrected rather than waived."
+    },
+    {
+      "title": "E2 evidence boundary",
+      "facts": "`scripts/scan-performance-incremental.py` compares the full-fact/full-view oracle\nwith partition reuse and affected-session views in private source exports. Both\narms use identical schema-32 database seeds and the same fsynced synthetic delta.\nIt validates presentation/summary, work signals, session periods, full visible\nFTS digests and published today totals. Timing ends at the shared engine's\ncommitted serving JSON; it does not measure a native popover frame or watcher\nlatency. Page cache is not purged. All attempts and limitations remain explicit.\n\nTwo early oracle arms failed before a valid pair was obtained (108.11s and\n126.51s). Investigation found a harness admission defect: resolving the root\nchanged `/var/folders` to `/private/var/folders`, while seed source paths used the\nformer namespace. The failed arm replayed all 4,631 sources and read 826,828,300\nbytes; preserving the namespace read only the 352-byte synthetic delta. Four\ninstrumented same-namespace replays completed. The corrected harness preserves\nthe stored namespace and rejects any cohort other than exactly one append before\ntiming. Those two wrong-starting-state executions remain admission failures,\nnot valid update-latency samples."
+    }
+  ],
+  "engine_comparison": {
+    "oracle": {
+      "n": 20,
+      "median_ms": 9258.589109,
+      "p95_ms": 10573.777853,
+      "max_ms": 11325.230857,
+      "max_cpu_ms": 10526,
+      "max_rss_bytes": 268230656
+    },
+    "projected": {
+      "n": 20,
+      "median_ms": 7931.969271,
+      "p95_ms": 8331.374793,
+      "max_ms": 9558.407349,
+      "max_cpu_ms": 9312,
+      "max_rss_bytes": 171421696
+    },
+    "median_reduction_percent": 14.328531295447956,
+    "pairs_candidate_slower": 1,
+    "oracle_equivalence": "40/40 full presentation/summary, work signals, session periods, visible FTS digests and published today totals; source mutation exactly one append in every arm",
+    "scope": "Full local shared-engine round through committed serving JSON; no native frame/watcher latency or aggregate App/collector resource claim"
+  },
+  "native_validation": {
+    "tests": 302,
+    "skipped": 1,
+    "failures": 0,
+    "new_schema_transition_case_passed": true
+  },
+  "acceptance_status": "NOT_VERIFIED",
+  "missing_acceptance": [
+    "P10 real source write to open native popover painted new value",
+    "P07 aggregate engine/collector/children resources and write-transaction p95/max in the required native conditions"
+  ],
+  "review_status": "not_reviewed",
+  "delivery": "No commit, push, PR, installation or live database migration",
+  "validation": {
+    "full_go": "pass",
+    "related_race": "pass; five related packages with -p 1, plus final projected-window race cases",
+    "vet": "pass",
+    "darwin_arm64_and_amd64": "pass",
+    "native_xctest": "302 tests, 1 skipped, 0 failures",
+    "foundation_wire_filter_verifier": "pass",
+    "e2": "20 alternating pairs, 40 complete and equivalent engine updates",
+    "private_capture": "deleted; sanitized statistics only retained",
+    "independent_review": "not performed"
+  },
+  "final_content_state": "scan-incremental-state-final-de3852a42e5e521e",
+  "cev1_gate": {
+    "status": "NOT_VERIFIED",
+    "covered": 3,
+    "required": 4,
+    "missing": [
+      "update-latency"
+    ]
+  }
+}

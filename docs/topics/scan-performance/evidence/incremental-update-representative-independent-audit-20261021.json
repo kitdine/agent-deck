@@ -1,0 +1,106 @@
+{
+  "transaction_complete": true,
+  "matched_begin_end": 9874,
+  "independent_quantiles_match": true,
+  "domains": {
+    "core": {
+      "count": 5148,
+      "rank": 4891,
+      "p95_ns": 9641766,
+      "max_ns": 717544204,
+      "over_50ms": 32,
+      "over_250ms": 5,
+      "max_record": {
+        "event": "end",
+        "run_id": "3645334eda45b0269c6a3d3df536a6cb",
+        "id": 9595,
+        "pid": 37105,
+        "domain": "core",
+        "site": "internal/usage/usage.go:1932",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 66488279359,
+        "end_ns": 67205823563,
+        "duration_ns": 717544204,
+        "outcome": "commit",
+        "valid": true
+      }
+    },
+    "session": {
+      "count": 4726,
+      "rank": 4490,
+      "p95_ns": 10599653,
+      "max_ns": 559258881,
+      "over_50ms": 38,
+      "over_250ms": 2,
+      "max_record": {
+        "event": "end",
+        "run_id": "3645334eda45b0269c6a3d3df536a6cb",
+        "id": 9597,
+        "pid": 37105,
+        "domain": "session",
+        "site": "internal/session/session.go:36",
+        "read_only": false,
+        "boundary": "explicit",
+        "begin_ns": 67271399863,
+        "end_ns": 67830658744,
+        "duration_ns": 559258881,
+        "outcome": "commit",
+        "valid": true
+      }
+    }
+  },
+  "rss_transaction_process_roster_equal": true,
+  "terminal_product_states": [
+    {
+      "usage": "completed",
+      "session": "completed"
+    }
+  ],
+  "rss_valid": false,
+  "rss_frames": 1457,
+  "rss_issues": {
+    "resident_endpoint_unavailable": 6,
+    "descendant_exited_during_poll": 4,
+    "parent_exited_or_reused_during_poll": 1
+  },
+  "rss_process_record_keys": [
+    "pid",
+    "ppid",
+    "birth",
+    "rss_bytes"
+  ],
+  "rss_summary": {
+    "summary": true,
+    "samples": 1457,
+    "sampled_peak_rss_bytes": 191139840,
+    "incomplete_samples": 9,
+    "missed_ticks": 2,
+    "max_gap_ns": 151023451,
+    "total_poll_ns": 7606996439,
+    "sampler_cpu_ns": 7314016000,
+    "wall_ns": 72908316226,
+    "valid": false,
+    "process_barriers": {
+      "processes": [
+        {
+          "pid": 37103,
+          "birth": "1792588159:393678",
+          "start_sample": 1,
+          "end_sample": 1437
+        },
+        {
+          "pid": 37105,
+          "birth": "1792588159:501566",
+          "start_sample": 2,
+          "end_sample": 1457
+        }
+      ],
+      "complete": true
+    },
+    "window_finished": true
+  },
+  "sampler_cpu_fraction": 0.1003179935925023,
+  "rss_all_frame_sums_and_dedup_match": true,
+  "rss_unique_pid_birth_pairs": 69
+}

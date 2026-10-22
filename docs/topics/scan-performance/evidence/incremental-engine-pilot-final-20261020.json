@@ -1,0 +1,551 @@
+{
+  "kind": "e2-engine-pilot-v1",
+  "pairs": 3,
+  "environment": {
+    "platform": "macOS-26.7.2-x86_64-i386-64bit-Mach-O",
+    "go": "go version go1.27.1 darwin/amd64"
+  },
+  "source_sha256": {
+    "oracle": "fe1ea44b36572f7c9d9a887e5c8c98f4691116fb0a09f6469f1c4ffea2c04051",
+    "projected": "e50dfc9c8dee66204ca3e8224641123f00c640006da08392a7db3287681ab531"
+  },
+  "seed_sha256": {
+    "sessions.sqlite3": "26af136031f8e9d3b621d8fb525d08f55af5fcd21cea7a168cf724595a8288a1",
+    "agentdeck.sqlite3": "4267b06c0fa36ec20eb993183ae2c3ff6ea3036e2ea918312a75eb3be423909b"
+  },
+  "cohort_sha256": "050382b46811c749abb05a70bc2947ab770845bc52f3bca84f70c89a8ca19360",
+  "delta_sha256": "0252fc7ad48a8b875ff6a1ccd6348c036c443c87db96b4952cc74f0dcc852311",
+  "delta_bytes": 352,
+  "complete": true,
+  "samples": [
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 67,
+        "usage_ms": 3537,
+        "session_ms": 4106,
+        "derived_cache_ms": 3109,
+        "total_ms": 8766,
+        "worker_cpu_time_ms": 8080,
+        "worker_peak_rss_bytes": 181501952,
+        "ingestion": {
+          "average_open_readers": 0.4880523016880508,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.095319,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007459,
+          "session_send_ms": 2883.3574,
+          "source_lifetime_ms": 3521.899132,
+          "usage_send_ms": 638.399254
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 252.43766699999998,
+            "max_ms": 224.977074
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.227457,
+            "max_ms": 0.227457
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.932574,
+            "max_ms": 2.932574
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.474135,
+            "max_ms": 0.474135
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2912.586536,
+            "max_ms": 2912.586536
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.716113,
+            "max_ms": 8.716113
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2921.565515,
+            "max_ms": 2921.565515
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8766.767195,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 0,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 74,
+        "usage_ms": 3030,
+        "session_ms": 3127,
+        "derived_cache_ms": 2758,
+        "total_ms": 7424,
+        "worker_cpu_time_ms": 7203,
+        "worker_peak_rss_bytes": 162492416,
+        "ingestion": {
+          "average_open_readers": 0.5121720362322494,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.050358,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007463,
+          "session_send_ms": 2428.649654,
+          "source_lifetime_ms": 3014.947512,
+          "usage_send_ms": 586.206492
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 251.731739,
+            "max_ms": 226.329318
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.168518,
+            "max_ms": 0.168518
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.473845,
+            "max_ms": 3.473845
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.470005,
+            "max_ms": 0.470005
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2457.942212,
+            "max_ms": 2457.942212
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.722793,
+            "max_ms": 7.722793
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2465.854174,
+            "max_ms": 2465.854174
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7424.64772,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 0,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 101,
+        "usage_ms": 3386,
+        "session_ms": 3490,
+        "derived_cache_ms": 3097,
+        "total_ms": 8543,
+        "worker_cpu_time_ms": 8949,
+        "worker_peak_rss_bytes": 164745216,
+        "ingestion": {
+          "average_open_readers": 0.5114081927939242,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.102097,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.011274,
+          "session_send_ms": 2575.571396,
+          "source_lifetime_ms": 3369.369497,
+          "usage_send_ms": 793.638856
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 289.73296400000004,
+            "max_ms": 249.679378
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.188307,
+            "max_ms": 0.188307
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.527419,
+            "max_ms": 3.527419
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.532423,
+            "max_ms": 0.532423
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2612.524138,
+            "max_ms": 2612.524138
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.41227,
+            "max_ms": 8.41227
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2621.15156,
+            "max_ms": 2621.15156
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8542.917456,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 1,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 78,
+        "usage_ms": 3357,
+        "session_ms": 3855,
+        "derived_cache_ms": 2918,
+        "total_ms": 8298,
+        "worker_cpu_time_ms": 8030,
+        "worker_peak_rss_bytes": 166367232,
+        "ingestion": {
+          "average_open_readers": 0.4936566512155864,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.136714,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.010311,
+          "session_send_ms": 2725.982953,
+          "source_lifetime_ms": 3344.228318,
+          "usage_send_ms": 618.058114
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 241.566003,
+            "max_ms": 215.123492
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.149606,
+            "max_ms": 0.149606
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.880663,
+            "max_ms": 2.880663
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.53619,
+            "max_ms": 0.53619
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2756.232506,
+            "max_ms": 2756.232506
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.457484,
+            "max_ms": 7.457484
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2763.860433,
+            "max_ms": 2763.860433
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8298.341422,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 1,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 71,
+        "usage_ms": 3347,
+        "session_ms": 3896,
+        "derived_cache_ms": 2946,
+        "total_ms": 8478,
+        "worker_cpu_time_ms": 8122,
+        "worker_peak_rss_bytes": 181227520,
+        "ingestion": {
+          "average_open_readers": 0.4873581660454475,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.086954,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007092,
+          "session_send_ms": 2733.129834,
+          "source_lifetime_ms": 3334.643032,
+          "usage_send_ms": 601.352853
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 242.770628,
+            "max_ms": 214.30149
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.163071,
+            "max_ms": 0.163071
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.011413,
+            "max_ms": 3.011413
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.412508,
+            "max_ms": 0.412508
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2763.915938,
+            "max_ms": 2763.915938
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.42543,
+            "max_ms": 7.42543
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2771.526492,
+            "max_ms": 2771.526492
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8477.840043,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 2,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 69,
+        "usage_ms": 3064,
+        "session_ms": 3149,
+        "derived_cache_ms": 2788,
+        "total_ms": 7504,
+        "worker_cpu_time_ms": 7027,
+        "worker_peak_rss_bytes": 157204480,
+        "ingestion": {
+          "average_open_readers": 0.5137055694663529,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.055407,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.00873,
+          "session_send_ms": 2469.919271,
+          "source_lifetime_ms": 3050.195196,
+          "usage_send_ms": 580.182571
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 269.182831,
+            "max_ms": 242.084924
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.149293,
+            "max_ms": 0.149293
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.092574,
+            "max_ms": 3.092574
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.66825,
+            "max_ms": 0.66825
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2500.058462,
+            "max_ms": 2500.058462
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.760636,
+            "max_ms": 7.760636
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2507.99847,
+            "max_ms": 2507.99847
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7504.292894,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 2,
+      "mode": "projected"
+    }
+  ],
+  "limitations": [
+    "Full local shared-engine round through committed serving JSON; no native popover frame or filesystem watcher latency",
+    "Same schema-32 seed for both variants; oracle disables partition reuse and affected-view counting in private source exports",
+    "Alternating pairs; page cache not purged; process resources cover the engine, not an App or OTel collector",
+    "No performance sample is discarded; failures stop the run and are not successful observations"
+  ],
+  "oracle_equivalent": true
+}

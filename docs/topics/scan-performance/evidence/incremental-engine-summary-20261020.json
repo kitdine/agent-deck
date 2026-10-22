@@ -1,0 +1,22 @@
+{
+  "oracle": {
+    "n": 20,
+    "median_ms": 9258.589109,
+    "p95_ms": 10573.777853,
+    "max_ms": 11325.230857,
+    "max_cpu_ms": 10526,
+    "max_rss_bytes": 268230656
+  },
+  "projected": {
+    "n": 20,
+    "median_ms": 7931.969271,
+    "p95_ms": 8331.374793,
+    "max_ms": 9558.407349,
+    "max_cpu_ms": 9312,
+    "max_rss_bytes": 171421696
+  },
+  "median_reduction_percent": 14.328531295447956,
+  "pairs_candidate_slower": 1,
+  "oracle_equivalence": "40/40 full presentation/summary, work signals, session periods, visible FTS digests and published today totals; source mutation exactly one append in every arm",
+  "scope": "Full local shared-engine round through committed serving JSON; no native frame/watcher latency or aggregate App/collector resource claim"
+}

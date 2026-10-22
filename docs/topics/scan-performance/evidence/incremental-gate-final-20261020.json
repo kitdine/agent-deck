@@ -1,0 +1,32 @@
+{
+  "profile": "completion-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "target_content_state": "scan-incremental-state-final-de3852a42e5e521e",
+  "recorded_at": "2026-10-20T13:09:35.892980+00:00",
+  "provider": "Neo4j MCP; authoritative gate-status.cypher",
+  "status": "NOT_VERIFIED",
+  "required_criteria": 4,
+  "covered_criteria": [
+    "partition-equivalence",
+    "nonadditive-statistics",
+    "generation-switch"
+  ],
+  "missing_criteria": [
+    "scan-performance:incremental-projections:update-latency"
+  ],
+  "invalidated_evidence": [],
+  "unresolved_candidate_impacts": [],
+  "failed_evidence": [],
+  "provider_confirmation": {
+    "nodes_created": 5,
+    "relationships_created": 8,
+    "exact_namespaced_readback": "all five node IDs/kinds/attributes and eight relation endpoints confirmed"
+  },
+  "remaining_scope": [
+    "P10 real source write to open native popover painted new value",
+    "P07 aggregate engine/collector/children resources and write-transaction p95/max in required native conditions"
+  ],
+  "independent_review": "not performed",
+  "acceptance": "open; no Task 2 waiver applies"
+}

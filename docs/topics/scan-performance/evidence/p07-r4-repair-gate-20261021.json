@@ -1,0 +1,80 @@
+{
+  "profile": "completion-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "work_unit_id": "scan-performance:incremental-projections",
+  "target_content_state": "scan-incremental-repair-r1-97321292d5b8d565",
+  "instrumentation_state": "scan-p07-r4-repair-state-f1a100f58f67f932",
+  "instrumentation_fingerprint": "f1a100f58f67f932bfb83e8de503e4aa1c7f2647873818b068f19e683a403da1",
+  "advisory_pre_review": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "ultra",
+    "cold_context": true,
+    "verdict": "PASS",
+    "formal_workflow_verdict": false,
+    "main_verified": true
+  },
+  "status": "FAILED",
+  "criteria": [
+    {
+      "id": "scan-performance:incremental-projections:generation-switch",
+      "required": true,
+      "valid_evidence": [
+        "scan-performance:incremental-projections:repair-r1:generation-switch:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:partition-equivalence",
+      "required": true,
+      "valid_evidence": [
+        "scan-incremental-rereview-r2-R6isb6OR-partition-equivalence",
+        "scan-performance:incremental-projections:repair-r1:partition-equivalence:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:nonadditive-statistics",
+      "required": true,
+      "valid_evidence": [
+        "scan-performance:incremental-projections:repair-r1:nonadditive-statistics:97321292d5b8d565"
+      ],
+      "failed_evidence": [],
+      "blocked_evidence": []
+    },
+    {
+      "id": "scan-performance:incremental-projections:update-latency",
+      "required": true,
+      "valid_evidence": [],
+      "failed_evidence": [
+        "scan-incremental-update-latency-p10-fail-20261020"
+      ],
+      "blocked_evidence": [
+        "scan-incremental-update-latency-p07-blocked-20261020",
+        "scan-incremental-update-latency-retry-blocked-20261020",
+        "scan-incremental-update-latency-blocked-20261020"
+      ]
+    }
+  ],
+  "missing_criteria": [
+    "scan-performance:incremental-projections:update-latency"
+  ],
+  "invalidated_evidence": [],
+  "unresolved_candidate_impacts": [],
+  "provider_receipt": {
+    "nodes_exact_readback": 2,
+    "relation_preflight": "3/3 ok",
+    "relations_exact_readback": 3,
+    "method": "Fixed provider templates; counts confirmed by exact readback because write tool returns update statistics"
+  },
+  "checks": {
+    "document_structure": "PASS",
+    "review_structure": "PASS",
+    "topic_document_set": "PASS",
+    "whitespace": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "recorded_at": "2026-10-21T05:57:17.037Z",
+  "scope": "SP-IP-R4-F1 repaired in candidate; user-requested Sol ultra advisory pre-review PASS, formal re-review pending. Instrument technical evidence does not pass P07/update-latency acceptance. Product gate remains FAILED from P10; P07 performance attempted=0."
+}

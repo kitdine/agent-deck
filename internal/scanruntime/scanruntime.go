@@ -91,7 +91,8 @@ type StageProfile struct {
 	WorkerCPUTimeMS    int64 `json:"worker_cpu_time_ms"`
 	WorkerPeakRSSBytes int64 `json:"worker_peak_rss_bytes"`
 	// Opt-in aggregate diagnostics; worker times overlap, not additive wall time.
-	Ingestion map[string]float64 `json:"ingestion,omitempty"`
+	Ingestion    map[string]float64         `json:"ingestion,omitempty"`
+	UsageDetails map[string]usage.ScanStage `json:"usage_details,omitempty"`
 }
 
 type processResources struct {
@@ -1028,6 +1029,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	usagePlanErr := coreErr
 	if coreErr == nil {
 		usageService = usage.New(core, r.home)
+		if metrics != nil {
+			usageService.Profile = &usage.ScanProfile{}
+		}
 		usageService.CoverageInventoryID = r.id
 		usageService.PreparedSources = sources
 		usageService.Coordinator = coordinator
@@ -1161,6 +1165,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		coordinator.Close()
 		r.mu.Lock()
 		r.result.Stages.Ingestion = metrics.Report(time.Since(ingestionStarted))
+		if usageService != nil {
+			r.result.Stages.UsageDetails = usageService.Profile.Report()
+		}
 		r.mu.Unlock()
 	}
 }

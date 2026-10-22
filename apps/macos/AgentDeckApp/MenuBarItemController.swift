@@ -251,6 +251,36 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	}
 
 	#if DEBUG
+	struct BaselineReadiness: Codable, Equatable {
+		let snapshotPresent: Bool
+		let partial: Bool
+		let usageAvailable: Bool
+		let sessionsAvailable: Bool
+		let heroPresent: Bool
+		let rebuilding: Bool
+		let publicationPresent: Bool
+		var usable: Bool { snapshotPresent && !partial && usageAvailable && sessionsAvailable && heroPresent && !rebuilding && publicationPresent }
+		var reason: String {
+			if !snapshotPresent { return "no_snapshot" }
+			if partial { return "intermediate_partial_snapshot" }
+			if !usageAvailable { return "usage_unavailable" }
+			if !sessionsAvailable { return "sessions_unavailable" }
+			if !heroPresent { return "numeric_model_unavailable" }
+			if rebuilding { return "full_attempt_running" }
+			if !publicationPresent { return "publication_unavailable" }
+			return "complete_usable_baseline"
+		}
+	}
+
+	private func baselineReadiness() -> BaselineReadiness {
+		let snapshot = model.coordinator.latestSnapshot
+		let running: Bool
+		if case .running = model.coordinator.fullAttempt { running = true } else { running = false }
+		return BaselineReadiness(snapshotPresent: snapshot != nil, partial: snapshot?.partial ?? true,
+			usageAvailable: snapshot?.data.usage.available == true, sessionsAvailable: snapshot?.data.sessions.available == true,
+			heroPresent: model.hero != nil, rebuilding: running, publicationPresent: model.coordinator.servingHeader != nil)
+	}
+
 	static let baselineClickStimulus = "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input"
 
 	/// Standalone process baseline. The normal delegate/coordinator/helper run;
@@ -276,6 +306,16 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			let initialClickRouted: Bool
 			let readyClickRequired: Bool
 			let failure: String?
+			let sourceWriteStartedAt: UInt64?
+			let sourceDurableAt: UInt64?
+			let newValueDrawnAt: UInt64?
+			let foregroundDuringRefresh: Bool
+			let publicationBeforeWrite: String?
+			let publicationAfterDraw: String?
+			let processIdentity: [String: String]
+			let readiness: [BaselineReadiness]
+			let readinessReasons: [String]
+			let oldValueDrawn: Bool
 		}
 		let initialDataPresent = model.hero != nil
 		var frames = [Frame]()
@@ -285,6 +325,14 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 		var refreshFailure: String?
 		var initialClickRouted = true
 		var readyClickRequired = false
+		var sourceWriteStartedAt: UInt64?
+		var sourceDurableAt: UInt64?
+		var newValueDrawnAt: UInt64?
+		var foregroundDuringRefresh = false
+		var publicationBeforeWrite: String?
+		var publicationAfterDraw: String?
+		var readiness = [BaselineReadiness]()
+		var oldValueDrawn = false
 		do {
 			guard let button = statusItem.button else { throw BaselineFailure.noStatusItem }
 			// Wait for the status window before posting this App's mouse events.
@@ -302,7 +350,13 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			NSApp.activate(ignoringOtherApps: true)
 			MenuBarItemController.activatePopoverWindow(popover.contentViewController?.view.window)
 			let deadline = DispatchTime.now().uptimeNanoseconds + 150_000_000_000
-			while model.coordinator.latestSnapshot == nil {
+			while true {
+				let observed = baselineReadiness()
+				if readiness.last != observed {
+					guard readiness.count < 512 else { throw BaselineFailure.readinessOverflow }
+					readiness.append(observed)
+				}
+				if observed.usable { break }
 				guard DispatchTime.now().uptimeNanoseconds < deadline else { throw BaselineFailure.dataTimeout }
 				if case let .degraded(_, issue) = model.coordinator.state {
 					if case let .helper(error) = issue { refreshFailure = DesktopLogPolicy.helperFailureEvent(error) }
@@ -321,6 +375,7 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			}
 			let firstFrame = try baselineFrame()
 			guard try baselineFrameIsValid(firstFrame, hero: hero) else { throw BaselineFailure.numericFrameMissing }
+			oldValueDrawn = true
 			launchToData = firstFrame.end - processEntryUptime
 			frames.append(Frame(panel: "quota", elapsedNanoseconds: launchToData!, valid: true))
 			for panel in MenuBarPanel.allCases {
@@ -339,26 +394,55 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			if FileManager.default.fileExists(atPath: delta.path) {
 				model.selectedPanel = .quota
 				let before = model.coordinator.latestSnapshot
+				publicationBeforeWrite = model.coordinator.servingHeader?.publicationID
 				let input = home.appendingPathComponent(".codex/sessions/baseline-today.jsonl")
+				NSApp.activate(ignoringOtherApps: true)
+				let focusDeadline = DispatchTime.now().uptimeNanoseconds + 2_000_000_000
+				while !NSApp.isActive && DispatchTime.now().uptimeNanoseconds < focusDeadline {
+					try await Task.sleep(for: .milliseconds(10))
+				}
+				guard NSApp.isActive else { throw BaselineFailure.activationUnavailable }
+				if !popover.isShown { try await baselineClick(button) }
+				MenuBarItemController.activatePopoverWindow(popover.contentViewController?.view.window)
 				let handle = try FileHandle(forWritingTo: input)
+				let old = try baselineFrame()
+				let start = DispatchTime.now().uptimeNanoseconds
+				sourceWriteStartedAt = start
 				try handle.seekToEnd()
 				try handle.write(contentsOf: Data(contentsOf: delta))
+				try handle.synchronize()
+				sourceDurableAt = DispatchTime.now().uptimeNanoseconds
 				try handle.close()
-				let start = DispatchTime.now().uptimeNanoseconds
-				let update = Task { await model.coordinator.refresh(manualQuota: false) }
-				await Task.yield()
-				let old = try baselineFrame()
-				await update.value
+				let updateDeadline = start + 15_000_000_000
+				while model.coordinator.latestSnapshot?.data.usage.presentation == before?.data.usage.presentation {
+					if !foregroundDuringRefresh, case .running = model.coordinator.fullAttempt {
+						let foregroundStart = DispatchTime.now().uptimeNanoseconds
+						let foreground = try baselineFrame()
+						foregroundDuringRefresh = true
+						frames.append(Frame(panel: "update_foreground", elapsedNanoseconds: foreground.end - foregroundStart, valid: true))
+					}
+					guard DispatchTime.now().uptimeNanoseconds < updateDeadline else { throw BaselineFailure.updateMissing }
+					try await Task.sleep(for: .milliseconds(10))
+				}
 				guard let current = model.coordinator.latestSnapshot, let newHero = model.hero else { throw BaselineFailure.noData }
 				latestDataChanged = current.data.usage.presentation != before?.data.usage.presentation && newHero.tokens != hero.tokens
 				let new = try baselineFrame()
+				newValueDrawnAt = new.end
+				publicationAfterDraw = model.coordinator.servingHeader?.publicationID
 				// Retain both bitmaps/endpoints before any synchronous Vision work.
 				// Validation can now neither delay refresh nor enter update_latest.
 				let oldValid = try baselineFrameIsValid(old, hero: hero)
 				let newValid = try baselineFrameIsValid(new, hero: newHero)
-				frames.append(Frame(panel: "update_previous", elapsedNanoseconds: old.end - start, valid: oldValid))
+				frames.append(Frame(panel: "update_previous", elapsedNanoseconds: 0, valid: oldValid))
 				frames.append(Frame(panel: "update_latest", elapsedNanoseconds: new.end - start, valid: newValid && latestDataChanged))
 				guard oldValid, newValid, latestDataChanged else { throw BaselineFailure.updateMissing }
+				// Drain the finite product sequence after capturing the draw endpoint.
+				// This captures its final publication clock without adding drain/OCR
+				// work to source-write-to-draw latency.
+				while case .running = model.coordinator.fullAttempt {
+					guard DispatchTime.now().uptimeNanoseconds < updateDeadline else { throw BaselineFailure.dataTimeout }
+					try await Task.sleep(for: .milliseconds(10))
+				}
 			}
 		} catch let error as BaselineFailure {
 			failure = refreshFailure ?? error.rawValue
@@ -371,7 +455,13 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			latestDataChanged: latestDataChanged, frames: frames, stages: trace.samples, droppedStages: trace.dropped,
 				helperFailures: trace.failures, stageAggregates: trace.aggregates, nativeEnvironment: ["hasScreens": !NSScreen.screens.isEmpty,
 					"statusButtonHasWindow": statusItem.button?.window != nil, "appIsActive": NSApp.isActive],
-				initialClickRouted: initialClickRouted, readyClickRequired: readyClickRequired, failure: failure)
+				initialClickRouted: initialClickRouted, readyClickRequired: readyClickRequired, failure: failure,
+				sourceWriteStartedAt: sourceWriteStartedAt, sourceDurableAt: sourceDurableAt, newValueDrawnAt: newValueDrawnAt,
+				foregroundDuringRefresh: foregroundDuringRefresh, publicationBeforeWrite: publicationBeforeWrite, publicationAfterDraw: publicationAfterDraw,
+				processIdentity: ["pid": String(ProcessInfo.processInfo.processIdentifier), "bundle": Bundle.main.bundleIdentifier ?? "missing",
+					"isolatedHome": home.standardizedFileURL.path, "foundationHome": NSHomeDirectory(),
+					"appGroup": home.appendingPathComponent("app-group").standardizedFileURL.path],
+				readiness: readiness, readinessReasons: readiness.map(\.reason), oldValueDrawn: oldValueDrawn)
 		do {
 			let destination = home.appendingPathComponent("baseline-result.json")
 			try JSONEncoder().encode(result).write(to: destination, options: [.atomic])
@@ -390,6 +480,7 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 		case activationUnavailable = "native_activation_unavailable"
 		case statusWindowUnavailable = "native_status_window_unavailable"
 		case clickNotRouted = "native_mouse_event_not_routed"
+		case readinessOverflow = "readiness_trace_overflow"
 	}
 
 	private func baselineClick(_ button: NSStatusBarButton) async throws {

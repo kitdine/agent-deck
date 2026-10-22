@@ -1,0 +1,47 @@
+{
+  "kind": "independent-review-reproducer/v1",
+  "scope": "scan-performance / incremental-projections",
+  "reviewed_state": "scan-incremental-state-final-de3852a42e5e521e",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "fingerprint": "de3852a42e5e521e8a30aa0a1b6f0ef0c1509661f85031ab6ff2adebb0bfd792",
+  "content_identity": "All 23 subject digests in final ContentState matched; Go 1.27.1 darwin/amd64 and macOS 26.7.2 match. Administrative review/status records excluded by original scope.",
+  "finding": "SP-IP-R1-F1",
+  "severity": "P2",
+  "method": "Go overlay injects a test file from private temporary storage; repository production, tests and configuration stay untouched. Each arm uses separate isolated source and SQLite fixtures.",
+  "test_command": "scripts/run-go-test.sh -overlay=<fresh overlay JSON> ./internal/session -run ^TestReviewBatchRenameCountsAgainstFullView$",
+  "overlay_target": "internal/session/z_incremental_review_test.go",
+  "overlay_go_source": "package session\nimport(\"context\";\"encoding/json\";\"os\";\"path/filepath\";\"testing\";\"github.com/kitdine/agent-deck/internal/ingest\";\"github.com/kitdine/agent-deck/internal/store\")\nfunc TestReviewBatchRenameCountsAgainstFullView(t *testing.T){\n for _,batch:=range []bool{false,true}{name:=\"full-inventory\";if batch{name=\"priority-batch\"};t.Run(name,func(t *testing.T){\n ctx:=context.Background();home:=t.TempDir();db,err:=store.OpenSessions(ctx,t.TempDir());if err!=nil{t.Fatal(err)};defer db.Close()\n active:=filepath.Join(home,\".codex\",\"sessions\",\"a.jsonl\");alternate:=filepath.Join(home,\".codex\",\"archived_sessions\",\"b.jsonl\");moved:=filepath.Join(home,\".codex\",\"archived_sessions\",\"zz.jsonl\")\n write:=func(path,text string){t.Helper();if err:=os.MkdirAll(filepath.Dir(path),0700);err!=nil{t.Fatal(err)};b,_:=json.Marshal(map[string]any{\"type\":\"visible_user_prompt\",\"session_id\":\"shared\",\"timestamp\":\"2026-10-20T01:00:00Z\",\"payload\":map[string]string{\"text\":text}});if err:=os.WriteFile(path,append(b,'\\n'),0600);err!=nil{t.Fatal(err)}}\n write(active,\"active winner\");write(alternate,\"archived alternative\");if _,err:=Scan(ctx,db.DB,home);err!=nil{t.Fatal(err)}\n before,err:=visibleDocuments(ctx,db.DB);if err!=nil{t.Fatal(err)};if err:=os.Rename(active,moved);err!=nil{t.Fatal(err)}\n sources,err:=ingest.Discover(home);if err!=nil{t.Fatal(err)};if batch{only:=sources[:0];for _,s:=range sources{if s.Path==moved{only=append(only,s)}};sources=only;if len(sources)!=1{t.Fatalf(\"expected one renamed source, got %d\",len(sources))}}\n result,err:=ScanWithOptions(ctx,db.DB,home,ScanOptions{PreparedSources:sources,Batch:batch});if err!=nil{t.Fatal(err)}\n after,err:=visibleDocuments(ctx,db.DB);if err!=nil{t.Fatal(err)};changed,removed:=visibleDocumentChanges(before,after)\n t.Logf(\"batch=%v before=%+v after=%+v reported documents=%d removed=%d full-oracle documents=%d removed=%d\",batch,before,after,result.Documents,result.Removed,changed,removed)\n if result.Documents!=changed||result.Removed!=removed{t.Fatalf(\"scoped session delta differs from full oracle\")}\n })}\n}\n",
+  "results": {
+    "test_result": "FAIL",
+    "full_inventory_control": {
+      "documents": 1,
+      "removed": 0,
+      "oracle_documents": 1,
+      "oracle_removed": 0,
+      "result": "PASS"
+    },
+    "priority_batch": {
+      "documents": 0,
+      "removed": 0,
+      "oracle_documents": 1,
+      "oracle_removed": 0,
+      "result": "FAIL"
+    },
+    "stored_view_correct": true,
+    "source_read": "synthetic fixtures only",
+    "product_mutations": false
+  },
+  "root_cause": "Batch excludes absent registered paths from changedPaths. Renamed source identity is resolved later, so moved-from session keys never enter before. Unexpected-key reconstruction then sees only post-move unchanged alternatives.",
+  "bounded_remediation": "Resolve moved-from identities before collecting old keys and the before view, or fall back to the full before/after oracle when a batch contains a moved source. Add a priority-batch ownership-change regression.",
+  "verification_scope": "No broader product rerun after decisive finding; previous broad results remain historical exact-state observations; native P10/P07 gaps remain open.",
+  "retention": "Sanitized source and essential observations are self-contained here. Temporary overlay and logs are not durable references and will be removed.",
+  "administrative_validation": {
+    "review_record_parser": "PASS",
+    "document_structural_checks": "PASS",
+    "topic_document_matrix": "PASS",
+    "make_check_whitespace": "PASS",
+    "git_diff_check": "PASS",
+    "beads_readback": "in_progress, unassigned, round-1; exact durable handoff comment confirmed",
+    "beads_warning": "workspace gate lock not permitted; primary mutations and reads succeeded ungated; no permission/configuration change"
+  }
+}

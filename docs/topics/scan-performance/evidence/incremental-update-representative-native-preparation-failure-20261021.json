@@ -1,0 +1,64 @@
+{
+  "result": {
+    "version": 1,
+    "initialDataPresent": false,
+    "droppedStages": 0,
+    "nativeEnvironment": {
+      "appIsActive": false,
+      "hasScreens": true,
+      "statusButtonHasWindow": true
+    },
+    "readyClickRequired": false,
+    "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+    "latestDataChanged": false,
+    "initialClickRouted": false,
+    "frames": [],
+    "helperFailures": [],
+    "stages": [
+      {
+        "stage": "servingPublication",
+        "durationNanoseconds": 93772,
+        "completedAtUptimeNanoseconds": 205713415323587
+      },
+      {
+        "stage": "popoverPreparation",
+        "durationNanoseconds": 333375933,
+        "completedAtUptimeNanoseconds": 205713753691518
+      },
+      {
+        "stage": "servingPublication",
+        "durationNanoseconds": 268880,
+        "completedAtUptimeNanoseconds": 205713824603187
+      }
+    ],
+    "foregroundDuringRefresh": false,
+    "stageAggregates": [
+      {
+        "totalNanoseconds": 333375933,
+        "stage": "popoverPreparation",
+        "maximumNanoseconds": 333375933,
+        "count": 1
+      },
+      {
+        "totalNanoseconds": 7185373,
+        "stage": "presentation",
+        "maximumNanoseconds": 43700,
+        "count": 765
+      },
+      {
+        "totalNanoseconds": 362652,
+        "stage": "servingPublication",
+        "maximumNanoseconds": 268880,
+        "count": 2
+      }
+    ],
+    "failure": "no_usable_data"
+  },
+  "launch": {
+    "bundle_id": "com.kitdine.agentdeck.acceptance.dh5mcqwx",
+    "exit_code": 0,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "classification": "Invalid P10 preparation trial: full committed DB precondition was not prepared, no source write/durable/draw endpoints; retained separately, no replacement formal sample"
+}

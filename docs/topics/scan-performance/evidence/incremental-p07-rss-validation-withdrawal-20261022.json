@@ -1,0 +1,109 @@
+{
+  "schema": "scan-performance/p07-rss-validation-withdrawal/v1",
+  "recorded_at": "2026-10-22T05:21:09.998Z",
+  "scope": "Task 3 / incremental-projections / P07 aggregate RSS validation only",
+  "user_instruction": "无法验证就写明后修改验证条件取消该条目验证 不要继续花费时间",
+  "reason": {
+    "probe": "sudo /usr/sbin/dtrace -l -n 'proc:::create'",
+    "source": "user supplied native terminal result",
+    "result": "dtrace: failed to match proc:::create: System Integrity Protection is on",
+    "conclusion": "Exact fork identity source unavailable under current SIP; stop RSS channel exploration"
+  },
+  "prior_criterion": {
+    "owner_work_unit_id": "scan-performance:incremental-projections",
+    "updated_at": "2026-10-21T17:00:14.183000000+00:00",
+    "kind": "criterion",
+    "attributes_json": "{\"description\":\"P07 RSS<=256MiB and complete write transactions p95<=50ms/max<=250ms remain required. P10 requires automatic real-file updates, advancing publication, honest partial, nonadditive/All and full-oracle correctness. E2/E4 comparisons retain identical delta/DB starting state and profiling. P01 click quantiles, click-dependent subintervals and P10 file-to-painted-value timing are withdrawn by the user on 2026-10-21.\",\"required\":true,\"owner_work_unit_id\":\"scan-performance:incremental-projections\"}",
+    "profile": "completion-evidence/v1",
+    "description": "P07 RSS<=256MiB and complete write transactions p95<=50ms/max<=250ms remain required. P10 requires automatic real-file updates, advancing publication, honest partial, nonadditive/All and full-oracle correctness. E2/E4 comparisons retain identical delta/DB starting state and profiling. P01 click quantiles, click-dependent subintervals and P10 file-to-painted-value timing are withdrawn by the user on 2026-10-21.",
+    "created_at": "2026-10-20T09:40:57.542000000+00:00",
+    "id": "scan-performance:incremental-projections:update-latency",
+    "required": true,
+    "ce_namespace": "github.com/kitdine/agent-deck"
+  },
+  "prior_gate": {
+    "work_unit_id": "scan-performance:incremental-projections",
+    "target_content_state": "scan-ip-bounded-product-e14fca302e5e8572",
+    "status": "FAILED",
+    "missing_criteria": [
+      "scan-performance:incremental-projections:update-latency"
+    ],
+    "reused_evidence": [
+      "scan-ip-bounded-product-e14fca302e5e8572:evidence:generation-switch",
+      "scan-ip-bounded-product-e14fca302e5e8572:evidence:partition-equivalence",
+      "scan-ip-bounded-product-e14fca302e5e8572:evidence:nonadditive-statistics"
+    ],
+    "unresolved_candidate_impacts": [],
+    "criteria": [
+      {
+        "criterion_id": "scan-performance:incremental-projections:generation-switch",
+        "required": true,
+        "valid_evidence": [
+          "scan-ip-bounded-product-e14fca302e5e8572:evidence:generation-switch"
+        ],
+        "failed_evidence": [],
+        "blocked_evidence": []
+      },
+      {
+        "criterion_id": "scan-performance:incremental-projections:partition-equivalence",
+        "required": true,
+        "valid_evidence": [
+          "scan-ip-bounded-product-e14fca302e5e8572:evidence:partition-equivalence"
+        ],
+        "failed_evidence": [],
+        "blocked_evidence": []
+      },
+      {
+        "criterion_id": "scan-performance:incremental-projections:nonadditive-statistics",
+        "required": true,
+        "valid_evidence": [
+          "scan-ip-bounded-product-e14fca302e5e8572:evidence:nonadditive-statistics"
+        ],
+        "failed_evidence": [],
+        "blocked_evidence": []
+      },
+      {
+        "criterion_id": "scan-performance:incremental-projections:update-latency",
+        "required": true,
+        "valid_evidence": [],
+        "failed_evidence": [
+          "scan-ip-bounded-product-e14fca302e5e8572:p07-max-fail"
+        ],
+        "blocked_evidence": [
+          "scan-ip-p07-input-unavailable-20261022"
+        ]
+      }
+    ]
+  },
+  "revision": {
+    "rss_validation_required": false,
+    "rss_engineering_budget_bytes": 268435456,
+    "rss_budget_verified": false,
+    "transaction_p95_ms": 50,
+    "transaction_max_ms": 250,
+    "complete_boundary": "Begin/Exec through Commit/Rollback return",
+    "atomicity": "unchanged",
+    "new_real_input_capture": false
+  },
+  "historical_outcomes": "Original max failures, invalid RSS traces, and all review verdicts retain their original identities and outcomes.",
+  "revised_criterion": {
+    "id": "scan-performance:incremental-projections:update-latency",
+    "kind": "criterion",
+    "attributes_json": "{\"description\":\"P07 complete write transactions p95<=50ms/max<=250ms remain required, measured from Begin/Exec through Commit/Rollback return, with unchanged durability and atomicity. Aggregate engine/collector/child RSS quantitative validation is withdrawn by the user on 2026-10-22 because SIP blocks the exact fork lifecycle channel. The 256MiB engineering budget is retained but unverified; its quantitative validation is not required for this Task. P10 requires automatic real-file updates, advancing publication, honest partial, nonadditive/All and full-oracle correctness. E2/E4 comparisons retain identical delta/DB starting state and profiling. P01 click quantiles, click-dependent subintervals and P10 file-to-painted-value timing remain withdrawn by the user on 2026-10-21.\",\"required\":true,\"owner_work_unit_id\":\"scan-performance:incremental-projections\",\"rss_validation_required\":false,\"rss_engineering_budget_bytes\":268435456,\"acceptance_revision_source\":\"repo://github.com/kitdine/agent-deck/docs/topics/scan-performance/evidence/incremental-p07-rss-validation-withdrawal-20261022.json\"}",
+    "props": {
+      "description": "P07 complete write transactions p95<=50ms/max<=250ms remain required, measured from Begin/Exec through Commit/Rollback return, with unchanged durability and atomicity. Aggregate engine/collector/child RSS quantitative validation is withdrawn by the user on 2026-10-22 because SIP blocks the exact fork lifecycle channel. The 256MiB engineering budget is retained but unverified; its quantitative validation is not required for this Task. P10 requires automatic real-file updates, advancing publication, honest partial, nonadditive/All and full-oracle correctness. E2/E4 comparisons retain identical delta/DB starting state and profiling. P01 click quantiles, click-dependent subintervals and P10 file-to-painted-value timing remain withdrawn by the user on 2026-10-21.",
+      "required": true,
+      "owner_work_unit_id": "scan-performance:incremental-projections",
+      "rss_validation_required": false,
+      "rss_engineering_budget_bytes": 268435456,
+      "acceptance_revision_source": "repo://github.com/kitdine/agent-deck/docs/topics/scan-performance/evidence/incremental-p07-rss-validation-withdrawal-20261022.json"
+    }
+  },
+  "criterion_readback": {
+    "count": 1,
+    "canonical_attributes_match": true,
+    "rss_validation_required": false,
+    "remaining_criterion_required": true,
+    "processed_count_returned": false
+  }
+}

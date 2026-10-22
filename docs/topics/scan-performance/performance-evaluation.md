@@ -1,10 +1,44 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 
 # 先行评估：哪些等待能被减少
+
+## Task 3 P07 最终接受依据 — 2026-10-22
+
+按用户明确批准的[最终验收修订](requirements.md#task-3-p07-用户批准的最终验收修订--2026-10-22)，
+本次取消代表性完整事务分布的强制验证，并接受原四包race失败为Task3验收例外。
+50ms p95/250ms max及256MiB工程预算保留且未验证；不报告正式量化达标。
+原391 PASS/1 FAIL、根因unresolved、历史事务max失败和无效RSS trace均保留。
+不继续捕获或实验；这不是修复race、全race通过或一次新的独立实现评审。
+
+继续要求完整事务边界、原子性、durability和自动更新/full oracle正确性。
+已核对保留的非计时真实fsync追加19-token观察：自动更新、publication/App Group推进、
+完整wire-v1 full oracle相等且双方partial=false，含sessions、非可加统计与All。
+对原复合criterion的not_verified观察不改写，只按新条件对其已通过的功能子集做有据复用。
+其后正常产品代码仅有已独立评审的同事务inventory批量写入，逐行内容、revision、head及
+回滚回归和现有full Go结果继续复用。本次仅改验收条件与记录，不新增性能主张。
+原criterion、原gate及失败保存在[决定审计](evidence/task3-p07-acceptance-revision-20261022.json)。
+
+<a id="task-3-p07-rss-验证项取消--2026-10-22"></a>
+
+## Task 3 P07 RSS 验证项取消（历史范围决定）— 2026-10-22
+
+按[用户修订的范围](requirements.md#task-3-p07-rss-验证项取消--2026-10-22)，
+本次不再要求完整进程树 RSS 的量化验证，也不继续花时间探测替代通道。
+用户本机运行 `sudo /usr/sbin/dtrace -l -n 'proc:::create'` 后返回
+`dtrace: failed to match proc:::create: System Integrity Protection is on`。
+该权限前置已实证；不把稳定枚举、匹配 ledger 或可见子进程退出当完整 fork 证明。
+256 MiB 工程预算未改，但其验证项已取消，不能声称观测达标；历史无效 RSS trace 保留。
+本节优先于下文关于 Task 3 RSS 必需验收的历史表述，其他任务独立资源门不变。
+
+当时完整事务仍要求 p95 ≤50 ms、max ≤250 ms 的验证，后续按上节用户最终决定修订；
+保留完整边界和原子性。既有 core 384.921506 ms/session 285.331956 ms 失败仍属于
+原候选；新实现只在原事务内批量 INSERT，不拆提交或放宽预算。
+本轮仅用隔离合成数据校准和验证修复，不重新捕获真实输入；代表性新候选分布未采集。
+最终代码、逐笔时钟及验证结果见 Task 3 当前交接，不将合成结果称为代表性性能接受。
 
 ## Task 2 最终接受决定 — 2026-10-20
 
@@ -94,13 +128,38 @@ discovery261ms、usage5.853s、session7.572s、derive5.872s、total14.520s，usa
 第一轮harness误读usage.changes.files后停止，源接口核对后修正；该轮不计时。
 源文件/数据库/私有视图原件最终清理，只保存耗时、资源、来源数/bytes和校验摘要。
 
+## 点击计时停止决定 — 2026-10-21
+
+按用户决定停止无法精确测量的点击耗时工作；当前标准以
+[要求修订](requirements.md#点击计时要求撤销--2026-10-21) 为准。
+P01、P02 的点击子区间和 P07/P09 的点击分位依赖不再是必需门，不再要求百次
+点击或切换采样。现有打开/关闭、数据正确、可交互及重建期间前台可用仍保留。
+
+本轮与点击入口直接相关的执行为 1 次独立 App 试样及 3 次 hosted XCTest；
+前两次 XCTest 失败，最后一次采用仓库既有自有窗口锚点后通过，但它只证明合成
+测试中的回调和旧数值绘制，不能支持真实图标点击耗时。所引历史代表性记录另有
+2 次原生准备失败。构建和纯 readiness 判定测试不计入这 6 次相关尝试；本轮没有
+新的正式独立评审。失败结果不删除，也不通过更多变体替换。
+
+下列计时定义和历史实验保留供审计，不再据此触发点击计时开发或补采。
+用户进一步选择 P10 一并撤掉计时，只保留自动更新、publication 和 full oracle
+正确性。后续不再按原 2 秒分位或原生绘制时钟补采；事务/RSS 仍独立判定。
+
+同 cohort 的一次无点击正确性试样已完成：正常隔离 Debug App 自动建立完整基线，
+对既有测试来源追加完整 19-token 记录并 fsync，没有显式 refresh、模型赋值或通知注入。
+随后 publication 自动前进，App Group 数值一致；按实际 publication 的
+America/New_York 时区，增量与同输入空库 full oracle 的完整 wire-v1 输出一致，
+两边 partial=false。比较包含非可加统计和 All，仅忽略 generated_at/next_refresh_at。
+此试样单列，不计入性能分布，也不证明绘制耗时或正式性能通过。
+记录见 [有界补充结果](evidence/incremental-update-bounded-result-20261021.json)。
+
 ## “首屏”的确切含义
 
 | 场景 | 前置状态和起点 | 终点 | 前后比较 |
 | --- | --- | --- | --- |
 | 日常点击 | App 已运行，双方均有同一份有效内存数据；原生 icon action | 真实 popover 显示选定 scope/window 的有效数字与日期，原生绘制完成，控件可用 | 当前内存展示 vs 候选内存展示；不能让基线先 scan |
 | 启动恢复 | 双方内存为空、同一已提交数据库；完整 OS launch 和 App-ready 后数据准备分开记录 | 恢复/查询所得正确数据完成原生绘制 | 当前首次刷新 vs 完整缓存恢复；同时报告缓存是否已存在、年龄及窗口 |
-| 自动更新 | popover 已打开；一条已知 JSONL 记录完整写入来源；OTel 则另从 producer/receiver 起点计时 | 相应新数值完成原生绘制 | 同一 delta、同一数据库起点、同一触发与可见验证方法 |
+| 自动更新 | 一条已知 JSONL 完整记录写入隔离来源，不显式刷新 | 自动推进 publication，完整统计与同输入 full oracle 一致 | 同 delta 与数据起点；仅功能核对，不采 P10 绘制耗时；OTel 的 P05 独立保留 |
 
 窗口出现、spinner、空卡片、coordinator 有值或 CLI 返回都不能独自作为终点。
 保存的旧值可以是可用数据，但其日期、年龄和 coverage 必须真实；这不等同于最新数据。

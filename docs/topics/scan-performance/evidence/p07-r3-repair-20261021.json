@@ -1,0 +1,433 @@
+{
+  "schema": "agentdeck-p07-r3-repair/v1",
+  "recorded_at": "2026-10-21T04:28:21.248033+00:00",
+  "finding": "SP-IP-R3-F1",
+  "disposition": "repaired in candidate; independent re-review pending",
+  "workspace": "agent-deck.scan-performance",
+  "branch": "feature/scan-performance",
+  "git_head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "scope": "Measurement overlay/collector, tests and tool usage only; no product behavior or acceptance-policy changes",
+  "instrumentation_identity": {
+    "state_id": "scan-p07-r3-repair-state-62eb7acb7f74a58d",
+    "sha256": "62eb7acb7f74a58d7ba41415eefcf4a3b32466cf625159a8085b2d3e8be9f758",
+    "recipe": "SHA256 sorted compact JSON {tools,dependencies}; administrative records excluded",
+    "tools": {
+      "scripts/p07measure/transactions.go": "052ffba7e1bfa91f17f7f8418e9fbf2830fc73070716b10aac0a47600744e31e",
+      "scripts/p07measure/autocommit.go": "a23b29395db289885cb832424dd4294f8ffb88c9f38c069bb92fd2da766aba58",
+      "scripts/p07measure/transactions_test.go": "3c3b429950434beaff47487a5b785fef4ad7803db31a313c72d2cc0abf9d68e2",
+      "scripts/p07measure/autocommit_test.go": "65ec3b37ed840bb32ee09c581a4f177121ffc30264c9d036190b7083f9c5f9b4",
+      "scripts/p07measure/partition_regression_test.go.tmpl": "1a318216f4ba3832069b74498ba56e67c3fee0d8a4b1043865a8a673d6852bbd",
+      "scripts/p07measure/README.md": "1471ac97b8d62556fc15f4f61e61a2af126a327c2a83ef98b8b352f4525db3e7",
+      "scripts/p07-overlay/main.go": "a54a350ce7af30ce43d6aa1694a0e478d86a79bad120cb785a4f6dc47ebe5ff4",
+      "scripts/p07-overlay/main_test.go": "c2a5ec5e170d5c2c0dc1e638a68f51943811a924debc912042589a54c1708947",
+      "scripts/scan_performance_p07.py": "eb728b3fdff0c232da28f7e7bb26e219e4b3714d636da743273941cb28fd2c4f",
+      "scripts/scan_performance_p07_test.py": "2508edd812676163d43f98c939c156abc6d086f098f118c208fce685b968217b"
+    },
+    "dependencies": {
+      "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+      "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+      "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+      "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee"
+    },
+    "parent_state_id": "scan-p07-instrumentation-state-2b01c3f035473fff"
+  },
+  "product_identity": {
+    "state_id": "scan-incremental-repair-r1-97321292d5b8d565",
+    "subject_count": 23,
+    "all_match": true,
+    "subject_digests": {
+      "internal/store": "b18a9d000677483d4e81f0d553c478dc2913936cab6aa1c17307a433eed35b08",
+      "internal/usage": "c0166270c86e1d6abadae34f8815cf109c1a13794702be0ab6633b4545110ad6",
+      "internal/session": "dec9ce2c59a4ccd6b3d1725e4eb787cd8dac2b757c25e3a5be31ef2c25137d69",
+      "internal/desktop": "31de6d29e1ef5f88ebe3e5c4141c0033e5068117c288191b2e0fc39244993545",
+      "internal/scanruntime": "0fbfb6836982a803d2133b8730728cbe2aa4d8d9f882a7a4922ed51481f60872",
+      "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+      "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+      "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+      "cmd/agentdeck/main_test.go": "38391b37595d2ed93fce47c573ea85de99238a1294856053e21011b6d6d5e2c4",
+      "cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json": "4c005cf1db022e7156f42ab3348711be2ed8bd8f501a669b896214b6dc065908",
+      "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee",
+      "scripts/scan-performance-incremental.py": "34965242586ecef41ea20fcd8d7b82a8335e6918c4ac59930a48fa25fb24b07a",
+      "scripts/scan-performance-incremental-engine.go.tmpl": "b4d1ff92e730adcd0e82cd6c89198cb71dc9d5e1b660e628ac7ba80414fa8b17",
+      "apps/macos/AgentDeckShared/DesktopWire.swift": "fdb36e04fda2622ccb4df8d656282c09095c008a9ff7b83bc1e962cea21d51ec",
+      "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "94222e146054a5fec809f1ddd38b2c7fb4fd271b6797dc85e320d798c8284cec",
+      "apps/macos/AgentDeckVerification/main.swift": "72fb5c8054f8797369c676f368674f1e719129f4c01938769706015dfbfb216a",
+      "apps/macos/AgentDeckTests/DesktopWireTests.swift": "96e4fdae1f741e1139a0444dd4fd41d8de5d5743242daac0bb583822f4c8bb26",
+      "apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift": "9d3be4efd316d1f40672bf2912813b4c838e4f2b166f39cad41f8b446f760d75",
+      "desktop/fixtures/v1/snapshot-complete.json": "4434dc2e3adb378f24824c3c3a6a809b7dfa395709d100d45f3a4bda93f05c20",
+      "desktop/fixtures/v1/snapshot-empty-client.json": "fd27811e12ecc83465e1044e71c3b9f862a0873631d7f1f7c559deb79ca4ec2b",
+      "desktop/fixtures/v1/snapshot-legacy.json": "b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2",
+      "desktop/fixtures/v1/snapshot-partial.json": "222b842dc5e217acfab6b42d58fd34125f32d32691c5325731fd75e8672b687f",
+      "desktop/fixtures/v1/snapshot-schema-ahead.json": "af81df1dc5703b1764123c969ca96d23c06d780a7898320f41895375f3bb8a99"
+    }
+  },
+  "regression": {
+    "test": "TestP07ImplicitPartitionTransactions; scripts/p07measure/partition_regression_test.go.tmpl injected as a virtual internal/store test via Go overlay",
+    "input": "fresh t.TempDir store; one synthetic usage partition; schema and row prepared before observer window; no real data",
+    "before": {
+      "state_id": "scan-p07-instrumentation-state-2b01c3f035473fff",
+      "result": "FAIL",
+      "observed": 0,
+      "expected": 2,
+      "message": "SP-IP-R3-F1: implicit partition writes recorded=0 want=2"
+    },
+    "after": {
+      "result": "PASS",
+      "observed": 2,
+      "expected": 2,
+      "terminal_records": [
+        {
+          "begin_ns": 264771,
+          "boundary": "autocommit",
+          "domain": "core",
+          "duration_ns": 439023,
+          "end_ns": 703794,
+          "event": "end",
+          "outcome": "implicit_commit",
+          "read_only": false,
+          "site": "internal/store/usage_partitions.go:131",
+          "valid": true
+        },
+        {
+          "begin_ns": 966111,
+          "boundary": "autocommit",
+          "domain": "core",
+          "duration_ns": 563024,
+          "end_ns": 1529135,
+          "event": "end",
+          "outcome": "implicit_commit",
+          "read_only": false,
+          "site": "internal/store/usage_partitions.go:139",
+          "valid": true
+        }
+      ],
+      "published_revision_and_payload": "unchanged and asserted"
+    },
+    "command": "scripts/run-go-test.sh -overlay <private-overlay.json> ./internal/store -run ^TestP07ImplicitPartitionTransactions$",
+    "reproduction": "Generate overlay and add the template mapping using the exact commands in scripts/p07measure/README.md. Before-repair result is retained here as observed facts; the temporary old overlay/source build is not a retained original."
+  },
+  "repair": {
+    "exec": "Time full DB/Conn single-statement autocommit Exec call through return",
+    "returning": "Keep sql.Row unchanged; observe QueryRow entry through the existing Scan return; no eager Scan or injected SQL",
+    "dedup": "Suppress statements on an observed raw/pinned-Go transaction; its explicit terminal is the only complete sample",
+    "incomplete": "Unknown SQL, compound strings, unobserved Scan and deferred prepared/multi-row writes produce rejected gaps or unmatched markers",
+    "collector": "p07-transactions/v2; explicit-and-autocommit coverage header; valid implicit_commit and explicit boundaries enter one domain distribution; v1 rejected",
+    "semantics": "SQL text, arguments, Row/Result objects, options, timeout, return values/errors and retry behavior preserved"
+  },
+  "verification": {
+    "go_plain": {
+      "command": "scripts/run-go-test.sh ./scripts/p07measure ./scripts/p07-overlay",
+      "counts": {
+        "pass": 16,
+        "skip": 1,
+        "fail": 0
+      },
+      "result": "PASS; one subprocess-entry test skip, exercised in two controlled child processes"
+    },
+    "go_race": {
+      "command": "scripts/run-go-test.sh -race ./scripts/p07measure ./scripts/p07-overlay -run 'Test(ImplicitExecAndReturningScan|ConnExplicitStatementsAreNotDoubleCounted|UnknownAndUnobservedImplicitWrites|SQLClassificationFailsClosed|FullTransactionBoundaries|BeginWaitAndFailures|PinnedRawTransaction|ConcurrentReadOnlyAndUnknown|PerProcessLogDirectory|DirectoryLogChild|TypeAwareTerminalRewrite|RejectEscapingTransactionMethod|OpenOnlyRetainsBlankSQLImport|ChainedReturningScanIsNotEagerOrDuplicated|RejectEscapingScan)$'",
+      "counts": {
+        "pass": 14,
+        "skip": 1,
+        "fail": 0
+      },
+      "result": "PASS"
+    },
+    "python": {
+      "command": "cd scripts && python3 -B -m unittest -v scan_performance_p07_test.ProcessSetTests scan_performance_p07_test.TransactionSummaryTests",
+      "result": "7 PASS"
+    },
+    "vet": {
+      "command": "GOCACHE=/private/tmp/agent-deck-go-build go vet ./scripts/p07measure ./scripts/p07-overlay",
+      "result": "PASS"
+    },
+    "overlay_builds": {
+      "command": "GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=<amd64|arm64> go build -overlay <private-overlay.json> -o <private-binary> ./cmd/agentdeck",
+      "result": "PASS both, Mach-O x86_64/arm64 confirmed; no product binary launch",
+      "sha256": {
+        "amd64": "2cef6db980e2e5e899e1fef89191eb07a0f56b542085cfa39508b9e4327b4d19",
+        "arm64": "98ae11ca02a0685586211d101564dd70bb43c5dfd6751ca71b36e60d75e1131e"
+      }
+    },
+    "rss_reuse": {
+      "source_prefix_sha256": "8ac3986e6ae2f126cef5c1cf8c4cf52538694aec689a36705e50d34746375167",
+      "prior_whole_module_matched_prior_identity_before_summary_edit": true,
+      "assessment": "RSS implementation/interval/process selection unchanged; reuse prior synthetic native mechanism evidence in p07-instrumentation-20261020.json. This repair reran only pure ProcessSet/summary tests, not native RSS or performance acceptance."
+    }
+  },
+  "overlay": {
+    "schema": "p07-overlay/v2",
+    "files": {
+      "cmd/agentdeck/main.go": {
+        "Original": "a7ca9874ced6647076a9a66c90105cc93646a23a5ef1a1ea1809c7472d635e82",
+        "Instrumented": "3ba2b31c404c340471053f9cee7879c8a9df2dd068f184805fb0515868f6df8e"
+      },
+      "internal/backup/backup.go": {
+        "Original": "a036cca9c0c7599d84a9ce9c9e8ed30646eaf8824d14116c530aaf86cf2941e5",
+        "Instrumented": "0d96d9a726b4ff2c5d1d9d10804830ee70ff4d1fef9c0a683f5bb5c3db150cce"
+      },
+      "internal/provider/service.go": {
+        "Original": "6d7d18cf044ae193b83caf885919b9a9cac80466691178992e8a8f39819518a5",
+        "Instrumented": "34f2d02e2c78c21f9dc63a3949e13982bdea2a7b26b82fe749c989c810aa1b9e"
+      },
+      "internal/quota/alerts.go": {
+        "Original": "4f9325b00ec5e9c7fe64800afbc5af09819d0aa542d4a9389f23d569e079afd6",
+        "Instrumented": "c9b3e7c9f0b095c8dda011efcc68c7ffa3b2c743f7772531caceee382e08e0e8"
+      },
+      "internal/quota/store.go": {
+        "Original": "910219ba6fbafd958930cf633fa730ecedb0b7c0dd6ef39876fae1ec3c69a31b",
+        "Instrumented": "b50cde2248bd79a8e5c664a6fffd73d943ef7211e64cf2e2e32ebf3ff3ae3a83"
+      },
+      "internal/session/doctor.go": {
+        "Original": "c3c4edbd80ac73a21f1492059b9c63d77050d45621f4b2ee22b9e89a4711fd70",
+        "Instrumented": "f8999447bea61c246996414fe379aec942fa03d55e773402c084e5e264061171"
+      },
+      "internal/session/session.go": {
+        "Original": "2f65daa1842e1721ed3c54621f4a352be10f844f1678d84a6de5fa3c0e3b7895",
+        "Instrumented": "b56fa4e914f5408170ea0c5505d03ecd2e12f281dd01028951c516225ec70ef7"
+      },
+      "internal/session/unchanged.go": {
+        "Original": "1c994c27c9299911652ac02d66795be78ff0126ef4189340b2df93258562f833",
+        "Instrumented": "2004012ca22134138854d5e4f260abac43333373195df800035bb8aaa5122461"
+      },
+      "internal/store/derived_generation.go": {
+        "Original": "1552c2bed08ef3c6e2e8bca89f9966c02e66409707750554e6c9759b969617a0",
+        "Instrumented": "fc9279b0155eea89120740ee0ac0c416bd7edf8b057d68cf0c6dded70eb61211"
+      },
+      "internal/store/extensions.go": {
+        "Original": "3e6862d9282e5702b56cd105592ba4cd7d97bff3d9043c937d0fd1001a48814f",
+        "Instrumented": "8330bc83499ae7d0ab2415cbba46f0139133c44f563f27bc8117bd1445f02dc6"
+      },
+      "internal/store/migrations.go": {
+        "Original": "e040ba978a1125c9454cb3727b4a948c67aeed31b14eefb10c58ed4926162b83",
+        "Instrumented": "0068acf9779f4f489e3c5e31c86682b5309ad06b85af18aa47d9ae8927fcd811"
+      },
+      "internal/store/providers.go": {
+        "Original": "97435e5d2c52b2b7b62ac8cb96101c99186d3fe7e0107048f134ec9ce9ad93f4",
+        "Instrumented": "bac7e777fd2299e1bcb5ca71ea37190f913418e36b48568bf24cd506b61388af"
+      },
+      "internal/store/serving_generation.go": {
+        "Original": "12e22706a3aa0a5ba8df451c54c6fed00eab70a7ab37df5435b28e9426a277a0",
+        "Instrumented": "48d62589d1be87667f6b0fc45cb8bf967b05476266a03cfb44afabab0d2b6e2b"
+      },
+      "internal/store/source_coverage.go": {
+        "Original": "e202592712132f5ba899033d329e0b7f9ae4f3e8c7da6f2d12b853fa3a54e8d7",
+        "Instrumented": "39bf842b500e21f96222bfabeb161d57489cc0162015203458b39f4cb82b3f24"
+      },
+      "internal/store/store.go": {
+        "Original": "0183991be106c6ab4356828572e66ff0d4ecf8b8f6f28b47788a374dd85751ae",
+        "Instrumented": "3dedfe3cafd820d3e16d586c5b5bd08851b930262ba7c5f45d216f61ee3c33c3"
+      },
+      "internal/store/usage_partitions.go": {
+        "Original": "7ca5b2f284f3537a8a7087097743c223e96b13ac1cc357a843ee144348d7df68",
+        "Instrumented": "474155b78887b5a00446eb6901aced07c0b0df8409adf325778afd706e342b21"
+      },
+      "internal/usage/cold_publish.go": {
+        "Original": "66e6d44fec87588c5bdd7baab6b2fe95cd8b83ef385fd9059fbd959c2fd9229e",
+        "Instrumented": "3a62811d66ef7361327044d9fa58e4e1f9b48e612275027320548736ef737eed"
+      },
+      "internal/usage/publication_lock.go": {
+        "Original": "fee12cdb0e36ccb4ee355ad0da6b1f643f4482dba96bedabd0998c4c0023c3d3",
+        "Instrumented": "898c3bb0f61af15377d0c1d07ec4b2978767f21cbc92e079abf43ff0074e9849"
+      },
+      "internal/usage/routes.go": {
+        "Original": "e3accdf99ba28334a6f15183ed449e66851256710744b0ff412f25379a977412",
+        "Instrumented": "84cd24d9cf8c8e99e9e697408088738668417f17ae147ea6c26c2c72c52be6f1"
+      },
+      "internal/usage/session_usage.go": {
+        "Original": "e001b1b72896acda9324f9160af302e4f1c67bab7303600885ddf1a2834f7dea",
+        "Instrumented": "41512b42c9935bf8ac4c25ac5a497090718c0661c65df67aaff95b021962fe8f"
+      },
+      "internal/usage/signals.go": {
+        "Original": "c46f2d3f2596afb588b1f8e98ab416e617420f26b8ed913f5ac06f03429cf7e2",
+        "Instrumented": "97bbca77acc49fe26524da10b503aae9a8220197202eacf157c0b1856d40fec0"
+      },
+      "internal/usage/signals_cost.go": {
+        "Original": "efa13ec0c67f7941c9c87071cd8c74917cacb8db5baedd71bf7af53e4081f72e",
+        "Instrumented": "f8596e460746c077bcdf50a537bd241c6f856d74fc034debb28d9191ff401330"
+      },
+      "internal/usage/signals_metrics.go": {
+        "Original": "45998b37c98916a4f4f317e2d7d3890af8c2b6f8ac3ab941e79db54034b1a2cb",
+        "Instrumented": "cc628680a95ffd8079f0cd83b6641fb9e0cafb7121e5968b3532ebf7b1b5ac20"
+      },
+      "internal/usage/signals_report.go": {
+        "Original": "a83b05ef258e496c971b5a29174522c2df72840501476a8275b21b758d8b7cb6",
+        "Instrumented": "bd8e86a700cd292d7a8b73c806e313a32f09fbb5cf5620c72c1b89572454f756"
+      },
+      "internal/usage/usage.go": {
+        "Original": "ed288cb2bffce4243c4bd202c45e3b3597a4d44011a5a9148065a57d2751f5c5",
+        "Instrumented": "a5192dbae575296ed18ba18d8e4d05e24ed81fef94913c50f8e1567dfb4fec1d"
+      }
+    },
+    "operation_counts": {
+      "BeginTx": 30,
+      "CloseConn": 4,
+      "CloseDB": 22,
+      "Commit": 32,
+      "Conn": 3,
+      "ExecConn": 10,
+      "ExecDB": 24,
+      "Open": 10,
+      "QueryRowSQL": 58,
+      "QuerySQL": 40,
+      "Rollback": 39,
+      "ScanRow": 77
+    },
+    "scope": "explicit DB/Conn transactions plus single-statement autocommit DB/Conn Exec and QueryRow through Row.Scan; unknown, multi-statement, prepared-write and mutating QueryContext gaps invalidate coverage; default explicit transactions remain write-capable; tests and vendor excluded"
+  },
+  "calibration": {
+    "autocommit_file_runs": [
+      {
+        "api": "exec",
+        "enabled": false,
+        "pair": 0,
+        "sink": "file",
+        "wall_ns": 6665757,
+        "writes": 100
+      },
+      {
+        "api": "exec",
+        "enabled": true,
+        "pair": 0,
+        "sink": "file",
+        "wall_ns": 10898499,
+        "writes": 100
+      },
+      {
+        "api": "exec",
+        "enabled": true,
+        "pair": 1,
+        "sink": "file",
+        "wall_ns": 11876280,
+        "writes": 100
+      },
+      {
+        "api": "exec",
+        "enabled": false,
+        "pair": 1,
+        "sink": "file",
+        "wall_ns": 5771678,
+        "writes": 100
+      },
+      {
+        "api": "exec",
+        "enabled": false,
+        "pair": 2,
+        "sink": "file",
+        "wall_ns": 5874205,
+        "writes": 100
+      },
+      {
+        "api": "exec",
+        "enabled": true,
+        "pair": 2,
+        "sink": "file",
+        "wall_ns": 11627306,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": false,
+        "pair": 0,
+        "sink": "file",
+        "wall_ns": 12993949,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": true,
+        "pair": 0,
+        "sink": "file",
+        "wall_ns": 20126868,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": true,
+        "pair": 1,
+        "sink": "file",
+        "wall_ns": 48954246,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": false,
+        "pair": 1,
+        "sink": "file",
+        "wall_ns": 12373689,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": false,
+        "pair": 2,
+        "sink": "file",
+        "wall_ns": 12799889,
+        "writes": 100
+      },
+      {
+        "api": "returning-scan",
+        "enabled": true,
+        "pair": 2,
+        "sink": "file",
+        "wall_ns": 20055361,
+        "writes": 100
+      }
+    ],
+    "paired_overhead": [
+      {
+        "api": "exec",
+        "pair": 0,
+        "added_ns_per_write": 42327.42,
+        "wall_ratio": 1.6349979454696593
+      },
+      {
+        "api": "exec",
+        "pair": 1,
+        "added_ns_per_write": 61046.02,
+        "wall_ratio": 2.0576823585792554
+      },
+      {
+        "api": "exec",
+        "pair": 2,
+        "added_ns_per_write": 57531.01,
+        "wall_ratio": 1.979383763419901
+      },
+      {
+        "api": "returning-scan",
+        "pair": 0,
+        "added_ns_per_write": 71329.19,
+        "wall_ratio": 1.5489415881192083
+      },
+      {
+        "api": "returning-scan",
+        "pair": 1,
+        "added_ns_per_write": 365805.57,
+        "wall_ratio": 3.9563177965762675
+      },
+      {
+        "api": "returning-scan",
+        "pair": 2,
+        "added_ns_per_write": 72554.72,
+        "wall_ratio": 1.566838665554053
+      }
+    ],
+    "limitations": "Synthetic calibration only; all pairs including the slow returning-scan observation retained. Observer overhead is material and is not subtracted or inferred representative. No P07 performance sample or threshold claim."
+  },
+  "environment": {
+    "go": "go version go1.27.1 darwin/amd64",
+    "os": "macOS-26.7.2-x86_64-i386-64bit-Mach-O"
+  },
+  "remaining": {
+    "Task3": "open; in_review after handoff; Review checkbox remains unchecked",
+    "P07": {
+      "attempted": 0,
+      "valid": 0,
+      "prerequisites": "new data authorization and a usable representative frozen input; resolve any reported collector coverage gap before acceptance"
+    },
+    "P10": "prior failed evidence retained; outside repair scope",
+    "review": "Round 3 FAIL retained; independent re-review pending",
+    "scope_exclusions": "No real sources/databases, Tasks 4-7, product repair, commit or push"
+  },
+  "retention": "Essential methods, identities, results and calibration values are self-contained. No temporary path is cited as retained evidence."
+}

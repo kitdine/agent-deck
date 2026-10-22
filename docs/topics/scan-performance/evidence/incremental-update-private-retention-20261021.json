@@ -1,0 +1,10 @@
+{
+  "status": "armed",
+  "deadline": "2026-10-22T12:48:07.489352+00:00",
+  "cleanup_pid": 39325,
+  "identity_pinned_roots": 2,
+  "script": "incremental-update-private-expiry-20261021.py",
+  "script_sha256": "17c71ca20c890092237bc2658cd18e89a0788e067eca07d3b2721bbac13d5cf8",
+  "raw_originals_available_now": true,
+  "limitation": "Cleanup is a local process, not a system service; execution requires the host/process to remain runnable. Delete after independent review earlier when finished. No credential or raw source data is in this record."
+}

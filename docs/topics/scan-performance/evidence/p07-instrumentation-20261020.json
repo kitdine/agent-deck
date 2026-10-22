@@ -1,0 +1,1096 @@
+{
+  "schema": "agentdeck-p07-instrumentation/v1",
+  "recorded_at": "2026-10-20T18:55:31.829043+00:00",
+  "workspace": "agent-deck.scan-performance",
+  "branch": "feature/scan-performance",
+  "phase_token": "_DRIteXvSDUUnGhm",
+  "scope": "Task 3 P07 measurement tooling and synthetic calibration only",
+  "status": "IMPLEMENT COMPLETE; independent review pending; not P07 acceptance",
+  "git_head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "instrumentation_identity": {
+    "state_id": "scan-p07-instrumentation-state-2b01c3f035473fff",
+    "sha256": "2b01c3f035473fffb38e513e579fb59f4a3e8dabe88944f652e06baa201c3ae2",
+    "recipe": "SHA256 of sorted compact JSON {tools,dependencies}; tool identity is separate from the unchanged product identity",
+    "tools": {
+      "scripts/p07measure/transactions.go": "e63bd427eb3b6ee1b330415a1f9c0b54744bac17363b18df95707e7fce14cb68",
+      "scripts/p07measure/transactions_test.go": "3c3b429950434beaff47487a5b785fef4ad7803db31a313c72d2cc0abf9d68e2",
+      "scripts/p07measure/README.md": "691b3947deccb6c2531c2eb5431fe888c2c6dd3e6c6195dc93aeaf3327fe93dc",
+      "scripts/p07-overlay/main.go": "af1b1ef5e18c87eb31c21d8aeca31fb71a0e62e2276df14a328935e1a4697cd1",
+      "scripts/p07-overlay/main_test.go": "c6eb1615352a9c374c4eaf4ec0e85273dd47f074b5cca0e2af2fd1818518b7dc",
+      "scripts/scan_performance_p07.py": "c13d0f273dee39749c0221b52fe8b6f44a3dbda55c48d1c5224cb5270fa61ac6",
+      "scripts/scan_performance_p07_test.py": "671b13c63ae01584965ece7966c71b9ed52ca52016cea6d82e15801b94346551"
+    },
+    "dependencies": {
+      "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+      "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+      "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+      "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee"
+    }
+  },
+  "product_identity": {
+    "state_id": "scan-incremental-repair-r1-97321292d5b8d565",
+    "subject_count": 23,
+    "all_match": true,
+    "subject_digests": {
+      "internal/store": "b18a9d000677483d4e81f0d553c478dc2913936cab6aa1c17307a433eed35b08",
+      "internal/usage": "c0166270c86e1d6abadae34f8815cf109c1a13794702be0ab6633b4545110ad6",
+      "internal/session": "dec9ce2c59a4ccd6b3d1725e4eb787cd8dac2b757c25e3a5be31ef2c25137d69",
+      "internal/desktop": "31de6d29e1ef5f88ebe3e5c4141c0033e5068117c288191b2e0fc39244993545",
+      "internal/scanruntime": "0fbfb6836982a803d2133b8730728cbe2aa4d8d9f882a7a4922ed51481f60872",
+      "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+      "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+      "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+      "cmd/agentdeck/main_test.go": "38391b37595d2ed93fce47c573ea85de99238a1294856053e21011b6d6d5e2c4",
+      "cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json": "4c005cf1db022e7156f42ab3348711be2ed8bd8f501a669b896214b6dc065908",
+      "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee",
+      "scripts/scan-performance-incremental.py": "34965242586ecef41ea20fcd8d7b82a8335e6918c4ac59930a48fa25fb24b07a",
+      "scripts/scan-performance-incremental-engine.go.tmpl": "b4d1ff92e730adcd0e82cd6c89198cb71dc9d5e1b660e628ac7ba80414fa8b17",
+      "apps/macos/AgentDeckShared/DesktopWire.swift": "fdb36e04fda2622ccb4df8d656282c09095c008a9ff7b83bc1e962cea21d51ec",
+      "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "94222e146054a5fec809f1ddd38b2c7fb4fd271b6797dc85e320d798c8284cec",
+      "apps/macos/AgentDeckVerification/main.swift": "72fb5c8054f8797369c676f368674f1e719129f4c01938769706015dfbfb216a",
+      "apps/macos/AgentDeckTests/DesktopWireTests.swift": "96e4fdae1f741e1139a0444dd4fd41d8de5d5743242daac0bb583822f4c8bb26",
+      "apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift": "9d3be4efd316d1f40672bf2912813b4c838e4f2b166f39cad41f8b446f760d75",
+      "desktop/fixtures/v1/snapshot-complete.json": "4434dc2e3adb378f24824c3c3a6a809b7dfa395709d100d45f3a4bda93f05c20",
+      "desktop/fixtures/v1/snapshot-empty-client.json": "fd27811e12ecc83465e1044e71c3b9f862a0873631d7f1f7c559deb79ca4ec2b",
+      "desktop/fixtures/v1/snapshot-legacy.json": "b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2",
+      "desktop/fixtures/v1/snapshot-partial.json": "222b842dc5e217acfab6b42d58fd34125f32d32691c5325731fd75e8672b687f",
+      "desktop/fixtures/v1/snapshot-schema-ahead.json": "af81df1dc5703b1764123c969ca96d23c06d780a7898320f41895375f3bb8a99"
+    }
+  },
+  "overlay": {
+    "schema": "p07-overlay/v1",
+    "files": {
+      "internal/backup/backup.go": {
+        "Original": "a036cca9c0c7599d84a9ce9c9e8ed30646eaf8824d14116c530aaf86cf2941e5",
+        "Instrumented": "c6dc94ee76861476a236fbbd96b140ed7a9bc700effbbe31a723e7cf6b3d4e02"
+      },
+      "internal/quota/store.go": {
+        "Original": "910219ba6fbafd958930cf633fa730ecedb0b7c0dd6ef39876fae1ec3c69a31b",
+        "Instrumented": "14646bca368244711ab4209e280b2a35554dea86427591373668c92016a713c9"
+      },
+      "internal/session/doctor.go": {
+        "Original": "c3c4edbd80ac73a21f1492059b9c63d77050d45621f4b2ee22b9e89a4711fd70",
+        "Instrumented": "9167fd1537ed4aa1f4c05c0e95b28fe4650fc1dc9cf91251b445b75916a1383c"
+      },
+      "internal/session/session.go": {
+        "Original": "2f65daa1842e1721ed3c54621f4a352be10f844f1678d84a6de5fa3c0e3b7895",
+        "Instrumented": "73387578b42d0d062c7260e22ed139da8c501a1a5880bc5a890c39ffda764eb4"
+      },
+      "internal/store/extensions.go": {
+        "Original": "3e6862d9282e5702b56cd105592ba4cd7d97bff3d9043c937d0fd1001a48814f",
+        "Instrumented": "b9e3c3357fea543b3ba938153eec326d0e4190bb66b302334a9d9be34556d422"
+      },
+      "internal/store/migrations.go": {
+        "Original": "e040ba978a1125c9454cb3727b4a948c67aeed31b14eefb10c58ed4926162b83",
+        "Instrumented": "90110942d34cc49404eb801dfe0f693111c2fd3d52b4ec1cacd61a944a626296"
+      },
+      "internal/store/providers.go": {
+        "Original": "97435e5d2c52b2b7b62ac8cb96101c99186d3fe7e0107048f134ec9ce9ad93f4",
+        "Instrumented": "4ec51a357ebec616c53bf3b1fb068f6982b1978f835bc4d244a0fd7ad7a7b2d8"
+      },
+      "internal/store/serving_generation.go": {
+        "Original": "12e22706a3aa0a5ba8df451c54c6fed00eab70a7ab37df5435b28e9426a277a0",
+        "Instrumented": "686205fb30ca80aec49daf6aa79f3dd790bc3104792f7a0b778632add4db1dee"
+      },
+      "internal/store/source_coverage.go": {
+        "Original": "e202592712132f5ba899033d329e0b7f9ae4f3e8c7da6f2d12b853fa3a54e8d7",
+        "Instrumented": "ced7e4612c6fe6bc8b6e8064244ec65ece258a707a72a31159562bbbfc2e7620"
+      },
+      "internal/store/store.go": {
+        "Original": "0183991be106c6ab4356828572e66ff0d4ecf8b8f6f28b47788a374dd85751ae",
+        "Instrumented": "aed9925386f347318ae922b8351ed2a0a203d9109f0a0f39c358aff764a66053"
+      },
+      "internal/store/usage_partitions.go": {
+        "Original": "7ca5b2f284f3537a8a7087097743c223e96b13ac1cc357a843ee144348d7df68",
+        "Instrumented": "998a5b9f45b4ec6fd4b998cea67b26e1afd493b3e7fb072c3f62d00f9ee66d2a"
+      },
+      "internal/usage/publication_lock.go": {
+        "Original": "fee12cdb0e36ccb4ee355ad0da6b1f643f4482dba96bedabd0998c4c0023c3d3",
+        "Instrumented": "cce0a7c28e7eb1dafbde88d5a8a60676f12dd7edc5a88492b6f8be8283a64f38"
+      },
+      "internal/usage/routes.go": {
+        "Original": "e3accdf99ba28334a6f15183ed449e66851256710744b0ff412f25379a977412",
+        "Instrumented": "fcaf982c2710158e9f4c99e0659c6b43b2ee5b8f4bb44838ffb9d1dc53d8dc41"
+      },
+      "internal/usage/usage.go": {
+        "Original": "ed288cb2bffce4243c4bd202c45e3b3597a4d44011a5a9148065a57d2751f5c5",
+        "Instrumented": "480dcf889a5c5d5419b7b605a890d5f22e2972e30e62bf3501c63077c0669a60"
+      }
+    },
+    "sites": [
+      {
+        "file": "internal/backup/backup.go",
+        "line": 434,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/backup/backup.go",
+        "line": 439,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/backup/backup.go",
+        "line": 665,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/backup/backup.go",
+        "line": 669,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 88,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 92,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 144,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 362,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 366,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/quota/store.go",
+        "line": 410,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/doctor.go",
+        "line": 36,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/session/doctor.go",
+        "line": 40,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 36,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 579,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 590,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 608,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 620,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 926,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 930,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 934,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1519,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1523,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1527,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1556,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1560,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1567,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1701,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1705,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1734,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1763,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1767,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/session/session.go",
+        "line": 1789,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/extensions.go",
+        "line": 25,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/extensions.go",
+        "line": 29,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/extensions.go",
+        "line": 68,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 561,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 567,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 573,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 578,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 581,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 607,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 612,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 618,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 623,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 629,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 634,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/migrations.go",
+        "line": 639,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 329,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 336,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 341,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 345,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 348,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 358,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 362,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 396,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 518,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 522,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 536,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 575,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 579,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 597,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 653,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 657,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 689,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 768,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 772,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 801,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 839,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 843,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 858,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 881,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 885,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/providers.go",
+        "line": 900,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 40,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 44,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 51,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 146,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 148,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 201,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/serving_generation.go",
+        "line": 207,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 34,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 38,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 53,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 83,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 87,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/source_coverage.go",
+        "line": 109,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 41,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 46,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 51,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 61,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 71,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 75,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 80,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 93,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 100,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 104,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 320,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 326,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 330,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 344,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 348,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 401,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 406,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 410,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 415,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 422,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 472,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 476,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 482,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 503,
+        "operation": "Open"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 507,
+        "operation": "CloseDB"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 515,
+        "operation": "Conn"
+      },
+      {
+        "file": "internal/store/store.go",
+        "line": 519,
+        "operation": "CloseConn"
+      },
+      {
+        "file": "internal/store/usage_partitions.go",
+        "line": 224,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/store/usage_partitions.go",
+        "line": 228,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/store/usage_partitions.go",
+        "line": 257,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 17,
+        "operation": "Conn"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 23,
+        "operation": "CloseConn"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 29,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 31,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 35,
+        "operation": "CloseConn"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 37,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 41,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/publication_lock.go",
+        "line": 72,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 309,
+        "operation": "Conn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 313,
+        "operation": "CloseConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 315,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 323,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 334,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 352,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 375,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 389,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/routes.go",
+        "line": 439,
+        "operation": "ExecConn"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 613,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 617,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 630,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1399,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1428,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1861,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1865,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1872,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1932,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1936,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 1967,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2367,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2371,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2405,
+        "operation": "Commit"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2412,
+        "operation": "BeginTx"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2416,
+        "operation": "Rollback"
+      },
+      {
+        "file": "internal/usage/usage.go",
+        "line": 2432,
+        "operation": "Commit"
+      }
+    ],
+    "application_source_identity_verified": true,
+    "ordinary_build_imports_measurement_package": false
+  },
+  "environment": {
+    "go": "go version go1.27.1 darwin/amd64",
+    "python": "3.14.8",
+    "os": "macOS-26.7.2-x86_64-i386-64bit-Mach-O"
+  },
+  "verification": {
+    "plain_go": {
+      "command": "scripts/run-go-test.sh ./scripts/p07measure ./scripts/p07-overlay",
+      "pass": 9,
+      "skip": 1,
+      "result": "PASS; skipped test is the controlled subprocess entry and ran in two child processes"
+    },
+    "race_go": {
+      "command": "scripts/run-go-test.sh -race ./scripts/p07measure ./scripts/p07-overlay -run 'Test(FullTransactionBoundaries|BeginWaitAndFailures|PinnedRawTransaction|ConcurrentReadOnlyAndUnknown|PerProcessLogDirectory|DirectoryLogChild|TypeAwareTerminalRewrite|RejectEscapingTransactionMethod|OpenOnlyRetainsBlankSQLImport)$'",
+      "result": "PASS; 8 top-level pass / 1 fixture-entry skip; two controlled child entries pass"
+    },
+    "python": {
+      "command": "python3 -B -m unittest discover -s scripts -p scan_performance_p07_test.py -v",
+      "result": "7 PASS; native fixture run in an execution channel permitted to inspect only its controlled process tree"
+    },
+    "overlay_fixtures": {
+      "command": "AGENTDECK_P07_TX_DIR=<new-private-directory> scripts/run-go-test.sh -overlay <generated-overlay.json> ./internal/usage ./internal/session -run 'Test(RecordHookDelivery(SessionStartAdvancesIdempotentRoute|RouteWriteFailureRollsBackBothStreams)|AffectedSessionBatchRenameCountsAgainstFullView)$'",
+      "result": "3 top-level PASS; full-inventory and priority-batch subtests PASS",
+      "transaction_trace": {
+        "schema": "p07-transactions/v1",
+        "write_capable": {
+          "core": {
+            "count": 8,
+            "p95_ns": 158645213,
+            "max_ns": 158645213
+          },
+          "session": {
+            "count": 11,
+            "p95_ns": 8146878,
+            "max_ns": 8146878
+          }
+        },
+        "read_only_count": 0,
+        "rejected": [],
+        "record_count": 19,
+        "process_count": 2,
+        "unmatched_begins": 0,
+        "complete": true,
+        "acceptance": "not evaluated; synthetic calibration is not representative P07 input"
+      },
+      "inputs": "Only t.TempDir synthetic SQLite and synthetic JSONL; no real home/source/database reads"
+    },
+    "vet": {
+      "command": "GOCACHE=/private/tmp/agent-deck-go-build go vet ./scripts/p07measure ./scripts/p07-overlay",
+      "result": "PASS"
+    },
+    "builds": {
+      "command": "GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=<amd64|arm64> go build -overlay <generated-overlay.json> -o <private-output> ./cmd/agentdeck",
+      "result": "PASS both; binaries built only, never launched",
+      "binary_sha256": {
+        "amd64": "04dc1b02c1b9628f609961363691140d9a1034ecf892cf69a44c556b7fe43cae",
+        "arm64": "6950660e86b0cf336662f99fafd15ecd6ef67d25c8a13db206e6678b7cdaf2fd"
+      }
+    }
+  },
+  "calibration": {
+    "scope": "Synthetic instrument calibration, not representative P07; no acceptance threshold or negligible-overhead claim",
+    "transaction_runs": [
+      {
+        "pair": 0,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 42791975,
+        "sink": "memory"
+      },
+      {
+        "pair": 0,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 57485083,
+        "sink": "memory"
+      },
+      {
+        "pair": 0,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 40916407,
+        "sink": "file"
+      },
+      {
+        "pair": 0,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 83816782,
+        "sink": "file"
+      },
+      {
+        "pair": 1,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 58672775,
+        "sink": "memory"
+      },
+      {
+        "pair": 1,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 41562853,
+        "sink": "memory"
+      },
+      {
+        "pair": 1,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 86822201,
+        "sink": "file"
+      },
+      {
+        "pair": 1,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 54992729,
+        "sink": "file"
+      },
+      {
+        "pair": 2,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 38340309,
+        "sink": "memory"
+      },
+      {
+        "pair": 2,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 54193782,
+        "sink": "memory"
+      },
+      {
+        "pair": 2,
+        "enabled": false,
+        "transactions": 200,
+        "wall_ns": 41075301,
+        "sink": "file"
+      },
+      {
+        "pair": 2,
+        "enabled": true,
+        "transactions": 200,
+        "wall_ns": 90354150,
+        "sink": "file"
+      }
+    ],
+    "transaction_paired_overhead": [
+      {
+        "sink": "memory",
+        "pair": 0,
+        "added_ns_per_transaction": 73465.54,
+        "ratio": 1.343361296130875
+      },
+      {
+        "sink": "memory",
+        "pair": 1,
+        "added_ns_per_transaction": 85549.61,
+        "ratio": 1.4116637998839974
+      },
+      {
+        "sink": "memory",
+        "pair": 2,
+        "added_ns_per_transaction": 79267.365,
+        "ratio": 1.4134936158182763
+      },
+      {
+        "sink": "file",
+        "pair": 0,
+        "added_ns_per_transaction": 214501.875,
+        "ratio": 2.048488324011441
+      },
+      {
+        "sink": "file",
+        "pair": 1,
+        "added_ns_per_transaction": 159147.36,
+        "ratio": 1.5787941893191006
+      },
+      {
+        "sink": "file",
+        "pair": 2,
+        "added_ns_per_transaction": 246394.245,
+        "ratio": 2.199719729381898
+      }
+    ],
+    "rss": {
+      "summary": true,
+      "samples": 7,
+      "sampled_peak_rss_bytes": 75669504,
+      "incomplete_samples": 0,
+      "missed_ticks": 0,
+      "max_gap_ns": 55111809,
+      "total_poll_ns": 72185595,
+      "sampler_cpu_ns": 73306000,
+      "wall_ns": 314559864,
+      "valid": true
+    },
+    "rss_process_rule": "Engine + collector + recursively discovered children; unique PID per frame, pinned birth identity, retain seen reparented descendants; reject reused roots; no process-name selection",
+    "rss_interval_ns": 50000000,
+    "rss_fixture_processes": 4,
+    "rss_sampler_single_core_cpu_fraction": 0.23304308142757843,
+    "limitations": [
+      "Observed collector cost is material; measure compatibility and perturbation on a future authorized frozen cohort before interpreting P07 performance. Do not subtract observer costs or infer representative overhead from this fixture.",
+      "RSS maximum is sampled aggregate resident bytes, not a lifetime maximum; short-lived children and between-poll peaks can be missed.",
+      "Explicit default transactions are conservatively write-capable; implicit autocommit statements and SAVEPOINTs are outside the Begin-to-terminal distribution.",
+      "Hidden context-triggered rollback is retained as invalid; unmatched begin or error endpoint cannot enter the completed-write percentile."
+    ]
+  },
+  "impact": {
+    "product_behaviour": "23 scoped product/dependency subjects match the independently reviewed repair state; no product source, SQL, timeout, transaction option, acceptance criterion or dependency changed",
+    "measurement": "Only generated private overlays import the observer; observer I/O, locking and sampler CPU/RSS are measured overhead, not free operation",
+    "review": "Task 3 review checkbox cleared for new tooling; historical product Round 2 PASS retained",
+    "acceptance": "P07 attempted=0, valid=0; no new data authority or representative frozen input; P10 failure preserved; no Tasks 4-7 or Git delivery",
+    "task_disposition": "Task 3 remains open; handoff to in_review after implementation checks"
+  },
+  "references": {
+    "usage": "scripts/p07measure/README.md",
+    "prior_gate": "docs/topics/scan-performance/evidence/incremental-update-latency-gate-final-20261020.json"
+  },
+  "retention": "Essential identities, methods, outcomes and calibration values are retained directly here; temporary overlays, logs, binaries and synthetic data are not cited as retained originals."
+}

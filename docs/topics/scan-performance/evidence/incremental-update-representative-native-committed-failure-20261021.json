@@ -1,0 +1,50 @@
+{
+  "stages": [
+    {
+      "completedAtUptimeNanoseconds": 206021580979383,
+      "durationNanoseconds": 58483,
+      "stage": "servingPublication"
+    },
+    {
+      "completedAtUptimeNanoseconds": 206021817679097,
+      "durationNanoseconds": 232714778,
+      "stage": "popoverPreparation"
+    }
+  ],
+  "initialDataPresent": false,
+  "frames": [],
+  "readyClickRequired": false,
+  "foregroundDuringRefresh": false,
+  "nativeEnvironment": {
+    "statusButtonHasWindow": true,
+    "appIsActive": false,
+    "hasScreens": true
+  },
+  "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+  "latestDataChanged": false,
+  "version": 1,
+  "failure": "no_usable_data",
+  "helperFailures": [],
+  "stageAggregates": [
+    {
+      "count": 1,
+      "totalNanoseconds": 232714778,
+      "maximumNanoseconds": 232714778,
+      "stage": "popoverPreparation"
+    },
+    {
+      "count": 740,
+      "totalNanoseconds": 4627655,
+      "maximumNanoseconds": 230079,
+      "stage": "presentation"
+    },
+    {
+      "count": 1,
+      "totalNanoseconds": 58483,
+      "maximumNanoseconds": 58483,
+      "stage": "servingPublication"
+    }
+  ],
+  "initialClickRouted": false,
+  "droppedStages": 0
+}

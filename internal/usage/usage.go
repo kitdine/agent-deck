@@ -331,6 +331,7 @@ type ScanProgressReporter interface {
 }
 
 type Service struct {
+	Profile      *ScanProfile
 	ProcessAlive func(int) bool
 	Store        *store.Store
 	Home         string
@@ -1059,6 +1060,13 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 }
 
 func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
+	defer s.Profile.start("source_total")()
+	finishPrepare := s.Profile.start("source_prepare")
+	defer func() {
+		if finishPrepare != nil {
+			finishPrepare()
+		}
+	}()
 	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
 	path, client := entry.Path, entry.Client
 	var cursor, oldSize, oldModified, oldChanged int64
@@ -1258,11 +1266,16 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			return r, err
 		}
 	}
+	finishWait := s.Profile.start("publication_lock_wait")
+	finishPrepare()
+	finishPrepare = nil
 	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
+	finishWait()
 	if err != nil {
 		return r, err
 	}
 	defer release()
+	defer s.Profile.start("source_publication")()
 	// Lock acquisition can wait while the source is rewritten or truncated.
 	// Validate after that wait, immediately before publishing the captured data.
 	if err = validateCaptured(); err != nil {
@@ -1373,13 +1386,19 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err != nil {
 		return r, err
 	}
-	if err = rebuildSessions(ctx, tx, affected); err != nil {
+	finishSessions := s.Profile.start("session_rebuild")
+	err = rebuildSessions(ctx, tx, affected)
+	finishSessions()
+	if err != nil {
 		return r, err
 	}
 	if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, path, entry.Identity, entry.Size, cursor); err != nil {
 		return r, err
 	}
-	return r, tx.Commit()
+	finishCommit := s.Profile.start("source_commit")
+	err = tx.Commit()
+	finishCommit()
+	return r, err
 }
 
 func (s *Service) commitUnchangedSourceCoverage(ctx context.Context, entry InventoryEntry) error {
@@ -1854,6 +1873,7 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
+	defer s.Profile.start("orphan_candidates")()
 	// Subtract registered paths using the covering source indexes first. The
 	// usual no-orphan case then avoids joining every event/tool row to the
 	// registry twice per scan. Only orphan paths need their logical session IDs.
@@ -1908,39 +1928,42 @@ SELECT a.client,a.session_id FROM usage_tool_calls a WHERE a.source_path IN (
 }
 
 func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
+	defer s.Profile.start("orphan_cleanup")()
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
+	// Discover paths through the covering source indexes. In the common case
+	// there are no orphans: avoid visiting every event/tool row for a DELETE.
+	paths, err := orphanUsagePaths(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
 	affected := map[string][2]string{}
-	for rows.Next() {
-		var client, sessionID string
-		if err = rows.Scan(&client, &sessionID); err != nil {
-			rows.Close()
+	var removed int64
+	for _, path := range paths {
+		keys, err := affectedSessions(ctx, tx, path)
+		if err != nil {
 			return 0, err
 		}
-		affected[client+"\x00"+sessionID] = [2]string{client, sessionID}
-	}
-	if err = rows.Close(); err != nil {
-		return 0, err
-	}
-	deleted, err := tx.ExecContext(ctx, `DELETE FROM usage_events WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_events.source_path)`)
-	if err != nil {
-		return 0, err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_calls WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_tool_calls.source_path)`); err != nil {
-		return 0, err
+		for key, pair := range keys {
+			affected[key] = pair
+		}
+		deleted, err := tx.ExecContext(ctx, `DELETE FROM usage_events WHERE source_path=?`, path)
+		if err != nil {
+			return 0, err
+		}
+		n, err := deleted.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		removed += n
+		if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_calls WHERE source_path=?`, path); err != nil {
+			return 0, err
+		}
 	}
 	if err = rebuildSessions(ctx, tx, affected); err != nil {
-		return 0, err
-	}
-	removed, err := deleted.RowsAffected()
-	if err != nil {
 		return 0, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -2896,6 +2919,7 @@ type readPriceResolver struct {
 }
 
 func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
+	defer s.Profile.start("price_resolver")()
 	timeline, err := s.Store.LoadProviderTimeline(ctx)
 	if err != nil {
 		return readPriceResolver{}, err
@@ -4007,13 +4031,18 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
+	return s.eventsRangeFiltered(ctx, from, to, client, model, false)
+}
+
+func (s *Service) eventsRangeFiltered(ctx context.Context, from, to time.Time, client, model string, exact bool) ([]storedEvent, error) {
+	defer s.Profile.start("events_range")()
 	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
-	if client != "" {
+	if client != "" || exact {
 		query += ` AND e.client=?`
 		args = append(args, client)
 	}
-	if model != "" {
+	if model != "" || exact {
 		query += ` AND e.model=?`
 		args = append(args, model)
 	}

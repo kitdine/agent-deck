@@ -1,0 +1,40 @@
+{
+  "kind": "update-latency-preflight/v1",
+  "content_state": "scan-incremental-repair-r1-97321292d5b8d565",
+  "work_unit": "scan-performance:incremental-projections",
+  "outcome": "BLOCKED",
+  "criteria": [
+    "P10",
+    "P07"
+  ],
+  "p10": {
+    "prerequisite": "logged-in macOS GUI session with active display",
+    "evidence": {
+      "command": "swift -e import AppKit; print(NSScreen.screens.count); print(NSScreen.main != nil)",
+      "active_screens": 0,
+      "main_screen": false
+    },
+    "consequence": "This agent process cannot validate a painted native popover in the user desktop from the available shell; no sample launched."
+  },
+  "p07": {
+    "prerequisites": [
+      "process enumeration and aggregate process resource sampling",
+      "source of SQLite write-transaction duration samples"
+    ],
+    "evidence": {
+      "pgrep": "sysmond service not found; process list unavailable",
+      "ps": "operation not permitted",
+      "existing_scan_profile": "stage calls, total and max only; no transaction-duration p95/max",
+      "scope": "Process enumeration attempts were made from the restricted agent shell; errors do not characterize user desktop system services."
+    },
+    "consequence": "aggregate engine/collector/children RSS and transaction p95/max cannot be established"
+  },
+  "classification": "host capability blocker; not a product performance failure",
+  "scope": "exact remaining update-latency criterion only",
+  "mutation": "no product code, repository tests, configuration, app process, source corpus or benchmark modified/launched",
+  "reuse": "all 23 repair ContentState subject digests remain valid from immediately preceding REREVIEW; no relevant product inputs changed",
+  "next_prerequisite": "Run the native harness through an agent execution session attached to the logged-in macOS GUI desktop, or provide a supported native UI/process measurement channel; also supply an existing approved SQLite write-transaction timing source for P07. A different execution environment may remove the display blocker.",
+  "provider_evidence_id": "scan-incremental-update-latency-blocked-20261020",
+  "captured_at_utc": "2026-10-20T13:57:18.917531+00:00",
+  "interpretation": "The Swift/AppKit probe ran inside this agent shell process. Its zero NSScreen count only shows this process had no attached AppKit screen context; it does not inspect or establish the user Mac login session, physical display connection, or desktop state. Process enumeration errors likewise describe the sandboxed tool process and do not prove the user OS has no process monitor."
+}

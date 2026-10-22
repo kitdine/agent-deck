@@ -1,0 +1,92 @@
+package scanruntime
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+"fmt"
+	"github.com/kitdine/agent-deck/internal/desktop"
+	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usage"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestTask3PrivateEngine(t *testing.T) {
+	root := os.Getenv("TASK3_PROFILE_ROOT")
+	if root == "" {
+		t.Skip("private diagnostic")
+	}
+	state := filepath.Join(root, os.Getenv("TASK3_PROFILE_STATE"))
+	home := filepath.Join(root, "home")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	now := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	r := newRound(home)
+	r.cacheNow = func() time.Time { return now }
+	preflight,err:=store.OpenReadOnly(ctx,state);if err!=nil{t.Fatal("private preflight open failed")}
+ inventory,err:=usage.New(preflight,home).Inventory(ctx);preflight.Close()
+ if err!=nil||len(inventory.Added)!=0||len(inventory.Mutated)!=0||len(inventory.Removed)!=0||len(inventory.Appended)!=1||inventory.Appended[0]!=filepath.Join(home,".codex/sessions/task3-synthetic.jsonl"){t.Fatal("E2 admission rejected: starting state is not one exact append")}
+ started := time.Now()
+	r.execute(ctx, state, false)
+	wall := float64(time.Since(started).Nanoseconds()) / 1e6
+	result, err := r.wait(ctx, ScopeBoth)
+	if err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+		privateError,_:=json.Marshal(map[string]any{"wait_error":fmt.Sprint(err),"usage_code":result.Usage.ErrorCode,"usage_error":result.Usage.Error,"session_code":result.Session.ErrorCode,"session_error":result.Session.Error,"stages":result.Stages})
+ os.WriteFile(filepath.Join(state,"private-engine-error.json"),privateError,0600)
+ t.Fatalf("private engine round failed: usage_code=%s session_code=%s",result.Usage.ErrorCode,result.Session.ErrorCode)
+	}
+	db, err := store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal("private result open failed")
+	}
+	s := usage.New(db, home)
+	oracle, err := s.Presentation(ctx, now, time.Local)
+	if err != nil {
+		t.Fatal("private oracle failed")
+	}
+	db.Close()
+	// Hash the complete rendered presentation together with its JSON-hidden summary.
+	bytes, _ := json.Marshal(struct {
+		Presentation usage.PresentationReport
+		Summary      usage.Summary
+	}{oracle, oracle.Summary})
+	sum := sha256.Sum256(bytes)
+	snapshot, err := (desktop.Service{StateRoot: state, Home: home, Now: func() time.Time { return now }}).ReadServingSnapshot(ctx)
+	if err != nil {
+		t.Fatal("private publication missing")
+	}
+	sessions, err := store.OpenSessionsReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal("private sessions open failed")
+	}
+	rows, err := sessions.DB.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
+	if err != nil {
+		t.Fatal("private FTS oracle failed")
+	}
+	docsHash := sha256.New()
+	docCount := 0
+	for rows.Next() {
+		var a, b, c, d, e string
+		if err := rows.Scan(&a, &b, &c, &d, &e); err != nil {
+			t.Fatal("private row read failed")
+		}
+		encoded, _ := json.Marshal([]string{a, b, c, d, e})
+		docsHash.Write(encoded)
+		docCount++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal("private FTS cursor failed")
+	}
+	rows.Close()
+	sessions.Close()
+	workBytes, _ := json.Marshal(snapshot.Payload.Data.Sessions.WorkSignals)
+	workSum := sha256.Sum256(workBytes)
+	periodBytes, _ := json.Marshal(snapshot.Payload.Data.Sessions.Periods)
+	periodSum := sha256.Sum256(periodBytes)
+	report, _ := json.Marshal(map[string]any{"wall_ms": wall, "work_signals_sha256": hex.EncodeToString(workSum[:]), "session_periods_sha256": hex.EncodeToString(periodSum[:]), "fts_sha256": hex.EncodeToString(docsHash.Sum(nil)), "visible_documents": docCount, "stages": result.Stages, "usage_changes": result.Usage.Changes, "session": result.Session.Scan, "oracle_sha256": hex.EncodeToString(sum[:]), "publication_today_tokens": snapshot.Payload.Data.Usage.Presentation.Scopes[0].Periods.Items[0].Totals.Tokens})
+	t.Log("TASK3_ENGINE " + string(report))
+}

@@ -1,0 +1,47 @@
+python3 -B - <<'PY'
+from pathlib import Path
+import json, sys, time
+sys.path.insert(0, str(Path('scripts').resolve()))
+import scan_performance_p07 as p07
+
+class Lifecycle:
+    def __init__(self):
+        self.exits, self.pending = {}, []
+    def watch(self, value, info):
+        return True
+    def drain(self):
+        result, self.pending = self.pending, []
+        return result
+
+class Backend:
+    def __init__(self):
+        self.values = {
+            1: p07.Process(1, 0, 'engine', 100, 'engine'),
+            9: p07.Process(9, 0, 'collector', 50, 'collector'),
+        }
+        self.lifecycle, self.spawned = Lifecycle(), False
+    def info(self, pid):
+        return self.values.get(pid)
+    def children(self, pid):
+        return [p.pid for p in self.values.values() if p.ppid == pid]
+    def resident(self, value):
+        if value.pid == 1 and not self.spawned:
+            self.spawned = True
+            self.values[2] = p07.Process(2, 1, 'late-child', 300000000, 'synthetic-child')
+            self.lifecycle.pending.append({
+                'event': 'fork_observed', 'pid': 1, 'birth': 'engine',
+                'observed_ns': time.monotonic_ns(), 'child_identity_available': False,
+            })
+        return value
+
+backend = Backend()
+frame = p07.ProcessSet(backend, {'engine': 1, 'collector': 9}).sample()
+print(json.dumps({
+    'expected_members': sorted(backend.values),
+    'reported_members': [p['pid'] for p in frame['processes']],
+    'expected_rss_bytes': sum(p.rss_bytes for p in backend.values.values()),
+    'reported_rss_bytes': frame['rss_bytes'],
+    'reported_complete': frame['complete'], 'issues': frame['issues'],
+    'lifecycle': frame['lifecycle'],
+}))
+PY

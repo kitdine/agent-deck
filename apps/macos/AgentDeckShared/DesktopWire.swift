@@ -1170,6 +1170,13 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
+	public static let maximumSupportedCoreSchema = 32
+
+	// Schema 32 adds derived caches only. All other identity changes still
+	// invalidate a retained publication before date and fullness checks.
+	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
+		stored == current || (stored == 31 && current == 32)
+	}
 	public let stateIdentity: String
 	public let coreEpoch: Int64
 	public let sessionEpoch: Int64
@@ -1231,7 +1238,7 @@ public struct DesktopServingSnapshotV2: Codable, Equatable, Sendable {
 		guard header.formatVersion == 1, header.wireVersion == 2, header.projectionVersion == 1,
 			!header.publicationID.isEmpty, !generation.stateIdentity.isEmpty,
 			generation.coreEpoch > 0, generation.sessionEpoch > 0,
-			generation.coreSchema <= 31, generation.sessionSchema == 1,
+			generation.coreSchema <= DesktopServingGenerationV2.maximumSupportedCoreSchema, generation.sessionSchema == 1,
 			generation.usageRevision >= 0, generation.sessionRevision >= 0,
 			!header.activeGeneration.isEmpty, header.pricingRevision >= 0, ["current", "stale"].contains(header.freshness),
 			header.generatedAt == payload.data.generatedAt,

@@ -1,0 +1,10 @@
+{
+  "recorded_at": "2026-10-21T13:35:21.711Z",
+  "task_id": "ad-scan-performance-incremental-projections",
+  "status": "in_review",
+  "assignee": null,
+  "comment_id": "d37c86e4-2cfb-561f-bbe4-cfa450ca70d9",
+  "exact_comment_readback": true,
+  "comment_sha256": "733843d1b9c23192f0f414396e7a61ab832f1d7b2ca576f336db29f5f33fb18e",
+  "scope": "Task3 verification handoff only; Review Round6 PASS retained; no task boundary advanced"
+}

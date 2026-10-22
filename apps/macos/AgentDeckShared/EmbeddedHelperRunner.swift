@@ -1823,10 +1823,11 @@ public enum DesktopFullRefreshTrigger: Int, Equatable, Sendable {
 	case startup
 	case periodic
 	case wake
+	case sourceChange
 	case manual
 	case providerSwitch
 
-	var requestsFollowUp: Bool { self == .manual || self == .providerSwitch }
+	var requestsFollowUp: Bool { self == .sourceChange || self == .manual || self == .providerSwitch }
 	var quotaIsManual: Bool { self == .manual || self == .providerSwitch }
 
 	static func merged(_ current: Self?, _ incoming: Self) -> Self? {
@@ -1952,11 +1953,12 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+		let installation = DesktopPerformanceInterval()
 		if let previous = servingHeader {
 			let old = previous.generation
 			let new = prepared.header.generation
 			if old.stateIdentity != new.stateIdentity || old.coreEpoch != new.coreEpoch
-				|| old.sessionEpoch != new.sessionEpoch || old.coreSchema != new.coreSchema
+				|| old.sessionEpoch != new.sessionEpoch || !DesktopServingGenerationV2.compatibleCoreSchema(stored: old.coreSchema, current: new.coreSchema)
 				|| old.sessionSchema != new.sessionSchema {
 				// Identity invalidation precedes date/fullness checks: even an
 				// unusable replacement must not leave the old identity visible.
@@ -1981,6 +1983,7 @@ public final class DesktopRefreshCoordinator {
 		} else {
 			state = .ready(prepared.payload)
 		}
+		DesktopLogger.recordPerformance(installation.sample(.servingPublication))
 	}
 
 	/// Runs only C9's quota probe and C10's alert delivery, without the full
@@ -2028,6 +2031,7 @@ public final class DesktopRefreshCoordinator {
 		trigger: DesktopFullRefreshTrigger,
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit
 	) async {
+		if trigger == .sourceChange { DesktopLogger.recordPerformance(DesktopPerformanceInterval().sample(.sourceQueued)) }
 		if let activeRefresh {
 			pendingFullTrigger = DesktopFullRefreshTrigger.merged(pendingFullTrigger, trigger)
 			await activeRefresh.value
@@ -2061,6 +2065,7 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func performFullRefresh(trigger: DesktopFullRefreshTrigger, recentLimit: Int) async {
+		if trigger == .sourceChange { DesktopLogger.recordPerformance(DesktopPerformanceInterval().sample(.sourceProcessing)) }
 		generation &+= 1
 		let currentGeneration = generation
 		activeFullGeneration = currentGeneration

@@ -317,7 +317,7 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 	header := snapshot.Header
 	old := header.Generation
 	if header.FormatVersion != servingFormatVersion || header.WireVersion != ServingWireVersion || header.ProjectionVersion != servingProjectionVersion || header.PublicationID == "" ||
-		old.StateIdentity != identity.StateIdentity || old.CoreEpoch != identity.CoreEpoch || old.SessionEpoch != identity.SessionEpoch || old.CoreSchema != identity.CoreSchema || old.SessionSchema != identity.SessionSchema ||
+		old.StateIdentity != identity.StateIdentity || old.CoreEpoch != identity.CoreEpoch || old.SessionEpoch != identity.SessionEpoch || !compatibleServingCoreSchema(old.CoreSchema,identity.CoreSchema) || old.SessionSchema != identity.SessionSchema ||
 		snapshot.Payload.SchemaVersion != 1 || snapshot.Payload.Command != "desktop.snapshot" || snapshot.Payload.Data.WireVersion != WireVersion || snapshot.Payload.Data.GeneratedAt != header.GeneratedAt {
 		return ServingSnapshot{}, ErrServingInvalid
 	}
@@ -336,7 +336,7 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 	if final.StateIdentity != identity.StateIdentity || final.CoreEpoch != identity.CoreEpoch || final.SessionEpoch != identity.SessionEpoch || final.CoreSchema != identity.CoreSchema || final.SessionSchema != identity.SessionSchema {
 		return ServingSnapshot{}, ErrServingInvalid
 	}
-	if old.UsageRevision != final.UsageRevision || old.SessionRevision != final.SessionRevision {
+	if old.UsageRevision != final.UsageRevision || old.SessionRevision != final.SessionRevision || old.CoreSchema != final.CoreSchema {
 		snapshot.Header.Freshness = "stale"
 	}
 	// Revision differences retain readable, honestly dated data. Native consumers

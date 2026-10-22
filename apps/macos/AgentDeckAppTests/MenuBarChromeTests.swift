@@ -6,6 +6,22 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	func testNativeBaselineRequiresCompleteUsablePublicationBeforeWrite() {
+		func readiness(snapshot: Bool = true, partial: Bool = false, usage: Bool = true,
+			sessions: Bool = true, hero: Bool = true, running: Bool = false, publication: Bool = true) -> MenuBarItemController.BaselineReadiness {
+			MenuBarItemController.BaselineReadiness(snapshotPresent: snapshot, partial: partial,
+				usageAvailable: usage, sessionsAvailable: sessions, heroPresent: hero,
+				rebuilding: running, publicationPresent: publication)
+		}
+		XCTAssertTrue(readiness().usable)
+		XCTAssertEqual(readiness().reason, "complete_usable_baseline")
+		for value in [readiness(snapshot: false), readiness(partial: true), readiness(usage: false),
+			readiness(sessions: false), readiness(hero: false), readiness(running: true), readiness(publication: false)] {
+			XCTAssertFalse(value.usable, value.reason)
+		}
+		XCTAssertEqual(readiness(partial: true).reason, "intermediate_partial_snapshot")
+	}
+
 	private static var retainedFocusWindows = [NSWindow]()
 	func testStandaloneReloadIncludesEveryWidgetKind() {
 		XCTAssertEqual(AgentDeckMain.widgetKinds, [

@@ -168,12 +168,12 @@ Review标记只表示审查通过：Task2仍in_review，完成门NOT_VERIFIED，
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| requirements.md | [x] | [x] |
+| requirements.md | [x] | [ ] |
 | ux/menubar.md | [x] | [x] |
 | ux/cli.md | [x] | [x] |
 | architecture.md | [x] | [x] |
-| performance-evaluation.md | [x] | [x] |
-| tasks.md | [x] | [x] |
+| performance-evaluation.md | [x] | [ ] |
+| tasks.md | [x] | [ ] |
 | ux/settings.md | [x] | [x] |
 | ux/widget.md | n/a | n/a |
 
@@ -229,7 +229,7 @@ architecture.md、performance-evaluation.md、tasks.md；首次实际评审才�
 | --- | --- | --- |
 | 1. `baseline-and-open-path` | [x] | [x] |
 | 2. `serving-snapshot-and-bootstrap` | [x] | [x] |
-| 3. `incremental-projections` | [ ] | [ ] |
+| 3. `incremental-projections` | [x] | [x] |
 | 4. `bounded-source-pipeline` | [ ] | [ ] |
 | 5. `event-updates-and-cli` | [ ] | [ ] |
 | 6. `otel-capture-and-reconciliation` | [ ] | [ ] |
@@ -719,6 +719,131 @@ R8 修复候选：SP-SB-R8-F1 统一 today 日期可用性，覆盖客户端金�
 
 ## 3. incremental-projections
 
+### Task3 验收通过（按用户批准修订）— 2026-10-22
+
+用户明确批准取消代表性事务分布强制验证，并将原race失败作为本次验收例外。
+50/250ms和256MiB工程预算保留且未验证；原391 PASS/1 FAIL、根因unresolved、
+历史max失败及无效RSS都保留，不宣称量化达标或race已修复。
+
+正常产品/测试/config未改，复用独立Review PASS、既有回归和非计时自动更新/full-oracle
+功能子集。当前验收状态 `scan-ip-bounded-product-22d321fe2ab870af` 的精确门为
+VERIFIED：四项必需criterion全部覆盖、无missing/unresolved；此次是按修订条件接受。
+Task3进入awaiting_commit，尚未closed；不扩展Task2-only无Git交付例外。
+没有重新捕获、继续实验或Git交付，不启动Tasks4–7、不跨Topic完成边界。
+见[批准审计](evidence/task3-p07-acceptance-revision-20261022.json)、
+[最终结果](evidence/task3-p07-acceptance-result-20261022.json)、
+[精确门禁](evidence/task3-p07-acceptance-gate-20261022.json)及
+[Round10接受附记](reviews/incremental-projections.md#用户批准的-p07-接受条件修订--2026-10-22)。
+
+### Round10 原准则下的有界评审（历史）— 2026-10-22
+
+Round10有界证据评审PASS；沿用Round9代码PASS，Task3仍开放/in_review。
+产品234、仪表23、编排4项内容均精确匹配，当前产品仍为
+`scan-ip-bounded-product-92c37854995da877`，不重复已通过验证。
+12笔合成事务阶段方程复算通过，但每域6笔仍不是代表性事务分布；完整事务预算不变。
+
+唯一私有race诊断4个fixture全部PASS；24次generation read和12次publication均无错误，
+seed均非nil且tokens=28，未捕获原失败。一笔外部generation wall207.379439ms仍err=nil，
+不能仅凭200ms deadline推断超时根因。原391 PASS/1 FAIL保持，race归因仍unresolved。
+不再追加实验，不改变timeout/断言，不重新捕获真实输入，不恢复RSS验证。
+
+精确门禁仍NOT_VERIFIED：只缺update-latency。剩余前置为现成、获准的不可变代表性
+输入和匹配数据库起点，以及原race失败现场的publication错误/seed分支证据。
+本轮PASS不是P07接受；不进入交付或Tasks4–7。见
+[Round10](reviews/incremental-projections.md#round-10--2026-10-22)、
+[本轮事实](evidence/incremental-p07-review-r10-20261022.json)及
+[精确门禁](evidence/incremental-p07-review-r10-gate-20261022.json)。
+
+### Round9 有界开发与独立评审（历史）— 2026-10-22
+
+本轮开发完成，已按用户要求由同配置、冷上下文 subagent 独立评审，事务代码及
+本次 RSS 验证条件修订 PASS；Task3 仍开放/in_review，不进入交付或 Tasks4–7。
+当前产品 `scan-ip-bounded-product-92c37854995da877`；仪表和编排未变。
+完整事务仍要求 p95≤50ms/max≤250ms，原子提交、durability 与预算未放宽。
+AcceptInventory 在同一事务内每128行批量 INSERT，保留全部来源、旧 head 回滚和行级 revision。
+
+用户确认 DTrace `proc:::create` 被 SIP 拒绝后，明确要求无法验证的条目写明并取消验证，
+不要继续花时间。已取消本任务 aggregate RSS 强制量化验证；256MiB工程预算保留且未验证，
+不继续探测通道、不将旧无效trace改为有效。其他任务独立资源门不受影响。
+
+12笔合成完整事务的时钟方程全部成立；4717源 core35.875382ms/session37.961969ms，
+仅为修复校准，不能替代代表性分布。full Go1358 PASS/7skip、vet、双架构构建通过；
+独立相关回归9项通过。四包race391 PASS/1 FAIL：seeded serving子用例报seed not published；
+旧版和候选的同一隔离race子用例各1次通过，根因仍未确认，原组合失败不改写为通过。
+
+新候选完成门 NOT_VERIFIED；旧候选384.921506/285.331956ms失败及历史门禁保持原义。
+剩余为代表性完整事务缺证与上述race失败诊断；本轮未重新捕获真实输入。
+完整方法、风险及范围见[Round9](reviews/incremental-projections.md#round-9--2026-10-22)、
+[开发结果](evidence/incremental-p07-repair-20261022.json)、
+[RSS验证项修订](evidence/incremental-p07-rss-validation-withdrawal-20261022.json)和
+[精确门禁](evidence/incremental-p07-repair-gate-20261022.json)。
+
+### Round8 及原候选的 P07 验证（历史）— 2026-10-22
+
+Round8 复评 PASS，Task3 Review 已勾选；任务仍开放/in_review。
+当前产品 `scan-ip-bounded-product-e14fca302e5e8572`、仪表
+`scan-ip-bounded-instrumentation-a1f70d08e822de14` 和编排
+`scan-ip-bounded-orchestration-067e1bcc6aee7761` 的内容身份均已核对。
+精确产品完成门仍为 FAILED，不进入 awaiting_commit 或 Tasks4–7；本轮未交付。
+完整处置、验证复用、验收前置和条件化交付建议见
+[Round8](reviews/incremental-projections.md#round-8--2026-10-22)。
+
+2026-10-22 P07继续验证：保留记录的逐笔复算仍为FAILED；新增代表性采样因既有
+获准私有输入不可用而BLOCKED。原私有输入和运行目录经沙箱外metadata-only
+`lstat`均返回ENOENT，原因未确认；未重新读取真实HOME、捕获输入或延长保留期。
+Round8 PASS与Task3开放/in_review保持不变；验证范围、复算结果及前置见
+[P07验证事实](evidence/incremental-p07-verification-20261022.json)。
+
+### 2026-10-21 修复与有界补充交接（历史）
+
+R7-F1 修复候选：仅改 RSS fork 成员闭合、回归与说明四个文件，
+产品 `scan-ip-bounded-product-e14fca302e5e8572` 及编排内容完全未变。
+新仪表 `scan-ip-bounded-instrumentation-a1f70d08e822de14` 将 kernel fork 与
+Go-ledger 晚登记共同纳入最多三次同帧子树补采，并核验 birth、保持去重。
+Darwin NOTE_FORK 不提供子 PID 且可合并事件；未知后代不能由一次稳定枚举或已知
+子进程退出排除，因此保留明确缺口及常量大小的跨帧未闭合标记，帧和整 trace 无效。
+原评审复现现已计入漏掉的存活子进程，且 complete=false；33 项 Python/受控原生
+生命周期测试全部通过（新增9项）。没有代表性性能采样、真实 HOME/cohort 读取、GUI
+或点击实验；原 P07 max FAIL、旧无效 trace、Round6 PASS 及用户撤销决定保留。
+SP-IP-R7-F1 为 repaired in candidate，待独立复评；Review 不勾选，精确产品门仍 FAILED。
+见 [修复证据](evidence/incremental-update-repair-r7-result-20261021.json)、
+[精确门禁](evidence/incremental-update-repair-r7-gate-20261021.json) 和
+[复评交接](evidence/incremental-update-repair-r7-handoff-20261021.md)。
+
+2026-10-21 用户收窄要求：无法精确测量的点击耗时直接撤销，不再继续点击实验。
+P01、P02 点击子区间和 P07/P09 的点击分位依赖取消；P03 不恢复。
+保留前台功能正确性、P07 RSS/完整事务和 full oracle/publication。
+用户随后明确撤销 P10 的 2 秒更新分位，只保留自动更新、publication 和 full oracle
+正确性；不再进行点击或原生绘制计时采样。
+本轮相关执行为独立 App 1 次、hosted XCTest 3 次，历史代表性记录另有原生准备
+失败 2 次。锚点 XCTest 通过不是实际点击性能 PASS。点击新增采集代码已撤回，
+历史日志/失败和 Round 6 PASS 保留。新增 SQL、RSS 仪表及要求修订尚待独立评审，
+Review 取消勾选；不进入 Tasks 4–7，不交付。
+
+本轮有界补充已完成并待独立评审：孤儿清理在原事务内先经覆盖索引定位路径，
+无孤儿不作无关 DELETE；inventory/unchanged-session coverage 在原事务内复用
+prepared statements。事务仪表保留完整 Begin/Exec 至 Commit/Rollback 返回，
+补调用链与 Begin/body/terminal 归因。RSS 固定 50ms、PID/birth 去重，补真实子进程
+出生/退出、迟登记、重挂父进程及完整结束窗口，使用 256 条有界异步日志队列；
+缺口、丢记录或溢出仍使运行无效。没有修改 durability、WAL 初始化或原子提交边界。
+
+新增回归和差分检查通过；未变范围显式复用已有 full Go/race/native 证据，
+不重复测试或评审。一次无点击同 cohort 试样确认真实 fsync 追加后的自动更新、
+publication/App Group 前进及完整 full oracle 相等，双方 partial=false；
+非可加统计、All 去重包含在完整输出比较中。此样本不计正式分布。
+P07 的 core 384.921506ms / session 285.331956ms 事务反例仍超过 250ms；
+代表性 RSS 的 2 个缺口保留为无效 trace，最终 RSS 修订仅经回归及合成校准。
+不宣称 Task 3 性能验收通过；后续只评审本轮新增产品、仪表、编排及要求修订。
+详情与精确内容身份见 [有界补充证据](evidence/incremental-update-bounded-result-20261021.json)
+及 [内容清单](evidence/incremental-update-bounded-content-states-20261021.json)。
+Neo4j 已登记产品、仪表、编排及实际观察的独立 ContentState，19 个节点和 28 条关系
+均经精确读回；三个未变技术准则显式 roll-up，旧证据端点不改绑，候选影响已解决。
+当前产品 `scan-ip-bounded-product-e14fca302e5e8572` 的精确门仍为 **FAILED**，
+原因是保留的 P07 事务 max 反例；不是 P10 缺计时。见
+[门禁回执](evidence/incremental-update-bounded-gate-20261021.json) 和
+[仅新增改动的交接](evidence/incremental-update-bounded-handoff-20261021.md)。
+本次三个文档只复核新要求及本轮说明，既有任务分解、依赖与旧审查范围按证据复用。
+
 前置Task1热点证据和Task2展示保护。补上原位usage域12秒的SQL/归属/reconciliation定位，
 与现有derive/session成本一起评估；仅改显示范围不会消除新日志入库的等待。
 文件：store dirty/revision、usage presentation/signals、session受影响集合、desktop projector。
@@ -729,6 +854,150 @@ late/cross-day/remove/rewrite、非可加统计、All不重复、旧publication�
 如果profiling推翻热点判断，先改设计范围，不全盘迁移数据库。
 验证：L3相关Go/store/usage/session/desktop、race/vet/macOS双build及nativewire/筛选。
 门：`partition-equivalence`、`nonadditive-statistics`、`generation-switch`、`update-latency`。
+
+2026-10-20 开发交接（实现与比例验证完成，非 Task 验收完成）：已登记 Task 3 CEv1 WorkUnit/四项 required 标准及 Beads 任务；
+按用户确认采用本轮只读冻结副本作为新 E2 基线，历史 12.045s 不重标为当前结果。
+实现分区贡献缓存、事务内 scoped marker 与发布 guard、受影响会话视图，以及仅限
+31→32 的旧 publication 兼容。技术检查与实验边界见
+[实施证据](evidence/incremental-projections-implementation-20261020.json)。
+E2 20 对重样本已完成：40 次逻辑 oracle 一致；引擎周期中位 9258.589109→7931.969271ms，
+p95 10573.777853→8331.374793ms，候选 peak RSS 171421696 bytes。
+原生 P10/完整资源门仍未验证，不将单测或引擎 JSON 终点当成其替代。
+
+2026-10-20 独立评审：FAIL，Task 3 返回同一任务修复，Review 保持未勾选。
+当前范围、结论及证据见[Task 3 Round 1](reviews/incremental-projections.md#round-1--2026-10-20)。
+本轮精确内容门为 FAILED；原生 P10 与 P07 完整资源/事务证据仍未覆盖。
+产品代码、仓库测试和配置未修改；未提交、推送、安装或迁移真实数据库。
+
+2026-10-20 SP-IP-R1-F1 已在修复候选处理，待独立复评。提前纳入 moved-from identity
+对应路径，新增 priority-batch/full-inventory owner replacement 对照回归。原 Round 1
+FAIL 保留；修复细节见评审记录附记，Review 不勾选，原生 P10/P07 缺证保持开放。
+修复候选精确门 NOT_VERIFIED（3/4 covered），全量 Go、相关 race/vet 和双架构构建通过。
+
+2026-10-20 独立复评 PASS，Task 3 Review 已勾选；见[Round 2](reviews/incremental-projections.md#round-2--2026-10-20)。
+精确完成门仍为 NOT_VERIFIED，Task 保持 in_review；仅余 update-latency 的 P10 原生新值绘制、
+P07 聚合资源及写事务 p95/max 验收证据。不进入交付或下一 Task，不重复本轮复评。
+
+2026-10-20 P10/P07 前置能力核验：BLOCKED。agent shell 内的 Swift 进程报告 AppKit screen=0，进程枚举受限，且现有 profile 不提供写事务时长；这不表明用户 Mac 没有显示器，也不探测用户登录桌面。故未运行 native/性能样本。结论是本次执行通道的能力阻塞，不是产品性能失败。准确范围、命令结果及恢复条件见[update-latency 前置核验](evidence/incremental-update-latency-blocked-20261020.json)。Task 保持 in_review；固定 Neo4j 模板返回 BLOCKED（3/4 覆盖），门禁摘要见[精确门结果](evidence/incremental-update-latency-blocked-gate-20261020.json)。需在连接登录 GUI 桌面的原生执行通道继续，并提供 P07 写事务时长来源。
+
+2026-10-20 GUI 重试：已确认 Aqua 会话和 SystemUIServer；agent shell 的 screen=0 不能说明用户桌面无显示。隔离 App 经 LaunchServices（两种 tmp 路径）均返回 kLSNoExecutableErr；当前源码的串行/并行 Xcode build 均因 Swift 宏插件错误退出 65。无 P10 绘制帧，也无 P07 聚合进程或事务分位样本；不判为产品失败。详见[本轮重试记录](evidence/incremental-update-latency-retry-blocked-20261020.json)。
+
+2026-10-20 沙箱对照更正：同一 Swift/进程检查在沙箱外读到 1 个显示屏并成功查询进程，Observation 宏也由失败变为成功。显示/进程访问和宏插件阻塞已归因于 agent 执行沙箱；不要求更换显示器或重装 Xcode。后续原生构建、LaunchServices 和资源采样按窄范围沙箱外命令执行；LaunchServices 本身及 P10/P07 验收尚待实测。详见[沙箱对照诊断](evidence/incremental-update-latency-sandbox-diagnosis-20261020.json)。
+
+2026-10-20 Task 3 P10/P07 原生验收结果（目标仍为 `scan-incremental-repair-r1-97321292d5b8d565`，摘要 `97321292d5b8d56591766b919c935a09a6306aa565d512c88c28d0d3f9f454f2`）：隔离 Debug App/helper 来自当前候选，LaunchServices 返回 0、stderr 为空，旧 `-10827` 未复现；原生 popover 可见并绘制初始值。先导合成输入 1 次，完整 JSONL 追加 289 bytes、fsync/readback 成功；2.000 s 后 popover 与 serving snapshot 仍为 1.1M tokens / 1 event，预期 1.7M / 2 events 未绘制。P10：attempted=1、failed=1、有效延迟样本=0、p95 不可计算；通知、排队、处理、发布、新值绘制各阶段时间未观测/未计量；未手动 refresh、未批量采样、未声称代表性规模通过。构建、helper、起始 DB 与 synthetic JSONL 身份及限制见[本轮验收事实](evidence/incremental-update-latency-acceptance-20261020.json)。
+
+P07：attempted=0、valid=0；无聚合 engine/collector/子进程 RSS、完整 core/session Begin→Commit/Rollback 逐笔时长、写事务 p95/max、P01 前台非回归或切换不等待样本。旧 Task 3 冻结原件已删除；保留的只是脱敏汇总和身份，旧 E1 A/B 只读授权不延伸为本 Task 3 的重新采集授权。现有 `source_commit` 仅包围 `tx.Commit()`，不能代替完整事务数据。没有读取真实来源、改动真实 DB 或新增仪表。P07 样本数和阻塞理由见[本轮验收事实](evidence/incremental-update-latency-acceptance-20261020.json)。
+
+上述运行已解除原先的 agent 执行沙箱原生能力阻塞；P10 现在是未达到 2 s 可见新值端点的失败试样，P07 则因获准冻结输入不可用且完整事务计量缺失而未运行。Neo4j 对该精确 ContentState 的当前门禁为 FAILED：4 项必需准则中 3 PASS、update-latency FAILED；更新延迟准则下的失败、阻塞和历史 not_verified 记录均保留。精确准则结果见[最终门禁回执](evidence/incremental-update-latency-gate-final-20261020.json)。Round 2 PASS 不变；Task 3 继续保持 in_review，不推进边界，不进入 Tasks 4–7。
+
+有界后续项：P10 需要把 JSONL 文件变化路由到现有有界 refresh coordinator，并测到新 publication 及 native draw，同时保留有限漏事件校对；这属于产品行为修复，本轮未实施。P07 后续运行需要仅测量用的 core/session 完整事务边界仪表、按唯一 PID 汇总 engine/collector 子进程 RSS 的采样器，以及新批准的代表性起始 corpus；仪表需独立内容身份并先验证定义和开销。
+
+2026-10-20 P07 测量仪表开发交接：新增独立 Go overlay 生成器、完整显式事务逐笔计时与固定 50 ms 的唯一 PID 聚合 RSS 工具，产品文件与事务语义保持原内容。合成 SQLite、受控进程树及 overlay 夹具验证和开销校准见[仪表实施证据](evidence/p07-instrumentation-20261020.json)；接口、覆盖规则和限制见[工具说明](../../../scripts/p07measure/README.md)。该增量等待独立评审，Task 3 Review 暂不勾选；旧产品 Round 2 PASS 保留。产品精确 ContentState 仍为 `scan-incremental-repair-r1-97321292d5b8d565`，P10 失败及 P07 代表性输入缺口继续保留，Task 3 保持开放并交回 in_review。没有 P07 性能采样或真实来源/数据库访问，不进入 Tasks 4–7 或交付。
+
+2026-10-21 P07 仪表独立评审 Round 3：FAIL；Task 3 Review 保持未勾选并交回同一任务修复。Round 2 产品 Review PASS 保留，P07 性能验收样本仍为 0；产品精确门仍为 FAILED（3/4）。当前状态和评审范围见 [Round 3](reviews/incremental-projections.md#round-3--2026-10-21)。本轮未运行 P07 性能采样、访问真实数据、修改产品源码/测试/配置或进入 Tasks 4–7。
+
+2026-10-21 P07 隐式写测量修复候选就绪，等待独立复评；仪表身份为 `scan-p07-r3-repair-state-62eb7acb7f74a58d`。修复范围、合成验证及开销见[修复证据](evidence/p07-r3-repair-20261021.json)和评审记录修复附记。Task 3 交回 in_review、Review 保持未勾选；23 项产品输入未变，历史产品 Round 2 PASS 和 Round 3 仪表 FAIL 保留。P07 性能采样仍为 0，产品精确门仍受 P10 失败约束，不进入后续 Task 或交付。
+
+2026-10-21 P07 仪表独立复评 Round 4：FAIL。SP-IP-R3-F1 CLOSED；新增 SP-IP-R4-F1，`WITH … SELECT` 被测量器记为 `unknown_statement`，阻断完整写事务汇总，详见[Round 4](reviews/incremental-projections.md#round-4--2026-10-21)。Task 3 保持开放，Review 未勾选并退回修复；Round 2 产品 Review PASS 与 Round 3 仪表 FAIL 保留。P10 历史失败不变，P07 有效性能样本仍为 0，精确产品门仍为 FAILED（3/4）。本轮未执行 P07 性能采样、真实数据访问、产品修改、Tasks 4–7 或 Git 交付。
+
+2026-10-21 P07 只读 CTE 分类修复候选就绪，用户要求的 Sol ultra 冷上下文独立预审已通过，等待正式复评。仪表身份为 `scan-p07-r4-repair-state-f1a100f58f67f932`；范围、合成验证及预审记录见[修复证据](evidence/p07-r4-repair-20261021.json)和评审修复附记。Task 3 交回 in_review，Review 保持未勾选，历史正式结论保留；23 项产品输入未变，P07 性能采样仍为 0，产品精确门仍为 FAILED（P10），不进入后续 Task 或交付。
+
+2026-10-21 P07 仪表正式复评 Round 5：PASS，SP-IP-R4-F1 CLOSED；Review 已勾选，Task 3 仍因 `update-latency` FAILED 保持开放/in_review。范围和剩余前置见[Round 5](reviews/incremental-projections.md#round-5--2026-10-21)，当前仪表身份、7 项合成定向回归及 collector 重算见[复评证据](evidence/p07-r4-rereview-r5-20261021.json)。23 项产品主体未变，精确产品门复用既有回执仍为 FAILED（3/4）；P10 历史失败保留，P07 attempted=0、valid=0。下一边界仅为 P10/P07 验收前置及证据闭环，不重复已完成复评，不进入 Tasks 4–7 或交付。
+
+### 2026-10-21 合成实际 CLI 链路与 update-latency 测量前置
+
+产品 ContentState 仍为 `scan-incremental-repair-r1-97321292d5b8d565`；P07 仪表仍为
+`scan-p07-r4-repair-state-f1a100f58f67f932`。Round 5 PASS 仅覆盖 SP-IP-R4-F1；
+23 项产品输入未变，未重开既有产品 Round 2 PASS。
+
+使用当前源码构建的私有 Debug App 与嵌入 helper；helper SHA-256
+`71b019b6d83447e84a41506abec59a59992b4e09cbb940de6f8580d69f914020` 与 standalone
+overlay helper 相同。隔离 HOME、App Group 和 state；只写入合成 Codex JSONL，不启动已安装 App。
+真实 helper 的 `scan` 完成来源发现、usage/session 摄取、投影与 generation publication；
+随后真实 `desktop.snapshot` CLI 读取 current publication。
+
+初始 329-byte fixture 缺少 Codex `session_meta`/`turn_context`，被记录为
+`unsupported_usage=1`；此为无效 synthetic 输入，不归因于产品缺陷。保留该观察后，同 inode
+fsync truncate/rewrite 为 554-byte 合法输入，扫描得到 usage imported=1、replaced=1、
+`unsupported_usage=0`、session document=1。再 fsync append 443 bytes，跨越 2026-10-20/21 UTC，
+扫描再导入 1 个 usage event；再把同一文件 rename 到新路径后，增量扫描不重复导入或重建文档。
+最终主状态与同一 moved input 的空库 full oracle 均由真实 CLI 读取；移除 generated/refresh
+时间字段后 snapshot 完全相同，SHA-256
+`d35bd9c0e4a761b433110a9ac5aafd8a6e82da07799f6c06e79061fe2518c72`，partial=false。
+今日投影为 19 input tokens / 1 event / 1 All session；前一 UTC 日的 17 tokens 未计入今日。
+合成输入与主/oracle DB 起点、构建与完整结果见
+[隔离合成 CLI 与测量前置记录](evidence/incremental-update-latency-synthetic-e2e-20261021.json)。
+
+P10 未重试：相同产品输入下，当前 App 文件变更未接入打开 popover 的自动 refresh；已有
+2-second synthetic native failure 保留，历史 attempted=1、failed=1、有效样本=0、p95 不可计算。
+需在后续有界产品修复中接通隔离 JSONL 变更至既有 bounded refresh coordinator，并直接计量通知、
+队列、处理、publication 和打开 popover 的绘制时钟。
+
+P07 代表性 attempted=0、valid=0：原 Task 3 冻结 corpus 已删除，既有 E1 A/B 只读授权不覆盖
+本 Task 3 重采，本轮没有真实数据授权。合成 full oracle 的逐笔计时仍不完整：core/session
+初始化中的 3 次 `PRAGMA journal_mode=WAL` 被记为 `unknown_statement`，故不可用其 core
+52.837ms/session 2.504ms partial p95/max 作为验收分布。17 个合成 CLI process logs 共149条终结
+记录仍有18条同类拒绝、0 unmatched。RSS trace 361帧但12帧含短进程拓扑/驻留缺口；采样最大值
+105,897,984 bytes 仅为无效诊断值，不能作为 aggregate RSS 证据。P01 前台回归和 generation
+切换等待也未取得本轮直接证据。需先修复测量器的两处明确初始化边界并改用稳定的采样结束屏障，
+再做 synthetic collector calibration；不进入代表性 P07 批采。
+
+CEv1 本轮未写入或查询：configured Neo4j MCP 有 Cypher 工具，但未找到共享
+`completion-evidence/v1` protocol package 及固定模板，故未手写查询或绕过 provider。最后已知
+精确产品门仍为 FAILED（4项必需中3项通过）；Task 3 保持开放/in_review，Round 5 PASS 保留；
+不进入 Tasks 4–7、不提交或推送。
+
+### update-latency 有界修复交接 — 2026-10-21
+
+本轮修复当前已记录的 P10 自动通知、P07 WAL 初始化计量和 RSS 结束边界。
+新产品 `scan-ip-update-repair-product-45f7482757f82715`；独立仪表
+`scan-ip-update-repair-instrumentation-d9db8dbe33f327da`。
+旧 Round 2 产品 PASS、Round 5 仪表局部 PASS 及旧 FAILED（3/4）事实保留在原身份；
+新增候选等待独立复评，当前候选 Review 未勾选，同一 Beads 任务交回 in_review。
+
+真实隔离合成通道已贯通：fsync JSONL → FSEvents → 既有 bounded coordinator →
+actual engine/core/session → atomic serving publication → CLI → 已打开 popover 新值绘制。
+本次单例 source-write-to-draw 为 841.069733ms；扫描中的前台绘制为 45.480933ms，
+publication 安装时钟与旧/新 ID 已直接记录。完整终态 snapshot 与空库 full oracle 相等，
+两边 partial=false，归一化 SHA-256 为
+`2a4412b2f47f819c9f565e9a7256f978625c54e2095c2ea6d009ef62447931cd`。
+
+478 笔合成完整事务覆盖 75 个 Go process logs；其中 core/session WAL 初始化分别 50/20 笔，
+无 rejected、unmatched，RSS 的实际 bootstrap/worker/collector 窗口 35 帧无缺口/漏 tick。
+采样聚合最大值 103,563,264 bytes；collector CPU 129.366ms / wall 1,711.226244ms。
+79 项受影响原生测试、20 项计量 Go 测试、相关 race/vet、10 项 Python 测试及 overlay 双架构构建通过。
+连续通知合并、重复事件和失败后保留 publication 的既有协调规则由受影响回归覆盖。
+
+新目标经权威固定模板查询为 NOT_VERIFIED（3/4），仅 `update-latency` 缺代表性验收；
+无 invalidated evidence 或 unresolved candidate impacts。CEv1 协议定位与本轮写入/查询阻塞已解除。
+代表性 P07 attempted/valid 仍为 0/0；P10 正式分布未建立，历史 attempted=1/failed=1/valid=0 保留。
+本轮数值均为合成通道/计量验证。未采集真实数据，未进入 Tasks 4–7 或进行 Git 交付。
+
+事实与失败诊断见[修复证据](evidence/incremental-update-repair-20261021.json)，
+新查与历史门禁分别见[门禁回执](evidence/incremental-update-repair-gate-20261021.json)，
+修复映射和后续只读冻结授权申请见[修复附记](reviews/incremental-projections.md#update-latency-修复附记--2026-10-21)。
+
+2026-10-21 update-latency 复评前置核对 BLOCKED，尚无新 PASS/FAIL。当前仪表 8 项主体匹配，产品 31 项中 29 项可重现；两个目录缺少可重现的候选绑定，详见[前置核对](evidence/incremental-update-rereview-preflight-20261021.json)及评审记录附记。需补齐原始文件清单/摘要配方，或在确认内容改变后登记新候选及适用验证。Task 3 保持 in_review、Review 未勾选；没有新采样、真实数据访问或性能验收结论。
+
+2026-10-21 update-latency 正式复评 Round 6：PASS。候选绑定前置已由 69/15 文件的原摘要重放解除；通知链路、WAL 初始化计量和采样结束窗口修复均已核对关闭，见[Round 6](reviews/incremental-projections.md#round-6--2026-10-21)及[复评证据](evidence/incremental-update-rereview-r6-20261021.json)。当前产品目标 `scan-ip-update-repair-product-45f7482757f82715` 的精确门为 NOT_VERIFIED（3/4），仅缺正式 update-latency 代表性验收；旧目标 FAILED 保留原义。Task 3 Review 已勾选，任务继续开放/in_review；代表性 P07 仍 0/0，P10 正式分布未建立，不重复复评、不进入 Tasks 4–7 或交付。
+
+2026-10-21 代表性验收输入冻结：BLOCKED。31 项产品主体、8 项仪表主体匹配上述候选；未重复 Round 6 或未变的 Go/race/vet/native 回归。沙箱外单文件最小读取成功后，仅执行一次获准的完整输入冻结；复制 80 个 JSONL 后，下一所选文件的身份信息在枚举与复制前核对之间发生变化，按合同立即 STOP（`identity_changed_since_inventory`），没有跳过或自动重采。未形成 manifest/cohort、未开始 SQLite backup、未创建工作副本或新 App 构建。该事件是输入冻结阻塞，不是产品性能失败；不据此推断历史 EACCES 的根因。
+
+本轮 P10 attempted=0、有效延迟=0、p95 不可计算；P07 attempted=0、valid=0，RSS/完整事务 p95/max、重建期间 P01 与切换不等待均没有新样本。失败事实和有身份的运行编排见[冻结记录](evidence/incremental-update-representative-capture-20261021-uxs4ewd.json)及[冻结脚本](evidence/incremental-update-capture-runner-20261021-uxs4ewd.py)。保存脱敏事实后已删除本轮部分原始副本；没有可重现的冻结原件，未触碰其他私有根或真实来源/数据库。后续先明确稳定且代表性的输入集合，再取得下一次冻结授权；本轮不自动排除漂移文件。
+
+Neo4j 通过固定模板新增 2 节点/4 关系，关系预检全部 ok，并精确读回节点属性和关系；MCP 只返回 creation metadata，不虚构 processed 行数。产品精确门现为 **BLOCKED（3/4）**：generation-switch、partition-equivalence、nonadditive-statistics 复用已有 PASS；update-latency 因代表性输入未冻结而 BLOCKED，无 invalidated 或 unresolved impacts。见[精确门禁回执](evidence/incremental-update-capture-gate-final-20261021-uxs4ewd.json)。产品、测试、仪表未修改；Round 6 PASS、旧目标 FAILED 和历史无效 trace 均保留。Task 3 继续开放/in_review，Review 保持已勾选，不推进任务边界或 Tasks 4–7，不交付。
+
+2026-10-21 同轮代表性验收后续：按用户补充授权，预先排除 America/New_York 今天创建或写入的 JSONL，并按 SQLite 在线 backup 一致性允许 size/mtime 变化、拒绝 device/inode 漂移。冻结成功：4,717 JSONL / 859,890,098 bytes，排除今天 102 文件；两份只读 backup 合计 8,042,160,128 bytes。唯一 cohort ID 为 `d0486c1b016cb55caadce6a9ca33db2130e2b77a70e1b46bb6f4ee4e021c79cd`，完整清单及逐文件前后身份只留私有目录，见[脱敏 cohort](evidence/incremental-update-representative-cohort-20261021.json)。本轮前两次冻结 STOP 原义保留；输入冻结阻塞已解除，不归因于没有显示器。App、嵌入 helper、overlay 绑定当前候选，运行后再次核对产品 31 / 仪表 8 项均未变；未重复 Round 6 或未变回归。
+
+批采前固定[计划](evidence/incremental-update-representative-plan-20261021.json)：P10 100 次/rank95，P07 每场景 20 次，前台基线及重建期间各 100 帧；失败不替换、起点不混合。实际仅进入 feasibility，正式分布均未启动。两次 LaunchServices 启动 exit0、屏幕/status window 存在，但原生探针均在 `no_usable_data` 退出，尚未写入 delta：第一次漏做完整 DB 预置，第二次已完成真实 bootstrap 且 CLI partial=false/usage+sessions 可用，仍未通过探针入口，随后停止该方法。P10 正式 attempted=0、valid=0、p95 不可计算，不能据此认定通知成功或失败。同输入的已准备基线与空库 full oracle 完整归一化相等、双方 partial=false，摘要 `0b79c344e0e748bd5b1798131fc2c6914868dd5328e567e8fd9110b7b54f2cc5`；因没有追加，此等价性不是 P10 更新证据。
+
+P07 一个真实冷库 full bootstrap feasibility 得到完整 9,874 笔事务（2 Go 进程；explicit 9,593、autocommit 281；WAL core2/session1；unknown/rejected/unmatched 均0），独立重算一致。core N=5,148，p95/max=9.641766/717.544204ms；session N=4,726，10.599653/559.258881ms；同场景合计 p95/max=10.289627/717.544204ms。core 5 笔、session 2 笔超过 max250ms，构成该绝对上限的有效反例，不能因未启动正式20次分布而记通过。RSS 1,457 帧中9帧不完整、2个漏采tick，trace invalid；191,139,840 bytes仅诊断峰值，不是RSS通过。进程开始/结束屏障完整、PID/birth去重及逐帧求和核对通过，69个不同PID/birth；退出竞态缺口保留。sampler CPU7.314016s / window72.908316226s（单核10.0318%），未扣观察开销。前台/切换直接证据仍0，不套用Task2 waiver，不恢复P03独立门。
+
+详见[代表性结果](evidence/incremental-update-representative-result-20261021.json)、其中引用的完整脱敏事务/RSS及独立复算。后续有界项：原生DEBUG测量入口记录可用性并等待合适快照（本轮不改冻结代码）；RSS驻留端点/进程退出竞态；`internal/usage/usage.go:1932` 与 `internal/session/session.go:36` 的完整事务超限，须另行授权诊断/修复。产品/测试/仪表保持冻结，Review仍为Round6 PASS，Task3开放/in_review。Neo4j固定模板写入3节点/9关系，预检全部ok并精确读回；creation counts匹配，不虚构processed行数。产品精确门现为 **FAILED（3/4）**：三项技术门PASS，update-latency含P07事务max FAIL及P10入口BLOCKED。仅已解除的本轮输入冻结block被显式supersede；旧观察不改绑，无unresolved impacts。见[本轮门禁](evidence/incremental-update-representative-gate-20261021.json)。
+
+私有成功原件和工作副本暂留独立复核，截止2026-10-22 12:48:07 UTC；已启动并确认身份匹配的本地定时清理进程，见[保留期限](evidence/incremental-update-private-retention-20261021.json)。前两次无效部分副本已清理。私有App和已测helper均已退出；临时bundle注销返回1，原stderr仅保留长度/摘要，后续唯一只读注册诊断的异步输出未被编排捕获，故注册清理状态未确认，不声称已完成，也未继续变体尝试。见[运行清理](evidence/incremental-update-runtime-cleanup-20261021.json)。不进入Tasks4–7，不提交、推送、安装、发布或部署。
+
+同一 Beads `ad-scan-performance-incremental-projections` 已写入并精确读回本轮交接 comment `d37c86e4-2cfb-561f-bbe4-cfa450ca70d9`，状态仍为 in_review、未分配；不以此充当性能验收证据。见[协调读回](evidence/incremental-update-representative-beads-20261021.json)。
 
 ## 4. bounded-source-pipeline
 
@@ -802,3 +1071,8 @@ mock与actual分别列，未测真实producer不宣称完整实时补采已实�
 首批采集/数据库查询/保存视图恢复是三个前置状态，不能混成一个首屏比值。
 这些不勾选产品Dev/Review，不能证明nativefirstframe或实时新数据门。
 本轮L0为topicdocs/local links/whitespace和harness语法；原型源码未再变化，不重复已有build/68项交互。
+
+
+2026-10-21 正式Review Round7：FAIL；新增阻断SP-IP-R7-F1，详见[评审记录](reviews/incremental-projections.md#round-7--2026-10-21)。产品e14fca302e5e8572、仪表df7a0429f058d27f、编排067e1bcc6aee7761及24文件范围均匹配；一次独立确定性元数据复现证明，未闭合的fork可使缺失存活子进程的RSS帧仍被标为完整。按规则停止广泛验证；Review保持未勾选，同一任务返回修复。当前精确性能门仍FAILED（三项技术PASS，update-latency未满足），与本轮Review FAIL分别记录；Round6历史PASS、用户撤销点击/P10计时、真实追加正确性及P07历史失败均保留。没有产品/测试/配置修改或新性能批采，不进入Tasks4–7或交付。见[Round7证据](evidence/incremental-update-review-r7-20261021.json)及[门禁回执](evidence/incremental-update-review-r7-gate-20261021.json)。
+
+Round7协调收尾：同一Beads已返回in_progress、保持未分配；交接comment `b688d4ef-64e0-5e01-baff-2225bdd87f59` 已精确读回。见[协调回执](evidence/incremental-update-review-r7-beads-20261021.json)。新CEv1观察以not_verified记录仪表覆盖缺口，不从合成数值制造实际性能失败；既有AcceptInventory事务反例使精确门继续FAILED。未关闭Task3边界。

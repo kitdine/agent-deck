@@ -84,11 +84,11 @@ func (s Service) derivedSnapshotCachePath() string {
 func (s Service) derivedSnapshotPayload(ctx context.Context, core *store.Store, now time.Time) (derivedSnapshotCachePayload, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
-	presentation, err := service.Presentation(ctx, now, s.location())
+	presentation, err := service.ProjectedPresentation(ctx, now, s.location())
 	if err != nil {
 		return derivedSnapshotCachePayload{}, err
 	}
-	workSignals, err := s.workSignalsSnapshot(ctx, core, now)
+	workSignals, err := s.workSignalsSnapshotWithProjection(ctx, core, now, true)
 	if err != nil {
 		return derivedSnapshotCachePayload{}, err
 	}

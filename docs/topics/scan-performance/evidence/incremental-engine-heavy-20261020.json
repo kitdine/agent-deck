@@ -1,0 +1,3509 @@
+{
+  "kind": "e2-engine-pilot-v1",
+  "pairs": 20,
+  "environment": {
+    "platform": "macOS-26.7.2-x86_64-i386-64bit-Mach-O",
+    "go": "go version go1.27.1 darwin/amd64"
+  },
+  "source_sha256": {
+    "oracle": "fe1ea44b36572f7c9d9a887e5c8c98f4691116fb0a09f6469f1c4ffea2c04051",
+    "projected": "e50dfc9c8dee66204ca3e8224641123f00c640006da08392a7db3287681ab531"
+  },
+  "seed_sha256": {
+    "sessions.sqlite3": "26af136031f8e9d3b621d8fb525d08f55af5fcd21cea7a168cf724595a8288a1",
+    "agentdeck.sqlite3": "4267b06c0fa36ec20eb993183ae2c3ff6ea3036e2ea918312a75eb3be423909b"
+  },
+  "cohort_sha256": "050382b46811c749abb05a70bc2947ab770845bc52f3bca84f70c89a8ca19360",
+  "delta_sha256": "0252fc7ad48a8b875ff6a1ccd6348c036c443c87db96b4952cc74f0dcc852311",
+  "delta_bytes": 352,
+  "complete": true,
+  "samples": [
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3657,
+        "session_ms": 4187,
+        "derived_cache_ms": 3122,
+        "total_ms": 8907,
+        "worker_cpu_time_ms": 8371,
+        "worker_peak_rss_bytes": 168677376,
+        "ingestion": {
+          "average_open_readers": 0.4983178897311364,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.062342,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007936,
+          "session_send_ms": 2898.751917,
+          "source_lifetime_ms": 3642.699459,
+          "usage_send_ms": 743.841947
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 256.729058,
+            "max_ms": 229.311218
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.159952,
+            "max_ms": 0.159952
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.019897,
+            "max_ms": 3.019897
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.477587,
+            "max_ms": 0.477587
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2932.998275,
+            "max_ms": 2932.998275
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.114016,
+            "max_ms": 8.114016
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2941.292878,
+            "max_ms": 2941.292878
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8907.181631,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 0,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 66,
+        "usage_ms": 3433,
+        "session_ms": 3519,
+        "derived_cache_ms": 2909,
+        "total_ms": 8095,
+        "worker_cpu_time_ms": 7013,
+        "worker_peak_rss_bytes": 149909504,
+        "ingestion": {
+          "average_open_readers": 0.5317724624940324,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.109217,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008809,
+          "session_send_ms": 2786.924957,
+          "source_lifetime_ms": 3418.400274,
+          "usage_send_ms": 631.328323
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 344.073799,
+            "max_ms": 314.349004
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.15968,
+            "max_ms": 0.15968
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.968145,
+            "max_ms": 2.968145
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.670235,
+            "max_ms": 0.670235
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2817.611952,
+            "max_ms": 2817.611952
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.887106,
+            "max_ms": 7.887106
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2825.677978,
+            "max_ms": 2825.677978
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8095.395924,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 0,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 67,
+        "usage_ms": 2913,
+        "session_ms": 3006,
+        "derived_cache_ms": 2885,
+        "total_ms": 7485,
+        "worker_cpu_time_ms": 6980,
+        "worker_peak_rss_bytes": 152297472,
+        "ingestion": {
+          "average_open_readers": 0.49224373674359756,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.053501,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007163,
+          "session_send_ms": 2280.989488,
+          "source_lifetime_ms": 2900.187378,
+          "usage_send_ms": 619.110099
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 286.18937,
+            "max_ms": 260.430271
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.153754,
+            "max_ms": 0.153754
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.925952,
+            "max_ms": 2.925952
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.405451,
+            "max_ms": 0.405451
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2309.893524,
+            "max_ms": 2309.893524
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.486991,
+            "max_ms": 7.486991
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2317.554856,
+            "max_ms": 2317.554856
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7484.963749,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 1,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3497,
+        "session_ms": 4040,
+        "derived_cache_ms": 3523,
+        "total_ms": 9179,
+        "worker_cpu_time_ms": 8393,
+        "worker_peak_rss_bytes": 266780672,
+        "ingestion": {
+          "average_open_readers": 0.4603566390069231,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.060992,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.009291,
+          "session_send_ms": 2868.951499,
+          "source_lifetime_ms": 3482.13123,
+          "usage_send_ms": 613.064755
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 282.55876,
+            "max_ms": 256.353526
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.158985,
+            "max_ms": 0.158985
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.146149,
+            "max_ms": 3.146149
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.469663,
+            "max_ms": 0.469663
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2897.892852,
+            "max_ms": 2897.892852
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.772814,
+            "max_ms": 7.772814
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2905.84525,
+            "max_ms": 2905.84525
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9178.8535,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 1,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3346,
+        "session_ms": 3849,
+        "derived_cache_ms": 3235,
+        "total_ms": 8799,
+        "worker_cpu_time_ms": 8081,
+        "worker_peak_rss_bytes": 168017920,
+        "ingestion": {
+          "average_open_readers": 0.47027471778523644,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.134761,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.012391,
+          "session_send_ms": 2728.127366,
+          "source_lifetime_ms": 3331.768315,
+          "usage_send_ms": 603.439537
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 332.629485,
+            "max_ms": 307.162156
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.159662,
+            "max_ms": 0.159662
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.528004,
+            "max_ms": 3.528004
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.577666,
+            "max_ms": 0.577666
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2757.295342,
+            "max_ms": 2757.295342
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.377265,
+            "max_ms": 8.377265
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2765.856203,
+            "max_ms": 2765.856203
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8799.705692,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 2,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 67,
+        "usage_ms": 3204,
+        "session_ms": 3295,
+        "derived_cache_ms": 3039,
+        "total_ms": 8180,
+        "worker_cpu_time_ms": 7952,
+        "worker_peak_rss_bytes": 157437952,
+        "ingestion": {
+          "average_open_readers": 0.503302653580231,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.069539,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008327,
+          "session_send_ms": 2439.156874,
+          "source_lifetime_ms": 3188.500575,
+          "usage_send_ms": 749.237175
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 394.786565,
+            "max_ms": 360.051459
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.180381,
+            "max_ms": 0.180381
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.518416,
+            "max_ms": 3.518416
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.457294,
+            "max_ms": 0.457294
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2473.3055,
+            "max_ms": 2473.3055
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.046792,
+            "max_ms": 9.046792
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2482.557023,
+            "max_ms": 2482.557023
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8180.161168,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 2,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 75,
+        "usage_ms": 3290,
+        "session_ms": 3392,
+        "derived_cache_ms": 3034,
+        "total_ms": 8211,
+        "worker_cpu_time_ms": 7938,
+        "worker_peak_rss_bytes": 158892032,
+        "ingestion": {
+          "average_open_readers": 0.5093073395800031,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.059803,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007776,
+          "session_send_ms": 2598.103834,
+          "source_lifetime_ms": 3273.780638,
+          "usage_send_ms": 675.583311
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 373.39693,
+            "max_ms": 346.915698
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.161936,
+            "max_ms": 0.161936
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.416429,
+            "max_ms": 3.416429
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.465363,
+            "max_ms": 0.465363
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2635.557059,
+            "max_ms": 2635.557059
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.975995,
+            "max_ms": 7.975995
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2643.729372,
+            "max_ms": 2643.729372
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8211.639581,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 3,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 71,
+        "usage_ms": 3660,
+        "session_ms": 4305,
+        "derived_cache_ms": 3387,
+        "total_ms": 9348,
+        "worker_cpu_time_ms": 8592,
+        "worker_peak_rss_bytes": 166588416,
+        "ingestion": {
+          "average_open_readers": 0.47394259103653263,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.061846,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007884,
+          "session_send_ms": 3027.157877,
+          "source_lifetime_ms": 3645.715778,
+          "usage_send_ms": 618.45938
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 288.486622,
+            "max_ms": 262.608426
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.163459,
+            "max_ms": 0.163459
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.349281,
+            "max_ms": 3.349281
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.433258,
+            "max_ms": 0.433258
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3059.799784,
+            "max_ms": 3059.799784
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.576112,
+            "max_ms": 8.576112
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3068.56326,
+            "max_ms": 3068.56326
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9348.463616,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 3,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 90,
+        "usage_ms": 3547,
+        "session_ms": 4717,
+        "derived_cache_ms": 4178,
+        "total_ms": 10574,
+        "worker_cpu_time_ms": 9131,
+        "worker_peak_rss_bytes": 187256832,
+        "ingestion": {
+          "average_open_readers": 0.39716774958733136,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.059476,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.031646,
+          "session_send_ms": 2930.976073,
+          "source_lifetime_ms": 3533.226587,
+          "usage_send_ms": 602.10005
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 293.976074,
+            "max_ms": 267.901215
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.169465,
+            "max_ms": 0.169465
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.011271,
+            "max_ms": 3.011271
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.561565,
+            "max_ms": 0.561565
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2961.599005,
+            "max_ms": 2961.599005
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.798788,
+            "max_ms": 7.798788
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2969.58939,
+            "max_ms": 2969.58939
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 10573.777853,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 4,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 67,
+        "usage_ms": 2918,
+        "session_ms": 3013,
+        "derived_cache_ms": 2978,
+        "total_ms": 7637,
+        "worker_cpu_time_ms": 7247,
+        "worker_peak_rss_bytes": 150654976,
+        "ingestion": {
+          "average_open_readers": 0.4846928446653762,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.100447,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.022319,
+          "session_send_ms": 2265.149398,
+          "source_lifetime_ms": 2904.444837,
+          "usage_send_ms": 639.130132
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 281.797379,
+            "max_ms": 253.761698
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.160319,
+            "max_ms": 0.160319
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.090624,
+            "max_ms": 3.090624
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.449708,
+            "max_ms": 0.449708
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2295.002832,
+            "max_ms": 2295.002832
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.992509,
+            "max_ms": 7.992509
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2303.175541,
+            "max_ms": 2303.175541
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7637.058886,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 4,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 78,
+        "usage_ms": 3019,
+        "session_ms": 3122,
+        "derived_cache_ms": 3162,
+        "total_ms": 7928,
+        "worker_cpu_time_ms": 7233,
+        "worker_peak_rss_bytes": 158404608,
+        "ingestion": {
+          "average_open_readers": 0.47785207686288417,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.060934,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.00779,
+          "session_send_ms": 2403.452404,
+          "source_lifetime_ms": 3003.248459,
+          "usage_send_ms": 599.686861
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 295.013493,
+            "max_ms": 269.05271
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.179196,
+            "max_ms": 0.179196
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.616577,
+            "max_ms": 3.616577
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.529036,
+            "max_ms": 0.529036
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2432.694735,
+            "max_ms": 2432.694735
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.29595,
+            "max_ms": 9.29595
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2442.194094,
+            "max_ms": 2442.194094
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7928.361165,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 5,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3656,
+        "session_ms": 4278,
+        "derived_cache_ms": 3522,
+        "total_ms": 9462,
+        "worker_cpu_time_ms": 8661,
+        "worker_peak_rss_bytes": 181460992,
+        "ingestion": {
+          "average_open_readers": 0.4668656288452259,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.105392,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.010652,
+          "session_send_ms": 3011.133996,
+          "source_lifetime_ms": 3641.954895,
+          "usage_send_ms": 630.632363
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 310.547417,
+            "max_ms": 279.917575
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.151446,
+            "max_ms": 0.151446
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.236127,
+            "max_ms": 3.236127
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.483041,
+            "max_ms": 0.483041
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3041.715952,
+            "max_ms": 3041.715952
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.43947,
+            "max_ms": 8.43947
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3050.327941,
+            "max_ms": 3050.327941
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9462.28627,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 5,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 89,
+        "usage_ms": 4410,
+        "session_ms": 4996,
+        "derived_cache_ms": 3326,
+        "total_ms": 10385,
+        "worker_cpu_time_ms": 9746,
+        "worker_peak_rss_bytes": 268230656,
+        "ingestion": {
+          "average_open_readers": 0.5277824966560081,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.072175,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007484,
+          "session_send_ms": 3613.961464,
+          "source_lifetime_ms": 4392.727362,
+          "usage_send_ms": 778.631718
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 390.29365600000006,
+            "max_ms": 359.452461
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.226648,
+            "max_ms": 0.226648
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.531509,
+            "max_ms": 3.531509
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.552602,
+            "max_ms": 0.552602
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3651.279312,
+            "max_ms": 3651.279312
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.142679,
+            "max_ms": 9.142679
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3660.672848,
+            "max_ms": 3660.672848
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 10385.377538,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 6,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 80,
+        "usage_ms": 3001,
+        "session_ms": 3114,
+        "derived_cache_ms": 2953,
+        "total_ms": 7718,
+        "worker_cpu_time_ms": 7291,
+        "worker_peak_rss_bytes": 159698944,
+        "ingestion": {
+          "average_open_readers": 0.4922590449529474,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.065737,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007908,
+          "session_send_ms": 2356.773081,
+          "source_lifetime_ms": 2987.097058,
+          "usage_send_ms": 630.193638
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 305.839093,
+            "max_ms": 280.165355
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.17412,
+            "max_ms": 0.17412
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.13847,
+            "max_ms": 3.13847
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.649939,
+            "max_ms": 0.649939
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2386.466756,
+            "max_ms": 2386.466756
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.413731,
+            "max_ms": 8.413731
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2395.080471,
+            "max_ms": 2395.080471
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7718.553667,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 6,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 87,
+        "usage_ms": 2879,
+        "session_ms": 2979,
+        "derived_cache_ms": 2900,
+        "total_ms": 7525,
+        "worker_cpu_time_ms": 7141,
+        "worker_peak_rss_bytes": 149676032,
+        "ingestion": {
+          "average_open_readers": 0.4872757663693044,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.09696,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007295,
+          "session_send_ms": 2249.102961,
+          "source_lifetime_ms": 2865.22747,
+          "usage_send_ms": 615.986498
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 286.151033,
+            "max_ms": 258.08171
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.161511,
+            "max_ms": 0.161511
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.178995,
+            "max_ms": 3.178995
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.522052,
+            "max_ms": 0.522052
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2278.444577,
+            "max_ms": 2278.444577
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.028067,
+            "max_ms": 8.028067
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2286.655254,
+            "max_ms": 2286.655254
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7525.059124,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 7,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 69,
+        "usage_ms": 3413,
+        "session_ms": 3985,
+        "derived_cache_ms": 3367,
+        "total_ms": 9115,
+        "worker_cpu_time_ms": 8214,
+        "worker_peak_rss_bytes": 181313536,
+        "ingestion": {
+          "average_open_readers": 0.46243130803033294,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.08265,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.006882,
+          "session_send_ms": 2800.120715,
+          "source_lifetime_ms": 3400.182495,
+          "usage_send_ms": 599.914427
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 307.86062899999996,
+            "max_ms": 282.256764
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.165793,
+            "max_ms": 0.165793
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.05829,
+            "max_ms": 3.05829
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.453603,
+            "max_ms": 0.453603
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2829.272158,
+            "max_ms": 2829.272158
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.713321,
+            "max_ms": 7.713321
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2837.173447,
+            "max_ms": 2837.173447
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9115.325403,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 7,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 82,
+        "usage_ms": 3479,
+        "session_ms": 4121,
+        "derived_cache_ms": 3308,
+        "total_ms": 9110,
+        "worker_cpu_time_ms": 8202,
+        "worker_peak_rss_bytes": 173658112,
+        "ingestion": {
+          "average_open_readers": 0.46639869267535616,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.11988,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008377,
+          "session_send_ms": 2855.745414,
+          "source_lifetime_ms": 3465.503647,
+          "usage_send_ms": 609.575612
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 289.922417,
+            "max_ms": 263.831605
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.170194,
+            "max_ms": 0.170194
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.007155,
+            "max_ms": 3.007155
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.447333,
+            "max_ms": 0.447333
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2891.198867,
+            "max_ms": 2891.198867
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.408078,
+            "max_ms": 8.408078
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2899.797619,
+            "max_ms": 2899.797619
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9110.471853,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 8,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 69,
+        "usage_ms": 2859,
+        "session_ms": 2958,
+        "derived_cache_ms": 2919,
+        "total_ms": 7479,
+        "worker_cpu_time_ms": 6989,
+        "worker_peak_rss_bytes": 163545088,
+        "ingestion": {
+          "average_open_readers": 0.4839753620013327,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.062941,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007411,
+          "session_send_ms": 2249.642353,
+          "source_lifetime_ms": 2844.877891,
+          "usage_send_ms": 595.122662
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 294.035682,
+            "max_ms": 268.408981
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.188238,
+            "max_ms": 0.188238
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.674757,
+            "max_ms": 3.674757
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.508117,
+            "max_ms": 0.508117
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2279.53664,
+            "max_ms": 2279.53664
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.024297,
+            "max_ms": 9.024297
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2288.775038,
+            "max_ms": 2288.775038
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7479.135937,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 8,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 3098,
+        "session_ms": 3204,
+        "derived_cache_ms": 3405,
+        "total_ms": 8205,
+        "worker_cpu_time_ms": 7798,
+        "worker_peak_rss_bytes": 157900800,
+        "ingestion": {
+          "average_open_readers": 0.46619147842618697,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.056402,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008102,
+          "session_send_ms": 2458.642032,
+          "source_lifetime_ms": 3081.30663,
+          "usage_send_ms": 622.541937
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 282.219272,
+            "max_ms": 256.613364
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.158705,
+            "max_ms": 0.158705
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.401182,
+            "max_ms": 3.401182
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 1.526584,
+            "max_ms": 1.526584
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2487.098638,
+            "max_ms": 2487.098638
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.965947,
+            "max_ms": 9.965947
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2497.253576,
+            "max_ms": 2497.253576
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8204.776812,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 9,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 93,
+        "usage_ms": 3832,
+        "session_ms": 4524,
+        "derived_cache_ms": 3552,
+        "total_ms": 10104,
+        "worker_cpu_time_ms": 9674,
+        "worker_peak_rss_bytes": 243961856,
+        "ingestion": {
+          "average_open_readers": 0.4720753938130679,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.070404,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.010644,
+          "session_send_ms": 2942.551808,
+          "source_lifetime_ms": 3812.986341,
+          "usage_send_ms": 870.296078
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 347.36701,
+            "max_ms": 314.195029
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.201751,
+            "max_ms": 0.201751
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.264511,
+            "max_ms": 3.264511
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.475013,
+            "max_ms": 0.475013
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2973.231658,
+            "max_ms": 2973.231658
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.017937,
+            "max_ms": 9.017937
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2982.476013,
+            "max_ms": 2982.476013
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 10103.8015,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 9,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 66,
+        "usage_ms": 3568,
+        "session_ms": 4117,
+        "derived_cache_ms": 3415,
+        "total_ms": 9156,
+        "worker_cpu_time_ms": 8201,
+        "worker_peak_rss_bytes": 168067072,
+        "ingestion": {
+          "average_open_readers": 0.47083734390552556,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.053848,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007787,
+          "session_send_ms": 2929.73904,
+          "source_lifetime_ms": 3546.970488,
+          "usage_send_ms": 617.111697
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 313.566683,
+            "max_ms": 288.28452
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.146257,
+            "max_ms": 0.146257
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.80293,
+            "max_ms": 3.80293
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.492918,
+            "max_ms": 0.492918
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2960.720088,
+            "max_ms": 2960.720088
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 13.454034,
+            "max_ms": 13.454034
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2974.349521,
+            "max_ms": 2974.349521
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9156.08165,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 10,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 76,
+        "usage_ms": 2908,
+        "session_ms": 3015,
+        "derived_cache_ms": 3006,
+        "total_ms": 7633,
+        "worker_cpu_time_ms": 7098,
+        "worker_peak_rss_bytes": 148987904,
+        "ingestion": {
+          "average_open_readers": 0.4806427701902459,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.084805,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008731,
+          "session_send_ms": 2305.453702,
+          "source_lifetime_ms": 2894.776735,
+          "usage_send_ms": 589.164155
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 309.037982,
+            "max_ms": 275.510657
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.165528,
+            "max_ms": 0.165528
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.904406,
+            "max_ms": 2.904406
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.412442,
+            "max_ms": 0.412442
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2334.92637,
+            "max_ms": 2334.92637
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.384553,
+            "max_ms": 7.384553
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2342.496966,
+            "max_ms": 2342.496966
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7633.603088,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 10,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3364,
+        "session_ms": 3461,
+        "derived_cache_ms": 2978,
+        "total_ms": 8007,
+        "worker_cpu_time_ms": 7454,
+        "worker_peak_rss_bytes": 171421696,
+        "ingestion": {
+          "average_open_readers": 0.5202172550536891,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.061429,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008931,
+          "session_send_ms": 2679.076326,
+          "source_lifetime_ms": 3350.405371,
+          "usage_send_ms": 671.217236
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 284.15580600000004,
+            "max_ms": 258.663287
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.151947,
+            "max_ms": 0.151947
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.209973,
+            "max_ms": 3.209973
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.392109,
+            "max_ms": 0.392109
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2708.448969,
+            "max_ms": 2708.448969
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.982269,
+            "max_ms": 7.982269
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2716.608106,
+            "max_ms": 2716.608106
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8007.590287,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 11,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 3397,
+        "session_ms": 3959,
+        "derived_cache_ms": 3235,
+        "total_ms": 8782,
+        "worker_cpu_time_ms": 8112,
+        "worker_peak_rss_bytes": 189210624,
+        "ingestion": {
+          "average_open_readers": 0.47024691930260404,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.049964,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007501,
+          "session_send_ms": 2748.823488,
+          "source_lifetime_ms": 3383.790674,
+          "usage_send_ms": 634.873194
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 294.30620600000003,
+            "max_ms": 256.763593
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.146099,
+            "max_ms": 0.146099
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.997744,
+            "max_ms": 2.997744
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.455512,
+            "max_ms": 0.455512
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2785.098639,
+            "max_ms": 2785.098639
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.711662,
+            "max_ms": 7.711662
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2792.978,
+            "max_ms": 2792.978
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8782.564125,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 11,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 3448,
+        "session_ms": 4008,
+        "derived_cache_ms": 3276,
+        "total_ms": 8946,
+        "worker_cpu_time_ms": 8248,
+        "worker_peak_rss_bytes": 195788800,
+        "ingestion": {
+          "average_open_readers": 0.47148160474234324,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.069025,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007477,
+          "session_send_ms": 2732.351191,
+          "source_lifetime_ms": 3434.71017,
+          "usage_send_ms": 702.232875
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 299.19388299999997,
+            "max_ms": 272.00825
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.163672,
+            "max_ms": 0.163672
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.132034,
+            "max_ms": 3.132034
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.466619,
+            "max_ms": 0.466619
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2762.209966,
+            "max_ms": 2762.209966
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.921336,
+            "max_ms": 7.921336
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2770.316124,
+            "max_ms": 2770.316124
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8945.919201,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 12,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 137,
+        "usage_ms": 3637,
+        "session_ms": 3748,
+        "derived_cache_ms": 3323,
+        "total_ms": 9558,
+        "worker_cpu_time_ms": 9312,
+        "worker_peak_rss_bytes": 165388288,
+        "ingestion": {
+          "average_open_readers": 0.5119482824250883,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.159096,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.011889,
+          "session_send_ms": 2824.172167,
+          "source_lifetime_ms": 3620.504967,
+          "usage_send_ms": 796.089549
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 563.69509,
+            "max_ms": 528.127071
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.187705,
+            "max_ms": 0.187705
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.174417,
+            "max_ms": 3.174417
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.444973,
+            "max_ms": 0.444973
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2861.910628,
+            "max_ms": 2861.910628
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.012699,
+            "max_ms": 9.012699
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2871.132831,
+            "max_ms": 2871.132831
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9558.407349,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 12,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 80,
+        "usage_ms": 3288,
+        "session_ms": 3386,
+        "derived_cache_ms": 3020,
+        "total_ms": 8222,
+        "worker_cpu_time_ms": 8074,
+        "worker_peak_rss_bytes": 163295232,
+        "ingestion": {
+          "average_open_readers": 0.5109708782428439,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.07823,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.009251,
+          "session_send_ms": 2461.640147,
+          "source_lifetime_ms": 3273.55014,
+          "usage_send_ms": 811.774135
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 325.48844499999996,
+            "max_ms": 295.345692
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.166183,
+            "max_ms": 0.166183
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.031048,
+            "max_ms": 3.031048
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.421518,
+            "max_ms": 0.421518
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2492.601663,
+            "max_ms": 2492.601663
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.127009,
+            "max_ms": 8.127009
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2500.918652,
+            "max_ms": 2500.918652
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8222.525425,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 13,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 78,
+        "usage_ms": 3603,
+        "session_ms": 4165,
+        "derived_cache_ms": 3587,
+        "total_ms": 9420,
+        "worker_cpu_time_ms": 8527,
+        "worker_peak_rss_bytes": 267755520,
+        "ingestion": {
+          "average_open_readers": 0.4628056313975231,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.056534,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.009258,
+          "session_send_ms": 2978.16295,
+          "source_lifetime_ms": 3588.037665,
+          "usage_send_ms": 609.77527
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 281.27937199999997,
+            "max_ms": 256.195818
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.165979,
+            "max_ms": 0.165979
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.081846,
+            "max_ms": 3.081846
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.401939,
+            "max_ms": 0.401939
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3008.187368,
+            "max_ms": 3008.187368
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.838179,
+            "max_ms": 7.838179
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3016.212748,
+            "max_ms": 3016.212748
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9420.068542,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 13,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 75,
+        "usage_ms": 3511,
+        "session_ms": 4114,
+        "derived_cache_ms": 3552,
+        "total_ms": 9338,
+        "worker_cpu_time_ms": 8478,
+        "worker_peak_rss_bytes": 169517056,
+        "ingestion": {
+          "average_open_readers": 0.456243009315026,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.059549,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007686,
+          "session_send_ms": 2880.372354,
+          "source_lifetime_ms": 3498.213364,
+          "usage_send_ms": 617.730107
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 317.52366700000005,
+            "max_ms": 289.067397
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.172461,
+            "max_ms": 0.172461
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 2.989819,
+            "max_ms": 2.989819
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.429377,
+            "max_ms": 0.429377
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2912.132553,
+            "max_ms": 2912.132553
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.652645,
+            "max_ms": 7.652645
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2919.97943,
+            "max_ms": 2919.97943
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9338.324718,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 14,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 2939,
+        "session_ms": 3024,
+        "derived_cache_ms": 2870,
+        "total_ms": 7515,
+        "worker_cpu_time_ms": 7138,
+        "worker_peak_rss_bytes": 150720512,
+        "ingestion": {
+          "average_open_readers": 0.496392783328912,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.081952,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.006667,
+          "session_send_ms": 2280.686927,
+          "source_lifetime_ms": 2926.166339,
+          "usage_send_ms": 645.34981
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 292.548244,
+            "max_ms": 262.944944
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.153219,
+            "max_ms": 0.153219
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.485793,
+            "max_ms": 3.485793
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.414927,
+            "max_ms": 0.414927
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2310.682207,
+            "max_ms": 2310.682207
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.155391,
+            "max_ms": 8.155391
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2319.014203,
+            "max_ms": 2319.014203
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7515.418093,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 14,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3003,
+        "session_ms": 3099,
+        "derived_cache_ms": 3014,
+        "total_ms": 7707,
+        "worker_cpu_time_ms": 7137,
+        "worker_peak_rss_bytes": 169361408,
+        "ingestion": {
+          "average_open_readers": 0.488889756245552,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.055121,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008176,
+          "session_send_ms": 2302.609637,
+          "source_lifetime_ms": 2988.848528,
+          "usage_send_ms": 686.124925
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 293.892028,
+            "max_ms": 268.017152
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.158286,
+            "max_ms": 0.158286
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.07648,
+            "max_ms": 3.07648
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.461143,
+            "max_ms": 0.461143
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2331.151041,
+            "max_ms": 2331.151041
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 7.658177,
+            "max_ms": 7.658177
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2338.988197,
+            "max_ms": 2338.988197
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7706.954763,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 15,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 68,
+        "usage_ms": 3369,
+        "session_ms": 4040,
+        "derived_cache_ms": 3340,
+        "total_ms": 8989,
+        "worker_cpu_time_ms": 8374,
+        "worker_peak_rss_bytes": 175783936,
+        "ingestion": {
+          "average_open_readers": 0.4542669223316933,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.056221,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.008787,
+          "session_send_ms": 2746.929982,
+          "source_lifetime_ms": 3352.682913,
+          "usage_send_ms": 605.635635
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 283.273529,
+            "max_ms": 256.943072
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.197641,
+            "max_ms": 0.197641
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 4.769533,
+            "max_ms": 4.769533
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.644493,
+            "max_ms": 0.644493
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2776.212845,
+            "max_ms": 2776.212845
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 10.566979,
+            "max_ms": 10.566979
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2787.018437,
+            "max_ms": 2787.018437
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8989.140908,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 15,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 92,
+        "usage_ms": 4808,
+        "session_ms": 5419,
+        "derived_cache_ms": 3878,
+        "total_ms": 11325,
+        "worker_cpu_time_ms": 10526,
+        "worker_peak_rss_bytes": 178106368,
+        "ingestion": {
+          "average_open_readers": 0.514798901929692,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.071562,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.009516,
+          "session_send_ms": 3877.598819,
+          "source_lifetime_ms": 4786.692021,
+          "usage_send_ms": 908.961031
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 348.548828,
+            "max_ms": 310.033683
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.307319,
+            "max_ms": 0.307319
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 5.784024,
+            "max_ms": 5.784024
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.595949,
+            "max_ms": 0.595949
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3926.977418,
+            "max_ms": 3926.977418
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 13.570709,
+            "max_ms": 13.570709
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3940.884219,
+            "max_ms": 3940.884219
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 11325.230857,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 16,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 3256,
+        "session_ms": 3365,
+        "derived_cache_ms": 2895,
+        "total_ms": 8054,
+        "worker_cpu_time_ms": 7570,
+        "worker_peak_rss_bytes": 151646208,
+        "ingestion": {
+          "average_open_readers": 0.5169730225755951,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.136886,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.0091,
+          "session_send_ms": 2629.813799,
+          "source_lifetime_ms": 3237.231571,
+          "usage_send_ms": 607.228065
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 307.774834,
+            "max_ms": 279.469364
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.41895,
+            "max_ms": 0.41895
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 4.633435,
+            "max_ms": 4.633435
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.771847,
+            "max_ms": 0.771847
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2661.170725,
+            "max_ms": 2661.170725
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 12.603019,
+            "max_ms": 12.603019
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2674.227329,
+            "max_ms": 2674.227329
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8054.192488,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 16,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 88,
+        "usage_ms": 3091,
+        "session_ms": 3185,
+        "derived_cache_ms": 2981,
+        "total_ms": 7844,
+        "worker_cpu_time_ms": 7075,
+        "worker_peak_rss_bytes": 150851584,
+        "ingestion": {
+          "average_open_readers": 0.4987915079407027,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.096951,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007497,
+          "session_send_ms": 2478.966416,
+          "source_lifetime_ms": 3075.784509,
+          "usage_send_ms": 596.675225
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 297.796033,
+            "max_ms": 270.810266
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.147832,
+            "max_ms": 0.147832
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.699686,
+            "max_ms": 3.699686
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.70912,
+            "max_ms": 0.70912
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2507.301463,
+            "max_ms": 2507.301463
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.249134,
+            "max_ms": 9.249134
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2516.746186,
+            "max_ms": 2516.746186
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7843.973305,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 17,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 72,
+        "usage_ms": 3820,
+        "session_ms": 4423,
+        "derived_cache_ms": 3391,
+        "total_ms": 9547,
+        "worker_cpu_time_ms": 8341,
+        "worker_peak_rss_bytes": 268001280,
+        "ingestion": {
+          "average_open_readers": 0.48690123909583544,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.07901,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.00752,
+          "session_send_ms": 3198.68797,
+          "source_lifetime_ms": 3804.87527,
+          "usage_send_ms": 606.059566
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 308.834417,
+            "max_ms": 281.411657
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.176436,
+            "max_ms": 0.176436
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.485566,
+            "max_ms": 3.485566
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.44648,
+            "max_ms": 0.44648
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3227.610087,
+            "max_ms": 3227.610087
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.772024,
+            "max_ms": 8.772024
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3236.579436,
+            "max_ms": 3236.579436
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9547.027315,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 17,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 67,
+        "usage_ms": 3568,
+        "session_ms": 4083,
+        "derived_cache_ms": 3215,
+        "total_ms": 9039,
+        "worker_cpu_time_ms": 8171,
+        "worker_peak_rss_bytes": 176177152,
+        "ingestion": {
+          "average_open_readers": 0.48687697142131325,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.06214,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007306,
+          "session_send_ms": 2913.605811,
+          "source_lifetime_ms": 3553.718925,
+          "usage_send_ms": 640.005443
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 307.93782699999997,
+            "max_ms": 278.63021
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.16212,
+            "max_ms": 0.16212
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.311924,
+            "max_ms": 3.311924
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.517098,
+            "max_ms": 0.517098
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2945.548273,
+            "max_ms": 2945.548273
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 8.579967,
+            "max_ms": 8.579967
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2954.31332,
+            "max_ms": 2954.31332
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 9039.090104,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 18,
+      "mode": "oracle"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 70,
+        "usage_ms": 3283,
+        "session_ms": 3381,
+        "derived_cache_ms": 2893,
+        "total_ms": 7935,
+        "worker_cpu_time_ms": 7397,
+        "worker_peak_rss_bytes": 150216704,
+        "ingestion": {
+          "average_open_readers": 0.520713390111925,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.05665,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007838,
+          "session_send_ms": 2617.209425,
+          "source_lifetime_ms": 3267.46085,
+          "usage_send_ms": 650.156803
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 298.783257,
+            "max_ms": 264.932052
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.231667,
+            "max_ms": 0.231667
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.830383,
+            "max_ms": 3.830383
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.736894,
+            "max_ms": 0.736894
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2659.039544,
+            "max_ms": 2659.039544
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.850828,
+            "max_ms": 9.850828
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2669.146072,
+            "max_ms": 2669.146072
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 7935.577377,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 18,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 78,
+        "usage_ms": 3482,
+        "session_ms": 3595,
+        "derived_cache_ms": 3058,
+        "total_ms": 8331,
+        "worker_cpu_time_ms": 7260,
+        "worker_peak_rss_bytes": 171319296,
+        "ingestion": {
+          "average_open_readers": 0.520961029580321,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.058926,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.007714,
+          "session_send_ms": 2858.964925,
+          "source_lifetime_ms": 3466.445902,
+          "usage_send_ms": 607.379136
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 298.06167400000004,
+            "max_ms": 271.993804
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.205442,
+            "max_ms": 0.205442
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.967306,
+            "max_ms": 3.967306
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.568353,
+            "max_ms": 0.568353
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 2887.6609,
+            "max_ms": 2887.6609
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 10.339932,
+            "max_ms": 10.339932
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 2898.233475,
+            "max_ms": 2898.233475
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 8331.374793,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 19,
+      "mode": "projected"
+    },
+    {
+      "fts_sha256": "be2ae845f1a8a04d5c86c55672ee61f5e8a555ba2f967c9aa5278fa1e263dd1f",
+      "oracle_sha256": "10c49f6e0ff2db916a17a7bc32615cf5d61280eba05e3166f4e4efc8fb9fe0fb",
+      "publication_today_tokens": 74323833,
+      "session": {
+        "sources": 1,
+        "documents": 1,
+        "skipped": 4630,
+        "removed": 0
+      },
+      "session_periods_sha256": "eab3a6c47a0198e91ec6dd74d2e2b10460e7e91afca7f90cc5296eda55fd34c9",
+      "stages": {
+        "discovery_ms": 81,
+        "usage_ms": 4251,
+        "session_ms": 4785,
+        "derived_cache_ms": 3569,
+        "total_ms": 10369,
+        "worker_cpu_time_ms": 9833,
+        "worker_peak_rss_bytes": 221122560,
+        "ingestion": {
+          "average_open_readers": 0.5068104224035933,
+          "budget_wait_ms": 0,
+          "decode_ms": 0.083689,
+          "peak_open_readers": 1,
+          "read_bytes": 352,
+          "read_calls": 2,
+          "read_ms": 0.01061,
+          "session_send_ms": 3469.761854,
+          "source_lifetime_ms": 4234.737616,
+          "usage_send_ms": 764.83342
+        },
+        "usage_details": {
+          "orphan_candidates": {
+            "calls": 2,
+            "total_ms": 328.70024700000005,
+            "max_ms": 297.728871
+          },
+          "publication_lock_wait": {
+            "calls": 1,
+            "total_ms": 0.204388,
+            "max_ms": 0.204388
+          },
+          "session_rebuild": {
+            "calls": 1,
+            "total_ms": 3.266362,
+            "max_ms": 3.266362
+          },
+          "source_commit": {
+            "calls": 1,
+            "total_ms": 0.474562,
+            "max_ms": 0.474562
+          },
+          "source_prepare": {
+            "calls": 1,
+            "total_ms": 3502.235452,
+            "max_ms": 3502.235452
+          },
+          "source_publication": {
+            "calls": 1,
+            "total_ms": 9.31322,
+            "max_ms": 9.31322
+          },
+          "source_total": {
+            "calls": 1,
+            "total_ms": 3511.775398,
+            "max_ms": 3511.775398
+          }
+        }
+      },
+      "usage_changes": {
+        "files": 4631,
+        "ignored_non_usage": 1,
+        "imported": 1,
+        "malformed": 0,
+        "removed": 0,
+        "replaced": 0,
+        "source_resets": 0,
+        "unsupported": 0,
+        "unsupported_usage": 0,
+        "updated": 0
+      },
+      "visible_documents": 9926,
+      "wall_ms": 10368.945131,
+      "work_signals_sha256": "6fb95f940c37411b013b21135c8fee84f19b40bf87448cc48c97c21f2e7e9b1d",
+      "pair": 19,
+      "mode": "oracle"
+    }
+  ],
+  "limitations": [
+    "Full local shared-engine round through committed serving JSON; no native popover frame or filesystem watcher latency",
+    "Same schema-32 seed for both variants; oracle disables partition reuse and affected-view counting in private source exports",
+    "Alternating pairs; page cache not purged; process resources cover the engine, not an App or OTel collector",
+    "No performance sample is discarded; failures stop the run and are not successful observations"
+  ],
+  "oracle_equivalent": true
+}

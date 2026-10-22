@@ -5,6 +5,8 @@ import Synchronization
 /// Closed, content-free stages. Uptime measures elapsed work, never data freshness.
 public enum DesktopPerformanceStage: String, Codable, Hashable, Sendable {
 	case quota, scanRequest, workerDrain, snapshotRequest, snapshotDecode, publication, presentation, popoverPreparation, popoverOpen
+	case sourceNotification, sourceQueued, sourceProcessing
+	case servingPublication
 }
 
 public struct DesktopPerformanceSample: Codable, Sendable {

@@ -10,6 +10,14 @@ import (
 // ranges. It retains no state after the call and does not change ordinary
 // Signals callers. Workflow/tooling still use their existing scoped readers.
 func (s *Service) SignalsBatch(ctx context.Context, options []SignalOptions) ([]SignalReport, error) {
+	return s.signalsBatch(ctx, options, false)
+}
+
+func (s *Service) ProjectedSignalsBatch(ctx context.Context, options []SignalOptions) ([]SignalReport, error) {
+	return s.signalsBatch(ctx, options, true)
+}
+
+func (s *Service) signalsBatch(ctx context.Context, options []SignalOptions, projected bool) ([]SignalReport, error) {
 	if len(options) == 0 {
 		return []SignalReport{}, nil
 	}
@@ -67,7 +75,14 @@ func (s *Service) SignalsBatch(ctx context.Context, options []SignalOptions) ([]
 		ends[i] = o.To.UTC().Format(time.RFC3339Nano)
 	}
 	if hasActivity {
-		events, err := s.eventsRange(ctx, from, to, "", "")
+		var events []storedEvent
+		var pricing projectedPricing
+		var err error
+		if projected {
+			events, pricing, err = s.presentationInputs(ctx, from, to, s.now(), true)
+		} else {
+			events, err = s.eventsRange(ctx, from, to, "", "")
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -77,9 +92,19 @@ func (s *Service) SignalsBatch(ctx context.Context, options []SignalOptions) ([]
 		}
 		// Preserve the existing empty-event path: no price access is required.
 		if len(events) > 0 {
-			resolver, err := s.loadReadPriceResolver(ctx, s.now())
-			if err != nil {
-				return nil, err
+			if pricing == nil {
+				resolver, err := s.loadReadPriceResolver(ctx, s.now())
+				if err != nil {
+					return nil, err
+				}
+				pricing = func(event storedEvent) (eventAttribution, Result, error) {
+					a, err := resolver.priceForEvent(event)
+					if err != nil {
+						return a, Result{}, err
+					}
+					r, err := calculateAttributedEvent(event, a)
+					return a, r, err
+				}
 			}
 			for _, event := range events {
 				if err := ctx.Err(); err != nil {
@@ -109,11 +134,7 @@ func (s *Service) SignalsBatch(ctx context.Context, options []SignalOptions) ([]
 				if len(selected) == 0 {
 					continue
 				}
-				attribution, err := resolver.priceForEvent(event)
-				if err != nil {
-					return nil, err
-				}
-				result, err := calculateAttributedEvent(event, attribution)
+				_, result, err := pricing(event)
 				if err != nil {
 					return nil, err
 				}

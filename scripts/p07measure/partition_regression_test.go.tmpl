@@ -1,0 +1,43 @@
+package store
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"testing"
+
+	"github.com/kitdine/agent-deck/scripts/p07measure"
+)
+
+// Injected only into a private Go overlay. Both production calls must contribute
+// once; ordinary source files, database semantics and SQL remain unchanged.
+func TestP07ImplicitPartitionTransactions(t *testing.T) {
+	ctx := context.Background()
+	core, err := Open(ctx, t.TempDir())
+	if err != nil { t.Fatal(err) }
+	defer core.Close()
+	_, err = core.DB.ExecContext(ctx, `INSERT INTO usage_derived_partitions(client,model,day,revision,active_revision,dirty,version,payload) VALUES('codex','toy','2026-10-21',0,0,1,'',X'')`)
+	if err != nil { t.Fatal(err) }
+	metadata, err := core.UsageProjectionMetadataRevision(ctx)
+	if err != nil { t.Fatal(err) }
+	var log bytes.Buffer
+	p07measure.Start(&log)
+	p07measure.Register(core.DB, "core")
+	defer p07measure.Start(nil)
+	p := UsagePartition{Client:"codex", Model:"toy", Day:"2026-10-21"}
+	revision, err := core.BeginUsagePartition(ctx,p)
+	if err != nil { t.Fatal(err) }
+	if err = core.PublishUsagePartition(ctx,p,revision,metadata,"synthetic",[]byte(`{"value":1}`)); err != nil { t.Fatal(err) }
+	if n:=p07measure.Flush();n!=0 { t.Fatalf("unobserved terminal spans: %d",n) }
+	var terminal []map[string]any
+	decoder:=json.NewDecoder(bytes.NewReader(log.Bytes()))
+	for { var row map[string]any;err=decoder.Decode(&row);if err==io.EOF{break};if err!=nil{t.Fatal(err)};if row["event"]=="end"{terminal=append(terminal,row)} }
+	if len(terminal)!=2 { t.Fatalf("SP-IP-R3-F1: implicit partition writes recorded=%d want=2",len(terminal)) }
+	for _,row:=range terminal { if row["outcome"]!="implicit_commit"||row["valid"]!=true||row["domain"]!="core"||row["boundary"]!="autocommit" { t.Fatalf("bad implicit boundary: %+v",row) } }
+	var active int64;var payload []byte
+	if err=core.DB.QueryRowContext(ctx,`SELECT active_revision,payload FROM usage_derived_partitions WHERE client='codex' AND model='toy' AND day='2026-10-21'`).Scan(&active,&payload);err!=nil{t.Fatal(err)}
+	if active!=revision||string(payload)!=`{"value":1}` {t.Fatalf("publication changed: revision=%d payload=%q",active,payload)}
+	encoded,_:=json.Marshal(terminal)
+	t.Log("P07_PARTITION_BOUNDARIES "+string(encoded))
+}

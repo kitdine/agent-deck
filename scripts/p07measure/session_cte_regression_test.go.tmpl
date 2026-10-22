@@ -1,0 +1,57 @@
+package session
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"io"
+	"testing"
+
+	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/scripts/p07measure"
+)
+
+// This virtual overlay test uses the actual List query. All databases and rows
+// are synthetic; source_path values are labels, never filesystem inputs.
+func TestP07SessionListCTEDoesNotPolluteWrites(t *testing.T) {
+	ctx := context.Background()
+	index, err := store.OpenSessions(ctx, t.TempDir())
+	if err != nil { t.Fatal(err) }
+	defer index.Close()
+	core, err := sql.Open("sqlite", ":memory:")
+	if err != nil { t.Fatal(err) }
+	defer core.Close()
+	for _, db := range []*sql.DB{core, index.DB} {
+		if _, err = db.ExecContext(ctx, "CREATE TABLE p07_value(n INTEGER); INSERT INTO p07_value VALUES(0)"); err != nil { t.Fatal(err) }
+	}
+	for i, label := range []string{"synthetic/active", "synthetic/archive"} {
+		_, err = index.DB.ExecContext(ctx, `INSERT INTO session_sources(source_path,identity,cursor,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,0,0,0,'',?,?,?)`, label, label, 2-i, ParserVersion, "2026-10-21T00:00:00Z")
+		if err != nil { t.Fatal(err) }
+		_, err = index.DB.ExecContext(ctx, `INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,'codex','toy','synthetic',?,?,?,?)`, label, label, ParserVersion, "2026-10-21T00:00:00Z", "2026-10-21T00:00:00Z")
+		if err != nil { t.Fatal(err) }
+	}
+	var log bytes.Buffer
+	p07measure.Start(&log)
+	p07measure.Register(core, "core")
+	p07measure.Register(index.DB, "session")
+	defer p07measure.Start(nil)
+	tx, err := p07measure.BeginTx("synthetic/core", core, ctx, nil)
+	if err != nil { t.Fatal(err) }
+	if _, err = tx.ExecContext(ctx, "UPDATE p07_value SET n=n+1"); err != nil { t.Fatal(err) }
+	if err = p07measure.Commit(tx); err != nil { t.Fatal(err) }
+	if _, err = p07measure.ExecDB("synthetic/session", index.DB, ctx, "UPDATE p07_value SET n=n+1"); err != nil { t.Fatal(err) }
+	before := log.Len()
+	items, err := List(ctx, index.DB)
+	if err != nil { t.Fatal(err) }
+	if len(items)!=1 || items[0].SourcePath!="synthetic/active" || items[0].Model!="synthetic/active" { t.Fatalf("session List result changed: %+v",items) }
+	if log.Len()!=before { t.Fatalf("SP-IP-R4-F1: read-only session.List added %d transaction log bytes; want zero",log.Len()-before) }
+	if p07measure.Flush()!=0 { t.Fatal("unobserved write span") }
+	var trace []map[string]any
+	decoder:=json.NewDecoder(bytes.NewReader(log.Bytes()))
+	for { var row map[string]any;err=decoder.Decode(&row);if err==io.EOF{break};if err!=nil{t.Fatal(err)};trace=append(trace,row) }
+	terminals:=0;for _,row:=range trace{if row["event"]=="end"{terminals++;if row["valid"]!=true{t.Fatalf("invalid write: %+v",row)}}}
+	if terminals!=2 { t.Fatalf("actual writes changed: %d",terminals) }
+	encoded,_:=json.Marshal(trace)
+	t.Log("P07_SESSION_CTE_TRACE "+string(encoded))
+}

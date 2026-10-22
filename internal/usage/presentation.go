@@ -244,6 +244,12 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 	return s.presentation(ctx, now, location, false)
 }
 
+// ProjectedPresentation reuses unchanged day/client/model pricing contributions.
+// The ordinary Presentation method remains the full-fact oracle.
+func (s *Service) ProjectedPresentation(ctx context.Context, now time.Time, location *time.Location) (PresentationReport, error) {
+	return s.presentationProjected(ctx, now, location, false, true)
+}
+
 // TodayPresentation supplies the startup window without first reading or
 // preparing ninety days. It shares the full oracle's pricing and reducers.
 func (s *Service) TodayPresentation(ctx context.Context, now time.Time, location *time.Location) (PresentationReport, error) {
@@ -251,6 +257,11 @@ func (s *Service) TodayPresentation(ctx context.Context, now time.Time, location
 }
 
 func (s *Service) presentation(ctx context.Context, now time.Time, location *time.Location, todayOnly bool) (PresentationReport, error) {
+	return s.presentationProjected(ctx, now, location, todayOnly, false)
+}
+
+func (s *Service) presentationProjected(ctx context.Context, now time.Time, location *time.Location, todayOnly, incremental bool) (PresentationReport, error) {
+	defer s.Profile.start("presentation")()
 	if location == nil {
 		location = time.Local
 	}
@@ -268,11 +279,7 @@ func (s *Service) presentation(ctx context.Context, now time.Time, location *tim
 		periods = periods[:1]
 	}
 
-	events, err := s.eventsRange(ctx, start90, end, "", "")
-	if err != nil {
-		return PresentationReport{}, err
-	}
-	resolver, err := s.loadReadPriceResolver(ctx, now.UTC())
+	events, pricing, err := s.presentationInputs(ctx, start90, end, now, incremental)
 	if err != nil {
 		return PresentationReport{}, err
 	}
@@ -287,11 +294,7 @@ func (s *Service) presentation(ctx context.Context, now time.Time, location *tim
 			return PresentationReport{}, parseErr
 		}
 		at = at.In(location)
-		attribution, attributionErr := resolver.priceForEvent(event)
-		if attributionErr != nil {
-			return PresentationReport{}, attributionErr
-		}
-		calculated, calculateErr := calculateAttributedEvent(event, attribution)
+		attribution, calculated, calculateErr := pricing(event)
 		if calculateErr != nil {
 			return PresentationReport{}, calculateErr
 		}
