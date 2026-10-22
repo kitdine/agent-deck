@@ -226,6 +226,125 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertTrue(window.childWindows?.filter(\.isVisible).isEmpty ?? true)
 	}
 
+	func testInitialPopoverPreparationWaitsForDataAndRunsOnce() async throws {
+		let host = StubDesktopHost(behavior: .suspendedEnvelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		DesktopPerformanceTrace.start()
+		defer { _ = DesktopPerformanceTrace.finish() }
+		let controller = MenuBarItemController(model: model, openSettings: {})
+		XCTAssertFalse(controller.isInitialPresentationPrepared)
+		let refresh = Task { await model.coordinator.refresh() }
+		while host.refreshCount == 0 { await Task.yield() }
+		XCTAssertEqual(model.surface, .loadingSurface)
+		XCTAssertFalse(controller.isInitialPresentationPrepared)
+		host.resume()
+		await refresh.value
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !controller.isInitialPresentationPrepared, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertTrue(controller.isInitialPresentationPrepared)
+		host.behavior = .envelope(WireFixture.envelope())
+		await model.coordinator.refresh()
+		await Task.yield()
+		let captured = DesktopPerformanceTrace.finish()
+		XCTAssertEqual(captured.aggregates.first { $0.stage == .popoverPreparation }?.count, 1)
+		XCTAssertFalse(captured.samples.contains { $0.stage == .popoverOpen })
+	}
+
+	func testInitialPopoverPreparationDoesNotShowAWindowOrMoveFocus() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		let controller = MenuBarItemController(model: model, openSettings: {})
+		let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 120, height: 40),
+			styleMask: [.titled], backing: .buffered, defer: false)
+		let sentinel = NSButton(title: "Keep focus", target: nil, action: nil)
+		window.contentView = sentinel
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+		XCTAssertTrue(window.makeFirstResponder(sentinel))
+		let visibleWindowNumbers = Set(NSApp.windows.filter(\.isVisible).map(\.windowNumber))
+		let existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+		await model.coordinator.refresh()
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !controller.isInitialPresentationPrepared, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertTrue(controller.isInitialPresentationPrepared)
+		XCTAssertTrue(window.firstResponder === sentinel)
+		XCTAssertEqual(Set(NSApp.windows.filter(\.isVisible).map(\.windowNumber)), visibleWindowNumbers)
+		let preparationWindows = NSApp.windows.filter { !existingWindows.contains(ObjectIdentifier($0)) }
+		XCTAssertEqual(preparationWindows.count, 1)
+		let preparationWindow = try XCTUnwrap(preparationWindows.first)
+		XCTAssertFalse(preparationWindow.isVisible)
+		XCTAssertFalse(preparationWindow.isKeyWindow)
+		XCTAssertFalse(preparationWindow.contentView?.subviews.isEmpty ?? true,
+			"the unchanged hosting hierarchy must be attached before first presentation")
+		XCTAssertEqual(model.selectedClient, "all")
+		XCTAssertEqual(model.selectedPeriod, "today")
+		XCTAssertEqual(model.selectedPanel, .quota)
+	}
+
+	func testInitialPopoverPreparationUsesAlreadyReadyMemoryWithoutRefresh() async throws {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		let refreshCount = host.refreshCount
+		let controller = MenuBarItemController(model: model, openSettings: {})
+		XCTAssertTrue(controller.isInitialPresentationPrepared)
+		XCTAssertEqual(host.refreshCount, refreshCount)
+	}
+
+	func testPreparedPopoverControllerDoesNotRetainItself() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		await model.coordinator.refresh()
+		var controller: MenuBarItemController? = MenuBarItemController(model: model, openSettings: {})
+		XCTAssertTrue(controller?.isInitialPresentationPrepared == true)
+		weak var released = controller
+		controller = nil
+		XCTAssertNil(released, "unshown preparation must not create a controller retention cycle")
+	}
+
+	func testFirstOpenRetiresPreparationWindowWithoutRemovingPopoverContent() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		await model.coordinator.refresh()
+		let existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+		let controller = MenuBarItemController(model: model, openSettings: {})
+		defer { controller.closePopover() }
+		let preparationWindow = try XCTUnwrap(NSApp.windows.first {
+			!existingWindows.contains(ObjectIdentifier($0)) && !$0.isVisible
+				&& $0.contentView?.subviews.isEmpty == false
+		})
+		let preparedView = try XCTUnwrap(preparationWindow.contentView?.subviews.first)
+		let closed = expectation(description: "preparation window retired")
+		let observer = NotificationCenter.default.addObserver(
+			forName: NSWindow.willCloseNotification, object: preparationWindow, queue: .main
+		) { _ in closed.fulfill() }
+		defer { NotificationCenter.default.removeObserver(observer) }
+		let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+		defer { NSStatusBar.system.removeStatusItem(item) }
+		let button = try XCTUnwrap(item.button)
+		button.title = "Fixture"
+		button.target = controller
+		button.action = NSSelectorFromString("handleClick:")
+		let anchor = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 160, height: 50),
+			styleMask: [.titled], backing: .buffered, defer: false)
+		anchor.isReleasedWhenClosed = false
+		anchor.contentView = button
+		anchor.makeKeyAndOrderFront(nil)
+		defer { anchor.close() }
+		XCTAssertTrue(button.window?.isVisible == true, "fixture anchor must be visible before opening")
+		XCTAssertGreaterThan(button.bounds.width, 0, "fixture anchor must have completed layout")
+		button.performClick(nil)
+		let result = await XCTWaiter.fulfillment(of: [closed], timeout: 2)
+		XCTAssertEqual(result, .completed)
+		let visibleWindow = try XCTUnwrap(preparedView.window)
+		XCTAssertFalse(visibleWindow === preparationWindow)
+		XCTAssertTrue(visibleWindow.isVisible, "teardown must not remove the transferred hosting view")
+		XCTAssertTrue(visibleWindow.firstResponder === visibleWindow)
+	}
+
 	func testQuotaTabIsHiddenWhenReadingIsOffAndFallsBackToUsage() async throws {
 		let base = WireFixture.envelope()
 		let readingOff = base.replacingSubscription(

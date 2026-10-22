@@ -1,0 +1,851 @@
+{
+  "kind": "scan-serving-r20-p02-fixed100-rejection-v1",
+  "recorded_at": "2026-10-19T07:45:07.725443+00:00",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "content_state_id": "scan-serving-e1-r20-20261019-state",
+  "finding": "SP-SB-R20-F1",
+  "input": {
+    "files": 4299,
+    "bytes": 734012799,
+    "corpus_sha256": "10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380",
+    "live_db_backup_sha256": {
+      "sessions.sqlite3": "d3b5f9bb50efe642ce5da260cb076b85efaf7247673cee63bc13800507aadf7a",
+      "agentdeck.sqlite3": "a32c530c3c29a7e4729522fe82768ca1d2350afee0b0ceb56fbf5e96cb987203"
+    },
+    "capture_consistency": "two independent SQLite backups followed by per-file bounded JSONL prefixes; not cross-DB/filesystem atomic"
+  },
+  "environment": {
+    "macos": "26.7.2",
+    "architecture": "x86_64",
+    "timezone": "America/New_York",
+    "locale": "en",
+    "otel": "off",
+    "harness_sha256": "e7d301349369216ec1d5d8376ef3d4b6652e99794e15d77ce33b95eba7661a66",
+    "matrix_module_sha256": "e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f",
+    "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+    "toolchain": {
+      "go": "go version go1.27.1 darwin/amd64",
+      "xcode": "Xcode 26.4\nBuild version 17E192",
+      "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+    },
+    "acceptance_driver_sha256": "563ed60db96b99083b5d0db362fbd1b7f7489e014f74af6ce36a184dfd8152ab"
+  },
+  "identity": {
+    "A": {
+      "probe_sha256": "f8b93f5fcc91bc658e1283f99f1e3a96f0378728b66e0482a9a0e423fc266f99",
+      "app_sha256": "25052bc181b441691ff12b8e367d9ab2d004c6a30ccb5358819ef5afceff15b5",
+      "helper_sha256": "28fa8b31fd8ede8e789808cdfa0c60401166b0f4ea65e949e2a2e5842ee2ec0d",
+      "framework_sha256": "cb3804df4c9192b9a01f49f7f00144db11bb9cf9b3154ed6989f9e64c62a83c8",
+      "widget_sha256": "f3bf567451f5174870efc6be81315e812075af9db445a3a22c1df4857ae4aa09",
+      "delegate_probe_sha256": "a2e89cd7b51528898760688d6f0abc873bcc632fc6cc1d733202fe430e62625a",
+      "shared_probe_sha256": "4afcee12924ca2f21bebea945cf7b696524644a167038f84e94b54709d071b78",
+      "pressure_main_sha256": "546c4045dd5b29e6ef5ff27b7e99cf819ce1b4946a1229cda39f4421e13070a2",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    },
+    "B": {
+      "probe_sha256": "61113f71251be5aef78ebf35cfd42ae9ed1626403da6d8552192dfd7d6dc13f4",
+      "app_sha256": "f457f8e3cd7675d1ea697de8c92ed9eafbd3238b08c15c71cec76211f3c4631a",
+      "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+      "framework_sha256": "11b1f94198c55c8592caf53f0a835d1d0ce6cc1131e77b1e7b199e826fdebeb4",
+      "widget_sha256": "46feb18af96b7e0ae52b9e98893595fe49627a2b5bdb36f67d9212c77d8b0439",
+      "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+      "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+      "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    }
+  },
+  "seed_sha256": {
+    "sessions.sqlite3": "a4661a6bc6679eba124e52e0d68c62261656fda043c1592a042249bf973b8ca4",
+    "agentdeck.sqlite3": "cedd3731945e84aeb3c94ac1891626835466e5572c0e79f3be9f112ef517f759"
+  },
+  "sampler_sha256": "563ed60db96b99083b5d0db362fbd1b7f7489e014f74af6ce36a184dfd8152ab",
+  "acceptance_plan": {
+    "criterion": "P02 model restore",
+    "endpoint": "model_readiness.appReadyToModelNanoseconds",
+    "maximum_ns": 1125000000,
+    "planned_n": 100,
+    "early_reject_count": 6,
+    "rule": "6 valid same-cohort values above budget force nearest-rank95 of final100 above budget;no percentile estimated before100",
+    "recorded_before_sampling": "2026-10-19T07:34:00.635740+00:00"
+  },
+  "predeclared_coordination_comments": [
+    "e58c32c7-8010-5c38-8654-9e03e61d0090",
+    "b4445583-2b66-5c6f-976e-3d235ebfe3e5"
+  ],
+  "preparation_correction": {
+    "samples_before_correction": 0,
+    "reason": "Main readonly SQLite schema inspection created zero-byteWAL and32KiBSHM in retained seed;strict seed-set validation stopped",
+    "method": "Preserved original directory;copied exact two mainDB bytes to clean seed after verifying emptyWAL and idleworker;only driver seed locator changed before anysample",
+    "original_driver_sha256": "6fd6fc97a8e97670fbc5049128bfa09630aecdb147cad0f0cf951809705cb946",
+    "corrected_driver_sha256": "563ed60db96b99083b5d0db362fbd1b7f7489e014f74af6ce36a184dfd8152ab",
+    "not_a_performance_failure": true
+  },
+  "samples": [
+    {
+      "pair": 0,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 3859123149,
+        "processEntryToNativeDataFrameNanoseconds": 4547047081,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 3859123149,
+            "valid": true
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 11678272818,
+      "model_readiness": {
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 2951274760,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 2263350828,
+        "partial": false
+      }
+    },
+    {
+      "pair": 1,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 2426301897
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 2426301897,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 2781280676,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 4709010539,
+      "model_readiness": {
+        "processEntryToModelNanoseconds": 782831825,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 427853046,
+        "partial": false
+      }
+    },
+    {
+      "pair": 2,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 2460500023,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 2460500023
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 2786642034,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 4794475906,
+      "model_readiness": {
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 344952204,
+        "processEntryToModelNanoseconds": 671094215
+      }
+    },
+    {
+      "pair": 3,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 3742629999,
+        "frames": [
+          {
+            "elapsedNanoseconds": 3742629999,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 4095943489,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 6412836072,
+      "model_readiness": {
+        "processEntryToModelNanoseconds": 2353085953,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 1999772463,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "operatorWaitIncluded": false
+      }
+    },
+    {
+      "pair": 4,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 5267367348,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 5267367348,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 5679820843,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 8513234542,
+      "model_readiness": {
+        "appReadyToModelNanoseconds": 3201808742,
+        "partial": false,
+        "processEntryToModelNanoseconds": 3614262237,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000
+      }
+    },
+    {
+      "pair": 5,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 2960258858,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 2576050233,
+            "valid": true
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 2576050233,
+        "version": 1,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 5404303047,
+      "model_readiness": {
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 2447562192,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 2063353567,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000
+      }
+    },
+    {
+      "pair": 6,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 3745723672,
+        "version": 1,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 4183183404,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 3745723672
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 7688304446,
+      "model_readiness": {
+        "appReadyToModelNanoseconds": 545543948,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 983003680
+      }
+    },
+    {
+      "pair": 7,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 3777051092,
+            "panel": "quota"
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 4246608669,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 3777051092,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 6924104355,
+      "model_readiness": {
+        "processEntryToModelNanoseconds": 1048938565,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 579380988,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "partial": false
+      }
+    },
+    {
+      "pair": 8,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 2962132724
+          }
+        ],
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 3375443251,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 2962132724,
+        "version": 1,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 5899938798,
+      "model_readiness": {
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 980461417,
+        "appReadyToModelNanoseconds": 567150890,
+        "partial": false
+      }
+    },
+    {
+      "pair": 9,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "version": 1,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 3393976769,
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2875096917,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 2875096917,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 5712693578,
+      "model_readiness": {
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 562698239,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1081578091,
+        "partial": false
+      }
+    },
+    {
+      "pair": 10,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "version": 1,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 4004511384,
+            "valid": true
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 4398531511,
+        "appReadyToNativeDataFrameNanoseconds": 4004511384,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 6523054826,
+      "model_readiness": {
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 2569309802,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 2175289675,
+        "partial": false,
+        "sessionDomainAvailable": true
+      }
+    },
+    {
+      "pair": 11,
+      "arm": "B",
+      "condition": "restore",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "cache_present_at_start": true,
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cohort_context_sha256": "a4601514b0d9a9448d8bd8ea8acc1b6d8746583b2d5cee45c8c645a101df635a",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 4130041877,
+        "frames": [
+          {
+            "elapsedNanoseconds": 3730523486,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 3730523486,
+        "private_app_cleanup_verified": true
+      },
+      "whole_observation_ns": 6325304294,
+      "model_readiness": {
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 2026582415,
+        "processEntryToModelNanoseconds": 2426100806,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false
+      }
+    }
+  ],
+  "summary": {
+    "groups": [
+      {
+        "condition": "restore",
+        "arm": "B",
+        "cohort_sha256": "c27646a667dd0c30bf3ec3262855d782863958d16aeb9e792d94a411f0baeaf7",
+        "cohort_error": null,
+        "identity_rejections": 0,
+        "attempts": 12,
+        "failures": 0,
+        "valid_first_click_frames": 0,
+        "model_observations": 12,
+        "first_click_ms": {
+          "median": null,
+          "maximum": null,
+          "p95": null,
+          "p99": null
+        },
+        "tail_sample_requirement_met": false,
+        "startup_control_frames": 12,
+        "startup_control_frame_ms": {
+          "median": 3730.523486,
+          "maximum": 5267.367348,
+          "p95": null
+        }
+      }
+    ],
+    "status": "NOT_VERIFIED",
+    "reason": "Exact starting-state cohorts only; missing identities excluded. Collector summary only; pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+  },
+  "model_budget_progress": {
+    "eligible_full_restore_models": 12,
+    "over_budget_count": 6,
+    "over_budget_pairs": [
+      0,
+      3,
+      4,
+      5,
+      10,
+      11
+    ],
+    "single_exact_cohort": true
+  },
+  "performance_rejection": {
+    "planned_n": 100,
+    "criterion": "P02",
+    "budget_ns": 1125000000,
+    "valid_over_budget": 6,
+    "cohort_sha256": "c27646a667dd0c30bf3ec3262855d782863958d16aeb9e792d94a411f0baeaf7",
+    "reason": "nearest-rank95 cannot satisfy budget even if all remaining planned samples satisfy it",
+    "no_tail_estimate": true
+  },
+  "model_ms": [
+    2263.350828,
+    427.853046,
+    344.952204,
+    1999.772463,
+    3201.808742,
+    2063.353567,
+    545.543948,
+    579.380988,
+    567.15089,
+    562.698239,
+    2175.289675,
+    2026.582415
+  ],
+  "proof": {
+    "planned_valid_n": 100,
+    "nearest_rank_p95_position": 95,
+    "over_budget_count": 6,
+    "all12_valid_full_restore": true,
+    "single_exact_cohort": "c27646a667dd0c30bf3ec3262855d782863958d16aeb9e792d94a411f0baeaf7",
+    "statement": "Even if every remaining planned observation meets1.125s,six observed exceedances occupy ranks95..100 or earlier;the fixed100 plan cannot meet P02. No numeric percentile estimated from12."
+  },
+  "cleanup": {
+    "private_app_stopped": true,
+    "worker_idle_after_wait": true,
+    "post_run_artifact_hashes_reverified": true
+  },
+  "review": {
+    "executor": "user-authorized gpt-6-luna medium fixed driver only",
+    "reviewer": "Codex main independently reread report,recomputed cohort/summary/counts and verified artifacts",
+    "classification": "P02 defined observable restore-model endpoint fails fixed100 budget;latency root cause not yet localized",
+    "scope_for_repair": "Profile identical start and fixed clock across serving read/helper request/decode/model installation/main-actor presentation;preserve threshold and original correct frame checks",
+    "L3": "R19 state-bound regression evidence reused;performance rejection does not relabel regression tests as failed"
+  },
+  "limits": [
+    "Twelve startup control frames,zero icon samples;not a completed100-sample distribution",
+    "No P01/P03 or other conditions budget verdict",
+    "No A/B speedup claim;only candidateB sampled",
+    "Same-code P02 fixed100 plan rejected;not a claimed population percentile estimate",
+    "No budget/clock/threshold change or product/test/config edit",
+    "Other E1 conditions,real>120s pressure,P03/all-tab and overall independent review incomplete"
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "kind": "scan-serving-r18-repair-v1",
+  "recorded_at": "2026-10-19T06:47:04.778636+00:00",
+  "finding": "SP-SB-R18-F1",
+  "content_state_id": "scan-serving-repair-r18-OJlioQrE-state",
+  "input": {
+    "files": 4299,
+    "bytes": 734012799,
+    "corpus_sha256": "10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380",
+    "live_db_backup_sha256": {},
+    "capture_consistency": "two independent SQLite backups followed by per-file bounded JSONL prefixes; not cross-DB/filesystem atomic"
+  },
+  "environment": {
+    "macos": "26.7.2",
+    "architecture": "x86_64",
+    "timezone": "America/New_York",
+    "locale": "en",
+    "otel": "off",
+    "harness_sha256": "e7d301349369216ec1d5d8376ef3d4b6652e99794e15d77ce33b95eba7661a66",
+    "matrix_module_sha256": "e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f",
+    "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+    "toolchain": {
+      "go": "go version go1.27.1 darwin/amd64",
+      "xcode": "Xcode 26.4\nBuild version 17E192",
+      "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+    }
+  },
+  "identity": {
+    "A": {
+      "probe_sha256": "f8b93f5fcc91bc658e1283f99f1e3a96f0378728b66e0482a9a0e423fc266f99",
+      "app_sha256": "e1ad76188ccb969efdfc2f6cce38a9d3d2b5d2a79b4aa9c96f56ff8c2873e350",
+      "helper_sha256": "28fa8b31fd8ede8e789808cdfa0c60401166b0f4ea65e949e2a2e5842ee2ec0d",
+      "framework_sha256": "30cc05e32fbf54c4c77df4737e53893ad0da4a344761d7d6c97a53f470a1e760",
+      "widget_sha256": "a9e259835c02d9a93c60cfead7229a718eca188fb6cece6fb093a99d2afdb530",
+      "delegate_probe_sha256": "a2e89cd7b51528898760688d6f0abc873bcc632fc6cc1d733202fe430e62625a",
+      "shared_probe_sha256": "4afcee12924ca2f21bebea945cf7b696524644a167038f84e94b54709d071b78",
+      "pressure_main_sha256": "546c4045dd5b29e6ef5ff27b7e99cf819ce1b4946a1229cda39f4421e13070a2",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    },
+    "B": {
+      "probe_sha256": "61113f71251be5aef78ebf35cfd42ae9ed1626403da6d8552192dfd7d6dc13f4",
+      "app_sha256": "e3b1c7fd889784654bbd5242ee947ad0654e30c1134b3c0b7d5a6fb2c1de5b9d",
+      "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+      "framework_sha256": "75b7bc39fc05ba5fe82f6a3d02263bc33f6fc203a143d9237f585462514c15a5",
+      "widget_sha256": "0fc6a6adfed1ef51d3518da7bcd5bd2080a137d320d5401ebdf07f79536be40e",
+      "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+      "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+      "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    }
+  },
+  "samples": [
+    {
+      "pair": 0,
+      "arm": "B",
+      "condition": "first-import",
+      "measurement": "startup-frame",
+      "starting_database_sha256": {},
+      "starting_schema_versions": {},
+      "cache_present_at_start": false,
+      "starting_cache_sha256": null,
+      "cohort_context_sha256": "beea4b8773ddc4c5eaef8a90ea6bbbe0214391299cb74aabae1e21c93cecd728",
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 2222636098,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 2362049387,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "private_app_cleanup_verified": true,
+        "frame_count": 1,
+        "valid_frame_count": 1
+      },
+      "whole_observation_ns": 8201511985,
+      "model_readiness": {
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 2066408569,
+        "operatorWaitIncluded": false,
+        "partial": true,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": false,
+        "processEntryToModelNanoseconds": 2205821858
+      }
+    }
+  ],
+  "summary": {
+    "groups": [
+      {
+        "condition": "first-import",
+        "arm": "B",
+        "cohort_sha256": "1b959ef4486f0ae7062c99ea1a51f9da3a380b4158378342b3921f5a9eacd5b9",
+        "cohort_error": null,
+        "identity_rejections": 0,
+        "attempts": 1,
+        "failures": 0,
+        "valid_first_click_frames": 0,
+        "model_observations": 1,
+        "first_click_ms": {
+          "median": null,
+          "maximum": null,
+          "p95": null,
+          "p99": null
+        },
+        "tail_sample_requirement_met": false,
+        "startup_control_frames": 1,
+        "startup_control_frame_ms": {
+          "median": 2222.636098,
+          "maximum": 2222.636098,
+          "p95": null
+        }
+      }
+    ],
+    "status": "NOT_VERIFIED",
+    "reason": "Exact starting-state cohorts only; missing identities excluded. Collector summary only; pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+  },
+  "cleanup": {
+    "app_stopped": true,
+    "worker_idle": true
+  },
+  "regression": {
+    "tests": 42,
+    "failures": 0,
+    "skips": 0,
+    "behavior": "actual emitted Swift control runs with changed hero/publication before capture;strict numeric stand-in;rejects wrong/empty/missing frame and capture-time snapshot drift;one capture only;original endpoints retained",
+    "negative_control": "in-memory old pre-yield hero binding fails updated-publication case;disk source unchanged"
+  },
+  "build": "Corrected private A and B builds pass;initial candidate-only servingHeader reference rejected by A build and replaced with common Equatable latestSnapshot identity before final verification",
+  "method": "Unmodified current run_matrix first-import/B/startup-frame with pairs1;no CLI pre-import,emptyDB/no cache;actual private App and bitmap OCR;frozen clone verified by inventory",
+  "limits": [
+    "One startup-frame,not icon input or100-sample acceptance",
+    "No p95/p99 or product budget verdict",
+    "Behavioral stand-in is not bitmap/OCR evidence;real pilot is separately recorded",
+    "R18 original and diagnostic failures retained;not all numeric_frame_missing errors attributed to one cause"
+  ]
+}

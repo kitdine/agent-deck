@@ -1,7 +1,63 @@
 import XCTest
+import AgentDeckShared
 @testable import AgentDeck
 
 final class DesktopCopyTests: XCTestCase {
+	func testLocaleOverrideRemainsLiveAcrossLanguageChanges() throws {
+		let previous = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let previous { setenv("AGENTDECK_TEST_LOCALE", previous, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans", "en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			XCTAssertEqual(DesktopLocale.override, language)
+			XCTAssertEqual(DesktopLocale.current.identifier, language)
+			XCTAssertEqual(t(DesktopCopy.refreshAction),
+				try bundle(language).localizedString(forKey: DesktopCopy.refreshAction, value: nil, table: nil))
+		}
+		for unsupported in ["", "fr", "en_US"] {
+			setenv("AGENTDECK_TEST_LOCALE", unsupported, 1)
+			XCTAssertNil(DesktopLocale.override)
+			XCTAssertEqual(DesktopLocale.bundle.bundleURL, Bundle.main.bundleURL)
+		}
+		unsetenv("AGENTDECK_TEST_LOCALE")
+		XCTAssertNil(DesktopLocale.override)
+		XCTAssertEqual(DesktopLocale.bundle.bundleURL, Bundle.main.bundleURL)
+		setenv("AGENTDECK_TEST_LOCALE", "en", 1)
+		XCTAssertEqual(t(DesktopCopy.refreshAction), "Refresh")
+	}
+
+	func testCalendarDayParsingPreservesLocalDatesAndTimestampFallbacks() throws {
+		let previous = NSTimeZone.default
+		defer { NSTimeZone.default = previous }
+		for zone in ["UTC", "America/New_York", "Asia/Kathmandu", "Pacific/Apia", "UTC"] {
+			NSTimeZone.default = try XCTUnwrap(TimeZone(identifier: zone))
+			let legacyDayParser = DateFormatter()
+			legacyDayParser.locale = Locale(identifier: "en_US_POSIX")
+			legacyDayParser.dateFormat = "yyyy-MM-dd"
+			for value in ["2024-02-29", "2026-03-08", "2026-11-01", "2011-12-30", "2026-02-30", "2026-2-9", "not-a-date", "2024-02-29"] {
+				XCTAssertEqual(DesktopFormat.timestamp(value), legacyDayParser.date(from: value), "\(zone): \(value)")
+			}
+			for value in ["2026-10-19T08:00:00Z", "2026-10-19T08:00:00.123456789123Z", "2026-10-19T08:00:00+05:45"] {
+				let expected = try XCTUnwrap(DesktopTimestamp.date(from: value))
+				XCTAssertEqual(DesktopFormat.timestamp(value), expected)
+			}
+		}
+	}
+
+	func testCalendarDayParserSupportsConcurrentReaders() {
+		let legacy = DateFormatter()
+		legacy.locale = Locale(identifier: "en_US_POSIX")
+		legacy.dateFormat = "yyyy-MM-dd"
+		let expected = ["2024-02-29", "2026-03-08", "2026-11-01", "2026-02-30", "2026-2-9"]
+			.map { ($0, legacy.date(from: $0)) }
+		DispatchQueue.concurrentPerform(iterations: 64) { index in
+			let (input, date) = expected[index % expected.count]
+			XCTAssertEqual(DesktopFormat.timestamp(input), date, input)
+		}
+	}
+
 	func testSchemaCopyResolvesVersionPairsAndDroppedCount() throws {
 		for language in ["en", "zh-Hans"] {
 			let localized = try bundle(language)

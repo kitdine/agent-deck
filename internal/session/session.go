@@ -194,9 +194,12 @@ type ScanProgressReporter interface {
 
 // ScanOptions configures optional observers for a session scan.
 type ScanOptions struct {
-	Progress        ScanProgressReporter
-	PreparedSources []ingest.Source
-	Coordinator     *ingest.Coordinator
+	Progress            ScanProgressReporter
+	PreparedSources     []ingest.Source
+	Coordinator         *ingest.Coordinator
+	CoverageInventoryID string
+	// Batch retains the global source set; a priority batch cannot delete history.
+	Batch bool
 }
 
 // ApprovedDocument is the privacy boundary: only text already classified by a
@@ -231,11 +234,14 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 	if err != nil {
 		return ScanResult{}, err
 	}
-	unchanged, err := unchangedSources(ctx, db, paths)
+	unchanged, err := unchangedSourceSet(ctx, db, paths, !options.Batch)
 	if err != nil {
 		return ScanResult{}, err
 	}
 	if unchanged {
+		if err := commitUnchangedSessionCoverageBatch(ctx, db, paths, options.CoverageInventoryID); err != nil {
+			return ScanResult{}, err
+		}
 		for _, src := range paths {
 			if options.Coordinator != nil {
 				options.Coordinator.Skip(src.path, ingest.ConsumerSession)
@@ -248,9 +254,12 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 	}
 	return scan(ctx, db, paths, options.Progress,
 		func(src source) (bool, int, error) {
-			return scanSourceWithCoordinator(ctx, db, src, options.Coordinator)
+			return scanSourceWithCoverage(ctx, db, src, options.Coordinator, options.CoverageInventoryID)
 		},
 		func(seen map[string]bool) error {
+			if options.Batch {
+				return nil
+			}
 			return removeMissingSources(ctx, db, seen)
 		},
 	)
@@ -501,12 +510,16 @@ func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) 
 }
 
 func scanSourceWithCoordinator(ctx context.Context, db *sql.DB, src source, coordinator *ingest.Coordinator) (bool, int, error) {
+	return scanSourceWithCoverage(ctx, db, src, coordinator, "")
+}
+
+func scanSourceWithCoverage(ctx context.Context, db *sql.DB, src source, coordinator *ingest.Coordinator, inventoryID string) (bool, int, error) {
 	update, changed, err := prepareSourceUpdate(ctx, db, src, coordinator)
 	if err != nil {
 		return false, 0, err
 	}
 	if !changed && update.movedFrom == "" {
-		return false, 0, nil
+		return false, 0, commitUnchangedSessionCoverage(ctx, db, src, inventoryID)
 	}
 	tx, err := beginSessionTx(ctx, db)
 	if err != nil {
@@ -520,10 +533,40 @@ func scanSourceWithCoordinator(ctx context.Context, db *sql.DB, src source, coor
 	if err != nil {
 		return false, 0, err
 	}
+	if err = store.CommitSourceCoverage(ctx, tx, inventoryID, src.path, src.identity, src.size, update.state.cursor-int64(len(update.state.partial))); err != nil {
+		return false, 0, err
+	}
 	if err = tx.Commit(); err != nil {
 		return false, 0, err
 	}
 	return changed, docs, nil
+}
+
+func commitUnchangedSessionCoverage(ctx context.Context, db *sql.DB, src source, inventoryID string) error {
+	return commitUnchangedSessionCoverageBatch(ctx, db, []source{src}, inventoryID)
+}
+
+func commitUnchangedSessionCoverageBatch(ctx context.Context, db *sql.DB, sources []source, inventoryID string) error {
+	if inventoryID == "" {
+		return nil
+	}
+	tx, err := beginSessionTx(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, src := range sources {
+		var cursor int64
+		if err = tx.QueryRowContext(ctx, `SELECT cursor-length(partial_line) FROM session_sources WHERE source_path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, src.path, src.identity, src.size, ParserVersion, src.modifiedAt, src.changedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
+			return ingest.ErrSourceChanged
+		} else if err != nil {
+			return err
+		}
+		if err = store.CommitSourceCoverage(ctx, tx, inventoryID, src.path, src.identity, src.size, cursor); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func scanSourceExec(ctx context.Context, executor sessionExecutor, src source) (bool, int, error) {

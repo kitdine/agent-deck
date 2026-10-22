@@ -7,6 +7,14 @@ coordination do not by themselves create evidence work.
 
 ## Completion Evidence and Neo4j / 验收证据与 Neo4j
 
+Neo4j through the configured `completion-evidence/v1` provider is the sole
+active evidence authority, including v0.7.0. The user confirmed this authority
+switch on 2026-10-17 after migration reconciliation. Historical imported
+observations retain their original identities, outcomes and timestamps; they
+are audit provenance, not a second active provider. A past passing gate does
+not certify changed content. Verify the current subject against its recorded
+ContentState before querying its exact gate.
+
 The shared `completion-evidence/v1` profile owns canonical record semantics and
 provider operations. This file supplies AgentDeck's namespace and work-unit
 bindings. The workflow Skill owns phase execution; [Review Records](review-records.md)
@@ -41,6 +49,31 @@ NOT_REQUIRED merely because no topic exists. After an authorized commit, bind
 its reusable evidence to the immutable delivered content and finish the existing
 WorkUnit lifecycle through the permitted operation; do not equate a Beads closure
 with this evidence result.
+
+### Task 2 user-authorized acceptance revision — 2026-10-20
+
+The user explicitly authorized changing any necessary content and completing
+`scan-performance:serving-snapshot-and-bootstrap` with PASS. For this WorkUnit
+only, `open-path-latency`, `startup-bootstrap`, and `e1-native-performance` are
+waived completion conditions (`required: false`). The other ten criteria remain
+required. This is an explicit, audited exception permitting an update to these
+three current criterion declarations; it does not permit changing observations,
+failure outcomes, original timestamps, historical review verdicts, or other units.
+
+Preserve the previous criterion payloads and old gate result in
+`docs/topics/scan-performance/evidence/task2-acceptance-waiver-20261020.json`
+before updating them. Bind the revised acceptance to a new ContentState and
+reuse unaffected passing evidence through explicit target-bound roll-ups and
+scope-aware preservation assessments. Query the fixed provider gate again.
+Report a resulting PASS as acceptance under the user-approved waiver; the
+complete100 p95 536.842034ms and p99 623.638814ms remain failures of the old
+300ms/600ms thresholds.
+
+The user's direct approval is the approval of this acceptance-policy revision
+and its corresponding waiver-only documentation; it is not a new independent
+implementation review. R30/R32/R33 and the document Round4 verdicts retain their
+historical scope. No shared CEv1 provider/protocol modification is required or
+authorized by this exception.
 
 ### Gate evaluation and reuse
 

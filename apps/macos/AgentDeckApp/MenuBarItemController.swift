@@ -6,19 +6,47 @@ import SwiftUI
 import Vision
 #endif
 
+/// A display link retains its target. Keep preparation independent of the
+/// controller's lifetime; this link is never added to a run loop.
+private final class PopoverPreparationDisplayLinkTarget: NSObject {
+	@objc func tick(_ link: CADisplayLink) {}
+}
+
 /// The status item, its popover, and its own menu. `MenuBarExtra` cannot carry
 /// a right-click menu, and the contract puts the application's exits there
 /// rather than in the popover, so the item is managed directly.
 @MainActor
 final class MenuBarItemController: NSObject, NSMenuDelegate {
 	private let model: MenuBarViewModel
-	private let statusItem: NSStatusItem
+	let statusItem: NSStatusItem
 	private let popover = NSPopover()
 	private let openSettings: () -> Void
+	private var preparedHeight = MenuBarGeometry.maximumHeight
+	private var hasPresentedPopover = false
+	private var presentationPreparationWindow: NSWindow?
+	private var presentationPreparationDisplayLink: CADisplayLink?
+	private(set) var isInitialPresentationPrepared = false
+	private(set) var dateInvalidationTimer: Timer?
+	private let dateNotificationCenter: NotificationCenter
+	private let wakeNotificationCenter: NotificationCenter
+	private var dateObservers = [NSObjectProtocol]()
+	private var wakeObserver: NSObjectProtocol?
 
-	init(model: MenuBarViewModel, openSettings: @escaping () -> Void) {
+	isolated deinit {
+		dateInvalidationTimer?.invalidate()
+		for observer in dateObservers { dateNotificationCenter.removeObserver(observer) }
+		if let wakeObserver { wakeNotificationCenter.removeObserver(wakeObserver) }
+		presentationPreparationDisplayLink?.invalidate()
+		presentationPreparationWindow?.close()
+	}
+
+	init(model: MenuBarViewModel, openSettings: @escaping () -> Void,
+		dateNotificationCenter: NotificationCenter = .default,
+		wakeNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter) {
 		self.model = model
 		self.openSettings = openSettings
+		self.dateNotificationCenter = dateNotificationCenter
+		self.wakeNotificationCenter = wakeNotificationCenter
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 		super.init()
 
@@ -32,8 +60,10 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 			button.imagePosition = .imageLeading
 		}
+		observeDateChanges()
 		render()
 		observe()
+		prepareInitialPresentationIfReady()
 	}
 
 	/// Re-renders on any change the item reads. There is no animation, ever,
@@ -43,20 +73,50 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			_ = model.menuBarText
 			_ = model.menuBarBadged
 			_ = model.menuBarAccessibilityLabel
+			_ = model.surface
+			_ = model.coordinator.servingHeader
 		} onChange: { [weak self] in
 			Task { @MainActor in
 				self?.render()
 				self?.observe()
+				self?.prepareInitialPresentationIfReady()
 			}
 		}
 	}
 
 	private func render() {
+		scheduleDateInvalidation()
 		guard let button = statusItem.button else { return }
 		button.image = MenuBarItemController.glyph(badged: model.menuBarBadged)
 		button.image?.isTemplate = true
 		button.title = model.menuBarText ?? ""
 		button.setAccessibilityLabel(model.menuBarAccessibilityLabel)
+	}
+
+	private func observeDateChanges() {
+		for name in [Notification.Name.NSCalendarDayChanged, .NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
+			dateObservers.append(dateNotificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+				Task { @MainActor [weak self] in self?.dateDidChange() }
+			})
+		}
+		wakeObserver = wakeNotificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+			Task { @MainActor [weak self] in self?.dateDidChange() }
+		}
+	}
+
+	private func scheduleDateInvalidation() {
+		dateInvalidationTimer?.invalidate()
+		let timer = Timer(timeInterval: model.nextDateInvalidationDelay, repeats: false) { [weak self] _ in
+			Task { @MainActor [weak self] in self?.dateDidChange() }
+		}
+		dateInvalidationTimer = timer
+		// Fire while a popover/menu is open too, independently of refresh/quota.
+		RunLoop.main.add(timer, forMode: .common)
+	}
+
+	private func dateDidChange() {
+		model.invalidateDate()
+		render()
 	}
 
 	/// The base glyph is the monochrome template asset, so macOS owns light,
@@ -119,19 +179,66 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 		if popover.isShown {
 			closePopover()
 		} else {
+			hasPresentedPopover = true
 			let openInterval = DesktopPerformanceInterval()
-			let visibleFrameHeight = sender.window?.screen?.visibleFrame.height
-				?? MenuBarGeometry.maximumHeight + MenuBarGeometry.screenMargin
-			let height = MenuBarGeometry.height(visibleFrameHeight: visibleFrameHeight)
-			popover.contentViewController = NSHostingController(
-				rootView: MenuBarSurfaceView(model: model, height: height)
-			)
-			popover.contentSize = NSSize(width: MenuBarGeometry.width, height: height)
+			configurePopoverGeometry(for: sender)
 			popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+			// The popover has adopted the same hosting view. Its preparation
+			// window was never ordered onscreen and no longer owns the content.
+			let preparationWindow = presentationPreparationWindow
+			presentationPreparationWindow = nil
+			if let preparationWindow {
+				// Retiring an unshown window is not needed to display the popover.
+				// Keep AppKit teardown out of this synchronous input action.
+				Task { @MainActor in preparationWindow.close() }
+			}
 			MenuBarItemController.activatePopoverWindow(popover.contentViewController?.view.window)
 			// This ends at show/activation, not at the first usable data frame.
 			DesktopLogger.recordPerformance(openInterval.sample(.popoverOpen))
 		}
+	}
+
+	private func configurePopoverGeometry(for button: NSStatusBarButton) {
+		let visibleFrameHeight = button.window?.screen?.visibleFrame.height
+			?? MenuBarGeometry.maximumHeight + MenuBarGeometry.screenMargin
+		let height = MenuBarGeometry.height(visibleFrameHeight: visibleFrameHeight)
+		// Keep the same hosting hierarchy and native control identity. Geometry
+		// changes update its root, not the controller or focus ownership.
+		if height != preparedHeight,
+			let hosting = popover.contentViewController as? NSHostingController<MenuBarSurfaceView> {
+			hosting.rootView = MenuBarSurfaceView(model: model, height: height)
+			preparedHeight = height
+		}
+		popover.contentSize = NSSize(width: MenuBarGeometry.width, height: height)
+	}
+
+	private func prepareInitialPresentationIfReady() {
+		guard !isInitialPresentationPrepared, !hasPresentedPopover, !popover.isShown,
+			model.surface == .dataSurface, let button = statusItem.button,
+			let hosting = popover.contentViewController else { return }
+		let preparation = DesktopPerformanceInterval()
+		// AppKit creates a display link during the first visible layout. Resolve
+		// its screen resources now, without scheduling callbacks or animation.
+		presentationPreparationDisplayLink = (button.window?.screen ?? NSScreen.main)?.displayLink(
+			target: PopoverPreparationDisplayLinkTarget(),
+			selector: #selector(PopoverPreparationDisplayLinkTarget.tick(_:)))
+		configurePopoverGeometry(for: button)
+		// Detached layout cannot prepare window-dependent SwiftUI traits or
+		// AppKit's first display-link setup. Give the existing view a window
+		// environment without ordering it onscreen or requesting focus.
+		let preparationWindow = NSWindow(contentRect: NSRect(origin: .zero, size: popover.contentSize),
+			styleMask: [.borderless], backing: .buffered, defer: false, screen: button.window?.screen)
+		preparationWindow.isReleasedWhenClosed = false
+		preparationWindow.contentView?.addSubview(hosting.view)
+		presentationPreparationWindow = preparationWindow
+		hosting.view.frame = NSRect(origin: .zero, size: popover.contentSize)
+		hosting.view.layoutSubtreeIfNeeded()
+		hosting.view.displayIfNeeded()
+		preparationWindow.displayIfNeeded()
+		isInitialPresentationPrepared = true
+		// Preparation is real startup/main-actor work, recorded separately from
+		// clicks. Never show a window, request focus, or start a helper here.
+		DesktopLogger.recordPerformance(preparation.sample(.popoverPreparation))
 	}
 
 	static func activatePopoverWindow(_ window: NSWindow?) {

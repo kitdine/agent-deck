@@ -1,0 +1,220 @@
+{
+  "decision_id": "task2-acceptance-waiver-20261020",
+  "recorded_at": "2026-10-20T08:56:02.523Z",
+  "user_authorization": "我现在明确授权你可以修改任何内容，我的要求就是pass 当前task 2 任务的所有事项，整个任务完成",
+  "decision": "PASS under user-approved Task2 acceptance waiver",
+  "scope": "scan-performance / serving-snapshot-and-bootstrap only",
+  "work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+  "beads_task_id": "ad-scan-performance-serving-snapshot-and-bootstrap",
+  "previous_target": "scan-serving-pending-20261020-state-19a6b8364e38",
+  "previous_fingerprint": "19a6b8364e3814b6d465b077f97a61c8b90f156a5a1a4c175a6ad368e103dc3e",
+  "previous_gate": {
+    "recorded_at": "2026-10-20T08:38:14Z",
+    "batch": "docs/topics/scan-performance/evidence/pending-neo4j-20261020-budget-complete100.jsonl",
+    "batch_sha256": "ea6677f1fc0940544cf383125156f094ed35626883037f74f005419e2982d73a",
+    "records": 3,
+    "nodes_exact_present": 0,
+    "relations_exact_present": 0,
+    "relations_preflight_ok": 2,
+    "target_content_state": "scan-serving-pending-20261020-state-19a6b8364e38",
+    "required_criteria_count": 13,
+    "gate_status": "FAILED",
+    "missing_criteria": [
+      "scan-performance:serving-snapshot-and-bootstrap:criterion:startup-bootstrap",
+      "scan-performance:serving-snapshot-and-bootstrap:criterion:e1-native-performance",
+      "scan-performance:serving-snapshot-and-bootstrap:criterion:open-path-latency"
+    ],
+    "invalidated_evidence": [
+      "scan-serving-rereview-r5-XHUHsB6b-independent-review",
+      "scan-serving-pending-20261020-open-path-latency"
+    ],
+    "unresolved_candidate_impacts": [],
+    "reused_evidence_count": 10,
+    "failed_evidence_ids": [
+      "scan-serving-pending-20261020-open-path-budget-complete100",
+      "scan-serving-pending-20261020-open-path-budget-rerun3",
+      "scan-serving-pending-20261020-open-path-budget-run1",
+      "scan-serving-pending-20261020-open-path-budget-rerun1"
+    ]
+  },
+  "criterion_declarations_before": [
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:app-job-lifecycle",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "app-job-lifecycle",
+        "local_criterion": "app-job-lifecycle",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:atomic-publication",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "atomic-publication",
+        "local_criterion": "atomic-publication",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:e1-native-performance",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "e1-native-performance",
+        "local_criterion": "e1-native-performance",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:independent-review",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "independent-review",
+        "local_criterion": "independent-review",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:initial-ui-preparation",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "initial-ui-preparation",
+        "local_criterion": "initial-ui-preparation",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:l3-regression",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "l3-regression",
+        "local_criterion": "l3-regression",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:manual-probe-contract",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "manual-probe-contract",
+        "local_criterion": "manual-probe-contract",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:matrix-probe-contract",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "matrix-probe-contract",
+        "local_criterion": "matrix-probe-contract",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:open-path-latency",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "open-path-latency",
+        "local_criterion": "open-path-latency",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:serving-identity",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "serving-identity",
+        "local_criterion": "serving-identity",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:startup-bootstrap",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "startup-bootstrap",
+        "local_criterion": "startup-bootstrap",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:stored-only-coverage",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "stored-only-coverage",
+        "local_criterion": "stored-only-coverage",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    },
+    {
+      "id": "scan-performance:serving-snapshot-and-bootstrap:criterion:wire-compatibility",
+      "kind": "criterion",
+      "profile": "completion-evidence/v1",
+      "attributes": {
+        "description": "wire-compatibility",
+        "local_criterion": "wire-compatibility",
+        "owner_work_unit_id": "scan-performance:serving-snapshot-and-bootstrap",
+        "required": true
+      }
+    }
+  ],
+  "waived_criterion_ids": [
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:e1-native-performance",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:open-path-latency",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:startup-bootstrap"
+  ],
+  "required_criterion_ids": [
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:app-job-lifecycle",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:atomic-publication",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:independent-review",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:initial-ui-preparation",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:l3-regression",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:manual-probe-contract",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:matrix-probe-contract",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:serving-identity",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:stored-only-coverage",
+    "scan-performance:serving-snapshot-and-bootstrap:criterion:wire-compatibility"
+  ],
+  "declaration_update_authority": ".agent-instructions/evidence.md: Task 2 user-authorized acceptance revision — 2026-10-20",
+  "waiver_only_documentation_approval": "Direct real-user approval; no new independent review verdict asserted. Existing R30/R32/R33 and document Round4 histories retained.",
+  "local_completion_exception": ".agent-instructions/beads.md: Task 2 local-acceptance exception (2026-10-20)",
+  "delivery_boundary": "Accepted local worktree only; no Git commit, push, integration, release, Topic closure, or Tasks3–7 work",
+  "measurements": {
+    "valid_native_samples": 100,
+    "p95_ns": 536842034,
+    "p99_ns": 623638814,
+    "above300ms": 100,
+    "above600ms": 3,
+    "max_ns": 797622640,
+    "old_threshold_outcome": "fail",
+    "report_sha256": "d1a3323ecc1b4a8f1eb7c4f75728079ae84b8bceaffa8db4fe3e33b25d847c53"
+  },
+  "historical_measurements_and_evidence_modified": false,
+  "status": "user_approved",
+  "retention": "Project-owned source artifact retained with Task2 acceptance; not temporary or scheduled for deletion",
+  "receipt": "docs/topics/scan-performance/evidence/task2-acceptance-waiver-20261020-receipt.json"
+}

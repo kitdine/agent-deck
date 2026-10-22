@@ -1,3 +1,4 @@
+import AgentDeckShared
 import Foundation
 
 // Every user-visible string in the app target resolves through this file. The
@@ -56,6 +57,10 @@ enum DesktopCopy {
 	static let costIncomplete = "Cost incomplete · %lld unpriced"
 	static let costIncompleteAttribution = "Cost incomplete · attribution unavailable"
 	static let heroCounts = "%1$lld events · %2$lld sessions · %3$lld projects"
+	static let heroCountsUnknownProjects = "%1$lld events · %2$lld sessions · — projects"
+	static let sourceCoveragePartial = "Collected usage · source coverage is partial"
+	static let sourceCoverageUnknown = "Stored usage · source coverage is unknown"
+	static let sourceUpdatePending = "Stored usage · source updates are pending"
 
 	// Panels.
 	static let panelUsage = "Usage"
@@ -423,7 +428,8 @@ enum DesktopCopy {
 		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
-		costIncomplete, costIncompleteAttribution, heroCounts,
+		costIncomplete, costIncompleteAttribution, heroCounts, heroCountsUnknownProjects,
+		sourceCoveragePartial, sourceCoverageUnknown, sourceUpdatePending,
 		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,
 		quotaNotRead, quotaNotApplicable, quotaUnavailable,
 		quotaAttributionUnconfirmed, quotaNoWindows, quotaPlan, quotaOfficialResets,
@@ -512,7 +518,9 @@ enum DesktopCopy {
 enum DesktopLocale {
 	static var override: String? {
 		#if DEBUG
-		let identifier = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		// Read the live override without copying the entire process environment
+		// for every formatted value in a native view.
+		let identifier = getenv("AGENTDECK_TEST_LOCALE").map { String(cString: $0) }
 		return identifier == "en" || identifier == "zh-Hans" ? identifier : nil
 		#else
 		return nil
@@ -525,14 +533,19 @@ enum DesktopLocale {
 	}
 
 	static var bundle: Bundle {
-		guard let override,
-			let path = Bundle.main.path(forResource: override, ofType: "lproj"),
-			let localized = Bundle(path: path)
-		else {
-			return .main
-		}
-		return localized
+		guard let override else { return .main }
+		return localizedBundles[override] ?? .main
 	}
+
+	// The shipped resources are immutable; the selected language remains live.
+	private static let localizedBundles: [String: Bundle] = {
+		var bundles = [String: Bundle]()
+		for identifier in ["en", "zh-Hans"] {
+			if let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
+				let bundle = Bundle(path: path) { bundles[identifier] = bundle }
+		}
+		return bundles
+	}()
 }
 
 /// Resolves one catalog key in the active bundle. The key doubles as the `en`
@@ -550,6 +563,30 @@ func t(_ key: String, _ arguments: any CVarArg...) -> String {
 /// Cost strings arrive as decimal text and are formatted without changing the
 /// value; an inexact total keeps the `≈` the hero explains underneath.
 enum DesktopFormat {
+	private static let calendarDayParser = CalendarDayParser()
+
+	// Keep the existing DateFormatter parsing behavior without rebuilding its
+	// ICU state for every calendar bucket. Serialize timezone updates and reads;
+	// the system/default timezone can change while the application is running.
+	private final class CalendarDayParser: @unchecked Sendable {
+		private let lock = NSLock()
+		private let formatter: DateFormatter = {
+			let formatter = DateFormatter()
+			formatter.locale = Locale(identifier: "en_US_POSIX")
+			formatter.dateFormat = "yyyy-MM-dd"
+			formatter.timeZone = NSTimeZone.default
+			return formatter
+		}()
+
+		func date(from value: String) -> Date? {
+			lock.lock()
+			defer { lock.unlock() }
+			let timezone = NSTimeZone.default
+			if formatter.timeZone != timezone { formatter.timeZone = timezone }
+			return formatter.date(from: value)
+		}
+	}
+
 	static func cost(_ raw: String?, known: String, approximate: Bool) -> String {
 		let value = raw ?? known
 		guard let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")) else {
@@ -661,15 +698,12 @@ enum DesktopFormat {
 	}
 
 	static func timestamp(_ value: String) -> Date? {
-		let fractional = ISO8601DateFormatter()
-		fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-		if let parsed = fractional.date(from: value) { return parsed }
-		let basic = ISO8601DateFormatter()
-		basic.formatOptions = [.withInternetDateTime]
-		if let parsed = basic.date(from: value) { return parsed }
-		let day = DateFormatter()
-		day.locale = Locale(identifier: "en_US_POSIX")
-		day.dateFormat = "yyyy-MM-dd"
-		return day.date(from: value)
+		// Calendar buckets are dates, not timestamps. Avoid constructing the
+		// timestamp fallback formatters for every day in the rhythm calendar.
+		let isCalendarDay = value.utf8.count == 10 && value.utf8.enumerated().allSatisfy { index, byte in
+			index == 4 || index == 7 ? byte == 45 : (48 ... 57).contains(byte)
+		}
+		if !isCalendarDay, let parsed = DesktopTimestamp.date(from: value) { return parsed }
+		return calendarDayParser.date(from: value)
 	}
 }

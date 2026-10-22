@@ -725,7 +725,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 				return err
 			}
 			commandPath := command.CommandPath()
-			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" {
+			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" && commandPath != "agentdeck desktop bootstrap" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
 			return nil
@@ -3823,7 +3823,18 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 					return &inputError{err: err}
 				}
 			}
-			database, _, err := opts.openStore(command.Context())
+			storedOnly, _ := command.Flags().GetBool("no-scan")
+			var database *store.Store
+			var err error
+			if storedOnly {
+				root, rootErr := opts.stateRoot()
+				if rootErr != nil {
+					return rootErr
+				}
+				database, err = store.OpenReadOnly(command.Context(), root)
+			} else {
+				database, _, err = opts.openStore(command.Context())
+			}
 			if err != nil {
 				return err
 			}
@@ -3837,6 +3848,21 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, partial, warnings, err := run(command.Context(), service, database, args)
 			if err != nil {
 				return err
+			}
+			if storedOnly {
+				coverage, err := database.ReadSourceCoverage(command.Context())
+				if err != nil {
+					return err
+				}
+				if code := sourceCoverageWarning(coverage.State); code != "" {
+					partial = true
+					warnings = append(warnings, code)
+					if opts.format == "text" {
+						if _, err = fmt.Fprintf(opts.stderr, "%s: committed source coverage %s; observed through %s\n", code, coverage.State, coverage.ObservedAt); err != nil {
+							return err
+						}
+					}
+				}
 			}
 			renderOptions := newUsageTextRenderOptions(opts.stdout, opts.noColor)
 			if command.Name() == "stats" && command.Flags().Changed("top") {

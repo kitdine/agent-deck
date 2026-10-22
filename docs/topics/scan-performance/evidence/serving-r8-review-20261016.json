@@ -1,0 +1,2688 @@
+{
+  "kind": "scan-serving-r8-independent-review-v1",
+  "recorded_at": "2026-10-16T06:52:33.914503+00:00",
+  "reviewed_entry_state": "scan-serving-repair-r7-zmKtJ96-state",
+  "finding": "SP-SB-R8-F1",
+  "first_import_startup_pilot": {
+    "kind": "scan-performance-e1-v1",
+    "input": {
+      "files": 5373,
+      "bytes": 3477972178,
+      "corpus_sha256": "e85222f01b59d44ef95c8f27cf939fe94f9c8e74eb58947c77fdbdf3b05fbced",
+      "live_db_backup_sha256": {},
+      "capture_consistency": "verified earlier per-file frozen JSONL copied with original mtime; databases generated privately,not new live backups",
+      "kind": "verified_frozen_clone_plus_controlled_today",
+      "controlled_today_source": {
+        "bytes": 517,
+        "sha256": "fd36344e99c21b502ad6df34952ea8cd164014ed569a5d1e517c23f8ed3dfc1d",
+        "mtime_ns": 1792132506525657649
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "arm": "B",
+        "condition": "first-import",
+        "starting_database_sha256": {},
+        "native": {
+          "frames": [
+            {
+              "elapsedNanoseconds": 2241896226,
+              "valid": true,
+              "panel": "quota"
+            }
+          ],
+          "operatorWaitIncluded": false,
+          "nativeFrameMeasured": true,
+          "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+          "version": 1,
+          "appReadyToNativeDataFrameNanoseconds": 2241896226,
+          "processEntryToNativeDataFrameNanoseconds": 2345516465,
+          "measurement": "startup-frame",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {},
+        "whole_observation_ns": 7899592089,
+        "model_readiness": {
+          "nativeFrameMeasured": false,
+          "sessionDomainAvailable": false,
+          "operatorWaitIncluded": false,
+          "pollIntervalNanoseconds": 10000000,
+          "processEntryToModelNanoseconds": 2113428337,
+          "kind": "independent-model-readiness-v1",
+          "partial": true,
+          "appReadyToModelNanoseconds": 2009808098
+        },
+        "cache_present_at_start": false
+      }
+    ],
+    "limitations": [
+      "AppKit bitmap+numeric OCR endpoint, not compositor/photon timing",
+      "No authentication files or model requests; isolated default quota has no live credentials",
+      "Small pair counts are pilots, not >=100-condition acceptance",
+      "No page-cache purge",
+      "No E1 PASS inferred from capture or build",
+      "Manual click latency starts at native button action entry, not physical mouse-down or compositor timing; operator waits are separate. Launch-to-frame includes operator wait and cannot pass a launch budget. Data already ready at first click is explicitly recorded.",
+      "First-click timing is emitted only for the original routed click without a ready-click retry; process-entry timing remains separate"
+    ],
+    "click_precondition": "operator-physical-click; no event injection or pre-activation",
+    "click_dispatch": "manual",
+    "matrix_probe": true,
+    "measurement": "startup-frame",
+    "selected_arms": [
+      "A",
+      "B"
+    ],
+    "require_first_click": true,
+    "manual_wait_seconds": 600,
+    "identity": {
+      "B": {
+        "app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+        "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+        "framework_sha256": "54a312f0f4e941c862d286e9fc14a74c90d3f61d4ebb71251cd3397967f13325",
+        "widget_sha256": "68d0beb34f4e6d7f91a126a28a560d4a35637b73b438ebb61f5906ac423fef42",
+        "probe_sha256": "e4f55bb198cec16f8f21e44a69d49268dd3d229bcc75f21aeffbabe8816d6680",
+        "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+        "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+        "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+        "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+      }
+    },
+    "environment": {
+      "harness_sha256": "2669e3ed344f15ebee2760323096c87e176193d238bfeee5d38c65b4111ce822",
+      "matrix_module_sha256": "09d7be75dc93cb805fec6d7849daa5c20bf347d2345c791596755a01bd2e54a3"
+    },
+    "reviewed_state": "scan-serving-repair-r7-zmKtJ96-state",
+    "reviewer_method": "Current exported B; existing startup-frame runner; first-import pilot; no icon latency claim",
+    "matrix": {
+      "conditions": [
+        "first-import"
+      ],
+      "measurement": "startup-frame",
+      "quota_pressure": "controlled cancellable 30s dependency delay,not real network",
+      "rebuild_pressure": "identified private maintenance processing >120s;action within worker interval;queue/setup/CLI wall separate",
+      "no_cache_precondition": "current candidate-schema committed DB;cache removed without changing facts",
+      "upgrade_control": "upgrade-no-cache is a separate optional diagnostic from the original imported schema",
+      "baseline_restore_compatibility": "not assumed;all arms receive identical prepared DB/cache;schema-ahead failures remain failures",
+      "business_date": "2026-10-16"
+    },
+    "summary": {
+      "groups": [
+        {
+          "condition": "first-import",
+          "arm": "B",
+          "attempts": 1,
+          "failures": 0,
+          "valid_first_click_frames": 0,
+          "model_observations": 1,
+          "first_click_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null,
+            "p99": null
+          },
+          "tail_sample_requirement_met": false,
+          "startup_control_frames": 1,
+          "startup_control_frame_ms": {
+            "median": 2241.896226,
+            "maximum": 2241.896226,
+            "p95": null
+          }
+        }
+      ],
+      "status": "NOT_VERIFIED",
+      "reason": "Collector summary only; model clocks are not frames. Pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+    }
+  },
+  "restore_native_pilot": {
+    "kind": "scan-performance-e1-v1",
+    "input": {
+      "files": 5373,
+      "bytes": 3477972178,
+      "corpus_sha256": "e85222f01b59d44ef95c8f27cf939fe94f9c8e74eb58947c77fdbdf3b05fbced",
+      "live_db_backup_sha256": {},
+      "capture_consistency": "verified earlier per-file frozen JSONL copied with original mtime; databases generated privately,not new live backups",
+      "kind": "verified_frozen_clone_plus_controlled_today",
+      "controlled_today_source": {
+        "bytes": 517,
+        "sha256": "fd36344e99c21b502ad6df34952ea8cd164014ed569a5d1e517c23f8ed3dfc1d",
+        "mtime_ns": 1792132506525657649
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "f6169ad1fc45adc8c6a17c11ebb5cf2c11d6842f308904fb82c621f3fa3cddff",
+          "agentdeck.sqlite3": "45c00d7d88132c8367937f3ec2e17bdf92e4c958a2981bd93255263628687541"
+        },
+        "native": {
+          "stageAggregates": [
+            {
+              "count": 1,
+              "maximumNanoseconds": 179969834,
+              "totalNanoseconds": 179969834,
+              "stage": "popoverOpen"
+            },
+            {
+              "count": 1,
+              "maximumNanoseconds": 628340854,
+              "totalNanoseconds": 628340854,
+              "stage": "popoverPreparation"
+            },
+            {
+              "count": 1309,
+              "maximumNanoseconds": 114107,
+              "totalNanoseconds": 12713792,
+              "stage": "presentation"
+            },
+            {
+              "count": 1,
+              "maximumNanoseconds": 385200505,
+              "totalNanoseconds": 385200505,
+              "stage": "publication"
+            }
+          ],
+          "manualClickCount": 1,
+          "operatorWaitNanoseconds": 6004677520,
+          "frames": [
+            {
+              "elapsedNanoseconds": 6635923138,
+              "panel": "quota",
+              "valid": true
+            }
+          ],
+          "readyClickRequired": false,
+          "initialClickRouted": true,
+          "version": 1,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstFrameCaptureOrigin": "native_action_return",
+          "firstClickToDataNanoseconds": 303172348,
+          "nativeEnvironment": {
+            "firstButtonVisible": true,
+            "quotaPressureAtFirstAction": false,
+            "firstEventPostingAllowed": false,
+            "appIsActive": true,
+            "firstAppActive": false,
+            "rebuildPressureAtFirstAction": false,
+            "hasScreens": true,
+            "statusButtonHasWindow": true,
+            "firstActionReached": true
+          },
+          "launchToDataNanoseconds": 6635923138,
+          "firstClickDataReady": true,
+          "probeResumeAfterActionNanoseconds": 319148059,
+          "droppedStages": 0,
+          "helperFailures": [],
+          "initialDataPresent": false,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "latestDataChanged": false,
+          "stages": [
+            {
+              "durationNanoseconds": 628340854,
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331039463959225
+            },
+            {
+              "durationNanoseconds": 385200505,
+              "stage": "publication",
+              "completedAtUptimeNanoseconds": 331044120285391
+            },
+            {
+              "durationNanoseconds": 179969834,
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331044955811582
+            }
+          ],
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 8165.161782,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 8165453910,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "fbc082367dce97b47eeaa0e867d863081b0e353155935aea6c8d30ab45d4bc2c",
+          "cache_sha256": "972b5a51a0990170eba685daec9b864d23a9dca94d2488ae4790e26cbcf58327"
+        },
+        "model_readiness": {
+          "appReadyToModelNanoseconds": 907011042,
+          "operatorWaitIncluded": false,
+          "nativeFrameMeasured": false,
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "partial": false,
+          "processEntryToModelNanoseconds": 1061622375,
+          "sessionDomainAvailable": true
+        },
+        "cache_present_at_start": true
+      }
+    ],
+    "limitations": [
+      "AppKit bitmap+numeric OCR endpoint, not compositor/photon timing",
+      "No authentication files or model requests; isolated default quota has no live credentials",
+      "Small pair counts are pilots, not >=100-condition acceptance",
+      "No page-cache purge",
+      "No E1 PASS inferred from capture or build",
+      "Manual click latency starts at native button action entry, not physical mouse-down or compositor timing; operator waits are separate. Launch-to-frame includes operator wait and cannot pass a launch budget. Data already ready at first click is explicitly recorded.",
+      "First-click timing is emitted only for the original routed click without a ready-click retry; process-entry timing remains separate"
+    ],
+    "click_precondition": "operator-physical-click; no event injection or pre-activation",
+    "click_dispatch": "manual",
+    "matrix_probe": true,
+    "measurement": "startup-frame",
+    "selected_arms": [
+      "A",
+      "B"
+    ],
+    "require_first_click": true,
+    "manual_wait_seconds": 600,
+    "identity": {
+      "B": {
+        "app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+        "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+        "framework_sha256": "54a312f0f4e941c862d286e9fc14a74c90d3f61d4ebb71251cd3397967f13325",
+        "widget_sha256": "68d0beb34f4e6d7f91a126a28a560d4a35637b73b438ebb61f5906ac423fef42",
+        "probe_sha256": "e4f55bb198cec16f8f21e44a69d49268dd3d229bcc75f21aeffbabe8816d6680",
+        "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+        "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+        "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+        "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+      }
+    },
+    "environment": {
+      "harness_sha256": "2669e3ed344f15ebee2760323096c87e176193d238bfeee5d38c65b4111ce822",
+      "matrix_module_sha256": "09d7be75dc93cb805fec6d7849daa5c20bf347d2345c791596755a01bd2e54a3"
+    },
+    "reviewed_state": "scan-serving-repair-r7-zmKtJ96-state",
+    "reviewer_method": "Current exported B; existing native matrix runner; external CGEvent; separate pilot",
+    "matrix": {
+      "conditions": [
+        "restore"
+      ],
+      "measurement": "native",
+      "quota_pressure": "controlled cancellable 30s dependency delay,not real network",
+      "rebuild_pressure": "identified private maintenance processing >120s;action within worker interval;queue/setup/CLI wall separate",
+      "no_cache_precondition": "current candidate-schema committed DB;cache removed without changing facts",
+      "upgrade_control": "upgrade-no-cache is a separate optional diagnostic from the original imported schema",
+      "baseline_restore_compatibility": "not assumed;all arms receive identical prepared DB/cache;schema-ahead failures remain failures",
+      "business_date": "2026-10-16"
+    },
+    "events": [
+      {
+        "posted": true,
+        "pid": 9566,
+        "uptime_ns": 331044557219369,
+        "x": 722.5,
+        "y": 15.0,
+        "instance": "DF1E55CC-0660-4AF6-BBBB-EBCFA3E58B29",
+        "request": 1
+      }
+    ],
+    "summary": {
+      "groups": [
+        {
+          "condition": "restore",
+          "arm": "B",
+          "attempts": 1,
+          "failures": 0,
+          "valid_first_click_frames": 1,
+          "model_observations": 1,
+          "first_click_ms": {
+            "median": 303.172348,
+            "maximum": 303.172348,
+            "p95": null,
+            "p99": null
+          },
+          "tail_sample_requirement_met": false,
+          "startup_control_frames": 0,
+          "startup_control_frame_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null
+          }
+        }
+      ],
+      "status": "NOT_VERIFIED",
+      "reason": "Collector summary only; model clocks are not frames. Pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+    }
+  },
+  "restore_fixed100_interrupted": {
+    "kind": "scan-performance-e1-v1",
+    "input": {
+      "files": 5373,
+      "bytes": 3477972178,
+      "corpus_sha256": "e85222f01b59d44ef95c8f27cf939fe94f9c8e74eb58947c77fdbdf3b05fbced",
+      "live_db_backup_sha256": {},
+      "capture_consistency": "verified earlier per-file frozen JSONL copied with original mtime; databases generated privately,not new live backups",
+      "kind": "verified_frozen_clone_plus_controlled_today",
+      "controlled_today_source": {
+        "bytes": 517,
+        "sha256": "fd36344e99c21b502ad6df34952ea8cd164014ed569a5d1e517c23f8ed3dfc1d",
+        "mtime_ns": 1792132506525657649
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "dc5bab3aa4705638bfc6ace3c8d69c68dc86d775b4d087d86022e92160bcf1e7",
+          "agentdeck.sqlite3": "36152242a2c19ec649ccdf07abd02e84d69244bf13ba5bc7aa6062792900aed7"
+        },
+        "native": {
+          "operatorWaitNanoseconds": 5326443663,
+          "frames": [
+            {
+              "valid": true,
+              "panel": "quota",
+              "elapsedNanoseconds": 6035900414
+            }
+          ],
+          "stageAggregates": [
+            {
+              "maximumNanoseconds": 200769388,
+              "stage": "popoverOpen",
+              "count": 1,
+              "totalNanoseconds": 200769388
+            },
+            {
+              "maximumNanoseconds": 643069371,
+              "stage": "popoverPreparation",
+              "count": 1,
+              "totalNanoseconds": 643069371
+            },
+            {
+              "maximumNanoseconds": 75020,
+              "stage": "presentation",
+              "count": 926,
+              "totalNanoseconds": 9242581
+            }
+          ],
+          "helperFailures": [],
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstFrameCaptureOrigin": "native_action_return",
+          "latestDataChanged": false,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "readyClickRequired": false,
+          "version": 1,
+          "probeResumeAfterActionNanoseconds": 341818148,
+          "initialDataPresent": false,
+          "manualClickCount": 1,
+          "launchToDataNanoseconds": 6035900414,
+          "nativeEnvironment": {
+            "firstButtonVisible": true,
+            "firstActionReached": true,
+            "firstAppActive": false,
+            "rebuildPressureAtFirstAction": false,
+            "firstEventPostingAllowed": false,
+            "hasScreens": true,
+            "statusButtonHasWindow": true,
+            "appIsActive": true,
+            "quotaPressureAtFirstAction": false
+          },
+          "droppedStages": 0,
+          "firstClickDataReady": true,
+          "firstClickToDataNanoseconds": 320354593,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 643069371,
+              "completedAtUptimeNanoseconds": 331145295677490
+            },
+            {
+              "stage": "popoverOpen",
+              "durationNanoseconds": 200769388,
+              "completedAtUptimeNanoseconds": 331150108053310
+            }
+          ],
+          "initialClickRouted": true,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 7504.797741,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 7505261701,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "20a64694b2f692126c8cdcdf020573143789609a6d11b73478464489084256c4",
+          "cache_sha256": "77ae3b2a72cc33520550b7693f793d0c11b78a8b4133def47f788cde1918a686"
+        },
+        "model_readiness": {
+          "pollIntervalNanoseconds": 10000000,
+          "operatorWaitIncluded": false,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "nativeFrameMeasured": false,
+          "processEntryToModelNanoseconds": 1164047873,
+          "kind": "independent-model-readiness-v1",
+          "appReadyToModelNanoseconds": 956552516
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 1,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "33d7161bbd9a237e8a379a1f4aa8b9361afb3f94af9c26e78d7d0047eefaa946",
+          "agentdeck.sqlite3": "fcef9bfe366a97f2c4b98e83fbb769f35857cf418df87a7d0917f6619fcfc08a"
+        },
+        "native": {
+          "firstFrameCaptureOrigin": "native_action_return",
+          "initialDataPresent": false,
+          "readyClickRequired": false,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331164737327878,
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 743773950
+            },
+            {
+              "completedAtUptimeNanoseconds": 331167717418117,
+              "stage": "popoverOpen",
+              "durationNanoseconds": 155232190
+            }
+          ],
+          "firstClickDataReady": true,
+          "initialClickRouted": true,
+          "probeResumeAfterActionNanoseconds": 243020577,
+          "nativeEnvironment": {
+            "rebuildPressureAtFirstAction": false,
+            "quotaPressureAtFirstAction": false,
+            "statusButtonHasWindow": true,
+            "appIsActive": true,
+            "firstActionReached": true,
+            "firstAppActive": false,
+            "firstEventPostingAllowed": false,
+            "firstButtonVisible": true,
+            "hasScreens": true
+          },
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "version": 1,
+          "frames": [
+            {
+              "panel": "quota",
+              "elapsedNanoseconds": 4234556708,
+              "valid": true
+            }
+          ],
+          "operatorWaitNanoseconds": 3649427823,
+          "latestDataChanged": false,
+          "firstClickToDataNanoseconds": 230644739,
+          "droppedStages": 0,
+          "manualClickCount": 1,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "launchToDataNanoseconds": 4234556708,
+          "helperFailures": [],
+          "stageAggregates": [
+            {
+              "count": 1,
+              "maximumNanoseconds": 155232190,
+              "totalNanoseconds": 155232190,
+              "stage": "popoverOpen"
+            },
+            {
+              "count": 1,
+              "maximumNanoseconds": 743773950,
+              "totalNanoseconds": 743773950,
+              "stage": "popoverPreparation"
+            },
+            {
+              "count": 926,
+              "maximumNanoseconds": 107742,
+              "totalNanoseconds": 10418386,
+              "stage": "presentation"
+            }
+          ],
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5565.915976,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5566365166,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "297e5cfec8eda10c5828e7b84a360d7b110d198c71b7bc5ca78a62502b5eb6aa",
+          "cache_sha256": "d608d8413040e726c2e1c514bc057aa92ffc929f104c81a4cff5f97f419219cf"
+        },
+        "model_readiness": {
+          "partial": false,
+          "processEntryToModelNanoseconds": 1239576092,
+          "appReadyToModelNanoseconds": 1051548444,
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "sessionDomainAvailable": true,
+          "operatorWaitIncluded": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 2,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "60dd8ae9ab0ee62bee19e3ca02a64f5d531d27dbab64869f506503cd949dc12d",
+          "agentdeck.sqlite3": "632f59544fabdcb68d3ac01be7c4b7ca158a847650f653deca8782339cf09766"
+        },
+        "native": {
+          "launchToDataNanoseconds": 3756866135,
+          "manualClickCount": 1,
+          "droppedStages": 0,
+          "initialDataPresent": false,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstClickDataReady": true,
+          "version": 1,
+          "operatorWaitNanoseconds": 3257986642,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "readyClickRequired": false,
+          "latestDataChanged": false,
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331182427905784,
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 583866635
+            },
+            {
+              "completedAtUptimeNanoseconds": 331185164299257,
+              "stage": "popoverOpen",
+              "durationNanoseconds": 129123759
+            }
+          ],
+          "nativeEnvironment": {
+            "firstButtonVisible": true,
+            "quotaPressureAtFirstAction": false,
+            "statusButtonHasWindow": true,
+            "firstEventPostingAllowed": false,
+            "firstActionReached": true,
+            "hasScreens": true,
+            "rebuildPressureAtFirstAction": false,
+            "firstAppActive": false,
+            "appIsActive": true
+          },
+          "helperFailures": [],
+          "firstFrameCaptureOrigin": "native_action_return",
+          "initialClickRouted": true,
+          "frames": [
+            {
+              "valid": true,
+              "panel": "quota",
+              "elapsedNanoseconds": 3756866135
+            }
+          ],
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 129123759,
+              "maximumNanoseconds": 129123759,
+              "count": 1,
+              "stage": "popoverOpen"
+            },
+            {
+              "totalNanoseconds": 583866635,
+              "maximumNanoseconds": 583866635,
+              "count": 1,
+              "stage": "popoverPreparation"
+            },
+            {
+              "totalNanoseconds": 7892907,
+              "maximumNanoseconds": 73136,
+              "count": 926,
+              "stage": "presentation"
+            }
+          ],
+          "probeResumeAfterActionNanoseconds": 220643157,
+          "firstClickToDataNanoseconds": 207911869,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5099.711007,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5100090196,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "6ba3c0f6e5d4357d39b195db13104d592137fbfe06a8a30706d0cb1d6a85f3c5",
+          "cache_sha256": "f52e397da167f775d5d54247d2d03da1f3107076a50224ad043ff562a5c06896"
+        },
+        "model_readiness": {
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 843805605,
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "processEntryToModelNanoseconds": 998828590,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "kind": "independent-model-readiness-v1"
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 3,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "8b86b05813df9c1dd3da4ce51d7980b90939bbbf740200098b81309c38ec3a8f",
+          "agentdeck.sqlite3": "be3d1bfed6759cd0f252be746e5ae7ee46fd6f8860c89df98813c63f577166e0"
+        },
+        "native": {
+          "probeResumeAfterActionNanoseconds": 226739454,
+          "operatorWaitNanoseconds": 4074709552,
+          "frames": [
+            {
+              "panel": "quota",
+              "valid": true,
+              "elapsedNanoseconds": 4698601338
+            }
+          ],
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "firstClickDataReady": true,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 744805426,
+              "completedAtUptimeNanoseconds": 331200443120187
+            },
+            {
+              "stage": "popoverOpen",
+              "durationNanoseconds": 126297730,
+              "completedAtUptimeNanoseconds": 331203819788884
+            }
+          ],
+          "initialClickRouted": true,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "readyClickRequired": false,
+          "initialDataPresent": false,
+          "helperFailures": [],
+          "launchToDataNanoseconds": 4698601338,
+          "firstClickToDataNanoseconds": 211550516,
+          "droppedStages": 0,
+          "nativeEnvironment": {
+            "rebuildPressureAtFirstAction": false,
+            "quotaPressureAtFirstAction": false,
+            "appIsActive": true,
+            "firstActionReached": true,
+            "statusButtonHasWindow": true,
+            "firstButtonVisible": true,
+            "firstEventPostingAllowed": false,
+            "firstAppActive": false,
+            "hasScreens": true
+          },
+          "latestDataChanged": false,
+          "manualClickCount": 1,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "version": 1,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "stageAggregates": [
+            {
+              "stage": "popoverOpen",
+              "count": 1,
+              "totalNanoseconds": 126297730,
+              "maximumNanoseconds": 126297730
+            },
+            {
+              "stage": "popoverPreparation",
+              "count": 1,
+              "totalNanoseconds": 744805426,
+              "maximumNanoseconds": 744805426
+            },
+            {
+              "stage": "presentation",
+              "count": 926,
+              "totalNanoseconds": 11248879,
+              "maximumNanoseconds": 74025
+            }
+          ],
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 6040.962695,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 6041389796,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "f68ac022dceef5dfcef1b44414842a26f4542134f0001c164655c96c62b9531f",
+          "cache_sha256": "06ae750f13d24836f69b0fb923f47ad99407500b21d37cf4323ec52dc70392db"
+        },
+        "model_readiness": {
+          "nativeFrameMeasured": false,
+          "appReadyToModelNanoseconds": 1102706969,
+          "kind": "independent-model-readiness-v1",
+          "partial": false,
+          "pollIntervalNanoseconds": 10000000,
+          "sessionDomainAvailable": true,
+          "processEntryToModelNanoseconds": 1358199291,
+          "operatorWaitIncluded": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 4,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "d0e4997d9c7953684f21fe56d4c8f33907d5b6bffa252c26e74926a113ba74a0",
+          "agentdeck.sqlite3": "ec1ef8d013d480fa612415d7c5242d093b936ca0ba2fa454108ce28c1b6987ea"
+        },
+        "native": {
+          "initialClickRouted": true,
+          "launchToDataNanoseconds": 3910807987,
+          "probeResumeAfterActionNanoseconds": 254630568,
+          "initialDataPresent": false,
+          "firstClickDataReady": true,
+          "manualClickCount": 1,
+          "droppedStages": 0,
+          "readyClickRequired": false,
+          "version": 1,
+          "helperFailures": [],
+          "firstClickToDataNanoseconds": 240844470,
+          "frames": [
+            {
+              "panel": "quota",
+              "elapsedNanoseconds": 3910807987,
+              "valid": true
+            }
+          ],
+          "stageAggregates": [
+            {
+              "count": 1,
+              "totalNanoseconds": 162067907,
+              "stage": "popoverOpen",
+              "maximumNanoseconds": 162067907
+            },
+            {
+              "count": 1,
+              "totalNanoseconds": 598421799,
+              "stage": "popoverPreparation",
+              "maximumNanoseconds": 598421799
+            },
+            {
+              "count": 926,
+              "totalNanoseconds": 8443254,
+              "stage": "presentation",
+              "maximumNanoseconds": 73978
+            }
+          ],
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "operatorWaitNanoseconds": 3329079961,
+          "latestDataChanged": false,
+          "stages": [
+            {
+              "durationNanoseconds": 598421799,
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331218099800388
+            },
+            {
+              "durationNanoseconds": 162067907,
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331220927904266
+            }
+          ],
+          "nativeEnvironment": {
+            "statusButtonHasWindow": true,
+            "quotaPressureAtFirstAction": false,
+            "appIsActive": true,
+            "hasScreens": true,
+            "firstEventPostingAllowed": false,
+            "firstActionReached": true,
+            "firstAppActive": false,
+            "firstButtonVisible": true,
+            "rebuildPressureAtFirstAction": false
+          },
+          "firstFrameCaptureOrigin": "native_action_return",
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5317.153109,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5317626423,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "2e71e1952cf8bed70f03347a6664d0e0050ffa61cbdd5456fc425614dcb6d3a8",
+          "cache_sha256": "e0270db4af4b456e03dcda0ae95884874e9d281fd393486af016e14fd9b20744"
+        },
+        "model_readiness": {
+          "kind": "independent-model-readiness-v1",
+          "operatorWaitIncluded": false,
+          "partial": false,
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "processEntryToModelNanoseconds": 1065527451,
+          "appReadyToModelNanoseconds": 883685624,
+          "sessionDomainAvailable": true
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 5,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "5a09e4daf0b21d0ab1009285e2c81f7d64a400dc8db191b26cd70f007f8b4b36",
+          "agentdeck.sqlite3": "bfe18a3ef575124c0967c1e6f21de8d4a1f05e0c830e0504007e65632550d5db"
+        },
+        "native": {
+          "initialClickRouted": true,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "helperFailures": [],
+          "droppedStages": 0,
+          "nativeEnvironment": {
+            "rebuildPressureAtFirstAction": false,
+            "firstActionReached": true,
+            "hasScreens": true,
+            "firstAppActive": false,
+            "firstEventPostingAllowed": false,
+            "appIsActive": true,
+            "statusButtonHasWindow": true,
+            "quotaPressureAtFirstAction": false,
+            "firstButtonVisible": true
+          },
+          "operatorWaitNanoseconds": 3790854841,
+          "initialDataPresent": false,
+          "probeResumeAfterActionNanoseconds": 297914201,
+          "manualClickCount": 1,
+          "firstClickDataReady": true,
+          "readyClickRequired": false,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331237234314189,
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 602601179
+            },
+            {
+              "completedAtUptimeNanoseconds": 331240538340134,
+              "stage": "popoverOpen",
+              "durationNanoseconds": 190293063
+            }
+          ],
+          "launchToDataNanoseconds": 4395647569,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "firstClickToDataNanoseconds": 283148214,
+          "frames": [
+            {
+              "elapsedNanoseconds": 4395647569,
+              "valid": true,
+              "panel": "quota"
+            }
+          ],
+          "stageAggregates": [
+            {
+              "stage": "popoverOpen",
+              "count": 1,
+              "totalNanoseconds": 190293063,
+              "maximumNanoseconds": 190293063
+            },
+            {
+              "stage": "popoverPreparation",
+              "count": 1,
+              "totalNanoseconds": 602601179,
+              "maximumNanoseconds": 602601179
+            },
+            {
+              "stage": "presentation",
+              "totalNanoseconds": 9768444,
+              "maximumNanoseconds": 85913,
+              "count": 926
+            }
+          ],
+          "latestDataChanged": false,
+          "version": 1,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5747.522643,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5747989778,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "a758656c229d337dc2b02d37bb14b52d385487bd96c82f58ea2c9f6dfeca156c",
+          "cache_sha256": "b30e28691d220d05454ede2bc7da8652adaf268571385eb480d173c0baaf9bfa"
+        },
+        "model_readiness": {
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 896773645,
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "sessionDomainAvailable": true,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 1056883427,
+          "partial": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 6,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "51391e30df181b8ddc3cf26b0e1d1d5402e0584dbdbd8533e1255d4c835e58d4",
+          "agentdeck.sqlite3": "b0c3fb59b068adc691fc4730da9152957507b4892bec2e73a49de26c9c9a462b"
+        },
+        "native": {
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "initialDataPresent": false,
+          "firstClickDataReady": true,
+          "firstClickToDataNanoseconds": 219880207,
+          "version": 1,
+          "probeResumeAfterActionNanoseconds": 233485099,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "latestDataChanged": false,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "stages": [
+            {
+              "durationNanoseconds": 619224176,
+              "completedAtUptimeNanoseconds": 331255972839818,
+              "stage": "popoverPreparation"
+            },
+            {
+              "durationNanoseconds": 135723884,
+              "completedAtUptimeNanoseconds": 331258861753422,
+              "stage": "popoverOpen"
+            }
+          ],
+          "helperFailures": [],
+          "manualClickCount": 1,
+          "droppedStages": 0,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "nativeEnvironment": {
+            "quotaPressureAtFirstAction": false,
+            "firstEventPostingAllowed": false,
+            "firstActionReached": true,
+            "rebuildPressureAtFirstAction": false,
+            "appIsActive": true,
+            "firstAppActive": false,
+            "firstButtonVisible": true,
+            "hasScreens": true,
+            "statusButtonHasWindow": true
+          },
+          "launchToDataNanoseconds": 3992524247,
+          "operatorWaitNanoseconds": 3434693902,
+          "frames": [
+            {
+              "valid": true,
+              "panel": "quota",
+              "elapsedNanoseconds": 3992524247
+            }
+          ],
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 135723884,
+              "maximumNanoseconds": 135723884,
+              "count": 1,
+              "stage": "popoverOpen"
+            },
+            {
+              "totalNanoseconds": 619224176,
+              "maximumNanoseconds": 619224176,
+              "count": 1,
+              "stage": "popoverPreparation"
+            },
+            {
+              "totalNanoseconds": 9600346,
+              "maximumNanoseconds": 81774,
+              "count": 926,
+              "stage": "presentation"
+            }
+          ],
+          "initialClickRouted": true,
+          "readyClickRequired": false,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5414.782738,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5415326899,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "aed54dc0100d518cfab658fab62395e5e5346bfbc90962d4b570a9f7ea9b81a6",
+          "cache_sha256": "eb2e7a9fe82d52f07dc42394a1a74dbb678df09d9c1ec013767a83107db64c3b"
+        },
+        "model_readiness": {
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "partial": false,
+          "nativeFrameMeasured": false,
+          "processEntryToModelNanoseconds": 1081088556,
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 906657047,
+          "sessionDomainAvailable": true
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 7,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "55f07845fb7dbf9af9fb304618947cb15f0e63a9e19df67301e5f18c598e5eab",
+          "agentdeck.sqlite3": "f49cf7ff0554ef093c7507c49d3b47dc362b08b548e346f7bbbd638c7334dcfa"
+        },
+        "native": {
+          "initialClickRouted": true,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "manualClickCount": 1,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "latestDataChanged": false,
+          "launchToDataNanoseconds": 3534644882,
+          "version": 1,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "probeResumeAfterActionNanoseconds": 273173706,
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331275222895907,
+              "durationNanoseconds": 715489213,
+              "stage": "popoverPreparation"
+            },
+            {
+              "completedAtUptimeNanoseconds": 331277518992079,
+              "durationNanoseconds": 153696940,
+              "stage": "popoverOpen"
+            }
+          ],
+          "droppedStages": 0,
+          "helperFailures": [],
+          "firstClickToDataNanoseconds": 256644781,
+          "initialDataPresent": false,
+          "stageAggregates": [
+            {
+              "count": 1,
+              "maximumNanoseconds": 153696940,
+              "totalNanoseconds": 153696940,
+              "stage": "popoverOpen"
+            },
+            {
+              "count": 1,
+              "maximumNanoseconds": 715489213,
+              "totalNanoseconds": 715489213,
+              "stage": "popoverPreparation"
+            },
+            {
+              "count": 926,
+              "maximumNanoseconds": 77666,
+              "totalNanoseconds": 10007717,
+              "stage": "presentation"
+            }
+          ],
+          "nativeEnvironment": {
+            "firstActionReached": true,
+            "firstAppActive": false,
+            "rebuildPressureAtFirstAction": false,
+            "statusButtonHasWindow": true,
+            "firstButtonVisible": true,
+            "firstEventPostingAllowed": false,
+            "appIsActive": true,
+            "quotaPressureAtFirstAction": false,
+            "hasScreens": true
+          },
+          "readyClickRequired": false,
+          "operatorWaitNanoseconds": 2925026119,
+          "firstClickDataReady": true,
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3534644882,
+              "panel": "quota"
+            }
+          ],
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 4986.760164,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 4987479456,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "01dfe334ded1f38259fe927d6000e0c5e7207dfab7d101062adfe1f564615e68",
+          "cache_sha256": "04f991a957efdcb343222147c26595b2f17678eb6e11faed0609cbd1a98555a4"
+        },
+        "model_readiness": {
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "kind": "independent-model-readiness-v1",
+          "operatorWaitIncluded": false,
+          "processEntryToModelNanoseconds": 1201112901,
+          "appReadyToModelNanoseconds": 1009455863
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 8,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "148d45cdef29f4611289f8a7e729678b5211bd55399466f003116be100e2cae2",
+          "agentdeck.sqlite3": "29b7b53a71330dee3bb5ab851258cec0c2c97ed291a1b732c444feb654c79983"
+        },
+        "native": {
+          "firstFrameCaptureOrigin": "native_action_return",
+          "droppedStages": 0,
+          "latestDataChanged": false,
+          "firstClickToDataNanoseconds": 249709756,
+          "helperFailures": [],
+          "nativeEnvironment": {
+            "rebuildPressureAtFirstAction": false,
+            "appIsActive": true,
+            "firstEventPostingAllowed": false,
+            "quotaPressureAtFirstAction": false,
+            "firstAppActive": false,
+            "firstActionReached": true,
+            "firstButtonVisible": true,
+            "hasScreens": true,
+            "statusButtonHasWindow": true
+          },
+          "launchToDataNanoseconds": 3236554081,
+          "manualClickCount": 1,
+          "firstClickDataReady": true,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "stageAggregates": [
+            {
+              "stage": "popoverOpen",
+              "count": 1,
+              "totalNanoseconds": 164072364,
+              "maximumNanoseconds": 164072364
+            },
+            {
+              "stage": "popoverPreparation",
+              "count": 1,
+              "totalNanoseconds": 598312376,
+              "maximumNanoseconds": 598312376
+            },
+            {
+              "stage": "presentation",
+              "count": 746,
+              "totalNanoseconds": 7291953,
+              "maximumNanoseconds": 69181
+            }
+          ],
+          "initialClickRouted": true,
+          "initialDataPresent": false,
+          "operatorWaitNanoseconds": 2624633344,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "probeResumeAfterActionNanoseconds": 263159716,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 598312376,
+              "completedAtUptimeNanoseconds": 331292246089178
+            },
+            {
+              "stage": "popoverOpen",
+              "durationNanoseconds": 164072364,
+              "completedAtUptimeNanoseconds": 331294368056191
+            }
+          ],
+          "version": 1,
+          "readyClickRequired": false,
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3236554081,
+              "panel": "quota"
+            }
+          ],
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 4625.97129,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 4626446897,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "d6f87529546146f046792eb96bb0763da817a647b69a3941c8adbd53cb92f1ac",
+          "cache_sha256": "57ffb2d40a1912eb79d90108ba52078d544c724d62d0367ccdda215b5559304a"
+        },
+        "model_readiness": {
+          "processEntryToModelNanoseconds": 1088140712,
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 892490392,
+          "nativeFrameMeasured": false,
+          "partial": false,
+          "sessionDomainAvailable": true
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 9,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "3c34e55df34e42d2c1bc6c3454d0f8a8c7c154fb3176ce094b9ea877c4cd6636",
+          "agentdeck.sqlite3": "de8e8189bc0ce646a8b9289a6d060c51bea960cce8fd393522123047b767e80f"
+        },
+        "native": {
+          "readyClickRequired": false,
+          "manualClickCount": 1,
+          "probeResumeAfterActionNanoseconds": 272674500,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "initialClickRouted": true,
+          "droppedStages": 0,
+          "firstClickDataReady": true,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "initialDataPresent": false,
+          "stages": [
+            {
+              "durationNanoseconds": 752038899,
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331309081263998
+            },
+            {
+              "durationNanoseconds": 169512698,
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331311718121109
+            }
+          ],
+          "stageAggregates": [
+            {
+              "maximumNanoseconds": 169512698,
+              "stage": "popoverOpen",
+              "count": 1,
+              "totalNanoseconds": 169512698
+            },
+            {
+              "maximumNanoseconds": 752038899,
+              "stage": "popoverPreparation",
+              "count": 1,
+              "totalNanoseconds": 752038899
+            },
+            {
+              "maximumNanoseconds": 112735,
+              "stage": "presentation",
+              "count": 926,
+              "totalNanoseconds": 9193192
+            }
+          ],
+          "firstClickToDataNanoseconds": 254960620,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "launchToDataNanoseconds": 3920600229,
+          "version": 1,
+          "operatorWaitNanoseconds": 3290505934,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "latestDataChanged": false,
+          "helperFailures": [],
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3920600229,
+              "panel": "quota"
+            }
+          ],
+          "nativeEnvironment": {
+            "firstActionReached": true,
+            "statusButtonHasWindow": true,
+            "firstAppActive": false,
+            "firstEventPostingAllowed": false,
+            "hasScreens": true,
+            "appIsActive": true,
+            "quotaPressureAtFirstAction": false,
+            "rebuildPressureAtFirstAction": false,
+            "firstButtonVisible": true
+          },
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5299.78198,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5300280225,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "380dfc901338fedc538c0aef7887767cf6d839ef5189feba4932ad9ec9c3db31",
+          "cache_sha256": "c92e7014a60b670c852f39caabbda1839e1e3f840c64e2091a62cf0945576a06"
+        },
+        "model_readiness": {
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "appReadyToModelNanoseconds": 1074861768,
+          "nativeFrameMeasured": false,
+          "operatorWaitIncluded": false,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "processEntryToModelNanoseconds": 1276483600
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 10,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "88a21a13b7e7a0854ff3486120773b875c35c0e52f8e60ae3dc8ef67d833377a",
+          "agentdeck.sqlite3": "d59b47ff7c17500f8b8e5ad50fdfc9a46c0b2613ff6242401f9ddf64664a7027"
+        },
+        "native": {
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3579782777,
+              "panel": "quota"
+            }
+          ],
+          "version": 1,
+          "latestDataChanged": false,
+          "probeResumeAfterActionNanoseconds": 285620685,
+          "manualClickCount": 1,
+          "firstClickToDataNanoseconds": 271973593,
+          "droppedStages": 0,
+          "stageAggregates": [
+            {
+              "stage": "popoverOpen",
+              "totalNanoseconds": 188719226,
+              "maximumNanoseconds": 188719226,
+              "count": 1
+            },
+            {
+              "stage": "popoverPreparation",
+              "totalNanoseconds": 731267765,
+              "maximumNanoseconds": 731267765,
+              "count": 1
+            },
+            {
+              "stage": "presentation",
+              "totalNanoseconds": 8482272,
+              "maximumNanoseconds": 101049,
+              "count": 746
+            }
+          ],
+          "helperFailures": [],
+          "initialDataPresent": false,
+          "nativeEnvironment": {
+            "firstEventPostingAllowed": false,
+            "firstAppActive": false,
+            "firstButtonVisible": true,
+            "hasScreens": true,
+            "quotaPressureAtFirstAction": false,
+            "appIsActive": true,
+            "firstActionReached": true,
+            "rebuildPressureAtFirstAction": false,
+            "statusButtonHasWindow": true
+          },
+          "operatorWaitNanoseconds": 2946583138,
+          "launchToDataNanoseconds": 3579782777,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "firstClickDataReady": true,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "initialClickRouted": true,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331326354207498,
+              "durationNanoseconds": 731267765
+            },
+            {
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331328690509423,
+              "durationNanoseconds": 188719226
+            }
+          ],
+          "readyClickRequired": false,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5166.395894,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5166802971,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "e3d643e3cd43878622181c4418edc4556f21b8f377c4334862b291318b460265",
+          "cache_sha256": "80aed05eec1cb6723e1fdedb827f0bbcde07b80b494883061a6682fe7268da9b"
+        },
+        "model_readiness": {
+          "nativeFrameMeasured": false,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "pollIntervalNanoseconds": 10000000,
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 1043682773,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 1227964745
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 11,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "1baf6d6ff6aa29a74529020de655ca6de7dd2fca6adde3416e8744515e6199d1",
+          "agentdeck.sqlite3": "a712a0c4838d8c803ba2d29c3b82dcb9f346ce1820a964ea886c00b2e8062e1b"
+        },
+        "native": {
+          "launchToDataNanoseconds": 3626886671,
+          "operatorWaitNanoseconds": 3090945565,
+          "manualClickCount": 1,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3626886671,
+              "panel": "quota"
+            }
+          ],
+          "firstClickToDataNanoseconds": 235118669,
+          "firstClickDataReady": true,
+          "probeResumeAfterActionNanoseconds": 250361061,
+          "nativeEnvironment": {
+            "quotaPressureAtFirstAction": false,
+            "firstButtonVisible": true,
+            "appIsActive": true,
+            "hasScreens": true,
+            "firstAppActive": false,
+            "rebuildPressureAtFirstAction": false,
+            "firstEventPostingAllowed": false,
+            "firstActionReached": true,
+            "statusButtonHasWindow": true
+          },
+          "version": 1,
+          "latestDataChanged": false,
+          "initialClickRouted": true,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "droppedStages": 0,
+          "initialDataPresent": false,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstFrameCaptureOrigin": "native_action_return",
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 153882625,
+              "stage": "popoverOpen",
+              "count": 1,
+              "maximumNanoseconds": 153882625
+            },
+            {
+              "totalNanoseconds": 737947022,
+              "stage": "popoverPreparation",
+              "count": 1,
+              "maximumNanoseconds": 737947022
+            },
+            {
+              "totalNanoseconds": 8428740,
+              "stage": "presentation",
+              "count": 926,
+              "maximumNanoseconds": 59964
+            }
+          ],
+          "readyClickRequired": false,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 737947022,
+              "completedAtUptimeNanoseconds": 331343563835772
+            },
+            {
+              "stage": "popoverOpen",
+              "durationNanoseconds": 153882625,
+              "completedAtUptimeNanoseconds": 331346015265448
+            }
+          ],
+          "helperFailures": [],
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5177.550374,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5177928582,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "90d4f90c7a153d7aaadae301c87d8d1a78009d744b761fc89739d25c3c56e487",
+          "cache_sha256": "42fbf3307733f39aae338d7839925953a3589653bd725fa7bea3b51faf0017c0"
+        },
+        "model_readiness": {
+          "kind": "independent-model-readiness-v1",
+          "operatorWaitIncluded": false,
+          "pollIntervalNanoseconds": 10000000,
+          "processEntryToModelNanoseconds": 1168683177,
+          "nativeFrameMeasured": false,
+          "sessionDomainAvailable": true,
+          "partial": false,
+          "appReadyToModelNanoseconds": 985523541
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 12,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "c787e3288923b4879f29adc7e087fbaadf852fc785c65a473ea97cc5fe696110",
+          "agentdeck.sqlite3": "03fac5f2db715e1fc5040b08efc940198c67d2fcbd7685717f65451e6e9a6405"
+        },
+        "native": {
+          "initialDataPresent": false,
+          "firstClickToDataNanoseconds": 216422394,
+          "initialClickRouted": true,
+          "helperFailures": [],
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3870137584,
+              "panel": "quota"
+            }
+          ],
+          "stages": [
+            {
+              "durationNanoseconds": 689692112,
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331361142671872
+            },
+            {
+              "durationNanoseconds": 133105288,
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331363817612830
+            }
+          ],
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "latestDataChanged": false,
+          "operatorWaitNanoseconds": 3295746116,
+          "probeResumeAfterActionNanoseconds": 235929209,
+          "launchToDataNanoseconds": 3870137584,
+          "firstClickDataReady": true,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "manualClickCount": 1,
+          "version": 1,
+          "nativeEnvironment": {
+            "firstEventPostingAllowed": false,
+            "appIsActive": true,
+            "rebuildPressureAtFirstAction": false,
+            "quotaPressureAtFirstAction": false,
+            "firstAppActive": false,
+            "hasScreens": true,
+            "firstActionReached": true,
+            "firstButtonVisible": true,
+            "statusButtonHasWindow": true
+          },
+          "readyClickRequired": false,
+          "droppedStages": 0,
+          "stageAggregates": [
+            {
+              "maximumNanoseconds": 133105288,
+              "stage": "popoverOpen",
+              "totalNanoseconds": 133105288,
+              "count": 1
+            },
+            {
+              "maximumNanoseconds": 689692112,
+              "stage": "popoverPreparation",
+              "totalNanoseconds": 689692112,
+              "count": 1
+            },
+            {
+              "maximumNanoseconds": 79557,
+              "stage": "presentation",
+              "totalNanoseconds": 9020513,
+              "count": 926
+            }
+          ],
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5267.137725,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5267588396,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "1ced6dd7cd08cceecda92bad6a9474369e8f3bad840fd2aa2cfc49c0d9686e61",
+          "cache_sha256": "87153d902a4f9ae8ab61f6f0ec5006fbdd8d999fbc2c831e8f1e3d9f033325da"
+        },
+        "model_readiness": {
+          "operatorWaitIncluded": false,
+          "pollIntervalNanoseconds": 10000000,
+          "appReadyToModelNanoseconds": 974436943,
+          "nativeFrameMeasured": false,
+          "kind": "independent-model-readiness-v1",
+          "sessionDomainAvailable": true,
+          "processEntryToModelNanoseconds": 1174211887,
+          "partial": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 13,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "e7d1f8afb645592c9c8bf00a7b8d5cd57b98e85b801e24739a6e7b7107ff10fc",
+          "agentdeck.sqlite3": "1078f7facb4831d5c1be55b63c520d4a159004eb90e31f106f91b8d5ad2fd527"
+        },
+        "native": {
+          "probeResumeAfterActionNanoseconds": 256839974,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "launchToDataNanoseconds": 3706939741,
+          "frames": [
+            {
+              "valid": true,
+              "panel": "quota",
+              "elapsedNanoseconds": 3706939741
+            }
+          ],
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 152101015,
+              "stage": "popoverOpen",
+              "count": 1,
+              "maximumNanoseconds": 152101015
+            },
+            {
+              "totalNanoseconds": 670951990,
+              "stage": "popoverPreparation",
+              "count": 1,
+              "maximumNanoseconds": 670951990
+            },
+            {
+              "totalNanoseconds": 9591899,
+              "stage": "presentation",
+              "count": 926,
+              "maximumNanoseconds": 78340
+            }
+          ],
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstClickToDataNanoseconds": 238438273,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "manualClickCount": 1,
+          "nativeEnvironment": {
+            "firstActionReached": true,
+            "quotaPressureAtFirstAction": false,
+            "firstButtonVisible": true,
+            "firstEventPostingAllowed": false,
+            "rebuildPressureAtFirstAction": false,
+            "hasScreens": true,
+            "firstAppActive": false,
+            "appIsActive": true,
+            "statusButtonHasWindow": true
+          },
+          "initialClickRouted": true,
+          "stages": [
+            {
+              "durationNanoseconds": 670951990,
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331378927055752
+            },
+            {
+              "durationNanoseconds": 152101015,
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331381434065635
+            }
+          ],
+          "helperFailures": [],
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "firstClickDataReady": true,
+          "version": 1,
+          "initialDataPresent": false,
+          "readyClickRequired": false,
+          "droppedStages": 0,
+          "operatorWaitNanoseconds": 3103347434,
+          "latestDataChanged": false,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5220.758773,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5221221718,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "fd9bd946bc507a511d54f99e7530df08079fab656fd8ec7f2a8a07e9790143df",
+          "cache_sha256": "7abac2fbec9d108836e0d41ab0717a0553734963ef22219d03f2e68819459afe"
+        },
+        "model_readiness": {
+          "pollIntervalNanoseconds": 10000000,
+          "sessionDomainAvailable": true,
+          "partial": false,
+          "processEntryToModelNanoseconds": 1177300899,
+          "appReadyToModelNanoseconds": 977558805,
+          "nativeFrameMeasured": false,
+          "kind": "independent-model-readiness-v1",
+          "operatorWaitIncluded": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 14,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "7674a2481067f963377c6fb0b5d92a38ef7c640b840d84bc6b87a8a09a2fd185",
+          "agentdeck.sqlite3": "de43a4778665ca9614802ca9b0ef121644afdb83d5a72d9e9e83621e7cea6876"
+        },
+        "native": {
+          "firstClickDataReady": true,
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 169196215,
+              "maximumNanoseconds": 169196215,
+              "stage": "popoverOpen",
+              "count": 1
+            },
+            {
+              "totalNanoseconds": 619090394,
+              "maximumNanoseconds": 619090394,
+              "stage": "popoverPreparation",
+              "count": 1
+            },
+            {
+              "totalNanoseconds": 7238117,
+              "maximumNanoseconds": 71032,
+              "stage": "presentation",
+              "count": 746
+            }
+          ],
+          "initialClickRouted": true,
+          "readyClickRequired": false,
+          "latestDataChanged": false,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "version": 1,
+          "manualClickCount": 1,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "firstClickToDataNanoseconds": 253635023,
+          "frames": [
+            {
+              "elapsedNanoseconds": 3348715782,
+              "valid": true,
+              "panel": "quota"
+            }
+          ],
+          "initialDataPresent": false,
+          "nativeEnvironment": {
+            "quotaPressureAtFirstAction": false,
+            "rebuildPressureAtFirstAction": false,
+            "firstActionReached": true,
+            "statusButtonHasWindow": true,
+            "firstAppActive": false,
+            "firstButtonVisible": true,
+            "hasScreens": true,
+            "appIsActive": true,
+            "firstEventPostingAllowed": false
+          },
+          "droppedStages": 0,
+          "launchToDataNanoseconds": 3348715782,
+          "probeResumeAfterActionNanoseconds": 267269871,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 619090394,
+              "completedAtUptimeNanoseconds": 331396371806300
+            },
+            {
+              "stage": "popoverOpen",
+              "durationNanoseconds": 169196215,
+              "completedAtUptimeNanoseconds": 331398583743978
+            }
+          ],
+          "firstFrameCaptureOrigin": "native_action_return",
+          "operatorWaitNanoseconds": 2732065837,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "helperFailures": [],
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 4934.231293,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 4934736382,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "f3ef62d69182100d99f807e015698253be0a8d469ef7d4599d0a89184ab01d6d",
+          "cache_sha256": "8d8f905c2ca877d8d37b7df5f913f194086107d1d2bbc13a7f057eb55398fd72"
+        },
+        "model_readiness": {
+          "pollIntervalNanoseconds": 10000000,
+          "partial": false,
+          "operatorWaitIncluded": false,
+          "appReadyToModelNanoseconds": 938532002,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 1113367584,
+          "nativeFrameMeasured": false,
+          "sessionDomainAvailable": true
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 15,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "f2707a27e7ee3cc2f48a4b29d404582d36024a0bd936df8d5fe6b31d011b9f8a",
+          "agentdeck.sqlite3": "86aa081390f79f67293799e8c3a1d2745efcd32aacd8acd111c5a5d8c6f70188"
+        },
+        "native": {
+          "droppedStages": 0,
+          "firstClickToDataNanoseconds": 220192461,
+          "operatorWaitNanoseconds": 2705962407,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "initialClickRouted": true,
+          "manualClickCount": 1,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "stages": [
+            {
+              "durationNanoseconds": 601013113,
+              "completedAtUptimeNanoseconds": 331416845597551,
+              "stage": "popoverPreparation"
+            },
+            {
+              "durationNanoseconds": 136658189,
+              "completedAtUptimeNanoseconds": 331419016697346,
+              "stage": "popoverOpen"
+            }
+          ],
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "launchToDataNanoseconds": 3281032011,
+          "initialDataPresent": false,
+          "latestDataChanged": false,
+          "frames": [
+            {
+              "elapsedNanoseconds": 3281032011,
+              "valid": true,
+              "panel": "quota"
+            }
+          ],
+          "stageAggregates": [
+            {
+              "maximumNanoseconds": 136658189,
+              "totalNanoseconds": 136658189,
+              "count": 1,
+              "stage": "popoverOpen"
+            },
+            {
+              "maximumNanoseconds": 601013113,
+              "totalNanoseconds": 601013113,
+              "count": 1,
+              "stage": "popoverPreparation"
+            },
+            {
+              "maximumNanoseconds": 75969,
+              "totalNanoseconds": 7505780,
+              "count": 746,
+              "stage": "presentation"
+            }
+          ],
+          "nativeEnvironment": {
+            "firstActionReached": true,
+            "firstAppActive": false,
+            "appIsActive": true,
+            "statusButtonHasWindow": true,
+            "quotaPressureAtFirstAction": false,
+            "hasScreens": true,
+            "firstButtonVisible": true,
+            "rebuildPressureAtFirstAction": false,
+            "firstEventPostingAllowed": false
+          },
+          "version": 1,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "helperFailures": [],
+          "probeResumeAfterActionNanoseconds": 234334146,
+          "firstClickDataReady": true,
+          "readyClickRequired": false,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 4803.842676,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 4804453217,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "17295f5cdf8d3ac63f8c7cf2a36ea0fb7b603a93402cf6444e04761e1f9d20b9",
+          "cache_sha256": "3cfeb6ea7683bc5254c806023f481493b49d985518fd8c6b2c39544b4f027f85"
+        },
+        "model_readiness": {
+          "sessionDomainAvailable": true,
+          "pollIntervalNanoseconds": 10000000,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 1088340812,
+          "partial": false,
+          "appReadyToModelNanoseconds": 916741245,
+          "nativeFrameMeasured": false,
+          "operatorWaitIncluded": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 16,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "218be75158935ceac2ae28540f8df83e66830f5b93a2099f3a37e0147f9fc51b",
+          "agentdeck.sqlite3": "ae0b42a6501df54588a23ff4a1f6371479c15997ceff23d06147d30cc7d5f85b"
+        },
+        "native": {
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331434355920957,
+              "stage": "popoverPreparation",
+              "durationNanoseconds": 674311587
+            },
+            {
+              "completedAtUptimeNanoseconds": 331436813781651,
+              "stage": "popoverOpen",
+              "durationNanoseconds": 130101471
+            }
+          ],
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "droppedStages": 0,
+          "helperFailures": [],
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "probeResumeAfterActionNanoseconds": 231088125,
+          "stageAggregates": [
+            {
+              "count": 1,
+              "stage": "popoverOpen",
+              "totalNanoseconds": 130101471,
+              "maximumNanoseconds": 130101471
+            },
+            {
+              "count": 1,
+              "stage": "popoverPreparation",
+              "totalNanoseconds": 674311587,
+              "maximumNanoseconds": 674311587
+            },
+            {
+              "count": 926,
+              "stage": "presentation",
+              "totalNanoseconds": 9262169,
+              "maximumNanoseconds": 77173
+            }
+          ],
+          "version": 1,
+          "firstClickDataReady": true,
+          "manualClickCount": 1,
+          "firstClickToDataNanoseconds": 213352630,
+          "frames": [
+            {
+              "valid": true,
+              "elapsedNanoseconds": 3647243395,
+              "panel": "quota"
+            }
+          ],
+          "nativeEnvironment": {
+            "statusButtonHasWindow": true,
+            "firstButtonVisible": true,
+            "rebuildPressureAtFirstAction": false,
+            "firstActionReached": true,
+            "firstEventPostingAllowed": false,
+            "hasScreens": true,
+            "quotaPressureAtFirstAction": false,
+            "appIsActive": true,
+            "firstAppActive": false
+          },
+          "initialClickRouted": true,
+          "readyClickRequired": false,
+          "operatorWaitNanoseconds": 3077934874,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "launchToDataNanoseconds": 3647243395,
+          "initialDataPresent": false,
+          "latestDataChanged": false,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5203.646916,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5204145186,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "76aff36ea7198bce830f4332e86c5cc846fe7c1e811bc76ddcebb4e9a3272a23",
+          "cache_sha256": "190e6eebd723bb9ae1725d8815f79271b0c65e57610ac3186d84e72d48d05e10"
+        },
+        "model_readiness": {
+          "processEntryToModelNanoseconds": 1167339838,
+          "kind": "independent-model-readiness-v1",
+          "pollIntervalNanoseconds": 10000000,
+          "nativeFrameMeasured": false,
+          "operatorWaitIncluded": false,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "appReadyToModelNanoseconds": 990429177
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 17,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "f9f523aef25c5b1f652d1ff9b53c06bb3cbc6e4f4809199c5acad73d0d88936d",
+          "agentdeck.sqlite3": "9ce1e7905a129cfbccba33aafc5ba22886c3b0bf7294d6ee83e05d5ffbab1e50"
+        },
+        "native": {
+          "droppedStages": 0,
+          "frames": [
+            {
+              "elapsedNanoseconds": 3673474913,
+              "panel": "quota",
+              "valid": true
+            }
+          ],
+          "readyClickRequired": false,
+          "initialClickRouted": true,
+          "launchToDataNanoseconds": 3673474913,
+          "stageAggregates": [
+            {
+              "totalNanoseconds": 149851487,
+              "maximumNanoseconds": 149851487,
+              "count": 1,
+              "stage": "popoverOpen"
+            },
+            {
+              "totalNanoseconds": 726323998,
+              "maximumNanoseconds": 726323998,
+              "count": 1,
+              "stage": "popoverPreparation"
+            },
+            {
+              "totalNanoseconds": 8720936,
+              "maximumNanoseconds": 79571,
+              "count": 926,
+              "stage": "presentation"
+            }
+          ],
+          "initialDataPresent": false,
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "firstClickToDataNanoseconds": 229754235,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "probeResumeAfterActionNanoseconds": 247101009,
+          "latestDataChanged": false,
+          "manualClickCount": 1,
+          "version": 1,
+          "firstClickDataReady": true,
+          "operatorWaitNanoseconds": 3080135187,
+          "stages": [
+            {
+              "completedAtUptimeNanoseconds": 331453579491305,
+              "durationNanoseconds": 726323998,
+              "stage": "popoverPreparation"
+            },
+            {
+              "completedAtUptimeNanoseconds": 331456017025526,
+              "durationNanoseconds": 149851487,
+              "stage": "popoverOpen"
+            }
+          ],
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "helperFailures": [],
+          "nativeEnvironment": {
+            "appIsActive": true,
+            "firstButtonVisible": true,
+            "hasScreens": true,
+            "firstAppActive": false,
+            "quotaPressureAtFirstAction": false,
+            "statusButtonHasWindow": true,
+            "firstEventPostingAllowed": false,
+            "firstActionReached": true,
+            "rebuildPressureAtFirstAction": false
+          },
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 5152.940928,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 5153503343,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "32a8acad88f9d66ceb7ee04cc126f788bde5b0e24d0a525b3c82caa0350c2bfc",
+          "cache_sha256": "8975a959068257fbc7deba9fe4eccf432a55a3033b0aed7ec9c0f334e8be1160"
+        },
+        "model_readiness": {
+          "pollIntervalNanoseconds": 10000000,
+          "partial": false,
+          "sessionDomainAvailable": true,
+          "appReadyToModelNanoseconds": 1041652170,
+          "operatorWaitIncluded": false,
+          "processEntryToModelNanoseconds": 1225376477,
+          "kind": "independent-model-readiness-v1",
+          "nativeFrameMeasured": false
+        },
+        "cache_present_at_start": true
+      },
+      {
+        "pair": 18,
+        "arm": "B",
+        "condition": "restore",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "2246bdba49fe1a9744ad6998aa83f9f6f4dd55e0cbd265b8aa03f56c28d62895",
+          "agentdeck.sqlite3": "4ff7c2bbbea64d9da597c4dffe227022d4bc52d77369bb7eb5b3ce49192edf12"
+        },
+        "native": {
+          "rebuildProcessingAtFirstActionJSON": "{}",
+          "operatorWaitNanoseconds": 2802948177,
+          "initialClickRouted": true,
+          "stages": [
+            {
+              "stage": "popoverPreparation",
+              "completedAtUptimeNanoseconds": 331472183002442,
+              "durationNanoseconds": 635136677
+            },
+            {
+              "stage": "popoverOpen",
+              "completedAtUptimeNanoseconds": 331474480810473,
+              "durationNanoseconds": 196973731
+            }
+          ],
+          "launchToDataNanoseconds": 3458761597,
+          "firstClickToDataNanoseconds": 287201987,
+          "clickStimulus": "Operator physical click at isolated TEST status button; timing starts at native button action entry; no event injection",
+          "firstClickDataReady": true,
+          "firstFrameCaptureOrigin": "native_action_return",
+          "latestDataChanged": false,
+          "version": 1,
+          "initialDataPresent": false,
+          "helperFailures": [],
+          "stageAggregates": [
+            {
+              "count": 1,
+              "stage": "popoverOpen",
+              "totalNanoseconds": 196973731,
+              "maximumNanoseconds": 196973731
+            },
+            {
+              "count": 1,
+              "stage": "popoverPreparation",
+              "totalNanoseconds": 635136677,
+              "maximumNanoseconds": 635136677
+            },
+            {
+              "count": 746,
+              "stage": "presentation",
+              "totalNanoseconds": 7386556,
+              "maximumNanoseconds": 75623
+            }
+          ],
+          "nativeEnvironment": {
+            "statusButtonHasWindow": true,
+            "firstActionReached": true,
+            "firstEventPostingAllowed": false,
+            "hasScreens": true,
+            "quotaPressureAtFirstAction": false,
+            "firstAppActive": false,
+            "firstButtonVisible": true,
+            "rebuildPressureAtFirstAction": false,
+            "appIsActive": true
+          },
+          "readyClickRequired": false,
+          "clickTimingOrigin": "native_left_mouse_button_action_entry",
+          "droppedStages": 0,
+          "probeResumeAfterActionNanoseconds": 303221952,
+          "frames": [
+            {
+              "elapsedNanoseconds": 3458761597,
+              "valid": true,
+              "panel": "quota"
+            }
+          ],
+          "manualClickCount": 1,
+          "executed_app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+          "executed_helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+          "whole_process_ms": 4914.550326,
+          "whole_process_is_launch_latency": false,
+          "launch_includes_operator_wait": true,
+          "launch_latency_budget_evaluable": false,
+          "actual_input": "external synthetic CGEvent, not physical mouse",
+          "private_app_cleanup_verified": true
+        },
+        "starting_schema_versions": {
+          "agentdeck.sqlite3": 31,
+          "sessions.serving_storage": 1
+        },
+        "whole_observation_ns": 4915118131,
+        "cache_validation": {
+          "cache_validated_after_last_state_copy": true,
+          "publication_id_sha256": "3651aa889721f7ff02bd23ef0fc11821584d9e060ff367ae75b7543f481e732f",
+          "cache_sha256": "9028bae98eb5998ae7b8f55d3159085f7e3de6e75209cbb7a4d2896127e1f611"
+        },
+        "model_readiness": {
+          "appReadyToModelNanoseconds": 932147636,
+          "pollIntervalNanoseconds": 10000000,
+          "operatorWaitIncluded": false,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 1133022822,
+          "sessionDomainAvailable": true,
+          "nativeFrameMeasured": false,
+          "partial": false
+        },
+        "cache_present_at_start": true
+      }
+    ],
+    "limitations": [
+      "AppKit bitmap+numeric OCR endpoint, not compositor/photon timing",
+      "No authentication files or model requests; isolated default quota has no live credentials",
+      "Small pair counts are pilots, not >=100-condition acceptance",
+      "No page-cache purge",
+      "No E1 PASS inferred from capture or build",
+      "Manual click latency starts at native button action entry, not physical mouse-down or compositor timing; operator waits are separate. Launch-to-frame includes operator wait and cannot pass a launch budget. Data already ready at first click is explicitly recorded.",
+      "First-click timing is emitted only for the original routed click without a ready-click retry; process-entry timing remains separate"
+    ],
+    "click_precondition": "operator-physical-click; no event injection or pre-activation",
+    "click_dispatch": "manual",
+    "matrix_probe": true,
+    "measurement": "startup-frame",
+    "selected_arms": [
+      "A",
+      "B"
+    ],
+    "require_first_click": true,
+    "manual_wait_seconds": 600,
+    "identity": {
+      "B": {
+        "app_sha256": "9c7ece55948c2f827cb5f822e28c63be36970281467abdbcc36f172f652c877f",
+        "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+        "framework_sha256": "54a312f0f4e941c862d286e9fc14a74c90d3f61d4ebb71251cd3397967f13325",
+        "widget_sha256": "68d0beb34f4e6d7f91a126a28a560d4a35637b73b438ebb61f5906ac423fef42",
+        "probe_sha256": "e4f55bb198cec16f8f21e44a69d49268dd3d229bcc75f21aeffbabe8816d6680",
+        "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+        "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+        "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+        "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+      }
+    },
+    "environment": {
+      "harness_sha256": "2669e3ed344f15ebee2760323096c87e176193d238bfeee5d38c65b4111ce822",
+      "matrix_module_sha256": "09d7be75dc93cb805fec6d7849daa5c20bf347d2345c791596755a01bd2e54a3"
+    },
+    "reviewed_state": "scan-serving-repair-r7-zmKtJ96-state",
+    "reviewer_method": "Current exported B; existing native matrix runner; external CGEvent; separate pilot",
+    "matrix": {
+      "conditions": [
+        "restore"
+      ],
+      "measurement": "native",
+      "quota_pressure": "controlled cancellable 30s dependency delay,not real network",
+      "rebuild_pressure": "identified private maintenance processing >120s;action within worker interval;queue/setup/CLI wall separate",
+      "no_cache_precondition": "current candidate-schema committed DB;cache removed without changing facts",
+      "upgrade_control": "upgrade-no-cache is a separate optional diagnostic from the original imported schema",
+      "baseline_restore_compatibility": "not assumed;all arms receive identical prepared DB/cache;schema-ahead failures remain failures",
+      "business_date": "2026-10-16"
+    },
+    "events": [
+      {
+        "posted": true,
+        "pid": 10122,
+        "uptime_ns": 331149693034498,
+        "x": 722.5,
+        "y": 15.0,
+        "instance": "1D96E76C-7BBE-4323-A4CD-5C60F27DB672",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 10194,
+        "uptime_ns": 331167333075120,
+        "x": 722.5,
+        "y": 15.0,
+        "instance": "0C957288-2F3F-46AF-8737-B78330EB061A",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 10240,
+        "uptime_ns": 331184808030857,
+        "x": 722.5,
+        "y": 15.0,
+        "instance": "9E019292-C286-4934-A999-CE2D9B8052D1",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 10452,
+        "uptime_ns": 331203465187959,
+        "x": 722.5,
+        "y": 15.0,
+        "instance": "500588B0-70B8-48BF-9D1F-7D43A333CF54",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 10724,
+        "uptime_ns": 331220535398675,
+        "x": 723.5,
+        "y": 15.0,
+        "instance": "1845EAC6-FAB4-44A3-9723-209EBB541F82",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 10916,
+        "uptime_ns": 331240111305982,
+        "x": 730.5,
+        "y": 15.0,
+        "instance": "B00A1055-44A2-4606-B646-7396D073DE9C",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11115,
+        "uptime_ns": 331258490226855,
+        "x": 730.5,
+        "y": 15.0,
+        "instance": "DA2A6AA8-4F7D-47BB-A4AC-E045912BF9BA",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11174,
+        "uptime_ns": 331276978801007,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "BD9CC14A-C570-4330-B030-4B57C8B57CB2",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11219,
+        "uptime_ns": 331293971750592,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "84070389-55E9-44C5-B464-69C9FE702198",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11263,
+        "uptime_ns": 331310977674744,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "49E63403-E76E-48CF-8236-5FB8804BB75B",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11461,
+        "uptime_ns": 331328261884633,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "5897AE07-20A4-46B5-B264-6840631689A0",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11705,
+        "uptime_ns": 331345362155047,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "3C094272-8E85-40DC-881A-A44AA1EB2BA3",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 11902,
+        "uptime_ns": 331363227458479,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "240D8021-B405-4C60-B813-5E034089C832",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12132,
+        "uptime_ns": 331380751508036,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "799E9AA6-999E-4DF7-9D75-F30F79751EE3",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12341,
+        "uptime_ns": 331398163560924,
+        "x": 731.5,
+        "y": 15.0,
+        "instance": "6D9E8707-38D5-4BBF-AC75-818076F73A0C",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12549,
+        "uptime_ns": 331418641812986,
+        "x": 731.5,
+        "y": 15.0,
+        "instance": "F9BFE4A2-AD27-43BD-AB81-E62216FCEA72",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12668,
+        "uptime_ns": 331436163053182,
+        "x": 731.5,
+        "y": 15.0,
+        "instance": "42F05DC5-FBAA-4992-A793-6264F53CEDED",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12879,
+        "uptime_ns": 331455360915756,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "FE836F35-38FC-4640-9DBE-6351DBFFA587",
+        "request": 1
+      },
+      {
+        "posted": true,
+        "pid": 12929,
+        "uptime_ns": 331474044144785,
+        "x": 729.5,
+        "y": 15.0,
+        "instance": "EFD21396-2E79-4E78-8E58-10CD59ED5D0D",
+        "request": 1
+      }
+    ],
+    "sampling_plan": {
+      "target": 100,
+      "pilot": false,
+      "stop_rule": "For fixed 100 attempts, >5 valid latencies above300ms or >1 above600ms decisively disproves P01; do not report incomplete p95/p99"
+    },
+    "summary": {
+      "groups": [
+        {
+          "condition": "restore",
+          "arm": "B",
+          "attempts": 19,
+          "failures": 0,
+          "valid_first_click_frames": 19,
+          "model_observations": 19,
+          "first_click_ms": {
+            "median": 238.438273,
+            "maximum": 320.354593,
+            "p95": null,
+            "p99": null
+          },
+          "tail_sample_requirement_met": false,
+          "startup_control_frames": 0,
+          "startup_control_frame_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null
+          }
+        }
+      ],
+      "status": "NOT_VERIFIED",
+      "reason": "Collector summary only; model clocks are not frames. Pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+    }
+  },
+  "stop_reason": "Independent deterministic source review found today consumers bypass date eligibility. Stop broad verification;19 completed native samples are not p95/p99 acceptance. Sampler interrupted before any twentieth event was recorded;exact private App cleanup verified;private scan lock absent.",
+  "source_trace": {
+    "precondition": "Install a full current-day serving publication with nonzero today client subtotals and session periods;advance injected now beyond header window without another publication;retain selectedPeriod=today.",
+    "activePeriod": "MenuBarViewModel.swift:670-673 returns nil and hero returns nil.",
+    "clientTabs": "MenuBarViewModel.swift:597-609 still selects clientSubtotals or scope periods by selectedPeriod and formats old cost.",
+    "sessionStatistics": "MenuBarViewModel.swift:904-906 still selects old today/client session period; sessionsPanel uses it.",
+    "menuBarText": "MenuBarViewModel.swift:1588-1605 still selects today subtotals or totals independent of servingHeader date.",
+    "presentation": "EmbeddedHelperRunner.swift:1625-1681 retains ready/degraded snapshot on dataSurface; age only adds qualifier. MenuBarSurfaceView.swift:185-215 renders client tabs and selected panel independently of hero.",
+    "method_limit": "Source/control-flow proof, not a new hosted XCTest or an observed midnight screen."
+  },
+  "cleanup": {
+    "private_app": true,
+    "private_worker_idle": true
+  },
+  "limits": [
+    "No full E1 PASS",
+    "No completed100 restore distribution",
+    "One first-import startup frame is not P11 p95",
+    "No new same-probe A/B performance comparison",
+    "No repository product/test/config changes;no Git delivery"
+  ]
+}

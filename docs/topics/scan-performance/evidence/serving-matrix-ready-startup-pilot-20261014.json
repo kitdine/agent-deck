@@ -1,0 +1,91 @@
+{
+  "kind": "scan-performance-e1-ready-startup-frame-pilot-v1",
+  "observed_date": "2026-10-14",
+  "method": "Standalone private B launch;independent process-entry/App-ready clocks;await usable model,then original togglePopover and post-show activation;visible numeric AppKit bitmap endpoint precedes OCR. No physical icon input or operator wait. Five repetitions per condition,alternating condition order.",
+  "input": {
+    "kind": "verified_frozen_clone_plus_controlled_today",
+    "files": 5373,
+    "bytes": 3477972178,
+    "corpus_sha256": "498f077c91673e5a982d42ec291c6c63286893418a41b1b602bf9394a7384bd2",
+    "controlled_today_bytes": 517,
+    "controlled_today_sha256": "18569251abc073862bb200b4e6eefd7002bcc0071e68a58cebdcf5908064e1fa",
+    "controlled_today_mtime_ns": 1791965425260032059,
+    "consistency": "Earlier per-file frozen prefixes cloned with mtime preserved;one explicit synthetic today source;databases generated privately;no live capture/new live DB backup"
+  },
+  "identity": {
+    "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+    "harness_sha256": "f18dccbf6ff9d4d862dcc5359ef97ffc42971544ed620ee07a7a6f00e0f9ddff",
+    "matrix_module_sha256": "e83757848dcf22cbbb4d9d771b5513e2370d2ae586c8230f15bb9fe2dc8a4dbd",
+    "app_sha256": "eba23f71b0d441861de9ea4c5f08b269ceea4ca080cac29fa1187c2898d38637",
+    "helper_sha256": "66e602bf9cef5f8a20a73d3ebd56029c0b7cdca9789c375a09811f5ccc9223a4",
+    "framework_sha256": "f7fe690dfebbbac515d2568c02ef493eba69144013710f977da02515429b43cb",
+    "widget_sha256": "94cf5c121e5e27cfa33dd1290f82d559442f441d5d7070cc537360faecc7aa50",
+    "controller_probe_sha256": "c4587f220d19b6f2878a3605ff686c6dc9b9f8e7ee9d1ebfae9586194cf7fd16",
+    "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+    "shared_probe_sha256": "5b27935dc5afc2e056c14e09df427951ddef6e778b08bd28010cbea94be03674",
+    "macos": "26.7.1",
+    "architecture": "x86_64",
+    "timezone": "America/New_York",
+    "locale": "en",
+    "otel": "off",
+    "go": "go1.27.1 darwin/amd64",
+    "xcode": "26.4 / 17E192",
+    "swift": "6.3 / x86_64-apple-macosx26.0"
+  },
+  "groups": [
+    {
+      "condition": "committed-today-no-cache",
+      "starting_core_schema": 31,
+      "starting_session_serving_storage": 1,
+      "cache_present": false,
+      "app_ready_to_model_ns": [570683133, 583140839, 599698544, 558406850, 557543955],
+      "app_ready_to_valid_frame_ns": [948785576, 923546229, 989126545, 899982896, 920644116],
+      "model_median_ms": 570.683133,
+      "model_maximum_ms": 599.698544,
+      "frame_median_ms": 923.546229,
+      "frame_maximum_ms": 989.126545,
+      "session_domain_available": false,
+      "snapshot_partial": true
+    },
+    {
+      "condition": "restore",
+      "cache_validated_after_each_final_state_copy": true,
+      "private_reader_state_spelling": "Anchored temporary-prefix replacement matches canonical worker;HOME/source spelling unchanged",
+      "app_ready_to_model_ns": [939938121, 1080899685, 1033644026, 1015051546, 1024660854],
+      "app_ready_to_valid_frame_ns": [1775010851, 1946233332, 1904175415, 1912423822, 1914215035],
+      "model_median_ms": 1024.660854,
+      "model_maximum_ms": 1080.899685,
+      "frame_median_ms": 1912.423822,
+      "frame_maximum_ms": 1946.233332,
+      "session_domain_available": true,
+      "snapshot_partial": false,
+      "budget_attribution": "P02 App-ready model recovery is separate from the displayed-frame control. Do not compare the1.912s frame directly to the1.125s model target."
+    },
+    {
+      "condition": "first-import",
+      "starting_databases": "absent",
+      "app_ready_to_model_ns": [2034125014, 2272205265, 2017070917, 2300623998, 2241907025],
+      "app_ready_to_valid_frame_ns": [2323723599, 2562622254, 2306625592, 2608923851, 2543397306],
+      "model_median_ms": 2241.907025,
+      "model_maximum_ms": 2300.623998,
+      "frame_median_ms": 2543.397306,
+      "frame_maximum_ms": 2608.923851,
+      "session_domain_available": false,
+      "snapshot_partial": true
+    }
+  ],
+  "result": {
+    "valid_numeric_frames": 15,
+    "failures": 0,
+    "all_private_apps_stopped": true,
+    "operator_wait_included": false,
+    "physical_icon_samples": 0,
+    "acceptance": "NOT_VERIFIED"
+  },
+  "limits": [
+    "Five samples per condition are a pilot,not p95/p99 or>=100 acceptance. Single B arm is not a paired A/B speedup.",
+    "AppKit bitmap is not compositor/photon timing. Ready-then-show is a different control from early show and physical clicks;earlier failures remain original observations.",
+    "First import uses real frozen background scale plus explicitly controlled tiny today input;no guarantee for larger real today input and no full-history completion/resource result.",
+    "P01/P03,real icon first/warm/stress,quota30s/scanner>120s,full correctness/independent review remain open. No new product optimization,system permission or delivery action."
+  ]
+}

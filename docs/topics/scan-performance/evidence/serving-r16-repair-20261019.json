@@ -1,0 +1,39 @@
+{
+  "kind": "scan-serving-r16-repair-v1",
+  "recorded_at": "2026-10-19T06:02:08.526533+00:00",
+  "finding": "SP-SB-R16-F1",
+  "content_state_id": "scan-serving-repair-r16-1d4ih44a-state",
+  "classification": "test foreground/window precondition missing;R16 focused failure and external activation control retained;self-contained repaired test passes focused and original wrapper",
+  "source_sha256": {
+    "apps/macos/AgentDeckAppTests/MenuBarViewModelTests.swift": "65258b3d5db5d11a5d23fd5a24972a3f274549eaae8c319f956915da81fd1ddb"
+  },
+  "change": "Activate current test host;wait at most2s for active host,visible unoccluded key window;fail explicitly if unmet;close owned window and restore prior frontmost app only while host still active. All existing date events,mounted AX,model and2s assertion budgets unchanged.",
+  "focused": {
+    "command": "xcodebuild test -only-testing:AgentDeckAppTests/MenuBarViewModelTests/testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges;isolated HOME;Debug,unsigned",
+    "exit": 0,
+    "tests": 1,
+    "failures": 0,
+    "duration_seconds": 10.146
+  },
+  "original": {
+    "command": "bash scripts/test-macos-app.sh",
+    "exit": 0,
+    "shared_tests": 100,
+    "app_tests": 147,
+    "widget_tests": 51,
+    "failures": 0,
+    "existing_opt_in_skip": 1,
+    "helper_leak_check": "wrapper passed"
+  },
+  "log_sha256": {
+    "focused": "6099547d709066e64c1dee92fd9c845600d6782bd0801551c9ad35300866c43c",
+    "native": "c26afa5399627bf6ca2190a2a0e699d6455d2003d056509196942d6d8567c1f0"
+  },
+  "limitations": [
+    "No new native performance samples",
+    "No production code changes",
+    "Independent re-review and whole Task2 E1/startup/pressure/open-path review remain open",
+    "One focused plus one complete native run;does not claim universal desktop scheduling immunity",
+    "Existing SchemaSignalAcceptanceTests opt-in skip is not acceptance evidence"
+  ]
+}

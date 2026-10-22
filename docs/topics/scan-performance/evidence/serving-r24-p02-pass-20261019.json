@@ -1,0 +1,3577 @@
+{
+  "finding": "SP-SB-R20-F1",
+  "cycle": 4,
+  "scoped_review": "PASS",
+  "finding_disposition": "CLOSED for P02 full restore model budget; whole Task2 remains unverified",
+  "changes": {
+    "apps/macos/AgentDeckApp/DesktopCopy.swift": {
+      "before_sha256": "f3fc06d56d6dd49085017da78f171227111a37d1b627668dc2175ddf6a7fc1fd",
+      "after_sha256": "c4fd9f2cbd40463efbd202dd5f8d1dc256d5fef8e82bf2dfa1063d109c2dfec7"
+    },
+    "apps/macos/AgentDeckAppTests/DesktopCopyTests.swift": {
+      "before_sha256": "75a838ec4bc2268517b52ae86e89ab180f820cd5c44e8005338a1c38267283a1",
+      "after_sha256": "17039e1831a093ce711778377b18e8b5e6076a8afa7dcbeff51d0a8df18a2c05"
+    }
+  },
+  "verification": {
+    "native_full": {
+      "command": "bash scripts/test-macos-app.sh",
+      "exit_code": 0,
+      "shared": 100,
+      "app": 149,
+      "widget": 51,
+      "failures": 0,
+      "existing_skips": 1,
+      "log_sha256": "927afcdd54d5697c07991bedbb1225c76c8a9abdb7e9248d00ee3be8098cf2f8",
+      "product_sha256": "c4fd9f2cbd40463efbd202dd5f8d1dc256d5fef8e82bf2dfa1063d109c2dfec7",
+      "test_sha256": "4ad734f18d815c432295b6b01d9ca09a887906a5840d5795c74ac01b93f33ed9"
+    },
+    "final_focused": {
+      "command": "same isolation wrapper, -only-testing:AgentDeckAppTests/DesktopCopyTests",
+      "exit_code": 0,
+      "count": 10,
+      "failures": 0,
+      "new_concurrent_test": true,
+      "log_sha256": "e8d2b99bbfa28f3e5b08478151e392fdf5b0aa184f0e24c286d9608fe35747f6",
+      "test_sha256": "17039e1831a093ce711778377b18e8b5e6076a8afa7dcbeff51d0a8df18a2c05"
+    },
+    "whitespace": {
+      "make_check_whitespace_exit": 0,
+      "final_scoped_git_diff_check_exit": 0
+    }
+  },
+  "diagnosis": {
+    "initial_layout_samples": 341,
+    "paused_stack_samples": 981,
+    "deepest_application_frame_sample_counts": {
+      "DesktopLocale.bundle": 23,
+      "DesktopFormat.timestamp": 11,
+      "framework_only": 229
+    },
+    "rhythm_projection_inclusive_samples": 44,
+    "pause_ms": 2328.033521,
+    "paused_durations_excluded_from_performance_acceptance": true,
+    "limits": [
+      "One paused sampled run only; no performance inference from its clock",
+      "341 samples are stack observations, not341 milliseconds",
+      "Private SwiftUI framework work dominates; two known repeated application constructions are reduced, not whole-layout root cause claimed",
+      "No observer scheduling/clock/UI/data/cache cohort contracts changed"
+    ]
+  },
+  "plan": {
+    "written_at": "2026-10-19T05:44:22.116149-04:00",
+    "planned_valid_samples": 100,
+    "nearest_rank": 95,
+    "budget_ns": 1125000000,
+    "stop_after_valid_over_budget": 6,
+    "stop_on_invalid_identity_frame_cleanup": true,
+    "prior_pilots_included": false,
+    "authority_comment": "248c71e2-7950-5922-bcf4-f3481f957865"
+  },
+  "identity": {
+    "app_sha256": "365af98ef5e19c91e639869a8d2ad0ed8b01ebaf209b71834984a4fa13bba321",
+    "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+    "cohort": "446797ffbf0dacc7595433452453cee516b41c0c30cd1eb6886cdc4406096c26",
+    "input": {
+      "files": 4299,
+      "bytes": 734012799,
+      "corpus_sha256": "10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380"
+    },
+    "pre_post_identical": true,
+    "source_files": {
+      "Makefile": "fb8d27d94094e6d7b21be015d34b22da55a1b249ec1a0f88d694cde34dabaed1",
+      "apps/macos/AgentDeck.xcodeproj/project.pbxproj": "cbfa7b0355cf6ef9454072a234792e071d2f109d7a63b29f29ec13716ef5af63",
+      "apps/macos/AgentDeckApp/AgentDeckApp.swift": "31e6eb036a25be16e142efe24c643a18fcc9f6b67204abea7cdda0362c6da88f",
+      "apps/macos/AgentDeckApp/DesktopCopy.swift": "c4fd9f2cbd40463efbd202dd5f8d1dc256d5fef8e82bf2dfa1063d109c2dfec7",
+      "apps/macos/AgentDeckApp/DesktopPreferences.swift": "36fe9bf49dffd8317e9aa4c167fe77ac3eadeafe75fdb05fbc795b14ea4479aa",
+      "apps/macos/AgentDeckApp/Info.plist": "50c84960791778a3686339e5ec84bfee49151f239e016427415a552848a3cb67",
+      "apps/macos/AgentDeckApp/Localizable.xcstrings": "a8d9a432438782b4211f4ab7fe8c0d84ed0d5ca5e6c761e8c18ad9b6fb8761a5",
+      "apps/macos/AgentDeckApp/MenuBarItemController.swift": "e930024b0ba5a77e40f0487669028264249644f2a30ed6d2b80be9c5efb774b8",
+      "apps/macos/AgentDeckApp/MenuBarPanelViews.swift": "2ab4a1d86fe65aa63e240bc554902959d989ee08f185de2dfc6a14ab6210c773",
+      "apps/macos/AgentDeckApp/MenuBarSurfaceView.swift": "1b97a00ea94e2d6fc316670245353b39d2fc7a4a47c27683b64d6c8bc1275b4b",
+      "apps/macos/AgentDeckApp/MenuBarViewModel.swift": "6e57d8efad80dd84c310f8abc5812873f0af21155d694e2ca800a0a2f870d12e",
+      "apps/macos/AgentDeckApp/QuotaAlertNotifier.swift": "c7d52a099bf801676148651322a07c40e070edbe899a77673ea901ba5f20e2ab",
+      "apps/macos/AgentDeckApp/QuotaSettingsController.swift": "e35f0648ed94b1035f9e7da83e45ec836d2502db18401e9278b140dbba522925",
+      "apps/macos/AgentDeckApp/SettingsWindowView.swift": "7c0dd52eb60eab4d0ecb0ba64fe5d830e6fad7c7e7669f66692eaaa9c6c507d6",
+      "apps/macos/AgentDeckAppTests/AppTestFixtures.swift": "c8b88520ea1d202cea092691b018b18b5472b2b96a5d82ee31737b6d3e37daa8",
+      "apps/macos/AgentDeckAppTests/DesktopCopyTests.swift": "17039e1831a093ce711778377b18e8b5e6076a8afa7dcbeff51d0a8df18a2c05",
+      "apps/macos/AgentDeckAppTests/DesktopPreferencesTests.swift": "71e07a4aee5fcefe1bfa53823cf66a0a9fd9a6554da6572377dd202ca37d83e7",
+      "apps/macos/AgentDeckAppTests/MenuBarChromeTests.swift": "f7b2b997c918fef554005b19baa93a70b49b352c3f7c14f73d93ccc555c4f956",
+      "apps/macos/AgentDeckAppTests/MenuBarViewModelTests.swift": "65258b3d5db5d11a5d23fd5a24972a3f274549eaae8c319f956915da81fd1ddb",
+      "apps/macos/AgentDeckAppTests/QuotaSettingsControllerTests.swift": "f50f8b37297dc6224f9bc3af8c0370fe249afc16034648fc97a0c002f879850b",
+      "apps/macos/AgentDeckAppTests/SwitchFlowTests.swift": "ad8d44728abe0b0aa15385bed699debab36bc10268147d77ec7da0b03c45156a",
+      "apps/macos/AgentDeckShared/AppGroupSnapshotBytes.swift": "77d14633e71cb3828c62605258bc1c3b724ef9829554150ab2722e844dd66c7e",
+      "apps/macos/AgentDeckShared/AppGroupSnapshotStore.swift": "20cb0ab36c98270455cb24495e86b594cf4074375b0d9a0caba8c9062e17c40a",
+      "apps/macos/AgentDeckShared/DesktopLog.swift": "160862c7fb5ac4b1b0a6a0af08f8c2ee56647884aa9608d2c1bd39f8da0ca04c",
+      "apps/macos/AgentDeckShared/DesktopRefreshScheduler.swift": "1261f0671ef5f91df999f646c8bb97050b2b26d386418c8a13ff842c079d8546",
+      "apps/macos/AgentDeckShared/DesktopWire.swift": "2484e37a894ef246428810fe20d0ad2e23586d15dd467654652edb14b4fe4c4b",
+      "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "db84607c6a071ca1cff3a0e7394b3631d3af917f6704620eaea79f8b22e41a50",
+      "apps/macos/AgentDeckShared/Info.plist": "c8306e74b20f3334ea9e99808513821c1fcc0ccd6e8525e5131d260ca8e08a5d",
+      "apps/macos/AgentDeckShared/WidgetSemanticProjection.swift": "0154c24072b298a56ad5f98744059b387585faf2162e607cab6699cfd556838b",
+      "apps/macos/AgentDeckShared/WidgetSnapshotPublisher.swift": "bcb83271ec53b02876fb4724faf29079907e3735cfbf97491d5a720126adead1",
+      "apps/macos/AgentDeckTests/AppGroupSnapshotStoreTests.swift": "ffdff4453398128d766c3218cc219f4c63782ae6f227225d949966560915261b",
+      "apps/macos/AgentDeckTests/DesktopLogPolicyTests.swift": "4705b5c15bf6960782e0fcc3d1fd4de739e5e21e618c7f384961c562b81f74ca",
+      "apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift": "42c0571b192921e11c3f2de0b39f05c7cdf6483e3c49355ae24ae8a03effac6b",
+      "apps/macos/AgentDeckTests/DesktopRefreshSchedulerTests.swift": "92b07c21078c5c9bba0be2257a7c4b29df3c2c59e4b7857ce2d9a1f6434aaa0d",
+      "apps/macos/AgentDeckTests/DesktopWireTests.swift": "d8b10b67c01ce813379365cb597dfc4d3019093f80ef41d88345f6c253f30e1c",
+      "apps/macos/AgentDeckTests/EmbeddedHelperRunnerTests.swift": "19c2d63959870dd4284898fb2a8038b5eb0b8f72b89d1f2ada6cf3c674862ca0",
+      "apps/macos/AgentDeckTests/FixtureSupport.swift": "72eb1f1f4530163d6738ed18c4beb3775e1ede7a2e56a3a2b86ae7771c93a1d2",
+      "apps/macos/AgentDeckVerification/main.swift": "0f2dfcba1ec09f6db1155b7e68112eb72452ae8556d4b5f862b5583ba6840393",
+      "apps/macos/AgentDeckWidget/AgentDeckWidgets.swift": "cd2ada4d669080484c11fc414e36cda13d1274c095a8da0ad684b1f3446bda78",
+      "apps/macos/AgentDeckWidget/Info.plist": "8e6799b7208c1b3cc4c6acc57bbe2eb9a4aa5b44cfd14ce709a70bc2c15f6f9d",
+      "apps/macos/AgentDeckWidget/Localizable.xcstrings": "5a315a2aba00b58d79081b5f965009795448c092549c1eb9fbd538a8f909b59d",
+      "apps/macos/AgentDeckWidget/WidgetCopy.swift": "d284e75440610b56850874d568838310f582c0f3d0262462bca8a1fc452794df",
+      "apps/macos/AgentDeckWidget/WidgetDomain.swift": "42d2897489824489524724b2220ada7ce82dfd4dd15633497df974120f0fd4eb",
+      "apps/macos/AgentDeckWidget/WidgetIntents.swift": "3607fb965c778a548425b1334f2b7b92b341331465577d660d8d2d6c0efef7c6",
+      "apps/macos/AgentDeckWidget/WidgetSnapshot.swift": "4bff4fdaffbafb54fbeb8b254087cc766d709dd6ecaf2d83e3914f4659e12c35",
+      "apps/macos/AgentDeckWidget/WidgetTimeline.swift": "b55bfd89a336423032cea2b8a654e7ddb3074cb983845516906ddc106af6396c",
+      "apps/macos/AgentDeckWidget/WidgetViews.swift": "fb0cbb7f36984aafc28b586bc815ad2b004861a1f80999a9313cd03c3df65189",
+      "apps/macos/AgentDeckWidgetTests/WidgetCopyTests.swift": "851428469d9b597ca211803ce98619e62c64be628c26a7b1a4b1049016dda590",
+      "apps/macos/AgentDeckWidgetTests/WidgetPresentationTests.swift": "ee1f6adffa4512b8625ea702410a844eb10ebcb6b66bea496a23108bd66c4aac",
+      "apps/macos/AgentDeckWidgetTests/WidgetTestFixtures.swift": "76c468c4ccb485becf4d03f20eabe9f91f5bce4e53024d7746d0d90b050b6965",
+      "apps/macos/AgentDeckWidgetTests/WidgetTimelineTests.swift": "ecbec28bf0d34e04c9e4eaa25f03c02c9d8e8ea62b91d6db0da4a5ddb1c43b8c",
+      "apps/macos/Package.swift": "c70870c6d6f599840e6ede0c354ad3b8f11dfd427b114da9386f9aa70be62983",
+      "cmd/agentdeck/acceptance_test.go": "b6c915006a2a608624334fc8163f7c7399ad8d79a2d05a6c4783b9021de4822a",
+      "cmd/agentdeck/claude_reload_test.go": "9f7b75b5cc4046c196a0c1a297db2bf5a4905bb7dd5112e0c307a6ed4e3d0d96",
+      "cmd/agentdeck/codex_signals_integration_test.go": "f01053c9acb9495bd9fa156713a38c86619974167648348ade0be4deefbbee92",
+      "cmd/agentdeck/contract_test.go": "3fb055f484b824f8438e74ae65f8ef6f5fdf3e6db0ab7de05ff425210128535c",
+      "cmd/agentdeck/desktop.go": "4a51b1e2a2653815962fa5b70cc2026cc803f80059e7325679aa69128aeadb5f",
+      "cmd/agentdeck/desktop_test.go": "897337c1607244473ea0374ecb8e9e24e00365766b0ea564e19c50c724dbabab",
+      "cmd/agentdeck/e2e_test.go": "1b80288965ceb0ea8e931293dba002f95b1a2f002c8e70a0753551d034ad7f0c",
+      "cmd/agentdeck/error_code_test.go": "3df3f787a71ebdd2230cc51616fd70724a8c728c11c706efcac0c52130037be1",
+      "cmd/agentdeck/hook_boundary_test.go": "10c91db1eb18560ee16e3472756791ae457231a8138d1c0a36c35ba74cf9af95",
+      "cmd/agentdeck/launchservices_test.go": "eca9a7cb9fd7962ed2615073bfc87e6782f64a3480b054362f4c76a8144142e7",
+      "cmd/agentdeck/main.go": "a7ca9874ced6647076a9a66c90105cc93646a23a5ef1a1ea1809c7472d635e82",
+      "cmd/agentdeck/main_test.go": "5a425f4c7a67a0ad23421d958b3c8a5db485e47a45341a0c16195d6bebfcb56f",
+      "cmd/agentdeck/project_attribution_guidance_test.go": "61059afd2d6a538acac10edf3fe9ec77eac5722f88cf2cd05bc89f104292ca18",
+      "cmd/agentdeck/provider_route_surface_test.go": "1e2695de0e9fb69b627fadad9e1a772f982e57d5fbf7f72dee56d79d0ae331e3",
+      "cmd/agentdeck/provider_switch_advisories_test.go": "cfbb532c70ef7fcb299bf9ff6e9a2ca8b42296cf6b137b7b1193f4f1d0f947ed",
+      "cmd/agentdeck/provider_wrapper_kind_test.go": "21ccfe2ff660435ec5edcb9821386e8668482e0e74ab7187475c18eada1e911c",
+      "cmd/agentdeck/quota.go": "401adc13c73833ab1b884aef941010481e8c431b8f9d46dfecdc08e2cd2388be",
+      "cmd/agentdeck/quota_capture.go": "e9bbe9b7710c5fb9c49b5bf430e602d94a6ca4bb668bc82388e8d3eaad6f80de",
+      "cmd/agentdeck/quota_capture_test.go": "095b1eda46e796a4760f0fb3140d0bf183fd22327ec18c44b271cc86c79b5ea7",
+      "cmd/agentdeck/quota_test.go": "1bd83814d6fa79cd6eb97fe0a9fe12879c638619a2368206399802ee7f0c8626",
+      "cmd/agentdeck/release_test.go": "466bdfc7c0409daf5651c2492a34329d84e2842372bb3f7a793603c07f3d20bb",
+      "cmd/agentdeck/renderers_test.go": "3c93ea2d842ba364c1fb82cb1323ad84fbd6f7a29e2a1268f3fe31e1bbd4130d",
+      "cmd/agentdeck/reporting_clock_test.go": "6b03c9650188a274a180cda4866f41cb6c5152ccbdd73a36658ae256d7cfa3e5",
+      "cmd/agentdeck/scan_runtime_test.go": "ad9655fa12d27a21acbe9090a1d6984c6a9eb06d0ae6f7dcb5ac452a16a2fb4a",
+      "cmd/agentdeck/scanruntime_test_helper_test.go": "cddf35ae7e121fa5011b90320b596e5ef33537d1f81bdb5bfdfde6fad052904a",
+      "cmd/agentdeck/schema_signal_acceptance_test.go": "c1ad8963a780ac5cc29f16345da0979f50f7cacedc00756b179fe37077c4ef6c",
+      "cmd/agentdeck/session_browser.go": "ce7589b51d313c64cec6c159a76f055aeeb8f97c02b8be9fec04035aac440c58",
+      "cmd/agentdeck/session_browser_pty_darwin_test.go": "989e6414f3a5e85865b217733498d6f0de30a721557c94976b7457a4a2bc53b3",
+      "cmd/agentdeck/session_browser_test.go": "6cd7ab365a44895d785ee3317728d57ef556fdfc4f1654cd017e72fec482fb8c",
+      "cmd/agentdeck/session_command_test.go": "6d9811d3e79a3ecb1106ef51bcb1b79c472ba7554d8cdc3524cf12e2e9dd5285",
+      "cmd/agentdeck/session_progress_test.go": "f7e3523e767755c189cc367ddf86c737bc1a5cf391a653755274557cdc72c5d4",
+      "cmd/agentdeck/session_show_text.go": "a11f034fd16a959ab596bf5a94a213355ac1b4aaa85e6497dcc5380e3e2ebf8e",
+      "cmd/agentdeck/session_show_text_test.go": "c7d8e42be830406ac73b9aece772e0155397910418a7530787c41c48f8b94b4a",
+      "cmd/agentdeck/session_usage_detail_test.go": "0b4459b2b506a5e7d6416b221338fad5b6b966b899acbd124b027f4145d92e3c",
+      "cmd/agentdeck/session_viewer.go": "3e2aa38054dbad16a6264ff061e41082e59d1dca5be4a1506cb229f8959ca17b",
+      "cmd/agentdeck/session_viewer_data.go": "e91a38d3bf04a8945c8ad96924671966ac81effa7dcdfe1eaa297cca64cc9b79",
+      "cmd/agentdeck/session_viewer_data_test.go": "fa11edb29d328d8a8bb73a2f6e9ac4f5a3cb19d42f917ee1d992d973777a5ef1",
+      "cmd/agentdeck/session_viewer_pty_darwin_test.go": "8120478cce6fcf1f4c7259ee28751dae01821a5e7cc886a37cf9132e7fe22f1c",
+      "cmd/agentdeck/session_viewer_terminal.go": "884f575ee7560e85ec5bdbb76bca9f972fc12658a9810de58ac122e07266b573",
+      "cmd/agentdeck/session_viewer_test.go": "382df39d251a154342ff4c0200038d6521fa78f7283a5308e15473bdea9c2df0",
+      "cmd/agentdeck/shell_init_test.go": "66320fde075d0044a72b96c8ee03550001b9cc736e96fc84330975da0c96c49b",
+      "cmd/agentdeck/snapshot_performance_contract_test.go": "e9732e5e1be19f69462bdd3468e417f491175c2c9d43e12f98a95272f3be8f8f",
+      "cmd/agentdeck/snapshot_performance_rusage_other_test.go": "1d9ece1cfa99174164c9157d4145169609c4278878b19f238d4e8746fe8c5337",
+      "cmd/agentdeck/snapshot_performance_rusage_unix_test.go": "ee42104c9b26e9bb19a8dd6cb031dd4e1b6d485618fb87ae74c059c557964f29",
+      "cmd/agentdeck/source_coverage.go": "dba7be4a3c4d47d482597e0d6bb0dccc2b0b2275fd867d4537e065b2b56a0026",
+      "cmd/agentdeck/source_coverage_test.go": "6b05919ecea715c06498ce49ce8a21cdd65f3a1fb73abb7183994c66ed1f0052",
+      "cmd/agentdeck/switch_time_shell_setup_test.go": "60d92b5310a2e26fcc9a95b6b6d06705c5b6ca0dab26f30a489030ef1764710d",
+      "cmd/agentdeck/terminal_detail.go": "403163d5267febe023130d8b51c1ac778b7605b342f9b34cd46cc0070c922cae",
+      "cmd/agentdeck/terminal_detail_test.go": "5cf663b678d75e471e5a761a5a23fe1ccdb15fa5ccd8bcf3dc69b70699d11ec9",
+      "cmd/agentdeck/terminal_frame.go": "cb5fd87f755d2c51ea717180100ebafa8899c8b4d1d59d71387f3baba8b2011f",
+      "cmd/agentdeck/terminal_frame_test.go": "0010c2ce3b573d74a0653d4144649913119fba82395d13f0f37b3aeb3286ed80",
+      "cmd/agentdeck/usage_family_text.go": "080d70df7e5ffbb78a360671e49916ccd70517bf5d76368f7e2c292e5998c5ae",
+      "cmd/agentdeck/usage_family_text_test.go": "ba7d18fefc15070d28451a48b40ffe1b6373e7be30f50b64abbaf6d3daf1349b",
+      "cmd/agentdeck/usage_route_text_test.go": "dbb62c2b13839e1ff88b47f341d428c41f6f6e2e46ea69378a569e4b7df1c9dc",
+      "cmd/agentdeck/usage_signals_command_test.go": "d8c12ffe809f594cf477bdcf6fa7614afb3812296f827b8638568a844b18ace1",
+      "cmd/agentdeck/usage_signals_text.go": "73404fbf04be33c95bb3dc58a7a8c2886617f1e4d5e346e092393524f3ba42b4",
+      "cmd/agentdeck/usage_signals_text_test.go": "85623319a7c7a64c1dfe7951dc8cdeaf0ff479dcbbcad54f3e532469eba3ae1c",
+      "cmd/agentdeck/usage_stats_layout.go": "19e9069f1668f092b54f6bd1874dc9fb94705863c5f4d1e256f82de3a06d6cd0",
+      "cmd/agentdeck/usage_stats_layout_test.go": "c41ee2fc7640aa8efcdf1f9f306a066205cfcbec5361c476a91e0f3a7f36173f",
+      "cmd/agentdeck/usage_stats_text.go": "c7fd841163c44064e12ff2de3a6e7af00e4a5c38cac8b85714d20dd8f8346799",
+      "cmd/agentdeck/usage_stats_text_test.go": "217a953eed64d9221c5aadd3f0f8897d48f9f74b4b9679236bf0089eb140d5ee",
+      "cmd/agentdeck/usage_stats_viewer.go": "05002a1370aa62672009fb5e16b4dca954ef5ddf9cb5f75b8832ccc4100db66f",
+      "cmd/agentdeck/usage_stats_viewer_pty_darwin_test.go": "b957a97785d46d8ef30b52ccc487a917adf26e8dfe7e9b65ea173c8fdaf2ac4d",
+      "cmd/agentdeck/usage_stats_viewer_test.go": "e5649b3b42a5d2418bdd53e99de518fa4de7d5e7ac941ffa2a569e437b6a1e1b",
+      "cmd/agentdeck/usage_text_primitives.go": "6c6fff41a74f95712473c244970b746eb06cd2bbeb9a87f68d18a64d77fc975d",
+      "cmd/agentdeck/usage_text_primitives_test.go": "0b7ff0869c50e6d6283dc30229bc770311055e0c784fb029bf4fa6c049e045cb",
+      "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+      "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+      "internal/activity/activity.go": "31d7d9588140c0dcc71167ac6bd5c9409a54c36b6e70da4987c195837acc9f29",
+      "internal/activity/activity_test.go": "b6b6ce6f1cc44f6f40c31d8c34ebd1319aa8a9fed675f0fd4df6a2742746d826",
+      "internal/activity/classify.go": "19a32a509439b3e8bf5d92df109221c7029e3f72c14abd272cd342e63f3e6514",
+      "internal/activity/classify_test.go": "bb9e93e74efd9e08a2c37a55933170394e738d44196cd82c8c9c5a89fc93d670",
+      "internal/activity/extraction.go": "47956f708a4c1699047a10182faa55e1b7deef6fa80a660793591d0870c04204",
+      "internal/backup/backup.go": "a036cca9c0c7599d84a9ce9c9e8ed30646eaf8824d14116c530aaf86cf2941e5",
+      "internal/backup/backup_test.go": "3f53eb6ab5f8b018e4d3cdaff6f79cb11cabbdffe0ed3320446fb2dfc6ac16f3",
+      "internal/buildinfo/buildinfo.go": "2d2c3663b02df96c52b4dfb5898c64a88081cba05be02844167d4db74d1bb6dd",
+      "internal/buildinfo/buildinfo_test.go": "a1d74a4ecea3dc8daa9fd36762261cac9705c3a5f383c0dcf7b12dfe4411a808",
+      "internal/credentialvault/vault.go": "92e7ec5d1467695e59d0aaa0c7805fe2f42ac5a3cfea82a85d060898e95cb628",
+      "internal/credentialvault/vault_test.go": "97aca210048285eec5d753881cda55a444aa492a8450c0c6d546ceb27c41bea4",
+      "internal/desktop/derived_cache.go": "fad5c2034d99bbb27c82e81f209a52c1c34f161a1b8199716325b7dab742d6b6",
+      "internal/desktop/derived_cache_test.go": "224263e1aad255a6e7c4e24a65d42c1b64ea78ecb43ca413961c041447fdc824",
+      "internal/desktop/desktop.go": "967a4958f59d5f5fee78feb9ca653dcc7a8f8d247fbf0be05fd354416dd217a8",
+      "internal/desktop/desktop_test.go": "08d3d05343857c141b91d9dd2432112df9a1353dca5cbbc92dd7913519ee21b9",
+      "internal/desktop/fixtures_test.go": "960d9a6f4173ce98ae3415da871939cb793476158de5d6770402f5fb2d0bc447",
+      "internal/desktop/launchservices_test.go": "efa25b115b5dd129514b3de9ce24ce71948885ffba095ea8fa9827f7b2ed778d",
+      "internal/desktop/quota_test.go": "f2d98f5b22dc930bc41a16a0a9ad822db6c974cdf85850bab655cacd58c71254",
+      "internal/desktop/serving_cache.go": "b1bc7cfbf9e5413bb44759159c82b88d9bec41cf7f6eb2490ede4f2e9ca02a91",
+      "internal/desktop/serving_cache_test.go": "99f890c3af8f33c03fe44f5c6118831aa5aab9c3a2234e22afc9dfbd4dedf46e",
+      "internal/desktop/stage_profile_test.go": "a8878bfb0f65253b194937a2145ead0d46038bff542a8000eed381944940d8da",
+      "internal/desktop/subscription.go": "c5ef84947615cc068fd95644685a4255ed8fee13b001e9dbb2c012ed358f46bb",
+      "internal/desktop/subscription_test.go": "de321e52a04b0834908feb61d714c4e783e35fb81407ed3083e880d53790797c",
+      "internal/desktop/work_signals_test.go": "395c31da457cb4f62e37921e529185b474ab89d5c41921d80bd767b4ad5aa834",
+      "internal/doctor/doctor.go": "8621e1fa04b5f4af17ea116f033bb0f13ab3b8e9175db63b9da4935e218fe30b",
+      "internal/doctor/doctor_test.go": "c18230d1b0acb5816a217d00c933733b0c88477d0fe8b82ffb58f34773e126e4",
+      "internal/doctor/launchservices.go": "b24b2c561ba3a768e37befc6d3d03de6e166dd61f29a5ba433ef8fe4c8d1d2d6",
+      "internal/doctor/launchservices_darwin.go": "102c6fbff0b81f80a97c5a546057a4000b53b7b9f92c2af3616cf292654a6648",
+      "internal/doctor/launchservices_darwin_test.go": "8a96a926c76b1c3ba3aebc164ad6b48d8f799dc63ccbb6c8cd9fc7fe587c28bf",
+      "internal/doctor/launchservices_other.go": "6d18761dc1b2f92fad479aebac27e947fbc8916c675fae7dfe19839d6e04da28",
+      "internal/doctor/launchservices_test.go": "07a9c6691a6d0e41148b95970dcda199158f94076dc7b26a7d59b264af608fa2",
+      "internal/errdefs/errdefs.go": "7bb57087153106e07f263521e3893f1793807f390f4b86ca2e43ae6748bd1ac5",
+      "internal/errdefs/errdefs_test.go": "9d31bfad0d164bfd51ec4c48507eaf13b3b8b68ceed293e641f4110773e97775",
+      "internal/extension/doc.go": "1d5a36bb1b96a4876257631cfcd3c5c1632ededa3dd1947cdc2ebed5697807b5",
+      "internal/extension/extension.go": "3c85061bb9293e6c8789bd77e038f7d0df10a458742ca5b3d718aaf9f7e0313a",
+      "internal/extension/extension_test.go": "30e8bb30015b61d9a5a025e47f8ba002cd50adbf14e1d8f954746cfc503771b8",
+      "internal/hookrefusal/record.go": "8716a74ddd4161a6b5489e163631d2067c1cfd2fcc09585ea287248dc86ee10a",
+      "internal/hookrefusal/record_test.go": "4a2973c1ab1c3d7e4b27f8d6d38318140ced508a55040fa2b4f4965c3bed1ee1",
+      "internal/ingest/ingest.go": "27f4ed28504a75cc43180bc2f16776bff0097b9276cbfdc65b023442d47221e5",
+      "internal/ingest/ingest_test.go": "e9d1acc5b0b41ff28918daa3ec46017ee8318918551c24b59675e085083a92dc",
+      "internal/ingest/metrics.go": "b609a456498d00924f6a272538c7712d185feb2d44611e9801c5b51e461c099e",
+      "internal/ingest/record_line.go": "1852625dace5b51ada644e54bb05a83e5cc784ef66d29dc6eb7436705d0db4e9",
+      "internal/ingest/record_line_test.go": "9ba8ea91589fb2423244e85a649188ef4f7d53251f9f2e164def643dee2a4b30",
+      "internal/ingest/stat_darwin.go": "c566542bb468a663404e10ac4cb8aea9ba4671bcccc2586b6bbfa4b1d1cc78ae",
+      "internal/ingest/stat_linux.go": "4555d5c6118cff74ec1f56421b169e4bafec4c1252774c268872d54754bc57bb",
+      "internal/ingest/stat_other.go": "78ad63886024353bdafc9133da8f316578f1c67f996f3f114e901d9f7d981f42",
+      "internal/output/output.go": "c73c1cb23b90b86604c50b8ce6de9bb2ab39c88630c167741ac8de0811aa3066",
+      "internal/output/table.go": "a6ce7c530b29c48970c65e5debd62b97da7a6cfd3540fe831d367c047242d85c",
+      "internal/output/table_test.go": "b4e483025af3142691b28d80c58ef686170e931d6a1026175bc225259a461c56",
+      "internal/platform/machine.go": "e5a3e505fb2ab3c03f09ca81be6d1f5e6cbb22fcd138444a49c4bb7c33d0cf87",
+      "internal/platform/machine_darwin.go": "3b56269ee729676955eee0570f64b70192ede8ccf7fd64117bd5f132c4656e82",
+      "internal/platform/machine_darwin_test.go": "09ce7137a417056c1e06d3c24c8ee80c56f847765969c983d4a966715cef074c",
+      "internal/platform/machine_unsupported.go": "9b793ec763873e7e7957c67301d057f8df762f2c6c89996d9d9ada3bf016a298",
+      "internal/platform/machine_unsupported_test.go": "8b048a95d933656108447b2c74bce05e367c7d908f425595f9008ea731231b98",
+      "internal/platform/state.go": "ee2ada4cb34dd535398ddbb826a1ee7402f2849b07be80c4e3a2274f300c21a7",
+      "internal/platform/state_test.go": "8ec8be79ca1b9a086e4c5cfc0d9ee1a69d48d79c46ad97832367de8ca93c2ddf",
+      "internal/provider/config.go": "93b7177f7769e72899eaea386c8c636349eec31877e0e17b65a12681f8d8e698",
+      "internal/provider/config_test.go": "d5c5050270d63e4224b6fffaeff1cd56f8ae42b7deddd9124c0a29f2382b873d",
+      "internal/provider/doc.go": "e0aca8aceaeb0e38e5756fb4cf57568e999669974b19351a491e12db344efa5c",
+      "internal/provider/project.go": "56940d79d0eabd9c911dd14cbb57b0da6ac2077f18ad610a2d02f43a47a98ecb",
+      "internal/provider/project_gate.go": "762b32c330de95f69a70d1a933c757f4ac53b1bd8405aa4e73d043f8c47d16ae",
+      "internal/provider/project_gate_test.go": "1b3693f6c8ff051c9c09eb4caf25bc4f2385567b2ab4cd04fa631a8c11287607",
+      "internal/provider/project_test.go": "642e4cb87b99513d7278fe51af3493af618192ba187722dae30b30b8cfb79fe4",
+      "internal/provider/provider.go": "8fa7638a547006d73401fcff686de3fd0b8138f9eaeb295de5b2cc2e6c76adca",
+      "internal/provider/provider_test.go": "48594095219eea3f04b408231c8fc7b0a588875318b956d22f4d2e4c5607ae68",
+      "internal/provider/recovery_test.go": "77af983f0cc4f208a8065b9cfffeb11bf78bc8072f5746e16c848a879ca0c2d4",
+      "internal/provider/route_composition_test.go": "774ccfbe513947a6a963076be6e767600529dd795441ebad2d60541d41d87e44",
+      "internal/provider/service.go": "6d7d18cf044ae193b83caf885919b9a9cac80466691178992e8a8f39819518a5",
+      "internal/provider/service_test.go": "b23571b0b34e94accc767e018a44741b37d9320335dcb651595f2f9b8aff1c50",
+      "internal/provider/switch_advisories_test.go": "68f6078f69797c9703d215e744a22d1b61fc24a3f4a1d4e2f1b960a919d39ad3",
+      "internal/provider/wrapper_kind_test.go": "26c7f0c9e0864affd179404b415a694080938dc7f26ab76c170a31a13806137d",
+      "internal/providermeta/metadata.go": "d6338eba6100937ed33941a1a3fd1b09582d45f30d557fd2a96d88fa7ece3cd0",
+      "internal/providermeta/metadata_test.go": "1764cf77622e3f9997d12fbafec4499ab35aaa4eafac8559f786d25023774936",
+      "internal/quota/alerts.go": "4f9325b00ec5e9c7fe64800afbc5af09819d0aa542d4a9389f23d569e079afd6",
+      "internal/quota/alerts_test.go": "1631282f343fc0b484096b2811b617326657cf332410171a7eaaa99f27759e19",
+      "internal/quota/claude.go": "7d44d68225fc18a10831770f25ddc98fb8a44dea34d937b8d507d676d0065df6",
+      "internal/quota/claude_test.go": "e69abb82e72351162100fa15de0371dd28262afd14a05595e9654d5215c62a15",
+      "internal/quota/codex.go": "132dc448442c0a5e843f4160601bdea5ced97daf29961d60410dac8c6d95a338",
+      "internal/quota/codex_test.go": "902e081a531a61948529e1449e51272db9489680ccb600754c3919c8c1694651",
+      "internal/quota/gate.go": "4416f9d9b22a25d047f1c9da8df5b1d13db48747710e9b8bf799ace42f088925",
+      "internal/quota/gate_test.go": "9c7ff5a1bb24099b3f75c453eb1da495b414cbf6dc8fd760ebb178725eca5456",
+      "internal/quota/model.go": "ff95f8816405a61045aa68bcbe487fb94d0aec9b6ca69c0ebb3f83805881ac57",
+      "internal/quota/model_test.go": "053a9b2148ed94e403a984bbce7536770a12a03ff8671c9e2b20670ccb5b1a23",
+      "internal/quota/scheduler.go": "3c8aeef83b74dec19fc7b21a73e597165e6288680dba9c55d5de66ff645d27c6",
+      "internal/quota/scheduler_test.go": "0470410267b9699e05a7f7376dab5444935be3538a095840542b937e0ac71b26",
+      "internal/quota/settings.go": "0d9d1f0a49dad3f5dd038d5a05769b9f13cbf761f3c28e0b395cc8ea1c0ebdc0",
+      "internal/quota/settings_test.go": "00ef2c35a9ca38da6585b1e369943db0572b9fa5fc7268f1eb44e130c597a641",
+      "internal/quota/state.go": "63cd08007e499dc9eea71d1884e79a6b576a560fcf3fda2fe32f4fb16314b586",
+      "internal/quota/state_test.go": "853f666b827df3de51920d62c1bbd44bbf8ca8fdc7cd610ab2de9bdc02b46fdd",
+      "internal/quota/statusline.go": "74ddc59b5324d8449b57955f6cf51f2c5de6e6223c8118c9f034957e20fe8856",
+      "internal/quota/statusline_test.go": "86e4d8ceea680fccd7a658ceb518c6f7f0269234151763910642cc7150061d21",
+      "internal/quota/store.go": "910219ba6fbafd958930cf633fa730ecedb0b7c0dd6ef39876fae1ec3c69a31b",
+      "internal/quota/store_test.go": "abbf40342f38a808cd918e7bf5cf69ee3c75e7167d42d4dd774ac58c28168b08",
+      "internal/scanruntime/profile_test.go": "cb64d0faef3716acb686c10514a47f953459d7d8c6758f9ec56b7db9a816ca12",
+      "internal/scanruntime/receipts.go": "fda2150c5e2f7d40eb6506732eecf2fbb0990f52a7426e4e5e6a867a8b16caa6",
+      "internal/scanruntime/resources_darwin.go": "a381c170bca42d04dd3db305f67bfebda4fca67737c4b33d467be6c45fbc98b8",
+      "internal/scanruntime/resources_linux.go": "35a05938892a1010c26c3afcf54e8c33bf902adfed041482c00cdc0ebe56a711",
+      "internal/scanruntime/resources_other.go": "ab6a75e4651047bbe6bcc79db77f19bbdde578257a3e5455ae95cd595ec40d61",
+      "internal/scanruntime/scanruntime.go": "247f2ee524e7da3c6457ac1036e8b4e222d9c8d2520486432e0460ab7fd203ad",
+      "internal/scanruntime/scanruntime_test.go": "76f8dadb9fd513344c2d0f262de437d349ebac0b3d706a518469e4a20cdfe5b3",
+      "internal/scanruntime/serving.go": "9dcabd5858b411f3b78b216c2168ace5400d2a13bfd4afa3c5509df57fbf27f5",
+      "internal/scanruntime/serving_test.go": "81a4924e5d835bb15773a8bbc99c75b2d730327cb23190f818b7f86ac35a783a",
+      "internal/session/doc.go": "058cdcf0e67ef91325d8162ae884b4399c6599e2f6a4da3fe4db2951ceeb78be",
+      "internal/session/doctor.go": "c3c4edbd80ac73a21f1492059b9c63d77050d45621f4b2ee22b9e89a4711fd70",
+      "internal/session/doctor_test.go": "1e690a26e53e349e709a0372516cf79fc87833421a1f156b38b79f4106b99f83",
+      "internal/session/ingestion_sql_test.go": "5a99975b072754449131542930858e5d2a33a0f4bffb383284b2b0e488cee767",
+      "internal/session/project_attribution_test.go": "dffd94ab525018fe568372b4fbc17f21a3f27be4fbfd31cf39b6b2e1f541a628",
+      "internal/session/session.go": "290458b7c64b13d7943b8b9691dc22f11e7907fbaf5534a5f24288bb6a4ee0b7",
+      "internal/session/session_test.go": "33b6cb8393678d388fc79b280d17f0e77d57a112c5a73a5c60b416491061311f",
+      "internal/session/unchanged.go": "1c994c27c9299911652ac02d66795be78ff0126ef4189340b2df93258562f833",
+      "internal/session/unchanged_test.go": "eb1792765f16f95aef2de51bbe92ef21d30f5736f94579b1b2f1cb2ec061698a",
+      "internal/shellconfig/config.go": "0a68befcf33fbf584261041f47ef2cff2a52d3542651600478efb4ef8a79340c",
+      "internal/shellconfig/config_test.go": "8e7345a2e9cfd3a4b622c95506c587e00523fd8ba92b26dc397c73c98104f60a",
+      "internal/shellconfig/owner_unix.go": "fc8e8a2e6ab46382edaacb4024224e301e4d9a680a59a1a3b6d122da40ebff14",
+      "internal/shellconfig/owner_unix_test.go": "a8100224c1e6f71da69ada8a9214cf16924852ea6371f75749750848e7a5945f",
+      "internal/shellconfig/owner_windows.go": "ac6b2dfa8c4e685feb6592dd8ef489051d16c9f424b2dbdbf28b3472cc6145fa",
+      "internal/shellconfig/status.go": "e2a673eda7057837f275cdb5956b6fa1460f341a680671cc6bb3e7fdcf04bfeb",
+      "internal/shellconfig/status_test.go": "5dbae3a64980c83f84273b8b704d0b0308c86f8648a9a7a2bf3f5ba588aef8b2",
+      "internal/store/derived_generation.go": "1552c2bed08ef3c6e2e8bca89f9966c02e66409707750554e6c9759b969617a0",
+      "internal/store/derived_generation_test.go": "ef9715c22546273c8401e1bf3f309539f9f747c0f7ed070b32605dd36d5b827e",
+      "internal/store/extensions.go": "3e6862d9282e5702b56cd105592ba4cd7d97bff3d9043c937d0fd1001a48814f",
+      "internal/store/migrations.go": "8f7ef2d2cc8fc4ad4c1f0cfe516bd1173c4ab0a598951f646ce07e5c622f52b1",
+      "internal/store/process_darwin.go": "5876d8e46ea0550daf86aa04607980a949758ad054bd2b5acf043e06b1b494aa",
+      "internal/store/process_unsupported.go": "dace6f187d60d063ab1df74d318f27dd0c1d13fd8a0ec76ff592e6dfc994c7f6",
+      "internal/store/providers.go": "97435e5d2c52b2b7b62ac8cb96101c99186d3fe7e0107048f134ec9ce9ad93f4",
+      "internal/store/providers_test.go": "556a651ea58b70d64efc1ae6cd033327de4a49edff5e62c1c68e0dc6487e9671",
+      "internal/store/routes_test.go": "0d7ab8dfd35bcd15de3c732c4b7a603dd33f369ff2950dbd371db0330707a30c",
+      "internal/store/schema_probe.go": "4fcffec9d7a4fe2b80c3264c33100db151f94133e421717409901d77420f3d73",
+      "internal/store/schema_probe_test.go": "28d1b31cba9ec50146fce8b2cb4545bfdbf509b14fa8042baa36e367d205cd5a",
+      "internal/store/serving_generation.go": "e5ea9dadf7285499b7d09f20ff77ae7db29c5236f07aaac3d7b3eb2a48816753",
+      "internal/store/serving_generation_test.go": "fd4841c3a9c095142f353a0dae9b9a428517691d44cb437f404fdc9c5ed6b465",
+      "internal/store/session_context_test.go": "cb5c6d96efe6f7911d1dc2ab1640fc518c8fc10113dd825cee39de63faa3aa5b",
+      "internal/store/source_coverage.go": "e202592712132f5ba899033d329e0b7f9ae4f3e8c7da6f2d12b853fa3a54e8d7",
+      "internal/store/store.go": "f3ec002a4b738502d467ceb30a65ab9882af9e87e7c1f61c7eb6e0afb669324a",
+      "internal/store/store_test.go": "ab7c644ae2515c8e049d420ae07c143edfe2d540cea543ede8ecf0a750a6212f",
+      "internal/store/wrapper_kind_test.go": "db2a080781d7b65a380d640a0f1e8e543613d004f7d19608201cb670cbcc330c",
+      "internal/usage/bundled_catalog.go": "9145d3a94effd835c5acdc6ac07c755f355abb3507b15ce4401a82ba2f1d631e",
+      "internal/usage/bundled_catalog_gen.go": "25346c166b08a132b03c19f85b301993d76e7b6a022017a17afa41a4d8ca99fa",
+      "internal/usage/bundled_catalog_gen_test.go": "f6f7368004c17224c410668819e5546d00832d339e6ca257874c3c7f380686a8",
+      "internal/usage/bundled_catalog_test.go": "cd0f52c1afbd60f8d6779c2147f5aed21ef75fa105ee2c46e36fae6576673106",
+      "internal/usage/bundled_coverage_test.go": "777079fe4cf46e03f0c760751b3b5575108bb724fe1048ef3685d2e46dc10bdb",
+      "internal/usage/codex_signals.go": "043e962c52e6cdf355d341b9d26ea2c9103552edd31cebf7ed51ed226af3c8eb",
+      "internal/usage/codex_signals_test.go": "52bb65c4d9e43fda2d7108b56082b2f3f666efacf4d80372198dd892c9d64e43",
+      "internal/usage/cold_publish.go": "66e6d44fec87588c5bdd7baab6b2fe95cd8b83ef385fd9059fbd959c2fd9229e",
+      "internal/usage/cold_publish_test.go": "c295acf01c5ef537d100ab6f73a1189067ef8bab4ecbbb82d229cd68204db2d0",
+      "internal/usage/doc.go": "340311621599a0dd8ac6cd5f9976382af43c038961e1ff04c6a7957c775955c8",
+      "internal/usage/ingestion_statements.go": "3c59c737a02da3250b9fd66379f8ffca090a928edd8b59301c717a860dcfdc67",
+      "internal/usage/ingestion_statements_test.go": "cff743361b038beb777ae163978136298f481ad27479992ded5017c95e845639",
+      "internal/usage/presentation.go": "4cb9e9450d3c97025f665ea4688c4aab7be152fc823f54942df79fa025e47d46",
+      "internal/usage/presentation_cost_reuse_test.go": "11247220aac69ceeb9abab814cf3083e2c0fa59b1342fb41190c33850313f049",
+      "internal/usage/presentation_test.go": "31ed7ef568defc98687a56af1001001cf9c9c4f7f2bc80f9cef4849dcea0fdae",
+      "internal/usage/price_gapfill.go": "5804c00e37fb93fb2affc8693242f58cf528377d7ebcd637aab5eca4e7ac9042",
+      "internal/usage/price_gapfill_test.go": "9e6cda350ecc8687f93aeefac6eb13a09daa42181e1f7674c7fd01c49868ccf7",
+      "internal/usage/price_update.go": "093fb3f4f22afae5644f20a20a5800cb83e47fdd805b0c3e70a4ae4c4144b463",
+      "internal/usage/publication_lock.go": "fee12cdb0e36ccb4ee355ad0da6b1f643f4482dba96bedabd0998c4c0023c3d3",
+      "internal/usage/publication_lock_test.go": "2934263ca3a05dbc6bef86106b62557e5e8260c572cf424aca14eafddcbdcd52",
+      "internal/usage/route_metadata_test.go": "9ba990aea33327538f3268a79ef88049dbdb15d9fc3f336f5610015800e12f84",
+      "internal/usage/routes.go": "e3accdf99ba28334a6f15183ed449e66851256710744b0ff412f25379a977412",
+      "internal/usage/routes_test.go": "8305b6f2a22b6df066139d98a525b64119b0e4d2a7381c83240bc0420dda13bb",
+      "internal/usage/session_usage.go": "e001b1b72896acda9324f9160af302e4f1c67bab7303600885ddf1a2834f7dea",
+      "internal/usage/session_usage_test.go": "596862ff33eeffab11eecc44a4d6146a2d7bb03d927ff0b26ccdea0bf5eaaf90",
+      "internal/usage/signals.go": "c46f2d3f2596afb588b1f8e98ab416e617420f26b8ed913f5ac06f03429cf7e2",
+      "internal/usage/signals_batch.go": "dcfc4318149084afe955fee30052a05a9b5e56a20afbdbd5fad83ffec2a05eb0",
+      "internal/usage/signals_batch_test.go": "8be7263db4d06f7fd3db553d650db19657c4971e66a40167a89c07157b98734d",
+      "internal/usage/signals_cost.go": "efa13ec0c67f7941c9c87071cd8c74917cacb8db5baedd71bf7af53e4081f72e",
+      "internal/usage/signals_cost_test.go": "a012a125607a1c529950715f5978c2050a7f6c51f8e90e6668993a6ca725e672",
+      "internal/usage/signals_metrics.go": "45998b37c98916a4f4f317e2d7d3890af8c2b6f8ac3ab941e79db54034b1a2cb",
+      "internal/usage/signals_metrics_test.go": "53011f7850b5ffd54ace8d936bdb1e5205a7838362163596c5fa22aa2d4edc05",
+      "internal/usage/signals_ownership_test.go": "b9dff620863624586a7b574b79b4bd23138d9069711072c4c76e44be9fa3dc63",
+      "internal/usage/signals_report.go": "a83b05ef258e496c971b5a29174522c2df72840501476a8275b21b758d8b7cb6",
+      "internal/usage/signals_report_test.go": "e4fea5aad7c154eafe5772845194dce7d04fb7a067a6d441b2c1a339814abc7b",
+      "internal/usage/signals_test.go": "269b1986d7cd6c723675e9c788979dc3ef5ff81393edf8a4c67dfad585fef246",
+      "internal/usage/source_classification_test.go": "3edba7bbd8581d32b24b59279ee928dd0edd9da9baf19ac3d11629c72c2dc6b0",
+      "internal/usage/unchanged_scan_test.go": "27f9617311d41f802850e6b420d59bccaffb318b4f76ef50eeb7778d70f38e14",
+      "internal/usage/usage.go": "0ec10b813ae7c52155a5c518f51ae4851c88ee1e1250fb43ccb2608799bf7580",
+      "internal/usage/usage_test.go": "2b994460ae0f776172133eac32cff9d5f6b0336065677729b16f6439f46ef5fa",
+      "internal/usagehook/config.go": "e988a8db854747c5c665a7d62841287cc4b3625b359fbe6a4939dd64b22643d3",
+      "internal/usagehook/config_test.go": "88ded579ccf67721cbe85b384ea76c9d8b7eaa01d452c91d870e780da0c92b1e",
+      "internal/usagehook/cross_installation_test.go": "0793de4bd310ba14838dee90086a5fd44302fdb7dda083c22b4671d3d9c072d5",
+      "internal/usagehook/event.go": "91f4e34fdd9b291cd8aedbd873c1e7a6de3d0ef07dba2798e4bc0ddf18c9607e",
+      "internal/usagehook/event_test.go": "b281783f0d1497f4d67a41107680031e0cf2f9edd36368b41d0ad50cf586ef5a",
+      "internal/usagehook/owner_unix.go": "715717f4d9113b19d13efabe8b4999d23e011e269ab12982724601a6f91b9785",
+      "internal/usagehook/owner_windows.go": "9a6c5157cf5b921ee7677f21f5399c41958ef3985cf59d22a1f4a77e414a27e3",
+      "internal/watch/watch.go": "eb24a286a8a60aa2fdb52f82710459feee291215e61572e68f2f23c5a772353c",
+      "internal/watch/watch_test.go": "4fa4834b4143c8315f7f6fe96f55fb0aa2a708ff846d2d8a6886729f61e58410",
+      "scripts/build-macos-app.sh": "3ce603fe9ab937fdd8c1cf67addb4ae8518c417c75ba75b3c284d863957e2316",
+      "scripts/check-desktop-refresh-integration.sh": "283c844ee10a61cd4af240aa799f62f4b00d82c83a026abce93b121cecc10ac0",
+      "scripts/check-docs.py": "24b92fd5266ec69f006169b55023afef176fd0f2ffffdb74c35e3dcc92762b39",
+      "scripts/check-macos-widget-intents.sh": "3d491a6f36075bb303a2bbc43edd9a13924f6f857627fe400c83099c9966ac83",
+      "scripts/check-macos-widget-registration.sh": "0ae5d826227bd52b702cd0145fd0af25c3c4d36fa7499935f32641d00277e5f0",
+      "scripts/check-privacy.sh": "f11bf6858443a34e5f1341130746126349d1fe163e21547dad2441e90f077cb9",
+      "scripts/check-review-records.py": "e16be28fde26b68ce809e6c799b3283593931d4a0d5c51b3d61d389b198f5b48",
+      "scripts/check-topic-docs.sh": "f3baa19f7626773ea528e899fcdb651e4c3a03d07b8ebffefa20e5021ec161a4",
+      "scripts/check-whitespace.sh": "7ff991ed6313a7846ce52ba3a19df12c1e76d7915d86785de064f025b7b18e73",
+      "scripts/check-widget-sandbox.sh": "4c0cfdde581267e4eb542490582a4f17ad9c59f50d74eb6a12758ebe988714d3",
+      "scripts/ci/classify_diff.py": "822aa9fd465d884700da679ce7f5b89f3c91114628e77307ccc5542a8b7ca1ad",
+      "scripts/ci/doc_scope.py": "ab4cc0c3b69916979fc7bbbcb304137e9f637ac544aada0552e81c05967736f9",
+      "scripts/ci/docs_tools_test.py": "373a0cdbbcbd3b465b10aa1a392ebdc866a617859f37ac069029637920555c0d",
+      "scripts/ci/v3_contract_test.py": "96cd443430d6da8edf6fbb785972ad243111544e6327d8bbce931b749d7b923f",
+      "scripts/create-release-tag.sh": "4fbdbbf5702682953764f7a42ada23cb4ae243eabe8045babbc840a0e6bd15b9",
+      "scripts/hooks/beads-consistency.py": "495329acbac900f79bfbf4087a86850cd343ed7d392fd6f0e78a7599ac37a2ee",
+      "scripts/hooks/beads_consistency_test.py": "7c277fef50c13cd67b122db46e68c58289a2b679d5edccfb5c90ebd872da31f7",
+      "scripts/hooks/opencode-beads-e2e.py": "dd944dda3e578a7c6b92e115f402a9c52360c9f2acdcea437897742caa297600",
+      "scripts/manage-install.sh": "2c7e13b78bfb9f349232418d91c1573e51489fbd374f3db1aaa15712dd5644f5",
+      "scripts/package-macos-app.sh": "7a0e6ed47757bc3cb367e2cd0176c5dd5c785ef440a52eba1da9df4461b556fb",
+      "scripts/release-archive.sh": "6460583a6964f94673f276e9457930b74619d833c61dc7e873cf733be796e04c",
+      "scripts/release-notes-from-tag.sh": "2a34602dd09cacd9c99fc5cfd71af97932f26f808626155745e9b98bdb4c1bca",
+      "scripts/reload-widget-timelines.swift": "fd627beb4f3be6db615fd54282c761ea2d6d609bb0ffa918364ee3eb94340fde",
+      "scripts/render-homebrew-cask.sh": "0f89e9f9fd2755e0d2c52b856c0f55869ffb3f0289fac781b0989e5cdb47aad3",
+      "scripts/render-homebrew-formula.sh": "a89d511a2a7f32243a124a6278a0f4d7ea06fc25ece3daa360d845a9c78af84c",
+      "scripts/review_record.py": "cdc5c59092030f6f94a48a1b8c9e5e9e62c305fb40b19247fe344f0b453bad2a",
+      "scripts/run-go-test.sh": "e00768eba7a42fef719e49a9059b95cc6af8775a11e55ad4b425ab53aeef53ee",
+      "scripts/run-macos-acceptance-app.sh": "99db50d9dc99adbbb97a9de0f42a9fab25c2d067ee8cf06d78fbd9afd819c76d",
+      "scripts/scan-performance-baseline.py": "e80a8d8eb421c76a5d210400398fd61c6f769a6de1975a43957c88d2dd2e4e09",
+      "scripts/scan-performance-serving.py": "e7d301349369216ec1d5d8376ef3d4b6652e99794e15d77ce33b95eba7661a66",
+      "scripts/scan-performance-serving_test.py": "e7ce00f3470ecbbcf0650bbaa35013ef5e83c9b3b2f28ff586e5fb214fff0e46",
+      "scripts/scan_performance_baseline_test.py": "b0056680b333c3889103f945c92fe97941dbd2b60c6d9d788d602f8c9bcef3b1",
+      "scripts/scan_performance_serving_matrix.py": "e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f",
+      "scripts/scan_performance_serving_matrix_test.py": "d51f75b532be65135a730a0eb49145f16beebff6b435f2ebeef57b94d8ed5469",
+      "scripts/test-cask-migration.sh": "58425298877f059a50597091121105d5a2a660c7e747854d3d537bc25d89ca8b",
+      "scripts/test-check-privacy.sh": "14465fed7c0c13cf9b8449e2c08f79c499aa4962ca8596fff45489b25f0f466d",
+      "scripts/test-completion-install.sh": "a5b465403a66574cd2f65308696680ac34cb2997d0ec51311368a88eac3ad2a5",
+      "scripts/test-install.sh": "f860a43b89fb79175e880328654c9552b71ac07c5630856812d727c79413199b",
+      "scripts/test-macos-app.sh": "cf7f18c4905167851f36f9cb7fee76ec54868021c13dc83ad5e262ca8df95e83",
+      "scripts/test-macos-distribution-cleanup.py": "b5595a6d66ab516bc07db6e8b722a88a026515854f9cf61ac5f9f272070595b0",
+      "scripts/test-macos-distribution.sh": "1e294100bd39a76db4cfc77857135fd5fdf7f4b6dfeec746ed27ddd22fe88f4d",
+      "scripts/test-release-distribution.sh": "14c501c3ef5dd96206a7ce3c7398f2067cd64b6827615242d72c84334ac7ec05",
+      "scripts/test-release-preflight.sh": "49e9802c929396f0be24c0c30767ea43470de4d1c9a6851ee9c39c6a50872536",
+      "scripts/test-run-go-test.sh": "a5efe1423851c4a11d1beff1b34848a10f9cb14fc381c896971026e380c63b29",
+      "scripts/test-shell-integration-acceptance.sh": "1e67f62556b7b67f5f0e7e794c237d65174f8fc90f0e288ae8e7198cf771dbb9",
+      "scripts/update-homebrew-tap-pr.sh": "d18d399ca61d6eb2e0a9b46e717dfc919c49396a448e39a0a80504f3d908180b",
+      "scripts/verify-release-artifacts.sh": "935013518fe77554dc2a2bcd561379a349e8f0f1dd8a03a3042cd403bfb9a30a",
+      "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2"
+    },
+    "matrix_sha256": "e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f",
+    "first_starting_state": {
+      "cohort_context_sha256": "c8a6120d81d0501ad6283d22a66221176f9bb606ef236c4e4ffd57e64ab88ba7",
+      "starting_database_sha256": {
+        "sessions.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "sessions.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sessions.sqlite3": "267ac8d9c2d6cb272ec1eeb66f9c96757b2978524022e17fd0fef49d96e49ffa",
+        "agentdeck.sqlite3": "a9f2712bc678b3df3b4b9b8ef6921096648891f60093bc52fc16d4c290ed0440",
+        "agentdeck.sqlite3-shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+        "agentdeck.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "agentdeck.sqlite3-journal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "starting_schema_versions": {
+        "agentdeck.sqlite3": 31,
+        "sessions.serving_storage": 1
+      },
+      "starting_cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248",
+      "cache_validation": {
+        "cache_validated_after_last_state_copy": true,
+        "publication_id_sha256": "926fe337be241bc67bc9a4e253b2d8046c718cfd340f3517b8fd905a30374311",
+        "cache_sha256": "40a13626fa195252711d75a23428837c49bf8ed3a247c7f5b6a32187bd517248"
+      }
+    }
+  },
+  "result": {
+    "count": 100,
+    "over_budget": 5,
+    "p95_model_ns": 1104790923,
+    "p99_model_ns": 1394516534,
+    "max_model_ns": 2078632824,
+    "final_cleanup": true,
+    "worker_idle": true
+  },
+  "samples": [
+    {
+      "index": 0,
+      "model": {
+        "appReadyToModelNanoseconds": 982663629,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 1249888260
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1546181247,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1813405878,
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1546181247,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 1,
+      "model": {
+        "partial": false,
+        "appReadyToModelNanoseconds": 1203013774,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1432729034,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1962831662,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 2192546922,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1962831662
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 2,
+      "model": {
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 2370466262,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 2078632824
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 3621532190,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "elapsedNanoseconds": 3329698752,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 3329698752,
+        "operatorWaitIncluded": false,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 3,
+      "model": {
+        "appReadyToModelNanoseconds": 1070295738,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1314066629,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1709044207
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1709044207,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1952815098,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 4,
+      "model": {
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 1104790923,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "processEntryToModelNanoseconds": 1369470832,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1822384353,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1822384353,
+        "version": 1,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 2087064262
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 5,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1660554131,
+        "appReadyToModelNanoseconds": 1343373132,
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 2414450508,
+        "appReadyToNativeDataFrameNanoseconds": 2097269509,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 2097269509
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 6,
+      "model": {
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 965054008,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 793754424,
+        "partial": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1327692032,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1498991616,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1327692032,
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 7,
+      "model": {
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 869839165,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "appReadyToModelNanoseconds": 715942616
+      },
+      "native": {
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1340802982,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1186906433
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1186906433
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 8,
+      "model": {
+        "appReadyToModelNanoseconds": 1394516534,
+        "partial": false,
+        "processEntryToModelNanoseconds": 1673695981,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2022916255,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 2022916255,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 2302095702,
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 9,
+      "model": {
+        "partial": false,
+        "appReadyToModelNanoseconds": 685528296,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 853096927,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1264116980,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1096548349,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1096548349,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 10,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 796520872,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 647928838,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1244424564
+          }
+        ],
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1393016598,
+        "appReadyToNativeDataFrameNanoseconds": 1244424564
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 11,
+      "model": {
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 679360023,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 911864073
+      },
+      "native": {
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1189471792
+          }
+        ],
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1189471792,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1421975842,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 12,
+      "model": {
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "appReadyToModelNanoseconds": 849924566,
+        "processEntryToModelNanoseconds": 1052967927,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1814289383,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1814289383
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 2017332744,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 13,
+      "model": {
+        "appReadyToModelNanoseconds": 613480563,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "processEntryToModelNanoseconds": 741423887,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1036916238
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1164859562,
+        "appReadyToNativeDataFrameNanoseconds": 1036916238,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 14,
+      "model": {
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 924385178,
+        "appReadyToModelNanoseconds": 726439155
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1623632108,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1425686085,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1425686085
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 15,
+      "model": {
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1036408179,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 833899728,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1388832515,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1388832515,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1591340966,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 16,
+      "model": {
+        "appReadyToModelNanoseconds": 656068448,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 808894334,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1168246554,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1168246554,
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1321072440,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 17,
+      "model": {
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 785268835,
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "processEntryToModelNanoseconds": 949444668
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1408291104,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1244115271,
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1244115271,
+            "panel": "quota",
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 18,
+      "model": {
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 743601076,
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 893282946,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1353614330,
+        "appReadyToNativeDataFrameNanoseconds": 1203932460,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1203932460,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 19,
+      "model": {
+        "partial": false,
+        "processEntryToModelNanoseconds": 789126515,
+        "appReadyToModelNanoseconds": 639680079,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1222499273,
+        "appReadyToNativeDataFrameNanoseconds": 1073052837,
+        "measurement": "startup-frame",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1073052837,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 20,
+      "model": {
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 973699221,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "processEntryToModelNanoseconds": 1220902957,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1685442954,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1438239218,
+            "valid": true
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1438239218
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 21,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 922397932,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 716801986,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1207169566,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1207169566,
+            "panel": "quota"
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1412765512,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 22,
+      "model": {
+        "appReadyToModelNanoseconds": 737770319,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 923784633,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "partial": false
+      },
+      "native": {
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1263349207,
+            "valid": true
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1449363521,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1263349207,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 23,
+      "model": {
+        "processEntryToModelNanoseconds": 979420580,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 795302174
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1326821798,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1510940204,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1326821798,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 24,
+      "model": {
+        "processEntryToModelNanoseconds": 1087531723,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 868156008,
+        "partial": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1483694618,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1703070333,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1483694618,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "measurement": "startup-frame",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 25,
+      "model": {
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1090061389,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "appReadyToModelNanoseconds": 901400732,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1677838695,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1489178038
+          }
+        ],
+        "measurement": "startup-frame",
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1489178038
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 26,
+      "model": {
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 1235274745,
+        "appReadyToModelNanoseconds": 1015614708,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1908843123,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1689183086,
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1689183086,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 27,
+      "model": {
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 882692789,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1119693171
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1471540732,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1708541114,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1471540732
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 28,
+      "model": {
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1201653781,
+        "partial": false,
+        "appReadyToModelNanoseconds": 992959849,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1641213192,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1849907124,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1641213192,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 29,
+      "model": {
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 990841908,
+        "partial": false,
+        "processEntryToModelNanoseconds": 1185521866,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1585692108,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1780372066,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1585692108
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 30,
+      "model": {
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 1271347893,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 1058726884
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1694073696,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1906694705,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1694073696,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 31,
+      "model": {
+        "appReadyToModelNanoseconds": 824402111,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 997621472
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1512689327,
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1339469966,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1339469966
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 32,
+      "model": {
+        "partial": false,
+        "appReadyToModelNanoseconds": 759104198,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 936578360,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1239797831,
+        "processEntryToNativeDataFrameNanoseconds": 1417271993,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1239797831
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 33,
+      "model": {
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 947633699,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 758496014,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1437337417,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1248199732
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1248199732,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 34,
+      "model": {
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 948711449,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "appReadyToModelNanoseconds": 776197427
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1263385726,
+        "processEntryToNativeDataFrameNanoseconds": 1435899748,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1263385726,
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 35,
+      "model": {
+        "appReadyToModelNanoseconds": 775434454,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 964715200,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "partial": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1389561105,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1389561105,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1578841851,
+        "version": 1,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 36,
+      "model": {
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 907261531,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "appReadyToModelNanoseconds": 739411598
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1214465978,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1382315911,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1214465978
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 37,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 811148097,
+        "processEntryToModelNanoseconds": 980512609,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "partial": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1409483651,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1409483651,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1578848163,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 38,
+      "model": {
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 819731911,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1013383364
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1568346500,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1374695047
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1374695047
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 39,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 913912956,
+        "appReadyToModelNanoseconds": 750477525,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1400520621,
+        "appReadyToNativeDataFrameNanoseconds": 1237085190,
+        "version": 1,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1237085190,
+            "panel": "quota",
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 40,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 869351475,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 1054314896,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1391246979,
+        "processEntryToNativeDataFrameNanoseconds": 1576210400,
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1391246979
+          }
+        ],
+        "measurement": "startup-frame",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 41,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 759305387,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 912939621
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1472556974,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1318922740,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1318922740,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 42,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 789060894,
+        "processEntryToModelNanoseconds": 947918777,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "partial": false
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1416128969,
+        "appReadyToNativeDataFrameNanoseconds": 1257271086,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1257271086,
+            "panel": "quota",
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 43,
+      "model": {
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 984673526,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 834454401
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1480753630,
+        "measurement": "startup-frame",
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1330534505,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1330534505
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 44,
+      "model": {
+        "appReadyToModelNanoseconds": 897222004,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1044528910,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "frames": [
+          {
+            "elapsedNanoseconds": 1307023932,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1307023932,
+        "processEntryToNativeDataFrameNanoseconds": 1454330838,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 45,
+      "model": {
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1140659974,
+        "appReadyToModelNanoseconds": 959217353,
+        "operatorWaitIncluded": false,
+        "partial": false,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1863503467,
+        "version": 1,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1682060846,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1682060846,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 46,
+      "model": {
+        "appReadyToModelNanoseconds": 877103553,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1022900214
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1366109994,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1511906655,
+        "appReadyToNativeDataFrameNanoseconds": 1366109994,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 47,
+      "model": {
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 845546427,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 700931754
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1312709127,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1168094454,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1168094454,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 48,
+      "model": {
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 743857518,
+        "processEntryToModelNanoseconds": 894966904,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1373165288,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1222055902
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1222055902,
+        "version": 1,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 49,
+      "model": {
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 907584366,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1113428247,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1479930478,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1685774359,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "version": 1,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1479930478,
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 50,
+      "model": {
+        "partial": false,
+        "appReadyToModelNanoseconds": 1004480735,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1192639467,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1778424632,
+        "appReadyToNativeDataFrameNanoseconds": 1590265900,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1590265900,
+            "panel": "quota",
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 51,
+      "model": {
+        "processEntryToModelNanoseconds": 1092158261,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 911134284,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1675057720,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1494033743,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1494033743,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 52,
+      "model": {
+        "appReadyToModelNanoseconds": 848244806,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1027002889,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1524409376,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1345651293,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1345651293,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 53,
+      "model": {
+        "appReadyToModelNanoseconds": 815621688,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 987887563,
+        "partial": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1519049140,
+        "appReadyToNativeDataFrameNanoseconds": 1346783265,
+        "measurement": "startup-frame",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1346783265,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 54,
+      "model": {
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 780296099,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 948364543
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1295600745,
+        "processEntryToNativeDataFrameNanoseconds": 1463669189,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1295600745
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 55,
+      "model": {
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1018621014,
+        "appReadyToModelNanoseconds": 836791812,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1468963912,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1468963912
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1650793114
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 56,
+      "model": {
+        "processEntryToModelNanoseconds": 952085613,
+        "partial": false,
+        "appReadyToModelNanoseconds": 768106098,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1271087804,
+            "valid": true
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1271087804,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1455067319,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 57,
+      "model": {
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 765963733,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 944932749,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1241217133,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1241217133,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1420186149,
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 58,
+      "model": {
+        "processEntryToModelNanoseconds": 924839208,
+        "appReadyToModelNanoseconds": 755949156,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1218055812,
+        "processEntryToNativeDataFrameNanoseconds": 1386945864,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1218055812,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 59,
+      "model": {
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 768121568,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 939584976,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1236440130,
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1407903538,
+        "measurement": "startup-frame",
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1236440130,
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 60,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1039516094,
+        "appReadyToModelNanoseconds": 870243642,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1351195647
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1520468099,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1351195647
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 61,
+      "model": {
+        "processEntryToModelNanoseconds": 1074912628,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 904226526,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1402878767,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1402878767
+          }
+        ],
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1573564869,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 62,
+      "model": {
+        "processEntryToModelNanoseconds": 868927211,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 706742994,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "partial": false
+      },
+      "native": {
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1371632626,
+        "appReadyToNativeDataFrameNanoseconds": 1209448409,
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1209448409,
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 63,
+      "model": {
+        "partial": false,
+        "processEntryToModelNanoseconds": 854245120,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 683896310,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1288193165,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1117844355,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1117844355,
+            "valid": true,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 64,
+      "model": {
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 927551883,
+        "appReadyToModelNanoseconds": 754752789,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1258945914
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1431745008,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1258945914,
+        "version": 1,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 65,
+      "model": {
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 934828576,
+        "appReadyToModelNanoseconds": 765270525,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1252165937,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1252165937,
+        "processEntryToNativeDataFrameNanoseconds": 1421723988,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 66,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1101877542,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 889250098,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1502054742,
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1502054742,
+            "panel": "quota"
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1714682186
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 67,
+      "model": {
+        "appReadyToModelNanoseconds": 818489476,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 987749540,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1365159369,
+            "valid": true
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1534419433,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1365159369
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 68,
+      "model": {
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "processEntryToModelNanoseconds": 811962705,
+        "appReadyToModelNanoseconds": 658163711
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1283120989,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1129321995,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1129321995,
+        "version": 1,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 69,
+      "model": {
+        "processEntryToModelNanoseconds": 959831162,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "appReadyToModelNanoseconds": 804485121,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1256471170,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1411817211,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1256471170,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 70,
+      "model": {
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 765901782,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 927651403,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1221052782,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1382802403,
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1221052782,
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 71,
+      "model": {
+        "appReadyToModelNanoseconds": 218889666,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 385325596,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1076717935,
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1243153865,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1076717935,
+            "panel": "quota"
+          }
+        ],
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 72,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 838797820,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 984480560,
+        "partial": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1353603022,
+            "panel": "quota"
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1499285762,
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1353603022,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 73,
+      "model": {
+        "partial": false,
+        "appReadyToModelNanoseconds": 934755483,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 1135175094,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1485075651,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1685495262,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1485075651,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 74,
+      "model": {
+        "partial": false,
+        "processEntryToModelNanoseconds": 1051042837,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 878738650,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1469815697,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1469815697,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1642119884
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 75,
+      "model": {
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "processEntryToModelNanoseconds": 1042729536,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 830716004
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "processEntryToNativeDataFrameNanoseconds": 1596279580,
+        "appReadyToNativeDataFrameNanoseconds": 1384266048,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1384266048,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 76,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1168090286,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 987074960,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1690699387,
+        "appReadyToNativeDataFrameNanoseconds": 1509684061,
+        "measurement": "startup-frame",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1509684061,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 77,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 700144545,
+        "processEntryToModelNanoseconds": 866364945,
+        "kind": "independent-model-readiness-v1",
+        "partial": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1207093766,
+        "processEntryToNativeDataFrameNanoseconds": 1373314166,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1207093766,
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 78,
+      "model": {
+        "appReadyToModelNanoseconds": 845373397,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 1000374323,
+        "partial": false,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1464162974,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1309162048,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1309162048,
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 79,
+      "model": {
+        "partial": false,
+        "processEntryToModelNanoseconds": 1010815742,
+        "appReadyToModelNanoseconds": 798528413,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "measurement": "startup-frame",
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1262562027
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1474849356,
+        "appReadyToNativeDataFrameNanoseconds": 1262562027
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 80,
+      "model": {
+        "processEntryToModelNanoseconds": 912554064,
+        "partial": false,
+        "appReadyToModelNanoseconds": 767272997,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1237887066,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1237887066
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1383168133,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 81,
+      "model": {
+        "processEntryToModelNanoseconds": 1035718270,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 860666236,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1396698932,
+        "processEntryToNativeDataFrameNanoseconds": 1571750966,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1396698932,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 82,
+      "model": {
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "appReadyToModelNanoseconds": 785418311,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 966729050,
+        "operatorWaitIncluded": false,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1246888273,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1246888273,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1428199012,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 83,
+      "model": {
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 825727836,
+        "processEntryToModelNanoseconds": 992668939,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "partial": false
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1312800067,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1479741170,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1312800067,
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 84,
+      "model": {
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "processEntryToModelNanoseconds": 989425797,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 820807007,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1372982067,
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1372982067,
+            "panel": "quota"
+          }
+        ],
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1541600857
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 85,
+      "model": {
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "appReadyToModelNanoseconds": 790573810,
+        "processEntryToModelNanoseconds": 1006737491,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1510709004,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1294545323,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1294545323,
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 86,
+      "model": {
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 752981445,
+        "partial": false,
+        "processEntryToModelNanoseconds": 935282064,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1261961218,
+        "measurement": "startup-frame",
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1444261837,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1261961218,
+            "panel": "quota"
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 87,
+      "model": {
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 742515584,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "processEntryToModelNanoseconds": 913916288,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1398362834,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 1226962130,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "appReadyToNativeDataFrameNanoseconds": 1226962130
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 88,
+      "model": {
+        "processEntryToModelNanoseconds": 986592710,
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000,
+        "kind": "independent-model-readiness-v1",
+        "partial": false,
+        "appReadyToModelNanoseconds": 798747719,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1325324217,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1325324217,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "processEntryToNativeDataFrameNanoseconds": 1513169208,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 89,
+      "model": {
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 1094987768,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 926015333,
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1537217217,
+            "valid": true
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1706189652,
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1537217217,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 90,
+      "model": {
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 964684383,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1144708051,
+        "kind": "independent-model-readiness-v1"
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "processEntryToNativeDataFrameNanoseconds": 1736527777,
+        "version": 1,
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 1556504109
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1556504109
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 91,
+      "model": {
+        "processEntryToModelNanoseconds": 1082832863,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 916396757,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1605318022,
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1438881916,
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1438881916
+          }
+        ],
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 92,
+      "model": {
+        "nativeFrameMeasured": false,
+        "kind": "independent-model-readiness-v1",
+        "processEntryToModelNanoseconds": 1261506201,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "partial": false,
+        "operatorWaitIncluded": false,
+        "appReadyToModelNanoseconds": 1041672667
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1863924043,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 1644090509
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "appReadyToNativeDataFrameNanoseconds": 1644090509
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 93,
+      "model": {
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 954765183,
+        "kind": "independent-model-readiness-v1",
+        "pollIntervalNanoseconds": 10000000,
+        "partial": false,
+        "nativeFrameMeasured": false,
+        "appReadyToModelNanoseconds": 777768964,
+        "operatorWaitIncluded": false
+      },
+      "native": {
+        "appReadyToNativeDataFrameNanoseconds": 1336565360,
+        "measurement": "startup-frame",
+        "version": 1,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1336565360,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "processEntryToNativeDataFrameNanoseconds": 1513561579,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": true
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 94,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 934043441,
+        "appReadyToModelNanoseconds": 760723057,
+        "kind": "independent-model-readiness-v1",
+        "operatorWaitIncluded": false,
+        "partial": false,
+        "nativeFrameMeasured": false
+      },
+      "native": {
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "nativeFrameMeasured": true,
+        "processEntryToNativeDataFrameNanoseconds": 1446557819,
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1273237435,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1273237435,
+            "panel": "quota",
+            "valid": true
+          }
+        ]
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 95,
+      "model": {
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "operatorWaitIncluded": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 987087116,
+        "partial": false,
+        "sessionDomainAvailable": true,
+        "processEntryToModelNanoseconds": 1184917102
+      },
+      "native": {
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1667386879,
+            "panel": "quota"
+          }
+        ],
+        "appReadyToNativeDataFrameNanoseconds": 1667386879,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "operatorWaitIncluded": false,
+        "measurement": "startup-frame",
+        "version": 1,
+        "processEntryToNativeDataFrameNanoseconds": 1865216865
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 96,
+      "model": {
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "partial": false,
+        "pollIntervalNanoseconds": 10000000,
+        "processEntryToModelNanoseconds": 1507927989,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 1270519225
+      },
+      "native": {
+        "nativeFrameMeasured": true,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "frames": [
+          {
+            "elapsedNanoseconds": 2052539423,
+            "valid": true,
+            "panel": "quota"
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 2052539423,
+        "processEntryToNativeDataFrameNanoseconds": 2289948187,
+        "version": 1
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 97,
+      "model": {
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "sessionDomainAvailable": true,
+        "appReadyToModelNanoseconds": 1012976424,
+        "processEntryToModelNanoseconds": 1222068322,
+        "kind": "independent-model-readiness-v1",
+        "nativeFrameMeasured": false,
+        "partial": false
+      },
+      "native": {
+        "measurement": "startup-frame",
+        "operatorWaitIncluded": false,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1691155896,
+            "valid": true
+          }
+        ],
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "nativeFrameMeasured": true,
+        "version": 1,
+        "appReadyToNativeDataFrameNanoseconds": 1691155896,
+        "processEntryToNativeDataFrameNanoseconds": 1900247794
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 98,
+      "model": {
+        "operatorWaitIncluded": false,
+        "nativeFrameMeasured": false,
+        "processEntryToModelNanoseconds": 1196156136,
+        "partial": false,
+        "appReadyToModelNanoseconds": 997853445,
+        "kind": "independent-model-readiness-v1",
+        "sessionDomainAvailable": true,
+        "pollIntervalNanoseconds": 10000000
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1860055321,
+        "measurement": "startup-frame",
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "operatorWaitIncluded": false,
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1661752630,
+            "panel": "quota"
+          }
+        ],
+        "nativeFrameMeasured": true,
+        "appReadyToNativeDataFrameNanoseconds": 1661752630
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    },
+    {
+      "index": 99,
+      "model": {
+        "partial": false,
+        "kind": "independent-model-readiness-v1",
+        "appReadyToModelNanoseconds": 965659810,
+        "processEntryToModelNanoseconds": 1197619386,
+        "operatorWaitIncluded": false,
+        "pollIntervalNanoseconds": 10000000,
+        "nativeFrameMeasured": false,
+        "sessionDomainAvailable": true
+      },
+      "native": {
+        "processEntryToNativeDataFrameNanoseconds": 1822405818,
+        "version": 1,
+        "nativeFrameMeasured": true,
+        "frames": [
+          {
+            "elapsedNanoseconds": 1590446242,
+            "panel": "quota",
+            "valid": true
+          }
+        ],
+        "operatorWaitIncluded": false,
+        "appReadyToNativeDataFrameNanoseconds": 1590446242,
+        "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+        "measurement": "startup-frame"
+      },
+      "cleanup": true,
+      "starting_identity_sha256": "ee4a8ce05c4a9f80209604ecf23ce230d6d828fef7eca2ad833ed611547562cb"
+    }
+  ],
+  "limits": [
+    "Only full restore P02 model budget and repair code reviewed",
+    "No icon-input claim; remaining E1 six conditions/startup/real longpressure/P03/alltabs and whole independent review pending",
+    "100 results not pooled with paused diagnosis or3 pilots"
+  ]
+}

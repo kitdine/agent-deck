@@ -4,6 +4,162 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
+	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {
+		let partial = try servingCoordinatorFixture(id: "first-partial", full: false)
+		let final = try servingCoordinatorFixture(id: "final-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: partial, final: final)
+		let quota = SuspendingQuotaRefresher(alerts: [])
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		await quota.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		XCTAssertEqual(coordinator.latestSnapshot, partial.payload)
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial")
+		XCTAssertEqual(host.legacyCalls, 0)
+		if case .running = coordinator.fullAttempt {} else { XCTFail("partial publication ended the finite job") }
+		host.resume()
+		await quota.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.latestSnapshot, final.payload)
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "final-full")
+	}
+
+	func testServingRestoreSurvivesNarrowPartialAndFailedUpdate() async throws {
+		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
+		let partial = try servingCoordinatorFixture(id: "first-partial", full: false,
+			generationChanges: ["usage_revision": 5, "session_revision": 6])
+		let host = ControlledServingRefresher(restore: saved, partial: partial, final: nil)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.servingHeader?.publicationID != "saved-full" { await Task.yield() }
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "saved-full")
+		if case let .degraded(previous, _) = coordinator.state { XCTAssertEqual(previous, saved.payload) }
+		else { XCTFail("failed publication claimed ready") }
+	}
+
+	func testServingCoreEpochChangeReplacesFullViewBeforeFailedUpdate() async throws {
+		try await assertServingIdentityChange(generationChanges: ["core_epoch": 2])
+	}
+
+	func testServingSessionEpochChangeReplacesFullViewBeforeFailedUpdate() async throws {
+		try await assertServingIdentityChange(generationChanges: ["session_epoch": 3])
+	}
+
+	func testServingStateIdentityChangeReplacesFullViewBeforeFailedUpdate() async throws {
+		try await assertServingIdentityChange(generationChanges: ["state_identity": "replacement-state"])
+	}
+
+	func testServingSchemaChangeReplacesFullViewBeforeFailedUpdate() async throws {
+		try await assertServingIdentityChange(generationChanges: ["core_schema": 30])
+	}
+
+	func testServingUnusableNewIdentityClearsFullViewBeforeFailedUpdate() async throws {
+		try await assertServingIdentityChange(generationChanges: ["core_epoch": 2], currentDay: false)
+	}
+
+	func testServingUnusableNewIdentityNormalReturnFinishesWithoutPublicationCallback() async throws {
+		try await assertUnusableServingNormalReturn(publishesFinal: false, waitsForQuota: false)
+	}
+
+	func testServingUnusableNewIdentityNormalReturnFinishesWithQuota() async throws {
+		try await assertUnusableServingNormalReturn(publishesFinal: true, waitsForQuota: true)
+	}
+
+	private func assertUnusableServingNormalReturn(publishesFinal: Bool, waitsForQuota: Bool) async throws {
+		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
+		let replacement = try servingCoordinatorFixture(id: "next-day-partial", full: false,
+			generationChanges: ["core_epoch": 2], day: "2026-08-14", nextDay: "2026-08-15")
+		let host = ControlledServingRefresher(restore: nil, partial: saved, final: replacement, publishesFinal: publishesFinal)
+		let quota = waitsForQuota ? SuspendingQuotaRefresher(alerts: []) : nil
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil, wallNow: { now })
+		var terminalCalls = 0
+		coordinator.setFullAttemptTerminalHandler { terminalCalls += 1 }
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		if let quota { await quota.waitUntilSuspended() }
+		for _ in 0 ..< 100 where coordinator.servingHeader != saved.header { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader, saved.header)
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		host.resume()
+		if let quota {
+			for _ in 0 ..< 100 {
+				if case .failed = coordinator.fullAttempt { break }
+				await Task.yield()
+			}
+			XCTAssertEqual(coordinator.state, .degraded(previous: nil, issue: .unavailable))
+			XCTAssertEqual(terminalCalls, 0, "quota is still suspended")
+			await quota.resume()
+		}
+		await initial.value
+		XCTAssertNil(coordinator.servingHeader)
+		XCTAssertNil(coordinator.latestSnapshot)
+		XCTAssertNil(coordinator.scanProgress)
+		XCTAssertEqual(coordinator.state, .degraded(previous: nil, issue: .unavailable))
+		if case let .failed(_, issue, _) = coordinator.fullAttempt { XCTAssertEqual(issue, .unavailable) }
+		else { XCTFail("normal bootstrap return left the finite job without a failed terminal outcome") }
+		XCTAssertEqual(terminalCalls, 1)
+		XCTAssertEqual(host.legacyCalls, 0)
+	}
+
+	private func assertServingIdentityChange(generationChanges: [String: Any], currentDay: Bool = true) async throws {
+		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
+		let replacement = try servingCoordinatorFixture(id: "replacement-partial", full: false,
+			generationChanges: generationChanges, day: currentDay ? "2026-08-13" : "2026-08-14",
+			nextDay: currentDay ? "2026-08-14" : "2026-08-15")
+		let host = ControlledServingRefresher(restore: nil, partial: saved, final: nil)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 100 where coordinator.servingHeader?.publicationID != "saved-full" { await Task.yield() }
+		XCTAssertEqual(coordinator.latestSnapshot, saved.payload)
+		XCTAssertEqual(coordinator.servingHeader, saved.header)
+
+		host.publish(replacement)
+		let expectedHeader = currentDay ? replacement.header : nil
+		let expectedPayload = currentDay ? replacement.payload : nil
+		for _ in 0 ..< 100 where coordinator.servingHeader != expectedHeader { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader, expectedHeader)
+		XCTAssertEqual(coordinator.latestSnapshot, expectedPayload)
+		XCTAssertEqual(coordinator.state, .refreshing(previous: expectedPayload))
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader, expectedHeader)
+		XCTAssertEqual(coordinator.latestSnapshot, expectedPayload)
+		if case let .degraded(previous, _) = coordinator.state { XCTAssertEqual(previous, expectedPayload) }
+		else { XCTFail("failed publication claimed ready") }
+		XCTAssertEqual(host.legacyCalls, 0)
+	}
+
+	func testServingWindowUsesCalendarAcrossDSTAndRejectsTomorrow() throws {
+		let original = try servingCoordinatorFixture(id: "window", full: true)
+		var body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+		var header = try XCTUnwrap(body["header"] as? [String: Any])
+		header["timezone"] = "America/New_York"
+		header["window_start"] = "2026-11-01T04:00:00Z"
+		header["window_end"] = "2026-11-02T05:00:00Z"
+		header["generated_at"] = "2026-11-01T16:00:00Z"
+		body["header"] = header
+		var payload = try XCTUnwrap(body["payload"] as? [String: Any])
+		var data = try XCTUnwrap(payload["data"] as? [String: Any])
+		payload["generated_at"] = "2026-11-01T16:00:00Z"
+		data["generated_at"] = "2026-11-01T16:00:00Z"
+		payload["data"] = data; body["payload"] = payload
+		let decoded = try decodeDesktopServingSnapshotV2(JSONSerialization.data(withJSONObject: body))
+		let clock = ISO8601DateFormatter()
+		XCTAssertTrue(decoded.header.matchesCurrentDay(now: clock.date(from: "2026-11-01T16:00:00Z")!))
+		XCTAssertFalse(decoded.header.matchesCurrentDay(now: clock.date(from: "2026-11-02T16:00:00Z")!))
+	}
+
 	func testWaitingProgressKeepsInventoryTotalUnknown() {
 		XCTAssertNil(DesktopScanProgress.waiting.usage.total)
 		XCTAssertNil(DesktopScanProgress.waiting.session.total)
@@ -481,6 +637,98 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(emptyFailure.surface, .errorSurface)
 		XCTAssertEqual(emptyFailure.qualifiers, [.failing])
 	}
+
+	func testPresentationAgeReevaluatesTheClockAtTheExactBoundary() throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let generated = try XCTUnwrap(DesktopTimestamp.date(from: complete.data.generatedAt))
+		for offset in [900.0, 900.001, 10.0, 901.0] {
+			let presentation = DesktopPresentationState.derive(from: .ready(complete), now: generated.addingTimeInterval(offset))
+			XCTAssertEqual(presentation.qualifiers.contains(.aged), offset > 900)
+			XCTAssertEqual(presentation.snapshot, complete)
+		}
+	}
+
+	func testDesktopTimestampValueParserPreservesOffsetsAndFractionalPrecision() throws {
+		let whole = try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-13T10:00:00Z"))
+		for value in ["2026-08-13T12:00:00+02:00", "2026-08-13T05:00:00-05:00", "2026-08-13T10:00:00.000Z"] {
+			XCTAssertEqual(DesktopTimestamp.date(from: value), whole)
+		}
+		let fractional = try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-13T10:00:00.123456Z"))
+		XCTAssertEqual(fractional.timeIntervalSince(whole), 0.123456, accuracy: 0.000001)
+		XCTAssertEqual(DesktopTimestamp.date(from: "2026-08-13T12:00:00.123456+02:00"), fractional)
+		let legacy = ISO8601DateFormatter()
+		legacy.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		let extended = "2026-08-13T10:00:00.123456789123Z"
+		XCTAssertEqual(DesktopTimestamp.date(from: extended), try XCTUnwrap(legacy.date(from: extended)))
+		XCTAssertNil(DesktopTimestamp.date(from: "not-a-timestamp"))
+		XCTAssertNil(DesktopTimestamp.date(from: "2026-08-13"))
+		XCTAssertEqual(DesktopTimestamp.date(from: "2026-08-13T10:00:00Z"), whole)
+	}
+}
+
+private func servingCoordinatorFixture(id: String, full: Bool, generationChanges: [String: Any] = [:],
+	day: String = "2026-08-13", nextDay: String = "2026-08-14") throws -> DesktopServingSnapshotV2 {
+	var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
+	let generatedAt = "\(day)T10:00:00Z"
+	payload["generated_at"] = generatedAt
+	var payloadData = try XCTUnwrap(payload["data"] as? [String: Any])
+	payloadData["generated_at"] = generatedAt
+	payload["data"] = payloadData
+	if !full {
+		payload["partial"] = true
+		var data = try XCTUnwrap(payload["data"] as? [String: Any])
+		var sessions = try XCTUnwrap(data["sessions"] as? [String: Any])
+		sessions["available"] = false
+		data["sessions"] = sessions
+		payload["data"] = data
+	}
+	let coverage: [String: Any] = ["state": full ? "complete" : "partial", "inventory_id": "fixture", "observed_at": generatedAt, "sources": 2, "committed": full ? 2 : 1]
+	var generation: [String: Any] = ["state_identity": "fixture-state", "core_epoch": 1, "session_epoch": 2, "core_schema": 31, "session_schema": 1, "usage_revision": 3, "session_revision": 4]
+	generation.merge(generationChanges) { _, new in new }
+	let body: [String: Any] = ["payload": payload, "header": [
+		"format_version": 1, "wire_version": 2, "publication_id": id, "projection_version": 1,
+		"usage_parser_version": 1, "session_prepared": full, "timezone": "UTC",
+		"window_start": "\(day)T00:00:00Z", "window_end": "\(nextDay)T00:00:00Z", "generated_at": generatedAt,
+		"active_generation": "1:3/2:4", "pricing_revision": 3, "data_observed_through": generatedAt, "freshness": "stale",
+		"usage_coverage": coverage, "session_coverage": coverage,
+		"generation": generation,
+	]]
+	return try decodeDesktopServingSnapshotV2(JSONSerialization.data(withJSONObject: body))
+}
+
+@MainActor
+private final class ControlledServingRefresher: DesktopSnapshotRefreshing, DesktopSnapshotBootstrapping {
+	private let restore: DesktopServingSnapshotV2?
+	private let partial: DesktopServingSnapshotV2
+	private let final: DesktopServingSnapshotV2?
+	private let publishesFinal: Bool
+	private var publication: (@Sendable (DesktopServingSnapshotV2) -> Void)?
+	private var continuation: CheckedContinuation<Void, Never>?
+	private(set) var legacyCalls = 0
+	init(restore: DesktopServingSnapshotV2?, partial: DesktopServingSnapshotV2, final: DesktopServingSnapshotV2?, publishesFinal: Bool = true) {
+		self.restore = restore; self.partial = partial; self.final = final
+		self.publishesFinal = publishesFinal
+	}
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		legacyCalls += 1
+		throw HelperExecutionError.malformedOutput
+	}
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		guard let restore else { throw HelperExecutionError.malformedOutput }
+		return restore
+	}
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		self.publication = publication
+		publication(partial)
+		await withCheckedContinuation { continuation = $0 }
+		guard let final else { throw HelperExecutionError.nonZeroExit(1) }
+		if publishesFinal { publication(final) }
+		return final
+	}
+	func waitUntilSuspended() async { while continuation == nil { await Task.yield() } }
+	func publish(_ snapshot: DesktopServingSnapshotV2) { publication?(snapshot) }
+	func resume() { continuation?.resume(); continuation = nil }
 }
 
 private enum CacheReplacementError: Error {

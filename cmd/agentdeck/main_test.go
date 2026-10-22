@@ -1054,8 +1054,13 @@ func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
 			assertReport := func(label string, wantEvents, wantTokens int64) {
 				t.Helper()
 				events, tokens, partial, warnings := runJSON(label == "no-scan")
-				if events != wantEvents || tokens != wantTokens || partial || len(warnings) != 0 {
-					t.Fatalf("%s events=%d tokens=%d partial=%t warnings=%#v; want events=%d tokens=%d partial=false warnings=[]", label, events, tokens, partial, warnings, wantEvents, wantTokens)
+				wantPartial := label == "no-scan"
+				wantWarnings := []string{}
+				if wantPartial {
+					wantWarnings = []string{"source_coverage_unknown"}
+				}
+				if events != wantEvents || tokens != wantTokens || partial != wantPartial || !reflect.DeepEqual(warnings, wantWarnings) {
+					t.Fatalf("%s events=%d tokens=%d partial=%t warnings=%#v; want events=%d tokens=%d partial=%t warnings=%#v", label, events, tokens, partial, warnings, wantEvents, wantTokens, wantPartial, wantWarnings)
 				}
 			}
 			assertReport("no-scan", 1, 10)
@@ -3065,7 +3070,7 @@ INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('claude',
 		Warnings []string       `json:"warnings"`
 		Data     map[string]any `json:"data"`
 	}
-	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Warnings, []string{"defaulted 5m cache creation TTL"}) || !reflect.DeepEqual(envelope.Data["warnings"], []any{"defaulted 5m cache creation TTL"}) {
+	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Warnings, []string{"defaulted 5m cache creation TTL", "source_coverage_unknown"}) || !reflect.DeepEqual(envelope.Data["warnings"], []any{"defaulted 5m cache creation TTL"}) {
 		t.Fatalf("stats warning JSON = %s, %v", encoded.String(), err)
 	}
 	var text bytes.Buffer

@@ -14,6 +14,10 @@ import (
 // delta, so the caller need not materialize two copies of the full FTS view.
 // Unknown change times and incomplete legacy checkpoints always fall back.
 func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, error) {
+	return unchangedSourceSet(ctx, db, paths, true)
+}
+
+func unchangedSourceSet(ctx context.Context, db *sql.DB, paths []source, fullSet bool) (bool, error) {
 	var tables int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE name IN ('session_sources','session_metadata','session_documents')`).Scan(&tables); err != nil {
 		return false, err
@@ -42,6 +46,9 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 			return false, err
 		}
 		src, found := expected[path]
+		if !found && !fullSet {
+			continue
+		}
 		if !found || identity != src.identity || size != src.size || cursor != size ||
 			modified != src.modifiedAt || changed != src.changedAt || priority != int64(src.priority) || parser != ParserVersion {
 			return false, nil
@@ -66,6 +73,16 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 		}
 	}
 	return true, nil
+}
+
+// PreparedSourcesUnchanged proves a full captured inventory without touching
+// FTS projections or reading unchanged source bodies.
+func PreparedSourcesUnchanged(ctx context.Context, db *sql.DB, home string, sources []ingest.Source) (bool, error) {
+	paths, err := sessionSources(home, sources)
+	if err != nil {
+		return false, err
+	}
+	return unchangedSources(ctx, db, paths)
 }
 
 func validateUnchangedObservation(src source, storedAnchor string) error {

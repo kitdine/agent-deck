@@ -1,0 +1,55 @@
+{
+  "finding": "SP-SB-R25-F1",
+  "cycle": 5,
+  "review": "FAIL",
+  "disposition": "STILL_OPEN",
+  "code": {
+    "scripts/scan_performance_switches.py": "71bccbe696309d469eb281c7183468eb6d093428117786d043d64bc3f92f4c18",
+    "scripts/scan_performance_switches_test.py": "2a92f49bd2d445652e9f532d8e8ed6548e5d2f38678ec416c7ade60cddf49b6b"
+  },
+  "verification": {
+    "synthetic_tests": 7,
+    "native_build": "pass",
+    "valid_native_transitions": 0
+  },
+  "pilots": {
+    "pilot.json": {
+      "report_sha256": "2f578368e80edf45efede3f978cca0f1dd9f40265bd7e499b2a0992f29a27241",
+      "native": {
+        "version": 1,
+        "controls": [],
+        "unknownTargetsAreRejected": true,
+        "stimulus": "App-local accessibilityPerformPress on the visible native control; not physical mouse input",
+        "failure": "controlMissing",
+        "samples": [],
+        "measurement": "P03"
+      },
+      "cleanup": true
+    },
+    "pilot-traversal.json": {
+      "report_sha256": "da8372b45459d1a7675788d7370be312b04b77e816e28805428e180f4aa889f8",
+      "native": {
+        "version": 1,
+        "stimulus": "App-local accessibilityPerformPress on the visible native control; not physical mouse input",
+        "accessibilityRoles": [
+          "AXBusyIndicator",
+          "AXButton",
+          "AXGroup",
+          "AXPopover",
+          "AXRadioButton",
+          "AXRadioGroup",
+          "AXScrollArea",
+          "AXStaticText",
+          "AXUnknown"
+        ],
+        "measurement": "P03",
+        "controls": [],
+        "accessibilityNodeCount": 50,
+        "samples": [],
+        "failure": "controlMissing",
+        "unknownTargetsAreRejected": true
+      },
+      "cleanup": true
+    }
+  }
+}

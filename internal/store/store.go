@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 30
+	CurrentSchemaVersion   = 31
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -68,6 +68,10 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		err = ensureSessionIndexGeneration(ctx, db)
 	}
 	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err = ensureSessionServingStorage(ctx, db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -661,6 +665,10 @@ func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time
 // the scan or state-mutation lock domains.
 func AcquireDerivedSnapshotCacheLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
 	return acquireNamedLock(ctx, stateRoot, "derived-snapshot-cache.lock", timeout)
+}
+
+func AcquireServingSnapshotLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLock(ctx, stateRoot, "serving-snapshot.lock", timeout)
 }
 
 func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.Duration) (*Lock, error) {

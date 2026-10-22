@@ -82,3 +82,72 @@ Task checkpoint：ad-scan-performance-doc-req；content_state `73cc09ddca20d4f26
 提交建议：需求文档及评审记录，可纳入七文档设计批次的授权提交。
 
 推送建议：feature/scan-performance；远端未核验，先完成授权提交，再另行授权推送。
+
+## Round 3 — 2026-10-18
+
+## 📋 时间目标补充独立设计复核
+
+Verdict: PASS
+
+Completion gate: VERIFIED
+
+2026-10-19元数据补记：本字段显式表达下文已记录的当轮VERIFIED及其原ContentState，未重判历史内容或改绑到当前版本。
+
+- Reviewer: Codex；仅审查设计补充，没有编写产品实现或改动本次被审需求。无委派。
+- Scope: 2026-10-13 批准的 P01/P02/P04/P11 ×1.5 门槛及人工等待归属；沿用 Round 2 未变的需求边界。
+- P01 为 300/600ms，P02 为 1.125s，P04 为 3s，P11 为 4.5s；其余目标、默认额度/全部面板、正确性、覆盖和最终百次要求没有降低。
+- 内存快开、磁盘恢复、已提交库无缓存、真正首次导入继续分开；部分数据不补零，旧值不冒充新值。人工等待不能计为启动成绩，也不能从总时长倒减得到启动成绩。
+- 联合核对 performance-evaluation 的独立模型/帧时钟、当前采集器的不足百次不报告尾分布，以及 tasks 的 Task 2 出口；没有新需求选择或开放 finding。
+- 本结论只确认设计补充自洽，不确认目标已达成。当前 4,147 文件输入也不能替代 P09 的 ≥5,071 文件规模门。
+- 内容身份、结构检查及 CEv1 结果在本轮最终证据中绑定；历史 Round 1/2 不改写。
+
+本轮最终内容：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；blob `5b68f1f1c317fc5510333ef5fe6f070ed2147931`；digest `5b749723002ac47d944aeec8991102e2ca6aa36803847016eb372191aace8ed0`。
+ContentState：`scan-serving-design-supplement-20261018-req-state-5b749723002a`。标准 Neo4j gate：**VERIFIED**，2/2 required，missing/invalidated/unresolved 均为空。
+结构、空白及 diff 检查均通过；新增 6 项文档证据与 12 条关系完成预检、计数及精确回读。
+Task checkpoint：设计补充已复核，当前未提交版本仍待单独授权交付；不覆盖整体 Task 2/E1 门禁。
+
+
+## Round 4 — 2026-10-19
+
+## 📋 需求范围变更独立评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+P03撤销保留展示路径不等待helper/扫描/OTel的约束；P04/P11接受有界历史证据，不宣称当前构建严格p95通过。P01/P02、压力、正确性及OTel承诺保持。
+
+### 📝 总结
+
+- Reviewer/Method：Codex主会话，独立核对本次范围变更、依赖文档、实现接口及持久证据，无委派、无产品修改。
+- Scope：2026-10-19的P03撤销与P04/P11有界接受，以及相应任务状态；此前Round3的未变设计结论保留。历史finding已关闭，无新增或回归finding。
+- Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；document blob `2570ec1e469e20300d8410910f8de935a159d146`；digest `c5e705d5e7a69f78f780bceea539123e5189554acdaa59e5f01d5db6e8194d88`；ContentState `scan-serving-design-r4-2V6mNrA-req-state`。文档身份按SHA256(`head=<HEAD>;document=<blob>`)；未变原型不重新验收。
+- Evidence：本轮check-docs最初仅报告三份历史Round3缺可解析gate；以其已有VERIFIED事实补齐元数据，保留历史正文/身份。最终文档集、链接、review结构、空白及diff检查以修正后的状态执行；不以文档PASS替代产品性能验收。
+- CEv1：当前文档两项required准则分别绑定结构检查及本轮语义审查，不覆盖旧观察；门禁以本轮精确文档状态查询。Task2整体门仍未完成。
+
+Task checkpoint：ad-scan-performance-doc-req；content_state `c5e705d5e7a69f78f780bceea539123e5189554acdaa59e5f01d5db6e8194d88`；gate VERIFIED。
+提交建议：经授权提交本次已审requirements.md变更及必要记录；不将未完成Task2的产品范围混入文档交付。
+推送建议：经授权推送origin/feature/scan-performance；前置为核验文档提交范围、贡献归属、trailer与SSH签名。
+
+
+### Task2 用户批准的验收修订附记 — 2026-10-20
+
+用户明确授权修改必要标准，并接受当前Task2以PASS完结。
+本附记记录用户批准的验收豁免，不发布新的独立审查轮次；上述历史审查事实保留。
+本次仅将open-path-latency、startup-bootstrap、e1-native-performance三项从Task2
+必需完成条件收窄为用户豁免，其余十项仍必需。100次原生首击p95=536.842034ms、
+p99=623.638814ms的原预算失败保留。当前验收结论由tasks.md顶端最终状态和
+evidence/task2-acceptance-waiver-20261020-receipt.json的精确门禁/本地完成回执管理。
+本次用户直接批准的文字调整无需另造独立Review PASS；无产品代码变更。

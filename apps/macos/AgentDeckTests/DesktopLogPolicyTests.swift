@@ -2,6 +2,17 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopLogPolicyTests: XCTestCase {
+	func testPopoverPreparationHasItsOwnContentFreeTimingStage() throws {
+		DesktopPerformanceTrace.start()
+		DesktopLogger.recordPerformance(DesktopPerformanceInterval(startedAt: 10).sample(.popoverPreparation, endedAt: 25))
+		DesktopLogger.recordPerformance(DesktopPerformanceInterval(startedAt: 30).sample(.popoverOpen, endedAt: 35))
+		let capture = DesktopPerformanceTrace.finish()
+		XCTAssertEqual(capture.samples.map(\.stage), [.popoverPreparation, .popoverOpen])
+		XCTAssertEqual(capture.samples.map(\.durationNanoseconds), [15, 5])
+		let record = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(capture.samples[0])) as? [String: Any])
+		XCTAssertEqual(record["stage"] as? String, "popoverPreparation")
+		XCTAssertEqual(Set(record.keys), ["stage", "durationNanoseconds", "completedAtUptimeNanoseconds"])
+	}
 	func testPerformanceCaptureIsBoundedAndContainsOnlyClassifiedTimings() throws {
 		DesktopPerformanceTrace.start()
 		for _ in 0..<1027 {

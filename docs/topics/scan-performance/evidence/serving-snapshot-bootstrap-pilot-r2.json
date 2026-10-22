@@ -1,0 +1,861 @@
+{
+  "kind": "scan-performance-e1-v1",
+  "input": {
+    "files": 5372,
+    "bytes": 3477971661,
+    "corpus_sha256": "5cb6d2dbfd2936a4552b158e92b77672ed992966041bda0774c8d44d118c5117",
+    "live_db_backup_sha256": {
+      "sessions.sqlite3": "99c215c1256f477c4d27e492047accbfe45d5496385311896bbd66df9400ea79",
+      "agentdeck.sqlite3": "4d55bb85c645ca219c634c36f101b4051938fad153c8d15c6e6c3965bd53198c"
+    },
+    "capture_consistency": "two independent SQLite backups followed by per-file bounded JSONL prefixes; not cross-DB/filesystem atomic"
+  },
+  "samples": [
+    {
+      "pair": 0,
+      "arm": "A",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "stageAggregates": [
+          {
+            "totalNanoseconds": 3012637313,
+            "count": 6,
+            "maximumNanoseconds": 621404218,
+            "stage": "popoverOpen"
+          },
+          {
+            "totalNanoseconds": 1217480418,
+            "count": 3013,
+            "maximumNanoseconds": 856721,
+            "stage": "presentation"
+          },
+          {
+            "totalNanoseconds": 19822454,
+            "count": 1,
+            "maximumNanoseconds": 19822454,
+            "stage": "publication"
+          },
+          {
+            "totalNanoseconds": 74081010,
+            "count": 1,
+            "maximumNanoseconds": 74081010,
+            "stage": "quota"
+          },
+          {
+            "totalNanoseconds": 4509638799,
+            "count": 1,
+            "maximumNanoseconds": 4509638799,
+            "stage": "scanRequest"
+          },
+          {
+            "totalNanoseconds": 12705880,
+            "count": 1,
+            "maximumNanoseconds": 12705880,
+            "stage": "snapshotDecode"
+          },
+          {
+            "totalNanoseconds": 344502490,
+            "count": 1,
+            "maximumNanoseconds": 344502490,
+            "stage": "snapshotRequest"
+          },
+          {
+            "totalNanoseconds": 1015564718,
+            "count": 1,
+            "maximumNanoseconds": 1015564718,
+            "stage": "workerDrain"
+          }
+        ],
+        "initialClickRouted": false,
+        "droppedStages": 0,
+        "launchToDataNanoseconds": 7356412548,
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "version": 1,
+        "readyClickRequired": true,
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": false
+        },
+        "initialDataPresent": false,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 7356412548
+          },
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 972193578
+          },
+          {
+            "panel": "usage",
+            "valid": true,
+            "elapsedNanoseconds": 921973059
+          },
+          {
+            "panel": "breakdown",
+            "valid": true,
+            "elapsedNanoseconds": 938536677
+          },
+          {
+            "panel": "attribution",
+            "valid": true,
+            "elapsedNanoseconds": 952818922
+          },
+          {
+            "panel": "sessions",
+            "valid": true,
+            "elapsedNanoseconds": 975550156
+          }
+        ],
+        "latestDataChanged": false,
+        "stages": [
+          {
+            "stage": "quota",
+            "completedAtUptimeNanoseconds": 180974484675323,
+            "durationNanoseconds": 74081010
+          },
+          {
+            "stage": "scanRequest",
+            "completedAtUptimeNanoseconds": 180978994450698,
+            "durationNanoseconds": 4509638799
+          },
+          {
+            "stage": "workerDrain",
+            "completedAtUptimeNanoseconds": 180980010017811,
+            "durationNanoseconds": 1015564718
+          },
+          {
+            "stage": "snapshotRequest",
+            "completedAtUptimeNanoseconds": 180980354528591,
+            "durationNanoseconds": 344502490
+          },
+          {
+            "stage": "snapshotDecode",
+            "completedAtUptimeNanoseconds": 180980367235997,
+            "durationNanoseconds": 12705880
+          },
+          {
+            "stage": "publication",
+            "completedAtUptimeNanoseconds": 180980387120239,
+            "durationNanoseconds": 19822454
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180981009770889,
+            "durationNanoseconds": 621404218
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180985217248298,
+            "durationNanoseconds": 495309098
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180987373317952,
+            "durationNanoseconds": 482736565
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180989186588919,
+            "durationNanoseconds": 464642675
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180990907319950,
+            "durationNanoseconds": 452695150
+          },
+          {
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180992743742468,
+            "durationNanoseconds": 495849607
+          }
+        ],
+        "helperFailures": [],
+        "executed_app_sha256": "78c56d45a27a8a4b19dd84ee0849e59aaa0c0dffb2ed9d96477b822074126f91",
+        "executed_helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc",
+        "whole_process_ms": 19955.711186,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 0,
+      "arm": "B",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "stages": [
+          {
+            "durationNanoseconds": 362003311,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 180998300398682
+          },
+          {
+            "durationNanoseconds": 365498293,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 181002079106293
+          },
+          {
+            "durationNanoseconds": 265325359,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 181003404229102
+          },
+          {
+            "durationNanoseconds": 235825316,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 181004500162708
+          },
+          {
+            "durationNanoseconds": 229753924,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 181005542291569
+          },
+          {
+            "durationNanoseconds": 348376387,
+            "stage": "publication",
+            "completedAtUptimeNanoseconds": 181006837698899
+          },
+          {
+            "durationNanoseconds": 461785120,
+            "stage": "popoverOpen",
+            "completedAtUptimeNanoseconds": 181007304309670
+          }
+        ],
+        "stageAggregates": [
+          {
+            "totalNanoseconds": 1920191323,
+            "stage": "popoverOpen",
+            "count": 6,
+            "maximumNanoseconds": 461785120
+          },
+          {
+            "totalNanoseconds": 1324967168,
+            "stage": "presentation",
+            "count": 3173,
+            "maximumNanoseconds": 1054048
+          },
+          {
+            "totalNanoseconds": 348376387,
+            "stage": "publication",
+            "count": 1,
+            "maximumNanoseconds": 348376387
+          }
+        ],
+        "nativeEnvironment": {
+          "appIsActive": false,
+          "statusButtonHasWindow": true,
+          "hasScreens": true
+        },
+        "version": 1,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2984899072,
+            "panel": "quota"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 573338520,
+            "panel": "quota"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 431551018,
+            "panel": "usage"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 407200293,
+            "panel": "breakdown"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 411020206,
+            "panel": "attribution"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1023275415,
+            "panel": "sessions"
+          }
+        ],
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "launchToDataNanoseconds": 2984899072,
+        "readyClickRequired": true,
+        "latestDataChanged": false,
+        "droppedStages": 0,
+        "initialDataPresent": false,
+        "helperFailures": [],
+        "initialClickRouted": false,
+        "executed_app_sha256": "505a379a82b656f37e9bf888fedc1923e31862bc6c6dc4a1b53ba778ad64a9ed",
+        "executed_helper_sha256": "66e602bf9cef5f8a20a73d3ebd56029c0b7cdca9789c375a09811f5ccc9223a4",
+        "whole_process_ms": 14223.02159,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 1,
+      "arm": "B",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "readyClickRequired": true,
+        "frames": [
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 3083137788
+          },
+          {
+            "valid": true,
+            "panel": "quota",
+            "elapsedNanoseconds": 458444378
+          },
+          {
+            "valid": true,
+            "panel": "usage",
+            "elapsedNanoseconds": 435572083
+          },
+          {
+            "valid": true,
+            "panel": "breakdown",
+            "elapsedNanoseconds": 394018826
+          },
+          {
+            "valid": true,
+            "panel": "attribution",
+            "elapsedNanoseconds": 408643943
+          },
+          {
+            "elapsedNanoseconds": 1022202833,
+            "valid": true,
+            "panel": "sessions"
+          }
+        ],
+        "initialDataPresent": false,
+        "version": 1,
+        "launchToDataNanoseconds": 3083137788,
+        "initialClickRouted": false,
+        "stages": [
+          {
+            "completedAtUptimeNanoseconds": 181011762516762,
+            "durationNanoseconds": 354324388,
+            "stage": "popoverOpen"
+          },
+          {
+            "completedAtUptimeNanoseconds": 181013064613303,
+            "durationNanoseconds": 268559454,
+            "stage": "popoverOpen"
+          },
+          {
+            "completedAtUptimeNanoseconds": 181014377787262,
+            "durationNanoseconds": 261000683,
+            "stage": "popoverOpen"
+          },
+          {
+            "completedAtUptimeNanoseconds": 181015537287476,
+            "durationNanoseconds": 226058023,
+            "stage": "popoverOpen"
+          },
+          {
+            "completedAtUptimeNanoseconds": 181016622336028,
+            "durationNanoseconds": 236769013,
+            "stage": "popoverOpen"
+          },
+          {
+            "completedAtUptimeNanoseconds": 181018320428452,
+            "durationNanoseconds": 460663988,
+            "stage": "popoverOpen"
+          }
+        ],
+        "nativeEnvironment": {
+          "statusButtonHasWindow": true,
+          "hasScreens": true,
+          "appIsActive": false
+        },
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "helperFailures": [],
+        "stageAggregates": [
+          {
+            "stage": "popoverOpen",
+            "totalNanoseconds": 1807375549,
+            "maximumNanoseconds": 460663988,
+            "count": 6
+          },
+          {
+            "stage": "presentation",
+            "totalNanoseconds": 1274223573,
+            "maximumNanoseconds": 691874,
+            "count": 3168
+          }
+        ],
+        "droppedStages": 0,
+        "latestDataChanged": false,
+        "executed_app_sha256": "505a379a82b656f37e9bf888fedc1923e31862bc6c6dc4a1b53ba778ad64a9ed",
+        "executed_helper_sha256": "66e602bf9cef5f8a20a73d3ebd56029c0b7cdca9789c375a09811f5ccc9223a4",
+        "whole_process_ms": 10778.251747,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 1,
+      "arm": "A",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "helperFailures": [],
+        "initialDataPresent": false,
+        "latestDataChanged": false,
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "stageAggregates": [
+          {
+            "count": 6,
+            "totalNanoseconds": 2408992742,
+            "stage": "popoverOpen",
+            "maximumNanoseconds": 498347968
+          },
+          {
+            "count": 2866,
+            "totalNanoseconds": 1118886231,
+            "stage": "presentation",
+            "maximumNanoseconds": 755004
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 1623629017,
+            "stage": "publication",
+            "maximumNanoseconds": 1623629017
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 210345967,
+            "stage": "quota",
+            "maximumNanoseconds": 210345967
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 4559259234,
+            "stage": "scanRequest",
+            "maximumNanoseconds": 4559259234
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 11905083,
+            "stage": "snapshotDecode",
+            "maximumNanoseconds": 11905083
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 298568204,
+            "stage": "snapshotRequest",
+            "maximumNanoseconds": 298568204
+          },
+          {
+            "count": 1,
+            "totalNanoseconds": 1054276190,
+            "stage": "workerDrain",
+            "maximumNanoseconds": 1054276190
+          }
+        ],
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 7003840523,
+            "valid": true
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 608472472,
+            "panel": "quota"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 976470996,
+            "panel": "usage"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 936900540,
+            "panel": "breakdown"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 936142780,
+            "panel": "attribution"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 918157279,
+            "panel": "sessions"
+          }
+        ],
+        "nativeEnvironment": {
+          "appIsActive": false,
+          "hasScreens": true,
+          "statusButtonHasWindow": true
+        },
+        "launchToDataNanoseconds": 7003840523,
+        "stages": [
+          {
+            "durationNanoseconds": 71046387,
+            "completedAtUptimeNanoseconds": 181020176458713,
+            "stage": "popoverOpen"
+          },
+          {
+            "durationNanoseconds": 210345967,
+            "completedAtUptimeNanoseconds": 181020302318121,
+            "stage": "quota"
+          },
+          {
+            "durationNanoseconds": 4559259234,
+            "completedAtUptimeNanoseconds": 181024861741423,
+            "stage": "scanRequest"
+          },
+          {
+            "durationNanoseconds": 1054276190,
+            "completedAtUptimeNanoseconds": 181025916021164,
+            "stage": "workerDrain"
+          },
+          {
+            "durationNanoseconds": 298568204,
+            "completedAtUptimeNanoseconds": 181026214592222,
+            "stage": "snapshotRequest"
+          },
+          {
+            "durationNanoseconds": 11905083,
+            "completedAtUptimeNanoseconds": 181026226501497,
+            "stage": "snapshotDecode"
+          },
+          {
+            "durationNanoseconds": 1623629017,
+            "completedAtUptimeNanoseconds": 181027850255108,
+            "stage": "publication"
+          },
+          {
+            "durationNanoseconds": 489879827,
+            "completedAtUptimeNanoseconds": 181028348204762,
+            "stage": "popoverOpen"
+          },
+          {
+            "durationNanoseconds": 498347968,
+            "completedAtUptimeNanoseconds": 181030184384414,
+            "stage": "popoverOpen"
+          },
+          {
+            "durationNanoseconds": 455771143,
+            "completedAtUptimeNanoseconds": 181032002661679,
+            "stage": "popoverOpen"
+          },
+          {
+            "durationNanoseconds": 448995263,
+            "completedAtUptimeNanoseconds": 181033761098695,
+            "stage": "popoverOpen"
+          },
+          {
+            "durationNanoseconds": 444952154,
+            "completedAtUptimeNanoseconds": 181035535344009,
+            "stage": "popoverOpen"
+          }
+        ],
+        "version": 1,
+        "droppedStages": 0,
+        "readyClickRequired": false,
+        "initialClickRouted": true,
+        "executed_app_sha256": "78c56d45a27a8a4b19dd84ee0849e59aaa0c0dffb2ed9d96477b822074126f91",
+        "executed_helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc",
+        "whole_process_ms": 16918.936795,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 2,
+      "arm": "A",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "version": 1,
+        "latestDataChanged": false,
+        "helperFailures": [],
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "readyClickRequired": true,
+        "droppedStages": 0,
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": false
+        },
+        "stageAggregates": [
+          {
+            "stage": "popoverOpen",
+            "totalNanoseconds": 3032271724,
+            "count": 6,
+            "maximumNanoseconds": 578886073
+          },
+          {
+            "stage": "presentation",
+            "totalNanoseconds": 1246561694,
+            "count": 3013,
+            "maximumNanoseconds": 762633
+          },
+          {
+            "stage": "publication",
+            "totalNanoseconds": 19057373,
+            "count": 1,
+            "maximumNanoseconds": 19057373
+          },
+          {
+            "stage": "quota",
+            "totalNanoseconds": 71811707,
+            "count": 1,
+            "maximumNanoseconds": 71811707
+          },
+          {
+            "stage": "scanRequest",
+            "totalNanoseconds": 4499724668,
+            "count": 1,
+            "maximumNanoseconds": 4499724668
+          },
+          {
+            "stage": "snapshotDecode",
+            "totalNanoseconds": 12483092,
+            "count": 1,
+            "maximumNanoseconds": 12483092
+          },
+          {
+            "stage": "snapshotRequest",
+            "totalNanoseconds": 294292272,
+            "count": 1,
+            "maximumNanoseconds": 294292272
+          },
+          {
+            "stage": "workerDrain",
+            "totalNanoseconds": 1022672068,
+            "count": 1,
+            "maximumNanoseconds": 1022672068
+          }
+        ],
+        "frames": [
+          {
+            "elapsedNanoseconds": 6915327353,
+            "panel": "quota",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 960946005,
+            "panel": "quota",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 962467466,
+            "panel": "usage",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 948022663,
+            "panel": "breakdown",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 1018629387,
+            "panel": "attribution",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 1012384036,
+            "panel": "sessions",
+            "valid": true
+          }
+        ],
+        "launchToDataNanoseconds": 6915327353,
+        "initialClickRouted": false,
+        "stages": [
+          {
+            "stage": "quota",
+            "durationNanoseconds": 71811707,
+            "completedAtUptimeNanoseconds": 181037371183481
+          },
+          {
+            "stage": "scanRequest",
+            "durationNanoseconds": 4499724668,
+            "completedAtUptimeNanoseconds": 181041871068211
+          },
+          {
+            "stage": "workerDrain",
+            "durationNanoseconds": 1022672068,
+            "completedAtUptimeNanoseconds": 181042893742348
+          },
+          {
+            "stage": "snapshotRequest",
+            "durationNanoseconds": 294292272,
+            "completedAtUptimeNanoseconds": 181043188041389
+          },
+          {
+            "stage": "snapshotDecode",
+            "durationNanoseconds": 12483092,
+            "completedAtUptimeNanoseconds": 181043200526807
+          },
+          {
+            "stage": "publication",
+            "durationNanoseconds": 19057373,
+            "completedAtUptimeNanoseconds": 181043219654953
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 578886073,
+            "completedAtUptimeNanoseconds": 181043800521576
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 486218629,
+            "completedAtUptimeNanoseconds": 181045449153028
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 497620389,
+            "completedAtUptimeNanoseconds": 181047656755695
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 465782362,
+            "completedAtUptimeNanoseconds": 181049459488729
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 525513617,
+            "completedAtUptimeNanoseconds": 181051269613091
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 478250654,
+            "completedAtUptimeNanoseconds": 181053189500421
+          }
+        ],
+        "initialDataPresent": false,
+        "executed_app_sha256": "78c56d45a27a8a4b19dd84ee0849e59aaa0c0dffb2ed9d96477b822074126f91",
+        "executed_helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc",
+        "whole_process_ms": 17345.1377,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 2,
+      "arm": "B",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "initialClickRouted": false,
+        "latestDataChanged": false,
+        "stageAggregates": [
+          {
+            "maximumNanoseconds": 351162210,
+            "totalNanoseconds": 1614508266,
+            "count": 6,
+            "stage": "popoverOpen"
+          },
+          {
+            "maximumNanoseconds": 1961396,
+            "totalNanoseconds": 1201506761,
+            "count": 2784,
+            "stage": "presentation"
+          }
+        ],
+        "helperFailures": [],
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": false
+        },
+        "version": 1,
+        "droppedStages": 0,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 2890375518,
+            "valid": true
+          },
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 334283194,
+            "valid": true
+          },
+          {
+            "panel": "usage",
+            "elapsedNanoseconds": 433935170,
+            "valid": true
+          },
+          {
+            "panel": "breakdown",
+            "elapsedNanoseconds": 392092968,
+            "valid": true
+          },
+          {
+            "panel": "attribution",
+            "elapsedNanoseconds": 429829357,
+            "valid": true
+          },
+          {
+            "panel": "sessions",
+            "elapsedNanoseconds": 524538261,
+            "valid": true
+          }
+        ],
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "initialDataPresent": false,
+        "launchToDataNanoseconds": 2890375518,
+        "stages": [
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 351162210,
+            "completedAtUptimeNanoseconds": 181057447190540
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 267300467,
+            "completedAtUptimeNanoseconds": 181058715927351
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 261570204,
+            "completedAtUptimeNanoseconds": 181059873000015
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 227803087,
+            "completedAtUptimeNanoseconds": 181061001551995
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 245800404,
+            "completedAtUptimeNanoseconds": 181062084331868
+          },
+          {
+            "stage": "popoverOpen",
+            "durationNanoseconds": 260871894,
+            "completedAtUptimeNanoseconds": 181063435546434
+          }
+        ],
+        "readyClickRequired": true,
+        "executed_app_sha256": "505a379a82b656f37e9bf888fedc1923e31862bc6c6dc4a1b53ba778ad64a9ed",
+        "executed_helper_sha256": "66e602bf9cef5f8a20a73d3ebd56029c0b7cdca9789c375a09811f5ccc9223a4",
+        "whole_process_ms": 9894.810616,
+        "whole_process_is_launch_latency": false
+      }
+    }
+  ],
+  "limitations": [
+    "AppKit bitmap+numeric OCR endpoint, not compositor/photon timing",
+    "No authentication files or model requests; isolated default quota has no live credentials",
+    "Small pair counts are pilots, not >=100-condition acceptance",
+    "No page-cache purge",
+    "No E1 PASS inferred from capture or build"
+  ],
+  "identity": {
+    "A": {
+      "probe_sha256": "1707907534e40cda783baa397481794bdaa0a94c079b6403164ccfcfed0723a8",
+      "app_sha256": "78c56d45a27a8a4b19dd84ee0849e59aaa0c0dffb2ed9d96477b822074126f91",
+      "helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc"
+    },
+    "B": {
+      "probe_sha256": "1707907534e40cda783baa397481794bdaa0a94c079b6403164ccfcfed0723a8",
+      "app_sha256": "505a379a82b656f37e9bf888fedc1923e31862bc6c6dc4a1b53ba778ad64a9ed",
+      "helper_sha256": "66e602bf9cef5f8a20a73d3ebd56029c0b7cdca9789c375a09811f5ccc9223a4"
+    }
+  }
+}

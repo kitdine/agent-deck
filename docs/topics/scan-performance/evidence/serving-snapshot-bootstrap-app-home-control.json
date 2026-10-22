@@ -1,0 +1,41 @@
+{
+  "kind": "scan-performance-private-native-environment-v1",
+  "method": "Next one-variable control: use normal OS-user HOME for App framework identity after removing CFFIXED_USER_HOME. AGENTDECK_TEST_HOME, CODEX_HOME, XDG and TMPDIR stay private; verified Debug delegate overrides helper HOME, state/store/defaults and client-settings URL to that private home before use. No live source capture, auth reads, model requests, permission or registry writes",
+  "source_report_sha256": "2903dfee7367f99ef2168a9203a67cc6a241045ac3aca8198bf5d774a43edc02",
+  "native": {
+    "helperFailures": [],
+    "stageAggregates": [
+      {
+        "stage": "presentation",
+        "count": 13,
+        "totalNanoseconds": 124673,
+        "maximumNanoseconds": 106108
+      }
+    ],
+    "nativeEnvironment": {
+      "statusButtonHasWindow": true,
+      "firstAppActive": false,
+      "hasScreens": true,
+      "firstButtonVisible": true,
+      "firstEventPostingAllowed": false,
+      "appIsActive": false,
+      "firstActionReached": false
+    },
+    "readyClickRequired": false,
+    "initialClickRouted": false,
+    "stages": [],
+    "frames": [],
+    "clickStimulus": "WindowServer CGEvent leftMouseDown/leftMouseUp at isolated status button; activation after initial routing; synthetic global input, not a physical mouse",
+    "droppedStages": 0,
+    "version": 1,
+    "initialDataPresent": false,
+    "failure": "native_mouse_event_not_routed",
+    "latestDataChanged": false,
+    "executed_app_sha256": "fef7734f6f252f1651113655996cc166a19781acd558b431b58bc9f5aaf19ab5",
+    "executed_helper_sha256": "5d92d350abf2a906e5aac24adf468660cbd7e9c6f438edcb7f45d690c64f2b29",
+    "whole_process_ms": 621.360544,
+    "whole_process_is_launch_latency": false
+  },
+  "private_app_cleanup_verified": true,
+  "limitation": "Environment/permission diagnostic only; not an acceptance latency sample"
+}

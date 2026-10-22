@@ -1,6 +1,30 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%1$lld events · %2$lld sessions · — projects": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%1$lld events · %2$lld sessions · — projects" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%1$lld 次事件 · %2$lld 个会话 · — 个项目" } }
+      }
+    },
+    "Collected usage · source coverage is partial": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Collected usage · source coverage is partial" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已采集用量 · 来源覆盖尚不完整" } }
+      }
+    },
+    "Stored usage · source coverage is unknown": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Stored usage · source coverage is unknown" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已存用量 · 来源覆盖未知" } }
+      }
+    },
+    "Stored usage · source updates are pending": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Stored usage · source updates are pending" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已存用量 · 来源更新待提交" } }
+      }
+    },
     "State": {
       "localizations": {
         "en": {

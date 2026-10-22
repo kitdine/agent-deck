@@ -57,6 +57,7 @@ type scanReceipt struct {
 	AcceptedAt    time.Time    `json:"accepted_at"`
 	TerminalAt    *time.Time   `json:"terminal_at,omitempty"`
 	Result        *Result      `json:"result,omitempty"`
+	AppOwned      bool         `json:"app_owned,omitempty"`
 }
 
 type receiptJournal struct {

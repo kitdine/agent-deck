@@ -85,7 +85,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := (desktop.Service{
+			service := desktop.Service{
 				RegistrationProbe: doctorRegistrationProbe,
 				StateRoot:         stateRoot,
 				Home:              home,
@@ -93,7 +93,18 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 				Vault:             newCredentialVault(stateRoot),
 				Now:               desktopNow,
 				Location:          displayLocation(),
-			}).Build(cmd.Context(), desktop.Request{WireVersion: wireVersion, RecentLimit: recentLimit})
+			}
+			if wireVersion == desktop.ServingWireVersion {
+				if stream {
+					return &inputError{err: errors.New("serving snapshot does not use the v1 chunk stream")}
+				}
+				prepared, err := service.ReadOrBootstrapServingSnapshot(cmd.Context(), desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: recentLimit})
+				if err != nil {
+					return err
+				}
+				return writeEnvelope(opts.stdout, opts.format, "desktop.serving", prepared, prepared.Payload.Partial, prepared.Payload.Warnings)
+			}
+			result, err := service.Build(cmd.Context(), desktop.Request{WireVersion: wireVersion, RecentLimit: recentLimit})
 			if err != nil {
 				return err
 			}
@@ -135,8 +146,58 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
 	}
-	command.AddCommand(snapshot, refreshIndexes, newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
+	command.AddCommand(snapshot, refreshIndexes, newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
 	return command
+}
+
+type desktopBootstrapEvent struct {
+	SchemaVersion int    `json:"schema_version"`
+	Command       string `json:"command"`
+	Type          string `json:"type"`
+	Data          any    `json:"data"`
+}
+
+func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{Use: "bootstrap", Short: "Run an App-owned finite bootstrap and stream publications", Hidden: true, Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"}, Args: exactArgs(0), RunE: func(cmd *cobra.Command, _ []string) error {
+		if opts.format != "ndjson" {
+			return &inputError{err: errors.New("desktop bootstrap requires --format ndjson")}
+		}
+		root, err := opts.stateRoot()
+		if err != nil {
+			return err
+		}
+		home, err := userHomeDir()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithCancel(cmd.Context())
+		defer cancel()
+		encoder := json.NewEncoder(opts.stdout)
+		var outputErr error
+		emit := func(kind string, value any) {
+			if outputErr != nil {
+				return
+			}
+			outputErr = encoder.Encode(desktopBootstrapEvent{SchemaVersion: 2, Command: "desktop.bootstrap", Type: kind, Data: value})
+			if outputErr != nil {
+				cancel()
+			}
+		}
+		client := scanruntime.Client{StateRoot: root, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow, AppOwned: true,
+			OnPublication: func(value desktop.ServingSnapshot) { emit("publication", value) }}
+		result, err := client.RequestWithProgress(ctx, scanruntime.ScopeBoth, func(value scanruntime.Progress) { emit("progress", value) })
+		if outputErr != nil {
+			return outputErr
+		}
+		if err != nil {
+			return err
+		}
+		emit("terminal", result)
+		if result.Usage.State != "completed" || result.Session.State != "completed" {
+			return errors.New("desktop bootstrap did not complete")
+		}
+		return outputErr
+	}}
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {

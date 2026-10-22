@@ -1,0 +1,22 @@
+{
+  "kind": "scan-performance-private-runtime-identity-v1",
+  "method": "Targeted NSRunningApplication read during LaunchServices launch of the exact registered signed A artifact; no permission or registry mutation",
+  "artifact_source_report_sha256": "2903dfee7367f99ef2168a9203a67cc6a241045ac3aca8198bf5d774a43edc02",
+  "observed_runtime_identity": "runtime_not_observed",
+  "observer_exit_status": 1,
+  "native_failure": "native_mouse_event_not_routed",
+  "native_environment": {
+    "firstEventPostingAllowed": false,
+    "statusButtonHasWindow": true,
+    "appIsActive": false,
+    "firstActionReached": false,
+    "firstButtonVisible": true,
+    "hasScreens": true,
+    "firstAppActive": false
+  },
+  "initial_click_routed": false,
+  "ready_click_required": false,
+  "valid_frames": 0,
+  "private_app_cleanup_verified": true,
+  "limitation": "Identity diagnostic only; no performance PASS or proof of effective TCC grant"
+}

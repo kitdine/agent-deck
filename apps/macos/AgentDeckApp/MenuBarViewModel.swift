@@ -330,6 +330,7 @@ final class MenuBarViewModel {
 	var pendingConfirmation: ProviderSwitchTarget?
 	private(set) var collapsedSectionIDs = Set<String>()
 
+	private var dateRevision: UInt64 = 0
 	@ObservationIgnored private let now: () -> Date
 
 	init(
@@ -344,9 +345,25 @@ final class MenuBarViewModel {
 		self.now = now
 	}
 
+	/// Date changes invalidate Observation even when no new publication arrives.
+	func invalidateDate() {
+		dateRevision &+= 1
+	}
+
+	var nextDateInvalidationDelay: TimeInterval {
+		let instant = now()
+		var calendar = Calendar(identifier: .gregorian)
+		let zone = coordinator.servingHeader?.timezone ?? "Local"
+		calendar.timeZone = zone == "Local" ? .current : TimeZone(identifier: zone) ?? .current
+		let start = calendar.startOfDay(for: instant)
+		let next = calendar.date(byAdding: .day, value: 1, to: start)!
+		return max(0.001, next.timeIntervalSince(instant))
+	}
+
 	// MARK: Surface and qualifiers
 
 	var presentation: DesktopPresentationState {
+		_ = dateRevision
 		let interval = DesktopPerformanceInterval()
 		let result = DesktopPresentationState.derive(from: coordinator.state, now: now())
 		DesktopLogger.recordPerformance(interval.sample(.presentation))
@@ -355,7 +372,13 @@ final class MenuBarViewModel {
 
 	var surface: DesktopPresentationSurface { presentation.surface }
 
-	var qualifiers: [DesktopPresentationQualifier] { presentation.qualifiers }
+	var qualifiers: [DesktopPresentationQualifier] {
+		var values = presentation.qualifiers
+		if coordinator.servingHeader?.freshness == "stale", !values.contains(.stale), !values.contains(.aged) {
+			values.insert(.stale, at: 0)
+		}
+		return values
+	}
 
 	var isRefreshing: Bool {
 		refreshActionState == .running
@@ -572,6 +595,9 @@ final class MenuBarViewModel {
 	/// An unrecognized code is shown verbatim rather than dropped.
 	func warningCopy(_ code: String) -> String {
 		switch code {
+		case "source_coverage_partial": t(DesktopCopy.sourceCoveragePartial)
+		case "source_coverage_unknown": t(DesktopCopy.sourceCoverageUnknown)
+		case "source_update_pending": t(DesktopCopy.sourceUpdatePending)
 		case "provider_unavailable": t(DesktopCopy.warningProviderUnavailable)
 		case "provider_candidates_unavailable": t(DesktopCopy.warningProviderCandidatesUnavailable)
 		case "usage_unavailable": t(DesktopCopy.warningUsageUnavailable)
@@ -589,10 +615,11 @@ final class MenuBarViewModel {
 		guard let snapshot else { return [] }
 		let subtotals = snapshot.usage.presentation.clientSubtotals
 		return snapshot.usage.presentation.scopes.map { scope in
-			let subtotal = subtotals.available
+			let subtotal = isPeriodAvailable(selectedPeriod) && subtotals.available
 				? subtotals.items.first(where: { $0.period == selectedPeriod && $0.client == scope.client })?.value
 				: nil
-			let totals = scope.periods.items.first(where: { $0.period == selectedPeriod })?.totals
+			let totals = isPeriodAvailable(selectedPeriod)
+				? scope.periods.items.first(where: { $0.period == selectedPeriod })?.totals : nil
 			return FilterOption(
 				id: scope.client,
 				label: clientLabel(scope.client),
@@ -602,6 +629,9 @@ final class MenuBarViewModel {
 	}
 
 	var periodOptions: [FilterOption] {
+		if coordinator.servingHeader != nil {
+			return ["today", "7d", "30d"].map { FilterOption(id: $0, label: periodLabel($0), value: nil) }
+		}
 		guard let scope = activeScope else { return [] }
 		return scope.periods.items.map { FilterOption(id: $0.period, label: periodLabel($0.period), value: nil) }
 	}
@@ -628,7 +658,7 @@ final class MenuBarViewModel {
 	private func panelHasUnavailableData(_ panel: MenuBarPanel) -> Bool {
 		guard let snapshot else { return false }
 		if panel == .quota { return !snapshot.subscription.available }
-		guard let scope = activeScope else { return true }
+		guard isPeriodAvailable(selectedPeriod), let scope = activeScope else { return true }
 		switch panel {
 		case .quota: return !snapshot.subscription.available
 		case .usage:
@@ -654,20 +684,30 @@ final class MenuBarViewModel {
 			?? scopes.first
 	}
 
+	private func isPeriodAvailable(_ period: String) -> Bool {
+		_ = dateRevision
+		// Historical periods keep their recorded window; today must still name
+		// the installed publication's actual calendar day on every surface.
+		guard period == "today", let header = coordinator.servingHeader else { return true }
+		return header.matchesCurrentDay(now: now())
+	}
+
 	var activePeriod: DesktopUsagePeriodV1? {
-		activeScope?.periods.items.first(where: { $0.period == selectedPeriod })
+		guard isPeriodAvailable(selectedPeriod) else { return nil }
+		return activeScope?.periods.items.first(where: { $0.period == selectedPeriod })
 	}
 
 	// MARK: Hero
 
 	var hero: MenuBarHero? {
 		guard let snapshot, let period = activePeriod else { return nil }
-		let projects = sessionStatistics?.distinctProjects ?? 0
+		let projects = sessionStatistics?.distinctProjects
 		return MenuBarHero(
 			scopeLine: "\(periodLabel(period.period)) · \(DesktopFormat.day(snapshot.generatedAt))",
 			amount: costText(period.totals),
 			tokens: DesktopFormat.tokens(period.totals.tokens),
-			counts: t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64(projects)),
+			counts: projects.map { t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64($0)) }
+				?? t(DesktopCopy.heroCountsUnknownProjects, period.totals.events, period.totals.sessions),
 			costIncomplete: period.totals.pricingComplete
 				? nil
 				: period.totals.unpricedComponents > 0
@@ -837,7 +877,7 @@ final class MenuBarViewModel {
 	// MARK: Attribution panel
 
 	var attributionPanel: AttributionPanelModel {
-		guard let scope = activeScope else {
+		guard isPeriodAvailable(selectedPeriod), let scope = activeScope else {
 			return AttributionPanelModel(
 				qualityAvailable: false, tiers: [], providerGroups: [],
 				pricingAvailable: false, pricingHeadline: "", pricingCoverage: 0, unpricedIdentifiers: []
@@ -887,12 +927,12 @@ final class MenuBarViewModel {
 	// MARK: Sessions panel
 
 	var sessionStatistics: DesktopSessionsPeriodItemV1? {
-		guard let snapshot, snapshot.sessions.periods.available else { return nil }
+		guard isPeriodAvailable(selectedPeriod), let snapshot, snapshot.sessions.periods.available else { return nil }
 		return snapshot.sessions.periods.items.first(where: { $0.period == selectedPeriod && $0.client == selectedClient })
 	}
 
 	var sessionsPanel: SessionsPanelModel {
-		guard let snapshot, snapshot.sessions.available else {
+		guard isPeriodAvailable(selectedPeriod), let snapshot, snapshot.sessions.available else {
 			return SessionsPanelModel(
 				available: false,
 				stats: [],
@@ -1571,7 +1611,7 @@ final class MenuBarViewModel {
 	/// The item follows the panel filter only when the preference says so, so a
 	/// filter the user set and then dismissed never silently narrows it.
 	var menuBarText: String? {
-		guard preferences.menuBarValue != .icon else { return nil }
+		guard preferences.menuBarValue != .icon, isPeriodAvailable("today") else { return nil }
 		let client = preferences.menuBarScope == .followPanel ? selectedClient : "all"
 		guard let snapshot else { return nil }
 		let subtotals = snapshot.usage.presentation.clientSubtotals

@@ -1,10 +1,23 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-20
 ---
 
 # 先行评估：哪些等待能被减少
+
+## Task 2 最终接受决定 — 2026-10-20
+
+按[用户批准的最终验收标准](requirements.md#task-2-用户批准的最终验收标准--2026-10-20)，
+本次Task2的首击延迟、启动恢复剩余范围及完整E1矩阵不再作为完成阻断条件。
+100次同cohort原生首击完整采集，未因尾部耗时早停：p95=536.842034ms、
+p99=623.638814ms、最大797.622640ms；100次超过300ms，3次超过600ms；
+100次PID、有效首帧与清理检查均通过。原数值门的失败结论保持真实。
+
+本次接受基于用户明确的风险接受和标准修订，保留既有机制/正确性/回归/独立审查PASS。
+不再继续Task2性能优化、压力补采或新测量工具；本节优先于下文历史实验计划中仍要求
+补齐这些项目的表述。其他任务和后续发布要求不受影响。
+详见[最终接受审计](evidence/task2-acceptance-waiver-20261020.json)。
 
 依赖 [需求](requirements.md) 和 [架构](architecture.md)。这是设计候选与有界实验，
 不是产品实现验收或独立评审 PASS。
@@ -227,10 +240,82 @@ timezone/window/preferences；冻结 corpus、DB起点和合成 delta。双方�
 ### E1：先证伪展示方案
 
 保持旧有限 pipeline，先完整 restore。比较同前置条件的真实 native 路径，正确性验证
-失败的样本不计入成功分布。小样本只作可行性筛选，最终 native 每条件 ≥100 次。
+失败的样本不计入成功分布。保留量化门的 native 条件最终每条件 ≥100 次；
+P04/P11按2026-10-19用户决定接受已有有界证据，不再强制百次补测。
 慢额度 30 s、扫描 >120 s 下旧有效数据仍可显示。没有cache但有DB另测只读bootstrap。
 E1覆盖首次day优先与有库今天查询，不能只测已保存视图。首批发布不等worker全局终结。
 E1失败先处理视图/主线程/恢复，不能增加worker掩盖问题；warm无改善就明报无改善。
+
+#### 人工点击预检 — 2026-10-13
+
+用户已批准用物理鼠标单击隔离测试 App，不再把自动 CGEvent 授权作为测量入口的必要前置。
+`scripts/scan-performance-serving.py --click-dispatch manual` 只修改私有导出的探针；
+菜单栏 `TEST A` / `TEST B` 分别标识基线和候选，保持正常按钮 target/action 和真实 NSPopover。
+等待操作员的时段独立计量，点击区间从按钮收到真实鼠标 action 的入口到有效数值 bitmap
+draw/readback 完成；这个起点不冒充物理 mouse-down，终点不冒充 compositor/photon。
+等待指示在点击前写入，OCR 校验在帧计时结束后执行，原始图像和识别文本仍只留在内存。
+计时前分别确认 A/B 的测试图标对操作员可见；菜单栏管理器可能分别收起不同私有 App。
+操作员未见图标与产品耗时分开诊断，不能把等待操作超时直接归因为操作员未点击。
+已完成的 arm 不要求重做：`--arms B --reuse-seed-from-report <prior-report>` 可作单臂续接，
+但必须同时复核冻结输入、App/probe 身份、环境、点击控制与两份起始数据库的精确哈希。
+任一漂移或原 seed 缺失即拒绝复用；单臂报告本身不冒充完整交错 A/B。
+
+首次点击时数据是否已准备必须单列。人工等待期间引擎可能已经完成准备，所以含人工等待的
+`launchToDataNanoseconds` 和整个进程时长不能用于判定 P02/P04/P11 启动预算，也不能通过减去
+等待时间来伪造无等待启动。无人工等待的模型/启动准备和相应首批数据条件仍须另证。
+丢失点击、操作员超时、缺少数值帧均记为失败，不自动注入、不重试成首次成功、不填零延迟。
+
+先每个关键条件人工 5–10 次作测量入口和可行性预检，报告逐次值、中位数、最大值及失败数。
+这不替代最终 native 每条件 ≥100 次，也不据小样本声称 p95/p99 已通过。
+P01/P02/P04/P11 的用户批准 ×1.5 门槛由 [需求](requirements.md#数值验收提案) 统一维护；
+慢额度/超长扫描、默认额度/全部面板、输入冻结、正确性及原始 A/B 身份要求不变。
+
+#### 可复现 E1 条件调度与独立时钟 — 2026-10-14
+
+用户批准 Task 2 验收工具收尾。`scripts/scan-performance-serving.py --matrix` 与
+`scripts/scan_performance_serving_matrix.py` 分开处理 warm、restore、
+committed-today-no-cache、first-import、rebuilding、slow-quota，不把单一无缓存条件
+或同一进程的五个面板合并成完整矩阵/一百次首次点击。
+
+- 人工首击在同一进程中等待图标可见，最长 600s；可见确认以请求 instance 绑定，
+  然后才启用原操作等待预算。直接真实点击也可立即接受，无重启、自动注入或重试。
+  `--confirm-visible --root <本轮私有根>` 只确认当前请求，不开始另一轮实验。
+- `--measurement model` 是无需人工操作的模型准备预检。独立 main-actor 观察从进程入口、
+  AppKit didFinishLaunching 入口到首个可用用量模型，10ms 轮询成本包含在观察内；
+  它不打开窗口、不点击、不用总 launch 减去人工等待，也不叫首个有效数值帧。
+  P02 的模型子路径可独立报告；P04/P11 的原生绘制有界证据按下节用户决定接受，不强制补测。
+- `--measurement startup-frame` 是单列的就绪态自动展示控制：独立等待真实模型后调用
+  controller 原 toggle 路径，并按既有 baseline 的 show 后 activation 顺序捕获可见
+  NSPopover 数值 bitmap，终点先于 OCR。提前自动 show 的不稳定观察保留，不重试重标；
+  就绪态控制不是对其根因已经修复的声明，也不覆盖“加载中立即点击”的行为。
+  进程入口/App-ready 到帧不含人工等待；它不是鼠标事件、真实 icon action 或 P01 样本，
+  不据此绕过 warm/压力条件的图标输入要求。每次控制会短暂展示隔离测试 popover。
+- `--first-click-only` 每次真实 launch 只收一个首次 action/frame；后续面板不得混入首次样本。
+  P03 独立验收已于 2026-10-19 撤销，不再要求另建切换样本集。各 arm/condition 分组，失败、重试、无效帧和 model-only 不填入
+  首击分布。每组不足 100 个有效首次帧不输出 p95/p99，不自发宣布 E1 VERIFIED。
+- 恢复缓存由真实 candidate finite bootstrap 产生；每组还原准确起始数据库/缓存，
+  已接受 worker 退出之前不重置私有状态。A/B 的 schema/恢复能力差异不能被默默
+  绕过；旧 A 不能读取相同缓存起点时保留失败，不从候选单臂计算 A/B 加速比。
+  复制 state 会改变绑定的目录/DB inode，因此最后一次复制之后必须在原位重新由
+  真实 producer 生成缓存，按 App 使用的根拼写读取并核对 publication，而非改写 header。
+  私有 Swift runner 的 state 根与 worker 同为 canonical 路径，HOME/source 路径不变，
+  避免 `/tmp`/`/private/tmp` 别名把 restore 暗中变成只读 today fallback；不改产品源码。
+  普通 committed-today-no-cache 使用已提交的当前 candidate schema，仅去除保存文件；
+  `upgrade-no-cache` 是额外的旧库升级诊断，不混入普通 P04。warm 从共同起始库完成
+  非计时准备后确认 usage/session 内存数据均可用，再请求首次物理点击。
+- 慢额度是私有探针可取消的 30s 依赖延迟，不冒充真实网络。首击是否发生在延迟
+  未结束时及实际延迟长度单列。重建使用私有真实 `usage rebuild`，不是 sleep；
+  CLI 整体 wall 与实际 processing/queue 不混称，未确认所需压力即不计通过。
+- 可将已批准冻结 JSONL 克隆到全新私有根，不重采 live HOME、不改变旧捕获。
+  如旧捕获已无当前日事件，`--today-sentinel` 明示添加一条可核对的合成当天来源，
+  单列其 bytes/hash/mtime。该受控今天条件不推广为更大真实当天输入的 P11 保证。
+
+重现需要操作员批准准备的冻结输入；私有语料与构建目录不是持久证据引用。新结果保留
+源码/探针/四项 artifact 身份及脱敏事实到本 topic evidence；工具测试/构建和模型预检
+本身不完成 Task 2、设计补充复核或独立实现评审。
+首轮 15 次模型预检与旧库/克隆口径更正见
+[模型预检](evidence/serving-matrix-model-pilot-20261014.json)；当前库无缓存及启动绘制另作新观察。
+该首轮 restore 标签仅表示存在保存文件，未证实缓存命中；不能拿它当真实磁盘恢复的成绩。
 
 ### E2：热点、分段与资源预算
 
@@ -263,3 +348,37 @@ OTel单测producer导出→durable ingress→exact reconciliation→新数据帧
 设计文档与共享原型不构成产品性能保证。只有本文件明确列出的对照和正确性范围可作结论。
 原生实验也不替代全部 P01–P11、最终 Release、资源/跨天/升级/CLI/OTel/独立评审门。
 没有测出的收益保持未验证；没有改善的场景直接报告，不追加不相关优化。
+
+### R7 首帧捕获与准备成本归属
+
+2026-10-16 的 R7 修复保留正常 status-item action 起点及
+AppKit layout/display/cacheDisplay 数值 bitmap 终点。若 action 时已有有效用量数据，
+探针在原 toggle/show/窗口激活返回后立即保留首个可用 bitmap；OCR 仍在计时终点之后，
+并与捕获时的 hero 绑定。未就绪的点击仍走既有数据就绪等待路径，不能套用 warm 时钟。
+记录 `firstFrameCaptureOrigin` 区分这两条路径，另报
+`probeResumeAfterActionNanoseconds`；探针 Task 稍后被调度的等待不再冒充首个帧的绘制成本。
+该修正不把 action 入口改成物理 mouse-down，也不把 bitmap 改称 compositor/photon。
+历史分布保持原测量口径，不倒减等待、拼接样本或重标旧 A/B 成绩；新候选须独立复验。
+
+产品的初始准备成本继续计入独立 `popoverPreparation`：在未显示窗口中准备同一 hosting
+层级及显示链路，首次点击仍由原 NSPopover 显示并接管该视图。准备窗口不 order front、
+不请求焦点、不启动 helper；显示链路不加入 run loop。首次显示后关闭准备窗口，控制器
+销毁时释放剩余准备资源。准备工作是实际启动成本，不能据此宣称整体启动更快。
+
+## P03 测量工作退役 — 2026-10-19
+
+依据 [需求中的用户决定](requirements.md#p03-独立验收项撤销--2026-10-19)，
+停止 P03 专用采集器开发/修复、权限诊断、精密计时、轻量体验验收及百次采样。
+现有采集脚本和历史报告只作历史诊断材料，不再作为本主题完成前必须修复或运行的入口；
+本次不删除脚本或改产品代码。其他 native 条件的样本和性能门不受影响。
+callback-to-bitmap 的历史数值不升级为产品性能结果；无新的性能 PASS。
+保留展示路径无 helper/扫描/OTel 等待的架构约束，按实际改动或观察到的回归选择检查。
+
+## P04/P11 有界证据接受 — 2026-10-19
+
+按 [用户批准的启动验收范围](requirements.md#p04p11-有界启动验收--2026-10-19)，
+接受已留存的有库无缓存5次原生位图帧与首次导入有界样本，不继续补百次或开发测量工具。
+本节优先于历史“六条件各百次”“P04/P11原生出口仍须另证”的未完成表述。
+不修改原报告、原失败、原二进制身份和采集方法；App-ready模型、位图帧、真实首击
+及系统合成呈现仍严格区分，不计算或声称小样本p95通过。
+历史方法说明仍用于解释旧记录，P01/P02及压力等未调整条件不受此例外影响。

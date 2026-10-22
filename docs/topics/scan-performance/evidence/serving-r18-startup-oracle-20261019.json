@@ -1,0 +1,254 @@
+{
+  "kind": "scan-serving-r18-startup-oracle-review-v1",
+  "recorded_at": "2026-10-19T06:32:31.261941+00:00",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "content_state_id": "scan-serving-e1-r18-20261019-state",
+  "finding": "SP-SB-R18-F1",
+  "input": {
+    "files": 4299,
+    "bytes": 734012799,
+    "corpus_sha256": "10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380",
+    "live_db_backup_sha256": {
+      "sessions.sqlite3": "d3b5f9bb50efe642ce5da260cb076b85efaf7247673cee63bc13800507aadf7a",
+      "agentdeck.sqlite3": "a32c530c3c29a7e4729522fe82768ca1d2350afee0b0ceb56fbf5e96cb987203"
+    },
+    "capture_consistency": "two independent SQLite backups followed by per-file bounded JSONL prefixes; not cross-DB/filesystem atomic"
+  },
+  "environment": {
+    "macos": "26.7.2",
+    "architecture": "x86_64",
+    "timezone": "America/New_York",
+    "locale": "en",
+    "otel": "off",
+    "harness_sha256": "e7d301349369216ec1d5d8376ef3d4b6652e99794e15d77ce33b95eba7661a66",
+    "matrix_module_sha256": "7015f1abaa68211fb517596b53c6844ce3cff86edd8bd8cf96d4aed3570f7492",
+    "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+    "toolchain": {
+      "go": "go version go1.27.1 darwin/amd64",
+      "xcode": "Xcode 26.4\nBuild version 17E192",
+      "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+    }
+  },
+  "prepared_identity": {
+    "A": {
+      "probe_sha256": "880bcd10492d1487796b66f84de6604bcb7bcb8af96d2bb9c9a9210139ae9bd5",
+      "app_sha256": "67235d081b993695964368246a85b22ced6e4adbacc0d14efa82fd62789fa050",
+      "helper_sha256": "28fa8b31fd8ede8e789808cdfa0c60401166b0f4ea65e949e2a2e5842ee2ec0d",
+      "framework_sha256": "cb3804df4c9192b9a01f49f7f00144db11bb9cf9b3154ed6989f9e64c62a83c8",
+      "widget_sha256": "f3bf567451f5174870efc6be81315e812075af9db445a3a22c1df4857ae4aa09",
+      "delegate_probe_sha256": "a2e89cd7b51528898760688d6f0abc873bcc632fc6cc1d733202fe430e62625a",
+      "shared_probe_sha256": "4afcee12924ca2f21bebea945cf7b696524644a167038f84e94b54709d071b78",
+      "pressure_main_sha256": "546c4045dd5b29e6ef5ff27b7e99cf819ce1b4946a1229cda39f4421e13070a2",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    },
+    "B": {
+      "probe_sha256": "e9e4409d74992cd338711634f9e07045c9377d69531b34d0d84712e3a5ba4463",
+      "app_sha256": "9422b729a7e7698188ed2f677432d1ceebb5b3c14bbc62019263c20841f730b7",
+      "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+      "framework_sha256": "11b1f94198c55c8592caf53f0a835d1d0ce6cc1131e77b1e7b199e826fdebeb4",
+      "widget_sha256": "46feb18af96b7e0ae52b9e98893595fe49627a2b5bdb36f67d9212c77d8b0439",
+      "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+      "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+      "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+      "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d"
+    }
+  },
+  "original_pilot": {
+    "command": "scripts/scan-performance-serving.py --reuse-corpus --reuse-apps-from-report <prepared-report> --matrix --click-dispatch manual --first-click-only --conditions first-import --arms B --measurement startup-frame --pairs 5;isolated captured HOME",
+    "planned_samples": 5,
+    "samples": [
+      {
+        "pair": 0,
+        "arm": "B",
+        "condition": "first-import",
+        "measurement": "startup-frame",
+        "starting_database_sha256": {},
+        "starting_schema_versions": {},
+        "cache_present_at_start": false,
+        "starting_cache_sha256": null,
+        "cohort_context_sha256": "7833b005d35a1d6706c0a84c17a7f975d1d81b1efae11ac6676e001ef8212a57",
+        "native": {
+          "failure": "numeric_frame_missing",
+          "operatorWaitIncluded": false,
+          "measurement": "startup-frame",
+          "version": 1,
+          "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+          "nativeFrameMeasured": false,
+          "private_app_cleanup_verified": true
+        },
+        "whole_observation_ns": 8539142561,
+        "model_readiness": {
+          "appReadyToModelNanoseconds": 2105755835,
+          "operatorWaitIncluded": false,
+          "pollIntervalNanoseconds": 10000000,
+          "kind": "independent-model-readiness-v1",
+          "processEntryToModelNanoseconds": 2231654655,
+          "partial": true,
+          "sessionDomainAvailable": false,
+          "nativeFrameMeasured": false
+        }
+      }
+    ],
+    "summary": {
+      "groups": [
+        {
+          "condition": "first-import",
+          "arm": "B",
+          "cohort_sha256": "f12fd6e68f457f7918cb70dff3210a163e207d5184dba0ec8014048ed0ff6968",
+          "cohort_error": null,
+          "identity_rejections": 0,
+          "attempts": 1,
+          "failures": 1,
+          "valid_first_click_frames": 0,
+          "model_observations": 0,
+          "first_click_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null,
+            "p99": null
+          },
+          "tail_sample_requirement_met": false,
+          "startup_control_frames": 0,
+          "startup_control_frame_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null
+          }
+        }
+      ],
+      "status": "NOT_VERIFIED",
+      "reason": "Exact starting-state cohorts only; missing identities excluded. Collector summary only; pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+    },
+    "result": "stopped after original first failure;no successful startup frame"
+  },
+  "diagnostic": {
+    "diagnostic_only": true,
+    "method": "New private exported B adds only flags after original first bitmap:publication/hero changes since pre-yield expectation,window/bitmap metadata,and same Vision normalized text matches against initial vs frame-time hero. Original validator,flow,timeout and failure retained;no retry;raw pixels/text stay inRAM.",
+    "sampler_sha256": "6e16f2468ca3119ea0e3463e190ab81e55997d9e7b5178138709e88c0c11697b",
+    "identity": {
+      "B": {
+        "probe_sha256": "b7c9c6162b9f3d9136f6c99a95c49e10a7fa2b0d876c5299eb5c239d3dad3287",
+        "delegate_probe_sha256": "9b6d769b5a5423a819c2724a2fe6e970793879b1ea8ddfb27a377a88c04573cb",
+        "shared_probe_sha256": "02fb3a0307a2ee918bd640a64d1144b7fb601b80ea2525ffc54bdf74d4f85c30",
+        "pressure_main_sha256": "6cb4e1eca79320277349a3ba6df3a8dd98340a29db5f68964431f4ae0639c6a9",
+        "pressure_go_sha256": "8d17029cf699ce8c9399c13e2cc0f95f481e43fbb87d52da0438d2e9290d3c3d",
+        "app_sha256": "b6c7ccd648f31afb8b2449b9862ad3ff60cd1b8a9c1060c41344b23f5c42b6fb",
+        "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+        "framework_sha256": "2ef845f101ebd60a8993019db092ad9734d612576f99f76dd90e394ad58919e0",
+        "widget_sha256": "247982c0f61c4ec7039c1d8229b49765a9c915f6e5c2543c871d19ebe1859397"
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "arm": "B",
+        "condition": "first-import",
+        "measurement": "startup-frame",
+        "starting_database_sha256": {},
+        "starting_schema_versions": {},
+        "cache_present_at_start": false,
+        "starting_cache_sha256": null,
+        "cohort_context_sha256": "a241df711d15ae7618c375e797f0605b1f7d2aa2e38eb6c1519c01cb380c95bc",
+        "native": {
+          "r18_hero_changed": true,
+          "r18_window_visible": true,
+          "version": 1,
+          "r18_ocr_character_count": 390,
+          "r18_ocr_has_digits": true,
+          "r18_current_amount_match": true,
+          "presentationControl": "automatic normal togglePopover after model readiness;post-show activation;not icon input",
+          "r18_publication_changed": true,
+          "r18_initial_amount_match": true,
+          "r18_bitmap_width": 840,
+          "operatorWaitIncluded": false,
+          "measurement": "startup-frame",
+          "nativeFrameMeasured": false,
+          "r18_window_key": true,
+          "r18_window_unoccluded": false,
+          "failure": "numeric_frame_missing",
+          "r18_bitmap_height": 1520,
+          "r18_initial_tokens_match": false,
+          "r18_app_active": true,
+          "r18_current_tokens_match": true,
+          "private_app_cleanup_verified": true
+        },
+        "whole_observation_ns": 8375537825,
+        "model_readiness": {
+          "processEntryToModelNanoseconds": 2083834200,
+          "partial": true,
+          "appReadyToModelNanoseconds": 1978574533,
+          "operatorWaitIncluded": false,
+          "kind": "independent-model-readiness-v1",
+          "sessionDomainAvailable": false,
+          "nativeFrameMeasured": false,
+          "pollIntervalNanoseconds": 10000000
+        }
+      }
+    ],
+    "summary": {
+      "groups": [
+        {
+          "condition": "first-import",
+          "arm": "B",
+          "cohort_sha256": "292048c7a02e08df7e9db87fa834a0c33dd31b5327e76748b63128a4bfd88fde",
+          "cohort_error": null,
+          "identity_rejections": 0,
+          "attempts": 1,
+          "failures": 1,
+          "valid_first_click_frames": 0,
+          "model_observations": 0,
+          "first_click_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null,
+            "p99": null
+          },
+          "tail_sample_requirement_met": false,
+          "startup_control_frames": 0,
+          "startup_control_frame_ms": {
+            "median": null,
+            "maximum": null,
+            "p95": null
+          }
+        }
+      ],
+      "status": "NOT_VERIFIED",
+      "reason": "Exact starting-state cohorts only; missing identities excluded. Collector summary only; pressure,oracle,P03,startup endpoints and independent gates require their own evidence."
+    },
+    "result": "same numeric_frame_missing;old tokens mismatch,new tokens andboth amounts match on same OCR text",
+    "not_performance_evidence": true
+  },
+  "classification": {
+    "kind": "measurement oracle expectation stale across asynchronous publication",
+    "confidence": "high for reproduced diagnostic;original uninstrumented failure lacks flags so not every numeric_frame_missing is attributed to same cause",
+    "earliest_divergence": "STARTUP_FRAME binds hero before await Task.yield,then compares later bitmap against that old hero despite changed publication",
+    "rejected_alternatives": [
+      "Not a wholly blank/nonnumeric bitmap in diagnostic:840x1520,390 normalized characters,digits present,current token/amount match",
+      "Not missing model readiness:both original and diagnostic have available partial model before presentation",
+      "No identity rejection:explicit empty DB/no cache cohort valid"
+    ],
+    "limitations": [
+      "Window unoccluded flag false at capture is retained,not independently equated to actual occlusion or compositor visibility",
+      "AppKit bitmap endpoint only,not photon timing",
+      "No p95/p99 or startup budget failure claimed",
+      "Diagnostic is new instrumented artifact,never pooled with original measurement"
+    ]
+  },
+  "cleanup": {
+    "original_private_app_stopped": true,
+    "diagnostic_private_app_stopped": true,
+    "private_worker_idle": true
+  },
+  "l3_applicability": {
+    "go_build_inputs_unchanged": 175,
+    "native_current_reused": "R16 repair focused1 pass;original Native wrapper298 tests/0failure/1existing opt-in skip;R17 reviewed same281-entry state",
+    "native_rerun_needed_for_this_oracle_finding": false,
+    "remaining": "repair affected private startup oracle and its targeted regression/actual first-import check;whole L3 criterion remains unverified until this affected harness boundary is resolved"
+  },
+  "limits": [
+    "No six-condition100,startup,pressure orP03 acceptance",
+    "Fresh4299files remains below separate5071-scale criterion",
+    "No product/test/config source modifications;temporary diagnostic export only",
+    "Original private A/B preparation and frozen input retained;no Git delivery"
+  ]
+}

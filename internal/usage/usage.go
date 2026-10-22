@@ -344,6 +344,8 @@ type Service struct {
 	Progress                ScanProgressReporter
 	PreparedSources         []ingest.Source
 	Coordinator             *ingest.Coordinator
+	CoverageInventoryID     string
+	CoverageBatch           bool
 	machineIdentityOnce     sync.Once
 	machineIdentityValue    string
 }
@@ -717,6 +719,15 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 			changed[path] = true
 		}
 	}
+	unchangedEntries := []InventoryEntry{}
+	for _, entry := range inventory.Entries {
+		if !recoveryCandidates[entry.Path] && !changed[entry.Path] {
+			unchangedEntries = append(unchangedEntries, entry)
+		}
+	}
+	if err := s.commitUnchangedSourcesCoverage(ctx, unchangedEntries); err != nil {
+		return nil, err
+	}
 	skipped := 0
 	for index, entry := range inventory.Entries {
 		candidate := recoveryCandidates[entry.Path]
@@ -741,17 +752,27 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 			out[key] += value
 		}
 	}
-	if recovering {
+	if recovering && !s.CoverageBatch {
 		removed, cleanupErr := s.cleanupOrphanedEvents(ctx)
 		if cleanupErr != nil {
 			return nil, cleanupErr
 		}
 		out["removed"] += removed
 	}
-	if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
-		return nil, err
+	if !s.CoverageBatch {
+		if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+// FinalizeInventory runs global reconciliation only after every accepted batch.
+func (s *Service) FinalizeInventory(ctx context.Context, inventory Inventory) error {
+	if _, err := s.cleanupOrphanedEvents(ctx); err != nil {
+		return err
+	}
+	return s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint)
 }
 
 func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error) {
@@ -1099,7 +1120,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		if s.Coordinator != nil {
 			s.Coordinator.Skip(path, ingest.ConsumerUsage)
 		}
-		return r, nil
+		return r, s.commitUnchangedSourceCoverage(ctx, entry)
 	}
 	file, err := s.open(path)
 	if err != nil {
@@ -1355,7 +1376,37 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err = rebuildSessions(ctx, tx, affected); err != nil {
 		return r, err
 	}
+	if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, path, entry.Identity, entry.Size, cursor); err != nil {
+		return r, err
+	}
 	return r, tx.Commit()
+}
+
+func (s *Service) commitUnchangedSourceCoverage(ctx context.Context, entry InventoryEntry) error {
+	return s.commitUnchangedSourcesCoverage(ctx, []InventoryEntry{entry})
+}
+
+func (s *Service) commitUnchangedSourcesCoverage(ctx context.Context, entries []InventoryEntry) error {
+	if s.CoverageInventoryID == "" {
+		return nil
+	}
+	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
+	if err != nil {
+		return err
+	}
+	defer release()
+	for _, entry := range entries {
+		var cursor int64
+		if err = tx.QueryRowContext(ctx, `SELECT cursor FROM usage_source_files WHERE path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, entry.Path, entry.Identity, entry.Size, ParserVersion, entry.ModifiedAt, entry.ChangedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
+			return errUsageSourceChanged
+		} else if err != nil {
+			return err
+		}
+		if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, entry.Path, entry.Identity, entry.Size, cursor); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) validateSnapshot(path string, file SourceFile, entry InventoryEntry, cursor int64, data []byte, previousAnchorStart int64, previousAnchor []byte) error {

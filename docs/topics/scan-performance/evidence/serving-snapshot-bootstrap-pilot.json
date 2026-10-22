@@ -1,0 +1,238 @@
+{
+  "kind": "scan-performance-e1-v1",
+  "input": {
+    "files": 5372,
+    "bytes": 3477971661,
+    "corpus_sha256": "5cb6d2dbfd2936a4552b158e92b77672ed992966041bda0774c8d44d118c5117",
+    "live_db_backup_sha256": {
+      "sessions.sqlite3": "99c215c1256f477c4d27e492047accbfe45d5496385311896bbd66df9400ea79",
+      "agentdeck.sqlite3": "4d55bb85c645ca219c634c36f101b4051938fad153c8d15c6e6c3965bd53198c"
+    },
+    "capture_consistency": "two independent SQLite backups followed by per-file bounded JSONL prefixes; not cross-DB/filesystem atomic"
+  },
+  "samples": [
+    {
+      "pair": 0,
+      "arm": "A",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "latestDataChanged": false,
+        "droppedStages": 0,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 7708226309,
+            "valid": true
+          },
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1058271925,
+            "valid": true
+          },
+          {
+            "panel": "usage",
+            "elapsedNanoseconds": 1031410181,
+            "valid": true
+          },
+          {
+            "panel": "breakdown",
+            "elapsedNanoseconds": 968649970,
+            "valid": true
+          },
+          {
+            "panel": "attribution",
+            "elapsedNanoseconds": 1173438529,
+            "valid": true
+          },
+          {
+            "panel": "sessions",
+            "elapsedNanoseconds": 971651263,
+            "valid": true
+          }
+        ],
+        "version": 1,
+        "helperFailures": [],
+        "readyClickRequired": true,
+        "initialDataPresent": false,
+        "launchToDataNanoseconds": 7708226309,
+        "initialClickRouted": false,
+        "stageAggregates": [
+          {
+            "count": 6,
+            "maximumNanoseconds": 632546337,
+            "stage": "popoverOpen",
+            "totalNanoseconds": 3141716042
+          },
+          {
+            "count": 3018,
+            "maximumNanoseconds": 1090894,
+            "stage": "presentation",
+            "totalNanoseconds": 1309290598
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 1041971006,
+            "stage": "publication",
+            "totalNanoseconds": 1041971006
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 88402265,
+            "stage": "quota",
+            "totalNanoseconds": 88402265
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 4583616428,
+            "stage": "scanRequest",
+            "totalNanoseconds": 4583616428
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 10725757,
+            "stage": "snapshotDecode",
+            "totalNanoseconds": 10725757
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 319472678,
+            "stage": "snapshotRequest",
+            "totalNanoseconds": 319472678
+          },
+          {
+            "count": 1,
+            "maximumNanoseconds": 1022685182,
+            "stage": "workerDrain",
+            "totalNanoseconds": 1022685182
+          }
+        ],
+        "nativeEnvironment": {
+          "appIsActive": true,
+          "hasScreens": true,
+          "statusButtonHasWindow": true
+        },
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "stages": [
+          {
+            "stage": "quota",
+            "completedAtUptimeNanoseconds": 179430659782857,
+            "durationNanoseconds": 88402265
+          },
+          {
+            "stage": "scanRequest",
+            "completedAtUptimeNanoseconds": 179435243547393,
+            "durationNanoseconds": 4583616428
+          },
+          {
+            "stage": "workerDrain",
+            "completedAtUptimeNanoseconds": 179436266234290,
+            "durationNanoseconds": 1022685182
+          },
+          {
+            "stage": "snapshotRequest",
+            "completedAtUptimeNanoseconds": 179436585712334,
+            "durationNanoseconds": 319472678
+          },
+          {
+            "completedAtUptimeNanoseconds": 179436596439983,
+            "stage": "snapshotDecode",
+            "durationNanoseconds": 10725757
+          },
+          {
+            "completedAtUptimeNanoseconds": 179437246912052,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 632546337
+          },
+          {
+            "completedAtUptimeNanoseconds": 179437638461958,
+            "stage": "publication",
+            "durationNanoseconds": 1041971006
+          },
+          {
+            "completedAtUptimeNanoseconds": 179441773595289,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 491185952
+          },
+          {
+            "completedAtUptimeNanoseconds": 179444055660277,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 513265306
+          },
+          {
+            "completedAtUptimeNanoseconds": 179445862404400,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 454577661
+          },
+          {
+            "completedAtUptimeNanoseconds": 179447891006493,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 586419749
+          },
+          {
+            "completedAtUptimeNanoseconds": 179449707799077,
+            "stage": "popoverOpen",
+            "durationNanoseconds": 463721037
+          }
+        ],
+        "executed_app_sha256": "a49e37e9c853f9572517b66feb43b51127192adbb5b8cf0c201b1526c14fad64",
+        "executed_helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc",
+        "whole_process_ms": 20860.038517,
+        "whole_process_is_launch_latency": false
+      }
+    },
+    {
+      "pair": 0,
+      "arm": "B",
+      "condition": "committed-today-no-cache",
+      "native": {
+        "version": 1,
+        "stages": [],
+        "stageAggregates": [
+          {
+            "maximumNanoseconds": 1250652,
+            "stage": "presentation",
+            "count": 469,
+            "totalNanoseconds": 242840688
+          }
+        ],
+        "initialClickRouted": false,
+        "helperFailures": [],
+        "latestDataChanged": false,
+        "droppedStages": 0,
+        "failure": "data_timeout",
+        "initialDataPresent": false,
+        "readyClickRequired": false,
+        "clickStimulus": "App-local posted leftMouseDown/leftMouseUp at status button; activation after initial routing; not global physical input",
+        "nativeEnvironment": {
+          "appIsActive": false,
+          "statusButtonHasWindow": true,
+          "hasScreens": true
+        },
+        "frames": [],
+        "executed_app_sha256": "194ba73108ae7401b0f5cd6640d247d4fe15e10024533d32eb73a93b572f3d3c",
+        "executed_helper_sha256": "059854f1091ded3027f38442fd5643a9be160682b4d77a8cc8d825bf82449df0",
+        "whole_process_ms": 154108.665747,
+        "whole_process_is_launch_latency": false
+      }
+    }
+  ],
+  "limitations": [
+    "AppKit bitmap+numeric OCR endpoint, not compositor/photon timing",
+    "No authentication files or model requests; isolated default quota has no live credentials",
+    "Small pair counts are pilots, not >=100-condition acceptance",
+    "No page-cache purge",
+    "No E1 PASS inferred from capture or build"
+  ],
+  "identity": {
+    "A": {
+      "probe_sha256": "1707907534e40cda783baa397481794bdaa0a94c079b6403164ccfcfed0723a8",
+      "app_sha256": "a49e37e9c853f9572517b66feb43b51127192adbb5b8cf0c201b1526c14fad64",
+      "helper_sha256": "ba1b931e1168ce05bcd886ab5bebae65591cc0020d2953b11b8b91896d6624dc"
+    },
+    "B": {
+      "probe_sha256": "1707907534e40cda783baa397481794bdaa0a94c079b6403164ccfcfed0723a8",
+      "app_sha256": "194ba73108ae7401b0f5cd6640d247d4fe15e10024533d32eb73a93b572f3d3c",
+      "helper_sha256": "059854f1091ded3027f38442fd5643a9be160682b4d77a8cc8d825bf82449df0"
+    }
+  }
+}

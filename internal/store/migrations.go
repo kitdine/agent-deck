@@ -318,6 +318,7 @@ var migrations = []migration{
 	{version: 30, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
 	}},
+	{version: 31, apply: initializeServingStorage},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (

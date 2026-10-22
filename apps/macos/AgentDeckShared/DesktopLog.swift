@@ -4,7 +4,7 @@ import Synchronization
 
 /// Closed, content-free stages. Uptime measures elapsed work, never data freshness.
 public enum DesktopPerformanceStage: String, Codable, Hashable, Sendable {
-	case quota, scanRequest, workerDrain, snapshotRequest, snapshotDecode, publication, presentation, popoverOpen
+	case quota, scanRequest, workerDrain, snapshotRequest, snapshotDecode, publication, presentation, popoverPreparation, popoverOpen
 }
 
 public struct DesktopPerformanceSample: Codable, Sendable {
@@ -90,7 +90,7 @@ public enum DesktopPerformanceTrace {
 			aggregate.maximumNanoseconds = max(aggregate.maximumNanoseconds, sample.durationNanoseconds)
 			$0!.aggregates[sample.stage] = aggregate
 			// Hot computed properties must not crowd out helper/publication stages.
-			// Their complete count/total/max stays in the fixed eight-stage map.
+			// Their complete count/total/max stays in the closed-stage map.
 			guard sample.stage != .presentation else { return }
 			if $0!.samples.count < 1024 { $0!.samples.append(sample) }
 			else { $0!.dropped += 1 }

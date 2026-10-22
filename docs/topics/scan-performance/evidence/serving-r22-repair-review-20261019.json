@@ -1,0 +1,825 @@
+{
+  "finding": "SP-SB-R20-F1",
+  "round": 2,
+  "outcome": "No new repair candidate; automatic sizing control rejected; finding remains open",
+  "measurement": "Current round1 minimal product sources plus private in-memory trace; one flush after original model/frame measurements; original endpoints and numeric checks unchanged",
+  "variants": {
+    "segments-before-sizing": {
+      "report_sha256": "4e7e4917f09ef13f96a8bb972ca34767735a69abd87089213f170339af89afb7",
+      "app_sha256": "3490da6f138e81dabcdd7a9f465d3456efe6301a14c7423b5bfc37506133f996",
+      "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+      "samples": [
+        {
+          "index": 0,
+          "raw_events": [
+            [
+              "app_ready",
+              72980641691277
+            ],
+            [
+              "render_start",
+              72980775554764
+            ],
+            [
+              "render_end",
+              72980793994482
+            ],
+            [
+              "start_initial_refresh",
+              72980794225699
+            ],
+            [
+              "restore_task_created",
+              72980794255270
+            ],
+            [
+              "restore_task_enter",
+              72980811363231
+            ],
+            [
+              "restore_start",
+              72980811395737
+            ],
+            [
+              "model_wait_enter",
+              72980811733377
+            ],
+            [
+              "process_launch_start",
+              72980811774434
+            ],
+            [
+              "render_start",
+              72980812319749
+            ],
+            [
+              "process_launch_end",
+              72980815109008
+            ],
+            [
+              "render_end",
+              72980815748304
+            ],
+            [
+              "process_capture_end",
+              72980904386251
+            ],
+            [
+              "restore_transport_end",
+              72980904408560
+            ],
+            [
+              "restore_decode_end",
+              72980930909952
+            ],
+            [
+              "install_start",
+              72980948759293
+            ],
+            [
+              "install_end",
+              72980948887969
+            ],
+            [
+              "render_start",
+              72980949071038
+            ],
+            [
+              "render_end",
+              72980951171290
+            ],
+            [
+              "prepare_start",
+              72980951923555
+            ],
+            [
+              "displaylink_end",
+              72980962570794
+            ],
+            [
+              "geometry_end",
+              72980962898493
+            ],
+            [
+              "window_attach_end",
+              72980997926748
+            ],
+            [
+              "layout_end",
+              72981660510188
+            ],
+            [
+              "prepare_end",
+              72981663494518
+            ],
+            [
+              "model_observed",
+              72981729721895
+            ],
+            [
+              "capture_complete",
+              72987927763227
+            ]
+          ],
+          "model_ms": 1088.030618,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 169.70446,
+          "helper_transport_ms": 93.012823,
+          "decode_ms": 26.501392,
+          "install_ms": 0.128676,
+          "install_end_to_model_ms": 780.833926,
+          "preparation_ms": 711.570963,
+          "layout_ms": 662.58344,
+          "model_observed_before_preparation": false,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        },
+        {
+          "index": 1,
+          "raw_events": [
+            [
+              "app_ready",
+              72990546919257
+            ],
+            [
+              "render_start",
+              72990653123444
+            ],
+            [
+              "render_end",
+              72990664705049
+            ],
+            [
+              "start_initial_refresh",
+              72990665037212
+            ],
+            [
+              "restore_task_created",
+              72990665066128
+            ],
+            [
+              "restore_task_enter",
+              72990692866966
+            ],
+            [
+              "restore_start",
+              72990692896003
+            ],
+            [
+              "process_launch_start",
+              72990693342797
+            ],
+            [
+              "model_wait_enter",
+              72990693414269
+            ],
+            [
+              "render_start",
+              72990694101819
+            ],
+            [
+              "process_launch_end",
+              72990697604506
+            ],
+            [
+              "render_end",
+              72990701406834
+            ],
+            [
+              "process_capture_end",
+              72990797560152
+            ],
+            [
+              "restore_transport_end",
+              72990797581276
+            ],
+            [
+              "restore_decode_end",
+              72990823083756
+            ],
+            [
+              "install_start",
+              72990826593681
+            ],
+            [
+              "install_end",
+              72990826717817
+            ],
+            [
+              "render_start",
+              72990827110276
+            ],
+            [
+              "render_end",
+              72990829747578
+            ],
+            [
+              "prepare_start",
+              72990830891284
+            ],
+            [
+              "displaylink_end",
+              72990849577393
+            ],
+            [
+              "geometry_end",
+              72990849778866
+            ],
+            [
+              "window_attach_end",
+              72990867312221
+            ],
+            [
+              "layout_end",
+              72991565190408
+            ],
+            [
+              "prepare_end",
+              72991568890464
+            ],
+            [
+              "model_observed",
+              72991630549755
+            ],
+            [
+              "capture_complete",
+              72993796050055
+            ]
+          ],
+          "model_ms": 1083.630498,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 145.976746,
+          "helper_transport_ms": 104.685273,
+          "decode_ms": 25.50248,
+          "install_ms": 0.124136,
+          "install_end_to_model_ms": 803.831938,
+          "preparation_ms": 737.99918,
+          "layout_ms": 697.878187,
+          "model_observed_before_preparation": false,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        },
+        {
+          "index": 2,
+          "raw_events": [
+            [
+              "app_ready",
+              72996098456392
+            ],
+            [
+              "render_start",
+              72996234977515
+            ],
+            [
+              "render_end",
+              72996252226911
+            ],
+            [
+              "start_initial_refresh",
+              72996252534645
+            ],
+            [
+              "restore_task_created",
+              72996252565582
+            ],
+            [
+              "restore_task_enter",
+              72996272465541
+            ],
+            [
+              "restore_start",
+              72996272503178
+            ],
+            [
+              "process_launch_start",
+              72996273064122
+            ],
+            [
+              "model_wait_enter",
+              72996273073486
+            ],
+            [
+              "render_start",
+              72996273859051
+            ],
+            [
+              "process_launch_end",
+              72996276903238
+            ],
+            [
+              "render_end",
+              72996277914803
+            ],
+            [
+              "process_capture_end",
+              72996348149921
+            ],
+            [
+              "restore_transport_end",
+              72996348169344
+            ],
+            [
+              "restore_decode_end",
+              72996370406513
+            ],
+            [
+              "install_start",
+              72996382377338
+            ],
+            [
+              "install_end",
+              72996382502991
+            ],
+            [
+              "render_start",
+              72996382575966
+            ],
+            [
+              "render_end",
+              72996384603821
+            ],
+            [
+              "prepare_start",
+              72996385354976
+            ],
+            [
+              "displaylink_end",
+              72996400186638
+            ],
+            [
+              "geometry_end",
+              72996400437780
+            ],
+            [
+              "window_attach_end",
+              72996432603842
+            ],
+            [
+              "layout_end",
+              72996953791413
+            ],
+            [
+              "prepare_end",
+              72996957424828
+            ],
+            [
+              "model_observed",
+              72997031952371
+            ],
+            [
+              "capture_complete",
+              72999111519374
+            ]
+          ],
+          "model_ms": 933.495979,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 174.046786,
+          "helper_transport_ms": 75.666166,
+          "decode_ms": 22.237169,
+          "install_ms": 0.125653,
+          "install_end_to_model_ms": 649.44938,
+          "preparation_ms": 572.069852,
+          "layout_ms": 521.187571,
+          "model_observed_before_preparation": false,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        }
+      ]
+    },
+    "segments": {
+      "report_sha256": "aca327e273574d1e076b2d61a765d51cbc22d52c083a63a11bb9af3089164856",
+      "app_sha256": "4d76d2f681dcc9d5d5b99ca49f53ffb0df55950454fee9a537c4a079c80e64b3",
+      "helper_sha256": "e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40",
+      "samples": [
+        {
+          "index": 0,
+          "raw_events": [
+            [
+              "app_ready",
+              73139148823417
+            ],
+            [
+              "sizing_default_7",
+              73139300029081
+            ],
+            [
+              "render_start",
+              73139315152074
+            ],
+            [
+              "render_end",
+              73139333344604
+            ],
+            [
+              "start_initial_refresh",
+              73139333724195
+            ],
+            [
+              "restore_task_created",
+              73139333772373
+            ],
+            [
+              "restore_task_enter",
+              73139350835065
+            ],
+            [
+              "restore_start",
+              73139350872817
+            ],
+            [
+              "process_launch_start",
+              73139351376517
+            ],
+            [
+              "model_wait_enter",
+              73139351547746
+            ],
+            [
+              "render_start",
+              73139352235394
+            ],
+            [
+              "process_launch_end",
+              73139355477893
+            ],
+            [
+              "render_end",
+              73139356979380
+            ],
+            [
+              "process_capture_end",
+              73139433102970
+            ],
+            [
+              "restore_transport_end",
+              73139433127387
+            ],
+            [
+              "restore_decode_end",
+              73139460758850
+            ],
+            [
+              "install_start",
+              73139519187050
+            ],
+            [
+              "install_end",
+              73139519306573
+            ],
+            [
+              "render_start",
+              73139519387782
+            ],
+            [
+              "render_end",
+              73139522205336
+            ],
+            [
+              "prepare_start",
+              73139523326567
+            ],
+            [
+              "displaylink_end",
+              73139553880358
+            ],
+            [
+              "geometry_end",
+              73139554316324
+            ],
+            [
+              "window_attach_end",
+              73139574861760
+            ],
+            [
+              "layout_end",
+              73140316066126
+            ],
+            [
+              "prepare_end",
+              73140318459300
+            ],
+            [
+              "model_observed",
+              73140383652872
+            ],
+            [
+              "capture_complete",
+              73149435151945
+            ]
+          ],
+          "model_ms": 1234.829455,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 202.0494,
+          "helper_transport_ms": 82.25457,
+          "decode_ms": 27.631463,
+          "install_ms": 0.119523,
+          "install_end_to_model_ms": 864.346299,
+          "preparation_ms": 795.132733,
+          "layout_ms": 741.204366,
+          "model_observed_before_preparation": false,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        },
+        {
+          "index": 1,
+          "raw_events": [
+            [
+              "app_ready",
+              73152601662385
+            ],
+            [
+              "sizing_default_7",
+              73152714978439
+            ],
+            [
+              "render_start",
+              73152721744312
+            ],
+            [
+              "render_end",
+              73152734718290
+            ],
+            [
+              "start_initial_refresh",
+              73152735008611
+            ],
+            [
+              "restore_task_created",
+              73152735056585
+            ],
+            [
+              "restore_task_enter",
+              73152749801304
+            ],
+            [
+              "restore_start",
+              73152749837491
+            ],
+            [
+              "model_wait_enter",
+              73152750161483
+            ],
+            [
+              "process_launch_start",
+              73152750323009
+            ],
+            [
+              "render_start",
+              73152751282436
+            ],
+            [
+              "process_launch_end",
+              73152754040867
+            ],
+            [
+              "render_end",
+              73152754507957
+            ],
+            [
+              "process_capture_end",
+              73152839533778
+            ],
+            [
+              "restore_transport_end",
+              73152839557849
+            ],
+            [
+              "restore_decode_end",
+              73152865399652
+            ],
+            [
+              "install_start",
+              73152871253530
+            ],
+            [
+              "install_end",
+              73152871346236
+            ],
+            [
+              "render_start",
+              73152871381288
+            ],
+            [
+              "render_end",
+              73152873969438
+            ],
+            [
+              "prepare_start",
+              73152875151967
+            ],
+            [
+              "displaylink_end",
+              73152897819026
+            ],
+            [
+              "geometry_end",
+              73152898066147
+            ],
+            [
+              "window_attach_end",
+              73152915366045
+            ],
+            [
+              "layout_end",
+              73153483254024
+            ],
+            [
+              "prepare_end",
+              73153485818687
+            ],
+            [
+              "model_observed",
+              73153556774639
+            ],
+            [
+              "capture_complete",
+              73155934090991
+            ]
+          ],
+          "model_ms": 955.112254,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 148.175106,
+          "helper_transport_ms": 89.720358,
+          "decode_ms": 25.841803,
+          "install_ms": 0.092706,
+          "install_end_to_model_ms": 685.428403,
+          "preparation_ms": 610.66672,
+          "layout_ms": 567.887979,
+          "model_observed_before_preparation": false,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        },
+        {
+          "index": 2,
+          "raw_events": [
+            [
+              "app_ready",
+              73158285294247
+            ],
+            [
+              "sizing_default_7",
+              73158413987956
+            ],
+            [
+              "render_start",
+              73158422091721
+            ],
+            [
+              "render_end",
+              73158435692570
+            ],
+            [
+              "start_initial_refresh",
+              73158436012638
+            ],
+            [
+              "restore_task_created",
+              73158436057488
+            ],
+            [
+              "restore_task_enter",
+              73158449121645
+            ],
+            [
+              "restore_start",
+              73158449159637
+            ],
+            [
+              "process_launch_start",
+              73158449628145
+            ],
+            [
+              "model_wait_enter",
+              73158449682199
+            ],
+            [
+              "render_start",
+              73158450863133
+            ],
+            [
+              "process_launch_end",
+              73158453343223
+            ],
+            [
+              "render_end",
+              73158454806483
+            ],
+            [
+              "process_capture_end",
+              73158536498861
+            ],
+            [
+              "restore_transport_end",
+              73158536523756
+            ],
+            [
+              "restore_decode_end",
+              73158561651405
+            ],
+            [
+              "install_start",
+              73158572646038
+            ],
+            [
+              "install_end",
+              73158572784892
+            ],
+            [
+              "model_observed",
+              73158576858682
+            ],
+            [
+              "render_start",
+              73158583065351
+            ],
+            [
+              "render_end",
+              73158585566539
+            ],
+            [
+              "prepare_start",
+              73158586016259
+            ],
+            [
+              "displaylink_end",
+              73158612689614
+            ],
+            [
+              "geometry_end",
+              73158613020317
+            ],
+            [
+              "window_attach_end",
+              73158635822078
+            ],
+            [
+              "layout_end",
+              73159289042424
+            ],
+            [
+              "prepare_end",
+              73159292810677
+            ],
+            [
+              "capture_complete",
+              73161253060826
+            ]
+          ],
+          "model_ms": 291.564435,
+          "recorded_model_clock_matches_markers": true,
+          "ready_to_restore_ms": 163.86539,
+          "helper_transport_ms": 87.364119,
+          "decode_ms": 25.127649,
+          "install_ms": 0.138854,
+          "install_end_to_model_ms": 4.07379,
+          "preparation_ms": 706.794418,
+          "layout_ms": 653.220346,
+          "model_observed_before_preparation": true,
+          "partial": false,
+          "sessions_available": true,
+          "valid_frame_count": 1,
+          "failure": null,
+          "cleanup": true
+        }
+      ]
+    }
+  },
+  "checkpoint_original_database_bytes_match": {
+    "sessions.sqlite3-journal": true,
+    "sessions.sqlite3-shm": true,
+    "sessions.sqlite3-wal": true,
+    "sessions.sqlite3": true,
+    "agentdeck.sqlite3": true,
+    "agentdeck.sqlite3-shm": true,
+    "agentdeck.sqlite3-wal": true,
+    "agentdeck.sqlite3-journal": true
+  },
+  "worker_idle": true,
+  "current_product_sha256": {
+    "apps/macos/AgentDeckApp/DesktopCopy.swift": "f3fc06d56d6dd49085017da78f171227111a37d1b627668dc2175ddf6a7fc1fd",
+    "apps/macos/AgentDeckAppTests/DesktopCopyTests.swift": "75a838ec4bc2268517b52ae86e89ab180f820cd5c44e8005338a1c38267283a1"
+  },
+  "limits": [
+    "Six diagnostic native observations; no percentile or fixed100 acceptance",
+    "No repository production/test/doc/status edits in round2",
+    "Default sizingOptions7 to empty has no clear measured benefit and is not a product candidate",
+    "Model observation can occur before or after synchronous initial preparation; each sample retains original event order",
+    "Safe deeper optimization inside current native SwiftUI layout is not established by this bounded experiment",
+    "Round1 native300 zero failures one existing skip remains reusable for unchanged product content"
+  ]
+}

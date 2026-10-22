@@ -1,0 +1,140 @@
+{
+  "kind": "scan-serving-r12-rereview-v1",
+  "recorded_at": "2026-10-19T03:08:33Z",
+  "route": "REREVIEW",
+  "correlation": "qMAVWdvNlpjs05MV",
+  "finding": "SP-SB-R11-F1",
+  "disposition": "STILL_OPEN;heterogeneous-start split repaired,but same-state real-native admission regressed",
+  "repair_state_id": "scan-serving-repair-r11-A3mxdPaT-state",
+  "reviewed_state_id": "scan-serving-rereview-r12-qMAVWdvN-state",
+  "head": "14234ec4c96a3376d1072147eeb6e42b8768381a",
+  "entry_identity": {
+    "matched_repair_manifest_files": 276,
+    "r11_source_files_checked": 353,
+    "source_files_changed_from_r11": [
+      "scripts/scan_performance_serving_matrix.py",
+      "scripts/scan_performance_serving_matrix_test.py"
+    ],
+    "macos": "26.7.2",
+    "python": "3.14.8"
+  },
+  "source_hashes": {
+    "scripts/scan_performance_serving_matrix.py": "95cb30ab8168492cb2c50ba95679c79d85805cc4a17031b1b4f1196f5e869ec3",
+    "scripts/scan_performance_serving_matrix_test.py": "5e97c053bcd37af19a208b7bfeae0bd94fdac8f7adfbf7bccb8cdb9fe01d7ae9",
+    "scripts/scan-performance-serving.py": "2669e3ed344f15ebee2760323096c87e176193d238bfeee5d38c65b4111ce822",
+    "scripts/scan-performance-baseline.py": "e80a8d8eb421c76a5d210400398fd61c6f769a6de1975a43957c88d2dd2e4e09"
+  },
+  "durable_native_shape_source": {
+    "uri": "docs/topics/scan-performance/evidence/serving-r11-e1-20261018.json",
+    "sha256": "615c86878db36d90aeb7e64e5fb239cf54f73df1565b927770b3f58bde312ee3",
+    "field": "first_import_icon_pilot.samples[0].native and valid_frame_count",
+    "native_measurement_key_absent": true,
+    "frame_reconstruction": "Only validity count is reconstructed as frames=[{valid:true}];timing is a retained historical value,not new performance sampling."
+  },
+  "admission_reproducer": {
+    "kind": "function-level contract replay;zero new native launches or performance samples",
+    "input": {
+      "arm": "B",
+      "condition": "first-import",
+      "measurement": "native",
+      "cohort_context_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "starting_database_sha256": {},
+      "starting_schema_versions": {},
+      "cache_present_at_start": false,
+      "starting_cache_sha256": null,
+      "native": {
+        "initialClickRouted": true,
+        "firstClickToDataNanoseconds": 458853058,
+        "readyClickRequired": false,
+        "firstClickDataReady": true,
+        "firstFrameCaptureOrigin": "native_action_return",
+        "frames": [
+          {
+            "valid": true
+          }
+        ]
+      }
+    },
+    "identity_error": null,
+    "cohort_sha256": "2cc2f02c9908d82620f739eea1e7109009adcbd45c8563ab95e4b96ffe8be2ea",
+    "actual_native_shape_result": {
+      "condition": "first-import",
+      "arm": "B",
+      "cohort_sha256": "2cc2f02c9908d82620f739eea1e7109009adcbd45c8563ab95e4b96ffe8be2ea",
+      "cohort_error": null,
+      "identity_rejections": 0,
+      "attempts": 1,
+      "failures": 1,
+      "valid_first_click_frames": 0,
+      "model_observations": 0,
+      "first_click_ms": {
+        "median": null,
+        "maximum": null,
+        "p95": null,
+        "p99": null
+      },
+      "tail_sample_requirement_met": false,
+      "startup_control_frames": 0,
+      "startup_control_frame_ms": {
+        "median": null,
+        "maximum": null,
+        "p95": null
+      }
+    },
+    "single_field_control_added": {
+      "native.measurement": "native"
+    },
+    "control_result": {
+      "condition": "first-import",
+      "arm": "B",
+      "cohort_sha256": "2cc2f02c9908d82620f739eea1e7109009adcbd45c8563ab95e4b96ffe8be2ea",
+      "cohort_error": null,
+      "identity_rejections": 0,
+      "attempts": 1,
+      "failures": 0,
+      "valid_first_click_frames": 1,
+      "model_observations": 0,
+      "first_click_ms": {
+        "median": 458.853058,
+        "maximum": 458.853058,
+        "p95": null,
+        "p99": null
+      },
+      "tail_sample_requirement_met": false,
+      "startup_control_frames": 0,
+      "startup_control_frame_ms": {
+        "median": null,
+        "maximum": null,
+        "p95": null
+      }
+    },
+    "isolated_observation": "Same verified identity and routed/valid frame:missing native.measurement causes zero valid frames and one failure;adding only that field admits one frame."
+  },
+  "causal_path": [
+    {
+      "location": "scripts/scan_performance_serving_matrix.py:772",
+      "fact": "Sample measurement is set on outer sample."
+    },
+    {
+      "location": "scripts/scan-performance-serving.py:526",
+      "fact": "launch_manual loads native JSON and adds executable identity/process clocks,without adding measurement."
+    },
+    {
+      "location": "scripts/scan_performance_serving_matrix.py:803",
+      "fact": "run_matrix attaches the returned result without native measurement adaptation."
+    },
+    {
+      "location": "scripts/scan_performance_serving_matrix.py:592",
+      "fact": "summarize_cohort requires nested native.measurement to equal requested measurement."
+    },
+    {
+      "location": "scripts/scan_performance_serving_matrix_test.py:251",
+      "fact": "The common test fixture injects native.measurement even for native mode,masking the real producer contract."
+    }
+  ],
+  "required_resolution": "Align the real native output and collector measurement discriminator at their owning boundary;verify unchanged actual native result shape can be counted in a valid cohort,while model/startup/missing identity/mixed states remain excluded. Do not remove exact-state,AX/PID,worker,cache or pressure guards.",
+  "verification_scope": "Review source and actual-result admission only;stop broad verification after decisive reproducer. Producer45+23 passing tests retained as prior evidence,not rerun or treated as native E1.",
+  "new_product_performance_samples": 0,
+  "product_test_configuration_edits": false,
+  "delivery_actions": false
+}

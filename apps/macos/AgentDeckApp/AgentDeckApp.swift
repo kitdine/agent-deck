@@ -272,7 +272,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		#endif
 	}
 
-	func applicationWillTerminate(_ notification: Notification) {
+		func applicationWillTerminate(_ notification: Notification) {
+			refreshCoordinator.stopAppWork()
 		periodicRefresh?.cancel()
 		periodicDriver.cancel()
 		if let wakeObserver {

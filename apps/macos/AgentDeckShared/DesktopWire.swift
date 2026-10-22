@@ -1156,6 +1156,119 @@ public func decodeDesktopWireEnvelopeV1(_ data: Data) throws -> DesktopWireEnvel
 	try JSONDecoder().decode(DesktopWireEnvelopeV1.self, from: data)
 }
 
+public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
+	public let state: String
+	public let inventoryID: String?
+	public let observedAt: String?
+	public let sources: Int
+	public let committed: Int
+	enum CodingKeys: String, CodingKey {
+		case state, sources, committed
+		case inventoryID = "inventory_id"
+		case observedAt = "observed_at"
+	}
+}
+
+public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
+	public let stateIdentity: String
+	public let coreEpoch: Int64
+	public let sessionEpoch: Int64
+	public let coreSchema: Int
+	public let sessionSchema: Int
+	public let usageRevision: Int64
+	public let sessionRevision: Int64
+	enum CodingKeys: String, CodingKey {
+		case stateIdentity = "state_identity", coreEpoch = "core_epoch", sessionEpoch = "session_epoch"
+		case coreSchema = "core_schema", sessionSchema = "session_schema"
+		case usageRevision = "usage_revision", sessionRevision = "session_revision"
+	}
+}
+
+public struct DesktopServingHeaderV2: Codable, Equatable, Sendable {
+	public let formatVersion: Int
+	public let wireVersion: Int
+	public let generation: DesktopServingGenerationV2
+	public let publicationID: String
+	public let projectionVersion: Int
+	public let usageParserVersion: Int
+	public let activeGeneration: String
+	public let pricingRevision: Int64
+	public let dataObservedThrough: String
+	public let freshness: String
+	public let sessionPrepared: Bool
+	public let timezone: String
+	public let windowStart: String
+	public let windowEnd: String
+	public let generatedAt: String
+	public let usageCoverage: DesktopSourceCoverageV2
+	public let sessionCoverage: DesktopSourceCoverageV2
+	enum CodingKeys: String, CodingKey {
+		case generation, timezone
+		case formatVersion = "format_version", wireVersion = "wire_version", publicationID = "publication_id"
+		case projectionVersion = "projection_version", usageParserVersion = "usage_parser_version", sessionPrepared = "session_prepared"
+		case activeGeneration = "active_generation", pricingRevision = "pricing_revision", dataObservedThrough = "data_observed_through", freshness
+		case windowStart = "window_start", windowEnd = "window_end", generatedAt = "generated_at"
+		case usageCoverage = "usage_coverage", sessionCoverage = "session_coverage"
+	}
+
+	public func matchesCurrentDay(now: Date = Date()) -> Bool {
+		guard let zone = timezone == "Local" ? TimeZone.current : TimeZone(identifier: timezone),
+			let start = DesktopTimestamp.date(from: windowStart), let end = DesktopTimestamp.date(from: windowEnd)
+		else { return false }
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = zone
+		let today = calendar.startOfDay(for: now)
+		return start == today && calendar.date(byAdding: .day, value: 1, to: today) == end
+	}
+}
+
+public struct DesktopServingSnapshotV2: Codable, Equatable, Sendable {
+	public let header: DesktopServingHeaderV2
+	public let payload: DesktopWireEnvelopeV1
+
+	public func validate() throws {
+		let generation = header.generation
+		guard header.formatVersion == 1, header.wireVersion == 2, header.projectionVersion == 1,
+			!header.publicationID.isEmpty, !generation.stateIdentity.isEmpty,
+			generation.coreEpoch > 0, generation.sessionEpoch > 0,
+			generation.coreSchema <= 31, generation.sessionSchema == 1,
+			generation.usageRevision >= 0, generation.sessionRevision >= 0,
+			!header.activeGeneration.isEmpty, header.pricingRevision >= 0, ["current", "stale"].contains(header.freshness),
+			header.generatedAt == payload.data.generatedAt,
+			isRFC3339Timestamp(header.generatedAt), isRFC3339Timestamp(header.windowStart), isRFC3339Timestamp(header.windowEnd)
+		else { throw DesktopWireError.invalidEnvelope }
+		guard let start = DesktopTimestamp.date(from: header.windowStart), let end = DesktopTimestamp.date(from: header.windowEnd),
+			let generated = DesktopTimestamp.date(from: header.generatedAt), start <= generated, generated < end
+		else { throw DesktopWireError.invalidTimestamp }
+		for coverage in [header.usageCoverage, header.sessionCoverage] {
+			guard ["complete", "partial", "unknown", "unavailable", "update_pending"].contains(coverage.state),
+				coverage.sources >= 0, coverage.committed >= 0, coverage.committed <= coverage.sources,
+				coverage.state != "complete" || coverage.sources == coverage.committed
+			else { throw DesktopWireError.invalidEnvelope }
+		}
+	}
+}
+
+public func decodeDesktopServingSnapshotV2(_ data: Data) throws -> DesktopServingSnapshotV2 {
+	let value = try JSONDecoder().decode(DesktopServingSnapshotV2.self, from: data)
+	try value.validate()
+	return value
+}
+
+public enum DesktopTimestamp {
+	/// Value-style parsing avoids constructing ICU formatters on every view read.
+	/// It keeps no mutable cache, so timestamps, clocks and time zones stay independent.
+	public static func date(from value: String) -> Date? {
+		if let date = (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(value))
+			?? (try? Date.ISO8601FormatStyle().parse(value)) { return date }
+		// The existing wire accepts arbitrary fractional widths; Foundation's
+		// value parser stops at nanoseconds. Preserve the old rare-input fallback.
+		let fractional = ISO8601DateFormatter()
+		fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+	}
+}
+
 public struct ProviderUseEnvelopeV1: Decodable, Equatable, Sendable {
 	public static let schemaVersion = 1
 	public static let command = "provider.use"

@@ -625,6 +625,66 @@ public struct EmbeddedHelperRunner: Sendable {
 		}
 	}
 
+	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		let output = try await process.runLines(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(["--format", "json", "desktop", "snapshot", "--wire-version", "2"]),
+			environment: environment, timeout: timeout,
+			maximumLineBytes: 8 * 1024 * 1024, maximumLines: 1
+		)
+		guard output.exitStatus == 0, !output.stdoutLineTruncated, !output.stderrTruncated,
+			output.stdoutLines.count == 1
+		else { throw HelperExecutionError.malformedOutput }
+		let envelope = try JSONDecoder().decode(DesktopServingOutput.self, from: output.stdoutLines[0])
+		guard envelope.schemaVersion == 1, envelope.command == "desktop.serving" else {
+			throw HelperExecutionError.malformedOutput
+		}
+		try envelope.data.validate()
+		return envelope.data
+	}
+
+	public func bootstrapServingSnapshot(
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void
+	) async throws -> DesktopServingSnapshotV2? {
+		let capture = DesktopBootstrapCapture()
+		let output = try await process.runLines(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(["--format", "ndjson", "desktop", "bootstrap"]),
+			environment: environment,
+			// This is a lifetime-bound background job, not the legacy 120s UI
+			// request. Cancellation closes its owner connection at App exit.
+			timeout: .seconds(24 * 60 * 60),
+			maximumLineBytes: 8 * 1024 * 1024, maximumLines: 0,
+			onLine: { line in
+				do {
+					let probe = try JSONDecoder().decode(DesktopBootstrapProbe.self, from: line)
+					guard probe.schemaVersion == 2, probe.command == "desktop.bootstrap" else {
+						throw HelperExecutionError.malformedOutput
+					}
+					switch probe.type {
+					case "publication":
+						let event = try JSONDecoder().decode(DesktopBootstrapPublication.self, from: line)
+						try event.data.validate()
+						capture.install(event.data)
+						publication(event.data)
+					case "progress":
+						let event = try JSONDecoder().decode(DesktopBootstrapProgress.self, from: line)
+						progress(event.data)
+					case "terminal": capture.finish()
+					default: throw HelperExecutionError.malformedOutput
+					}
+				} catch { capture.fail() }
+			}
+		)
+		guard output.exitStatus == 0 else { throw HelperExecutionError.nonZeroExit(output.exitStatus) }
+		guard !output.stdoutLineTruncated, !output.stderrTruncated, capture.isComplete else {
+			throw HelperExecutionError.malformedOutput
+		}
+		guard let latest = capture.latest else { throw HelperExecutionError.malformedOutput }
+		return latest
+	}
+
 	private func scanIndexes(
 		executableURL: URL,
 		refreshID: String,
@@ -1084,6 +1144,49 @@ public final class DesktopHost {
             DesktopLogger.recordHelperFailure(error)
             throw error
         }
+	}
+}
+
+private struct DesktopServingOutput: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let data: DesktopServingSnapshotV2
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, data }
+}
+
+private struct DesktopBootstrapProbe: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let type: String
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, type }
+}
+private struct DesktopBootstrapPublication: Decodable { let data: DesktopServingSnapshotV2 }
+private struct DesktopBootstrapProgress: Decodable { let data: DesktopScanProgress }
+
+private final class DesktopBootstrapCapture: @unchecked Sendable {
+	private let lock = NSLock()
+	private var value: DesktopServingSnapshotV2?
+	private var terminal = false
+	private var failed = false
+	func install(_ value: DesktopServingSnapshotV2) { lock.lock(); defer { lock.unlock() }; self.value = value }
+	func finish() { lock.lock(); defer { lock.unlock() }; terminal = true }
+	func fail() { lock.lock(); defer { lock.unlock() }; failed = true }
+	var latest: DesktopServingSnapshotV2? { lock.lock(); defer { lock.unlock() }; return value }
+	var isComplete: Bool { lock.lock(); defer { lock.unlock() }; return terminal && !failed }
+}
+
+@MainActor
+public protocol DesktopSnapshotBootstrapping {
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2?
+}
+
+extension DesktopHost: DesktopSnapshotBootstrapping {
+	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 { try await runner.readServingSnapshot() }
+	public func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		try await runner.bootstrapServingSnapshot(progress: progress, publication: publication)
 	}
 }
 
@@ -1547,7 +1650,7 @@ public struct DesktopPresentationState: Equatable, Sendable {
 			qualifiers.append(.stale)
 		}
 		if let snapshot,
-			let generatedAt = desktopTimestamp(snapshot.data.generatedAt),
+			let generatedAt = DesktopTimestamp.date(from: snapshot.data.generatedAt),
 			now.timeIntervalSince(generatedAt) > 15 * 60
 		{
 			qualifiers.append(.aged)
@@ -1577,17 +1680,6 @@ public struct DesktopPresentationState: Equatable, Sendable {
 		}
 		return DesktopPresentationState(surface: surface, qualifiers: qualifiers, snapshot: snapshot)
 	}
-}
-
-private func desktopTimestamp(_ value: String) -> Date? {
-	let fractional = ISO8601DateFormatter()
-	fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-	if let parsed = fractional.date(from: value) {
-		return parsed
-	}
-	let basic = ISO8601DateFormatter()
-	basic.formatOptions = [.withInternetDateTime]
-	return basic.date(from: value)
 }
 
 private func desktopSnapshotIsPartial(_ envelope: DesktopWireEnvelopeV1) -> Bool {
@@ -1787,6 +1879,7 @@ private struct QuotaOperationResult: Sendable {
 public final class DesktopRefreshCoordinator {
 	public private(set) var state: DesktopRefreshState = .uninitialized
 	public private(set) var latestSnapshot: DesktopWireEnvelopeV1?
+	public private(set) var servingHeader: DesktopServingHeaderV2?
 	public private(set) var scanProgress: DesktopScanProgress?
 	public private(set) var fullAttempt: DesktopFullAttemptState = .idle
 	public private(set) var widgetPublication: DesktopWidgetPublicationState = .neverPublished
@@ -1797,6 +1890,7 @@ public final class DesktopRefreshCoordinator {
 	private let snapshotPublisher: WidgetSnapshotPublisher?
 	@ObservationIgnored private let wallNow: @MainActor @Sendable () -> Date
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
+	@ObservationIgnored private var activeRestore: Task<Void, Never>?
 	@ObservationIgnored private var activeQuotaOperation: Task<QuotaOperationResult, Never>?
 	@ObservationIgnored private var activeQuotaID: QuotaOperationID?
 	@ObservationIgnored private var pendingFullTrigger: DesktopFullRefreshTrigger?
@@ -1831,8 +1925,61 @@ public final class DesktopRefreshCoordinator {
 	// embedded helper. Later views use refresh() for an awaitable manual retry.
 	@discardableResult
 	public func startInitialRefresh() -> Task<Void, Never> {
-		Task { [weak self] in
+		if let bootstrap = host as? any DesktopSnapshotBootstrapping {
+			activeRestore = Task { [weak self] in
+				guard let self else { return }
+				if let prepared = try? await bootstrap.readServingSnapshot(), !Task.isCancelled {
+					let current = self.servingHeader
+					let prefersFullRestore = prepared.header.sessionPrepared && current?.sessionPrepared == false
+						&& current?.generation.stateIdentity == prepared.header.generation.stateIdentity
+						&& current?.generation.coreEpoch == prepared.header.generation.coreEpoch
+						&& current?.generation.sessionEpoch == prepared.header.generation.sessionEpoch
+					if self.latestSnapshot == nil || prefersFullRestore { self.installServingPublication(prepared) }
+				}
+			}
+		}
+		return Task { [weak self] in
 			await self?.requestFullRefresh(trigger: .startup)
+		}
+	}
+
+	public func stopAppWork() {
+		activeRestore?.cancel()
+		activeRefresh?.cancel()
+		activeQuotaOperation?.cancel()
+		pendingFullTrigger = nil
+		pendingQuotaPriority = nil
+	}
+
+	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+		if let previous = servingHeader {
+			let old = previous.generation
+			let new = prepared.header.generation
+			if old.stateIdentity != new.stateIdentity || old.coreEpoch != new.coreEpoch
+				|| old.sessionEpoch != new.sessionEpoch || old.coreSchema != new.coreSchema
+				|| old.sessionSchema != new.sessionSchema {
+				// Identity invalidation precedes date/fullness checks: even an
+				// unusable replacement must not leave the old identity visible.
+				servingHeader = nil
+				latestSnapshot = nil
+				if case .running = fullAttempt {
+					state = .refreshing(previous: nil)
+				} else {
+					state = .uninitialized
+				}
+			}
+		}
+		guard prepared.header.matchesCurrentDay(now: wallNow()) else { return }
+		if !prepared.header.sessionPrepared, let previous = servingHeader,
+			previous.sessionPrepared, previous.matchesCurrentDay(now: wallNow()) {
+			return
+		}
+		servingHeader = prepared.header
+		latestSnapshot = prepared.payload
+		if case .running = fullAttempt {
+			state = .refreshing(previous: prepared.payload)
+		} else {
+			state = .ready(prepared.payload)
 		}
 	}
 
@@ -1926,6 +2073,46 @@ public final class DesktopRefreshCoordinator {
 		let defaultPriority: QuotaRequestPriority = trigger.quotaIsManual ? .manual : .periodic
 		let priority = QuotaRequestPriority.merged(pendingQuotaPriority, defaultPriority)
 		pendingQuotaPriority = nil
+		if let bootstrap = host as? any DesktopSnapshotBootstrapping {
+			let quotaTask = Task { [weak self] in
+				await self?.runQuotaOperation(priority: priority, mode: .standalone)
+			}
+			do {
+				let prepared = try await bootstrap.bootstrapServingSnapshot(
+					progress: { [weak self] progress in Task { @MainActor in self?.publishProgress(progress, generation: currentGeneration) } },
+					publication: { [weak self] prepared in Task { @MainActor in
+						guard let self, self.generation == currentGeneration else { return }
+						self.installServingPublication(prepared)
+					} }
+				)
+				guard currentGeneration == generation, !Task.isCancelled else { quotaTask.cancel(); return }
+				guard let prepared else { throw HelperExecutionError.malformedOutput }
+				installServingPublication(prepared)
+					if let envelope = latestSnapshot {
+						await publishSuccess(envelope, generation: currentGeneration)
+					} else {
+						scanProgress = nil
+						publishFailure(.unavailable, generation: currentGeneration)
+					}
+			} catch {
+				if !Task.isCancelled {
+					publishFailure(.helper((error as? HelperExecutionError) ?? .malformedOutput), generation: currentGeneration)
+				}
+			}
+			fullQuotaPhaseCompleted = true
+			if let result = await quotaTask.value, let subscription = result.subscription,
+				currentGeneration == generation, !Task.isCancelled, let baseline = latestSnapshot {
+				let updated = baseline.replacingSubscription(subscription)
+				latestSnapshot = updated
+				switch state {
+				case .ready: state = .ready(updated)
+				case let .degraded(_, issue): state = .degraded(previous: updated, issue: issue)
+				case .refreshing: state = .refreshing(previous: updated)
+				case .uninitialized: break
+				}
+			}
+			return
+		}
 		let quotaInterval = DesktopPerformanceInterval()
 		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
 		DesktopLogger.recordPerformance(quotaInterval.sample(.quota))
@@ -2267,6 +2454,9 @@ private final class BoundedLines: @unchecked Sendable {
 			discardingLine = false
 		}
 		guard !discardingLine, !current.isEmpty else { return }
+		// Zero opts into callback-only streaming. Long bootstrap jobs retain no
+		// historical publications or progress lines in this transport buffer.
+		if maximumLines == 0 { onLine(current); return }
 		guard storage.count < maximumLines else {
 			truncated = true
 			return
