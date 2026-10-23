@@ -4,6 +4,12 @@ topic: scan-performance
 subject: serving-snapshot-and-bootstrap
 ---
 
+> **证据引用处置 — 2026-10-22**：Neo4j 恢复后，按用户要求移除本 topic 期间以文件形式保存的
+> 回退证据与实验记录（原 `docs/topics/scan-performance/evidence/`，以及 Task 1 的
+> `docs/evidence/records/`）。本文原指向这些文件的链接已改为纯文本，文中出现的上述路径均不再是
+> 可用引用；原件仅可从提交 `c6ea1ca6551f525cc8a757ccf2e7889fabf36402` 的 Git 历史追溯。
+> 结构化观测、内容身份与门禁结果以 Neo4j CEv1 为准；历史观察、结论与评审裁决保持原义。
+
 > 2026-10-17 权威迁移说明：当前唯一证据权威为 Neo4j 的 `completion-evidence/v1`，
 > namespace 为 `github.com/kitdine/agent-deck`。本文旧轮次中的离线查询结果仅为历史事实，
 > 不改写为当时执行过 Neo4j 查询。原始记录可按原 ID 在 `GitEvidenceRecord` 归档中定位；
@@ -643,7 +649,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 本轮完成了 warm 条件的 A/B 各100个有效自动首击，整体复评 FAIL。P01 已被正式样本否定，按项目“决定性阻断后停止扩大验证”规则，未继续其余五条件百次采样。完整启动、真实压力、全部面板/筛选/焦点正确性、剩余整体审查及设计补充完整复核仍未完成，不声明完整 E1 通过。
 
-**持久证据：** [自动百次原始数值与事件记录](../evidence/serving-warm-auto100-20261015-r7.json)，SHA-256 `6a832f378222d6e1d64de3a5823690e5b74a2a8d30832c1f53edc6d8fc3e391f`。文件包含输入、工具链、App/探针身份、两批全部样本、事件绑定、准确数据库起点、统计口径及限制；无需临时日志才能理解结论。人工预检和中途部分结果另存，未合入正式分布。
+**持久证据：** 自动百次原始数值与事件记录，SHA-256 `6a832f378222d6e1d64de3a5823690e5b74a2a8d30832c1f53edc6d8fc3e391f`。文件包含输入、工具链、App/探针身份、两批全部样本、事件绑定、准确数据库起点、统计口径及限制；无需临时日志才能理解结论。人工预检和中途部分结果另存，未合入正式分布。
 
 **中断与续采：** 首批A/B各74个有效样本后，第149次尝试（A）发送事件后327.529420818秒仍无结果，结束精确私有实例并保留失败。之后现场读到 screen_locked=1、前台com.apple.loginwindow；这证明当时无法继续，不能反推锁定与第149次事件的精确因果时间。解锁后验证相同输入/App/两份SQLite字节起点，补26对有效样本；总计201次尝试、200有效、A未完成1/B失败0。锁屏期间未向登录窗口发送点击；续采使用随进程结束的临时防空闲休眠，没有更改安全设置。所有采样进程完成，测试App清理成功。
 
@@ -682,7 +688,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   字节起点，不重扫生成新 seed；未重采 live HOME、改权限或安装。只构建/运行私有
   诊断 App，仓库产品代码及测试未改；未变产品测试不重跑。
 
-持久原件：[R7 分段诊断与失败记录](../evidence/serving-r7-attribution-progress-20261016.json)，
+持久原件：R7 分段诊断与失败记录，
 SHA-256 `57f3fb28cf8f382635725ef1a8704789b2ed9c19071fbb07c4136d26e3406208`。
 原件包含所有诊断样本、事件、App 身份、输入/起点、方法和限制，不依赖临时日志理解结论。
 R7 的原失败分布和门禁保持历史；这些诊断不构成 P01/E1/独立审查通过证据。
@@ -732,7 +738,7 @@ warm 条件满足 300/600ms 门槛；不是相同新版探针下的新 A/B 比�
 之后只有新增/修正的生命周期测试及 tasks.md 交接发生变化，测量产品/探针/构建输入未变。
 测量窗口的 business date 保持 `2026-10-15`，后续跨日文档收口没有触发重采或改变原样本。
 
-持久原件：[修复诊断与最终百次记录](../evidence/serving-r7-repair-verification-20261016.json)，
+持久原件：修复诊断与最终百次记录，
 SHA-256 `738d7924d6786f1e63bc4f07ccf7b10b4523364956988e906c43f71c309da86d`。
 该文件包含逐次数据、事件、源码/工具/产物身份、起点、诊断对照、控制器源码和参数化
 复现方法；临时二进制/日志不是持久引用。此前诊断进度原件也保留。
@@ -822,7 +828,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - restore 原生预检 n=1：action 到帧 `303.172348ms`，App-ready 到模型 `907.011042ms`；此单次不判性能失败。
 - 随后单独开始固定 100 次 restore 原生首击，在发现日期阻断后主动停止：19 个完成样本/19 个记录事件，0 记录失败，范围 `207.911869–320.354593ms`；1 个超过 300ms，0 个超过 600ms。没有达到预声明的尾预算否定阈值，不报告未满 100 的 p95/p99。已完成样本均清理成功；停止时精确私有 App 清理成功、scan.lock 不存在，未重置活动 worker 的数据库。
 
-持久原件：[R8 独立复评数值与源码轨迹](../evidence/serving-r8-review-20261016.json)，SHA-256 `c511d330797280e698b4544a32086c91355dc0279303133bda76b51ae4f622b6`。原件包含完整逐次脱敏数值、事件、输入和四项 artifact/probe 身份及方法限制；不依赖临时 App 或日志理解本轮结论。自动输入通过唯一 AX 目标、精确可执行身份和命中 PID 校验；原接收器的 manual/operator 标签仍不代表物理鼠标。
+持久原件：R8 独立复评数值与源码轨迹，SHA-256 `c511d330797280e698b4544a32086c91355dc0279303133bda76b51ae4f622b6`。原件包含完整逐次脱敏数值、事件、输入和四项 artifact/probe 身份及方法限制；不依赖临时 App 或日志理解本轮结论。自动输入通过唯一 AX 目标、精确可执行身份和命中 PID 校验；原接收器的 manual/operator 标签仍不代表物理鼠标。
 
 最终状态相对入口仅 tasks.md 状态段变化；本评审及新事实文件不在既有 fingerprint scope 内，事实文件摘要另绑定 context。门禁 `scan-serving-rereview-r8-9nLz-gate` 返回 FAILED：8 项有界 passing；serving-identity、e1-native-performance、independent-review 因日期正确性为 fail；open-path-latency、startup-bootstrap 未齐，无 blocked/invalidated/unresolved。E1 的 fail 不表示剩余条件已执行。
 
@@ -1041,7 +1047,7 @@ Task 2 Review 不勾选，同一任务交回 in_review 并释放修复者；完�
 
 **外部阻碍。** 第 9 次事件发送前，控制器对 AX 定位图标作系统命中检查，发现 hit PID 不等于精确测试 App PID，返回 exit 9 / target_hit_mismatch；该拒绝路径先于鼠标事件发送。本轮没有绕过保护、操纵被命中的其他 App 或重试伪装首次点击。8 个完成样本保留；中止事件不填零、不当成产品性能失败。采集器随后已退出；精确 bundle+executable 的 A/B 清理均确认成功，scan.lock 不存在。需要先确保隔离 TEST 图标无遮挡且系统命中身份一致，再继续原生验收。没有判定具体哪个外部窗口造成遮挡。
 
-持久原件：[R10 独立复评数值与身份](../evidence/serving-r10-review-20261017.json)，SHA-256 `285a892628d1857da00d5978e2c0ea1dffe806341b32c0d798c743810002a319`。记录包含逐次脱敏数值、事件、输入/源码/probe/artifact 身份、受控来源内容、前置与限制；不依赖临时 App/日志解释结论。实际输入是带精确身份保护的外部 CGEvent，不是接收器旧 operator/manual 标签所称的物理鼠标。
+持久原件：R10 独立复评数值与身份，SHA-256 `285a892628d1857da00d5978e2c0ea1dffe806341b32c0d798c743810002a319`。记录包含逐次脱敏数值、事件、输入/源码/probe/artifact 身份、受控来源内容、前置与限制；不依赖临时 App/日志解释结论。实际输入是带精确身份保护的外部 CGEvent，不是接收器旧 operator/manual 标签所称的物理鼠标。
 
 最终仅 tasks.md 状态段改变 scoped 内容；本报告与事实文件不在原 scope 中，事实摘要另绑定 context。新 gate `scan-serving-rereview-r10-SkE9-gate` 查询为 BLOCKED：9 项有界 passing 显式 preserves/depends_on 复用；open-path-latency、e1-native-performance 因输入前置 blocked；startup-bootstrap 和完整 independent-review 仍 not_verified。没有 failed、invalidated 或 unresolved impact。完整六条件百次、启动、真实压力和剩余整体/设计补充审查仍由 Task 2 承接，不转移到 Task 7。
 
@@ -1088,7 +1094,7 @@ Verdict: FAIL
 - 六条件各 ≥100、真实 processing >120s、慢额度 30s、P03/全部面板分布和剩余整体实现审查仍缺；4,147 文件也不替代另外的 ≥5,071 文件规模门。没有新 A/B 加速比或 Release 结论。
 - requirements/performance-evaluation/tasks 三份设计补充 Round 3 均 PASS，各自准确 ContentState 的 Neo4j 门禁均 VERIFIED；这不覆盖本轮实现/测量 finding。R10 及更早 finding 的历史 disposition 不改写。
 
-持久事实：[R11 E1 脱敏记录](../evidence/serving-r11-e1-20261018.json)，SHA-256 `615c86878db36d90aeb7e64e5fb239cf54f73df1565b927770b3f58bde312ee3`。包含准确输入/构建/探针身份、逐次状态及数值、合成合约复现和清理事实；无需依赖临时语料、App 或日志来理解结论。
+持久事实：R11 E1 脱敏记录，SHA-256 `615c86878db36d90aeb7e64e5fb239cf54f73df1565b927770b3f58bde312ee3`。包含准确输入/构建/探针身份、逐次状态及数值、合成合约复现和清理事实；无需依赖临时语料、App 或日志来理解结论。
 
 Task 2 返回同一任务修复，整体 Review 保持未完成；不启动 Tasks 3–7，不提交或推送。Neo4j 本轮目标为 `scan-serving-e1-r11-20261018-cohort-state`；标准 gate 返回 **FAILED**：13 项中 7 项有界复用通过，matrix-probe-contract 失败，open-path-latency/e1-native-performance blocked，startup-bootstrap/independent-review/l3-regression 未验证。新目标的 21 项事实/评估节点和 47 条关系完成批次预检、创建计数及逐项回读。macOS 补丁版本变化后的完整 L3 适用性保留，未在决定性 finding 后扩大回归。
 
@@ -1157,7 +1163,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - 修复候选入口 gate 为 BLOCKED、8/13 有界覆盖；本轮新增的真实 native 接口反例否定 matrix-probe-contract 的完整适用性。没有重跑无关 Go/Swift 全套，也不撤销其原内容状态上的历史结果。
 - Task: `ad-scan-performance-serving-snapshot-and-bootstrap`；返回同一任务修复、释放评审者，整体 Review 保持未完成。Tasks 3–7、Git 交付和真实数据修改均不执行。
 
-持久复现：[R12 原生结果入统计对照](../evidence/serving-r12-rereview-20261018.json)，SHA-256 `f08b4f48ec02ca88f3c7a7c7a371814cd9237eeb1773b34dde440057c0578990`。该记录保留合法 cohort、最小原生结果形状、单字段控制、源码身份及旧原生事实来源；不依赖临时文件或截图解释结论。
+持久复现：R12 原生结果入统计对照，SHA-256 `f08b4f48ec02ca88f3c7a7c7a371814cd9237eeb1773b34dde440057c0578990`。该记录保留合法 cohort、最小原生结果形状、单字段控制、源码身份及旧原生事实来源；不依赖临时文件或截图解释结论。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R11-F1
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
@@ -1252,7 +1258,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Entry: `scan-serving-rereview-r13-DARsqdDQ-sync-state` 的 277 项输入全部匹配，HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；macOS26.7.2、Python3.14.8、Go1.27.1、Xcode26.4/17E192、Swift6.3 与相关记录一致。先前 63 项契约回归继续在其准确状态有效，不因本轮重新跑全套。
 - Method: 沿用当前 create_cache_seed/restore_state/refresh_cache_in_place/cohort_identity，真实 helper 执行、真实 reader 核验、独立摘要重算。原临时 runner 的旧停止规则及旧 harness/matrix identity 不复用。一份全新一次性准备预检无采样/统计替代逻辑；执行器 exit0 只表示检查完成，结果为 starting_cohort_changed_before_launch。
 - Facts: 初始 cache 准备 5,843.588397ms，随后两次起点不同；零 App launch、零 native sample、零新 p95/p99。结束 worker lock 不存在。语料逐项 bytes/mtime/SHA 重新核对为 4,147/4,147；语料来自10月18日，当前业务日10月19日，不据此外推今天输入规模或首次导入成绩。
-- Evidence: [R14 脱敏准备记录](../evidence/serving-r14-preparation-20261019.json)，SHA-256 `28ee157f7953e5fd598b9620bb983b30dba5690bb5ed58044ef5698c21d5243c`。完整起点哈希、固定调用顺序、源码/输入/seed身份和限制均直接保留，不依赖临时私有目录取证。
+- Evidence: R14 脱敏准备记录，SHA-256 `28ee157f7953e5fd598b9620bb983b30dba5690bb5ed58044ef5698c21d5243c`。完整起点哈希、固定调用顺序、源码/输入/seed身份和限制均直接保留，不依赖临时私有目录取证。
 - Final target: `scan-serving-e1-r14-20261019-state`；matrix-probe-contract 的真实正式入口被本轮反例否定；其余七项适用通过证据有界保留。startup-bootstrap、independent-review、e1-native-performance、l3-regression、open-path-latency 仍未完成。R13 scoped PASS 不等于整体实现评审通过。
 - 按 Task 2“评审发现产品或测量入口问题即交修复”的边界，发现决定性阻断后停止扩大压力、startup、整体审查及 L3 验证，不在本阶段扩建工具。4,147 文件也不替代另列的 ≥5,071 文件规模条件。Task `ad-scan-performance-serving-snapshot-and-bootstrap` 返回同任务修复，释放评审者；不启动 Tasks3–7。
 
@@ -1268,7 +1274,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - 真实证明：使用与 R14 相同的 4,147 文件、700,955,758 bytes 冻结输入和原 HOME 路径，同一匹配的私有 B helper、原生 App 及生成 seed。三次连续真实准备均得到 cohort `4d9fb744207de5876f2ecac0b8b8ddd6f18cc50a69917b7428427d2383b16cb5`。随后未替换任何准备、reader、launch 或停止函数，真实 `run_matrix` 执行 restore/B/startup-frame 两次；两次起点同属 `0dc41f1ff4efa5c0542de27be57a502012d66a4f4dee6e0d0cee88989f4b8d20`，2 attempts、0 failures、2 startup control frames。前置三次与采集两次各有独立 checkpoint/context，二者不合并。第二次真实启动已越过原阻断。
 - 边界：startup frame 观察为 1,778.598618ms 与 1,908.831482ms，n=2 不计算 p95/p99，不据此判定产品预算通过或失败。没有原生点击样本；没有完成六条件百次、真实长压力、完整 startup 系列、整体独立实现审查或 L3 适用性。输入仍为前一日冻结语料，不满足另列的 ≥5,071 文件规模条件，也不代表当前业务日首次导入规模。rebuilding/slow-quota 共用已修复准备生命周期，但未声称本轮完成它们的原生压力验收。
 - 实验与清理：首次复制到新 HOME 触发重新处理，bootstrap 300s 超时，发生在检查点验证之前，未归因于 cohort 或产品延迟。原 HOME 沙箱内启动报 `kLSNoExecutableErr (-10827)`，留下一次无 frame 失败；确认 binary/Info.plist/执行权限后，仅切换执行权限环境，同一私有入口成功完成两次启动。最终私有 App 已停止、worker 空闲，原 HOME 的生成状态已按原对象恢复；未更改实时会话、认证、系统权限或安装。
-- 持久事实：[R14 修复验证](../evidence/serving-r14-repair-20261019.json)，SHA-256 `94e4e6527f452f18df93bba16b2775943d3857ee3679f4f41eaed87655bd44a7`；保存完整起点哈希、输入/seed/helper/App/源码身份、样本计数和局限，不依赖临时运行目录。
+- 持久事实：R14 修复验证，SHA-256 `94e4e6527f452f18df93bba16b2775943d3857ee3679f4f41eaed87655bd44a7`；保存完整起点哈希、输入/seed/helper/App/源码身份、样本计数和局限，不依赖临时运行目录。
 - 内容与交接：入口 HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`，R14 的 278 项输入中，修复验证前仅矩阵实现及矩阵测试变化；随后仅同步本附记、任务状态和脱敏验证记录。新目标 `scan-serving-repair-r14-MlvYDu-state`，WorkUnit `scan-performance:serving-snapshot-and-bootstrap`；完整 Task 2 边界保持开放。修复者 Codex，无本轮委派，交回同一 Beads 任务独立复评；不启动 Tasks 3–7 或 Git 交付。
 
 ## Round 15 — 2026-10-19
@@ -1301,7 +1307,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Scope: 仅 SP-SB-R14-F1 的准确缓存起点准备生命周期及关联保护。SP-SB-R11-F1 closed: R13 的统计/字段适配结论保持；其他历史 disposition 保留。本轮不构成整个 Task 2 实现评审完成。
 - Method: CodeGraph 定位后检查当前 ExactCacheState、validate_cache_in_place、run_matrix 与对应测试；核对准确内容和 CEv1 lineage；用当前 cohort_identity/summarize 对持久原生记录作独立重算。没有重复已有效测试或启动新的 App。
 - Reviewed state: HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；入口 `scan-serving-repair-r14-MlvYDu-state` 的 279 项文件 SHA-256 全部匹配。矩阵 SHA-256 `7015f1abaa68211fb517596b53c6844ce3cff86edd8bd8cf96d4aed3570f7492`，手动探针 SHA-256 `e7d301349369216ec1d5d8376ef3d4b6652e99794e15d77ce33b95eba7661a66`；macOS26.7.2、Python3.14.8 与交接一致，Go/Swift/依赖及工具链未发生已知变化。
-- Evidence reuse: 入口 matrix-probe-contract 的 41 项测试通过、无失败/跳过，以及三次真实准备和实际 run_matrix 两次启动证据，在本内容状态有效。直接核对 [R14 修复验证](../evidence/serving-r14-repair-20261019.json) SHA-256 `94e4e6527f452f18df93bba16b2775943d3857ee3679f4f41eaed87655bd44a7`；重算三个准备身份均为 `4d9fb744207de5876f2ecac0b8b8ddd6f18cc50a69917b7428427d2383b16cb5`，无 identity error。两个实际 collector 样本汇总与持久记录完全一致：cohort `0dc41f1ff4efa5c0542de27be57a502012d66a4f4dee6e0d0cee88989f4b8d20`、attempts2、failures0、startup frames2、native click frames0、p95=null。准备和采集两组 checkpoint/context 不合并。
+- Evidence reuse: 入口 matrix-probe-contract 的 41 项测试通过、无失败/跳过，以及三次真实准备和实际 run_matrix 两次启动证据，在本内容状态有效。直接核对 R14 修复验证 SHA-256 `94e4e6527f452f18df93bba16b2775943d3857ee3679f4f41eaed87655bd44a7`；重算三个准备身份均为 `4d9fb744207de5876f2ecac0b8b8ddd6f18cc50a69917b7428427d2383b16cb5`，无 identity error。两个实际 collector 样本汇总与持久记录完全一致：cohort `0dc41f1ff4efa5c0542de27be57a502012d66a4f4dee6e0d0cee88989f4b8d20`、attempts2、failures0、startup frames2、native click frames0、p95=null。准备和采集两组 checkpoint/context 不合并。
 - 证据边界：第二次真实启动已越过 R14 阻断；这不证明六条件百次、rebuilding/slow-quota 的真实压力或全部面板预算。原修复中的 relocated HOME 超时和 sandbox 启动失败保留，不删除或重标为成功。本轮仅重算已有脱敏记录，零新增原生样本。
 - Final target: `scan-serving-rereview-r15-rZiP5JkD-state`；沿用文件清单身份方式，最终仅同步 review/tasks 文档，八项适用通过证据显式目标绑定保留；matrix-probe-contract 补充本次独立复评事实。整体 independent-review criterion 仍未覆盖。
 - Gate: 13 项必需标准中八项有界覆盖，startup-bootstrap、independent-review、e1-native-performance、l3-regression、open-path-latency 仍缺；无新增未解决 candidate impact。历史 R5 invalidation 不用于当前复用。4,147 文件前一日冻结语料及 n=2 startup 控制不代替当前日规模、≥5,071 文件或性能尾分布证据。
@@ -1354,7 +1360,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Code inspection: 本轮另检查 serving publication/reader 的权限、校验、generation及原子写入，inventory checkpoint/coverage 的事务归属，分批发布和 App-only owner取消，原生恢复/身份失效、quota解耦及日期失效路径；未据局部检查宣称整个 independent-review criterion 完成。发现上述有复现的 L3 阻断后停止扩大验收。
 - Pressure: 旧4,147文件预检的真实 usage rebuild processing 为46.110317846s，exit0；首击又早于该处理区间，native正确报 rebuild_pressure_condition_not_established，零有效压力样本。232.155441ms 的观察不得当作120s压力下的成绩。临时输入 driver 须先等待匹配的实际 processing 标记；不通过 sleep伪造长扫描，也不重试相同失败配置。
 - Fresh input: 用户明确要求重新冻结，已只读捕获4,299个JSONL、734,012,799 bytes，corpus SHA-256 `10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380`；两份SQLite分别只读备份。无认证文件、无实时数据写入，不声称跨DB/文件系统原子快照。新快照保留，尚无新语料原生样本；仍低于另列的5,071文件规模，不预先声称新语料重建会超过120s。
-- Evidence: [R16 脱敏验证事实](../evidence/serving-r16-verification-20261019.json)，SHA-256 `22135268abcd1d9c99f854ad82a9d503c0dacf70eb96a097ad7401b608c2ec39`。保留旧输入各组准确起点/时钟/观察、新捕获身份、原始/focused/前台对照事实和日志摘要哈希；不用临时日志、xcresult、语料或运行目录作为持久引用。
+- Evidence: R16 脱敏验证事实，SHA-256 `22135268abcd1d9c99f854ad82a9d503c0dacf70eb96a097ad7401b608c2ec39`。保留旧输入各组准确起点/时钟/观察、新捕获身份、原始/focused/前台对照事实和日志摘要哈希；不用临时日志、xcresult、语料或运行目录作为持久引用。
 - Final target: `scan-serving-e1-r16-20261019-state`；l3-regression 由原始当前 wrapper 失败证据否定，independent-review 因上述当前测试 finding 未通过。八项其他适用通过证据有界保留；startup-bootstrap、e1-native-performance、open-path-latency 仍未验证。六条件百次、完整 startup、真实长压力、P03/全部面板及剩余整体审查未完成，不转交Task7。
 - Repair authority: 本轮仅诊断，未修产品/测试/配置；前台对照是归因证据，不是已修复声明。按 Task2 评审边界交回同一任务修复。Beads `ad-scan-performance-serving-snapshot-and-bootstrap` 返回 in_progress、释放评审者；无提交、推送、安装或 Tasks3–7 实施。
 
@@ -1370,7 +1376,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Focused：隔离 HOME 的 `xcodebuild test -only-testing:AgentDeckAppTests/MenuBarViewModelTests/testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges`，Debug unsigned，exit0，1 test/0 failures，10.146s；没有外部激活控制器。
 - 原始命令：`bash scripts/test-macos-app.sh` exit0；Shared100/App147/Widget51，共298项，0 failures、1项既有 opt-in skip。目标测试在完整套件中9.939s通过；wrapper 的 helper 泄漏检查通过并清理隔离 HOME。两次独立测试进程均通过，不声称所有桌面干扰下均不可能失败；linkd 警告仍不能单独作为根因。
 - 身份与范围：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`，R16 的280项输入核对仅该测试文件变化；之后同步任务/本附记及脱敏证据。测试文件 SHA-256 `65258b3d5db5d11a5d23fd5a24972a3f274549eaae8c319f956915da81fd1ddb`。R16 已核对的未变 Go/build 输入不重跑；本轮完成所要求的原生 focused 与原始 wrapper，整体 L3 适用性及独立实现审查仍由后续评审确认。
-- 持久事实：[R16 修复验证](../evidence/serving-r16-repair-20261019.json)，SHA-256 `6240f512bb1f07b7ea8d9c12d3491b5a1a54019effe4ab36202df24ee4bdce3f`，保留命令、结果、源码/日志摘要及局限。临时日志和 xcresult 不作为持久引用。
+- 持久事实：R16 修复验证，SHA-256 `6240f512bb1f07b7ea8d9c12d3491b5a1a54019effe4ab36202df24ee4bdce3f`，保留命令、结果、源码/日志摘要及局限。临时日志和 xcresult 不作为持久引用。
 - CEv1：新目标 `scan-serving-repair-r16-1d4ih44a-state`，WorkUnit `scan-performance:serving-snapshot-and-bootstrap`。原 native failure 在修复候选未复现；不把本轮有界修复转成整体 L3/独立审查或 Task2 完成声明。完整 E1 六条件百次、startup、真实长压力、P03/全部面板及剩余审查保持未完成；没有新增性能样本或修改新冻结语料。
 - 交接：修复者 Codex，无本轮委派。返回同一 Beads 任务独立复评，保留历史 findings；不执行 Tasks3–7、提交、推送或安装。
 
@@ -1403,7 +1409,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Reviewer: Codex 主进程，原 R16 评审者，未参与本次候选修复；接受 REPAIR 1d4ih44a8_JmRar7 已释放交接。本轮无委派，无产品/测试/配置修改。
 - Scope/Method: 仅 SP-SB-R16-F1 的测试前置、断言保留和清理边界；CodeGraph 定位未覆盖该测试后作准确源码读取，比较候选清单、核对持久记录与目标绑定证据。SP-SB-R11-F1 closed: 既有统计/准入结论保留；SP-SB-R14-F1 closed: 准确起点恢复结论保留。未把本轮有界复评扩为整个 Task2 实现 Review。
 - Reviewed state: HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；入口 `scan-serving-repair-r16-1d4ih44a-state` 的281项文件SHA-256全部匹配，macOS26.7.2。对 R16 清单比较，唯一代码变化是 `apps/macos/AgentDeckAppTests/MenuBarViewModelTests.swift`，SHA-256 `65258b3d5db5d11a5d23fd5a24972a3f274549eaae8c319f956915da81fd1ddb`；其他变化仅任务/评审同步及新增修复事实。
-- Evidence reuse: [R16 修复验证](../evidence/serving-r16-repair-20261019.json) SHA-256 `6240f512bb1f07b7ea8d9c12d3491b5a1a54019effe4ab36202df24ee4bdce3f` 已直接核对，且 Neo4j 入口 l3-regression 观察绑定同一候选并保留完整有界事实。focused 原测试1项/0失败、10.146s；原始 `bash scripts/test-macos-app.sh` exit0，Shared100/App147/Widget51，共298项，0失败、1项既有 opt-in skip，目标测试在完整套件9.939s通过，helper清理通过。没有外部激活控制器。源码、测试和相关环境未变，不因阶段切换重跑。
+- Evidence reuse: R16 修复验证 SHA-256 `6240f512bb1f07b7ea8d9c12d3491b5a1a54019effe4ab36202df24ee4bdce3f` 已直接核对，且 Neo4j 入口 l3-regression 观察绑定同一候选并保留完整有界事实。focused 原测试1项/0失败、10.146s；原始 `bash scripts/test-macos-app.sh` exit0，Shared100/App147/Widget51，共298项，0失败、1项既有 opt-in skip，目标测试在完整套件9.939s通过，helper清理通过。没有外部激活控制器。源码、测试和相关环境未变，不因阶段切换重跑。
 - 局限：一次 focused 加一次完整套件不是任意桌面干扰下永不失败的证明；SchemaSignalAcceptanceTests 的 opt-in skip 仍不是验收证据。修复前未记录 isActive 的历史限制保留，不改写 R16 原失败、诊断对照或其分类置信度。本轮零新增性能样本，未改新冻结语料。
 - Final target: `scan-serving-rereview-r17-hRK1RYPq-state`；最终仅 review/tasks 文档同步，沿用281项文件清单方式，八项适用通过证据显式目标绑定保留。另记录本轮 finding 关闭及可复用 Native 结果；不将其提升为整体 independent-review 或 l3-regression 完成。
 - Gate: 13项必需标准中八项有界覆盖；startup-bootstrap、independent-review、e1-native-performance、l3-regression、open-path-latency 仍缺。整体 L3 后续应复用此次 Native 通过和已确认未变的 Go 范围，仅解决剩余适用性，不机械重跑全套。完整 E1 六条件各百次、startup、真实长压力、P03/全部面板及剩余整体审查仍需完成。
@@ -1457,7 +1463,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Diagnostic: 私有probe SHA-256 `b7c9c6162b9f3d9136f6c99a95c49e10a7fa2b0d876c5299eb5c239d3dad3287`，只读诊断在原bitmap timestamp之后，original validator保持；instrumented观察单列为diagnostic-only。App-ready到模型1,978.574533ms仅记录，不评价预算。两个cohort分别为 `f12fd6e68f457f7918cb70dff3210a163e207d5184dba0ec8014048ed0ff6968` 和 `292048c7a02e08df7e9db87fa834a0c33dd31b5327e76748b63128a4bfd88fde`，不合并。两次均0有效startup帧；无新native icon样本、p95/p99或产品延迟失败结论。
 - L3 applicability: R17已核对的focused及Native298/0fail/1既有opt-in skip继续有效，175项未变Go/build范围继续复用；当前仅新增测量oracle缺陷，后续应补其针对性回归及实际first-import验证，不机械重跑未变Native全套。whole L3仍未验证，剩余影响已收窄到待修复的采集器路径；完整E1/压力与整体审查不由这些回归替代。
 - Code review: 本轮补查CLI bootstrap/只读stats、migration/coverage提交、scanruntime的owner/receipt/取消和终态发布、today projection、Native wire/日期/恢复边界；发现上述决定性入口问题后停止扩大验证。没有用局部源码检查宣称整个independent-review criterion通过。
-- Evidence: [R18 startup oracle脱敏事实](../evidence/serving-r18-startup-oracle-20261019.json)，SHA-256 `2dee3de14c3d930af7cbfd37ca11835d15304bd3f3a96b8004158faabd3b8bbd`；包含原始/诊断样本、artifact/输入/源码/时钟身份、布尔对照和局限。事实不依赖临时日志、私有语料或临时导出路径。
+- Evidence: R18 startup oracle脱敏事实，SHA-256 `2dee3de14c3d930af7cbfd37ca11835d15304bd3f3a96b8004158faabd3b8bbd`；包含原始/诊断样本、artifact/输入/源码/时钟身份、布尔对照和局限。事实不依赖临时日志、私有语料或临时导出路径。
 - Final target: `scan-serving-e1-r18-20261019-state`；matrix-probe-contract及independent-review由当前阻断否定，其他七项适用通过证据有界保留。startup-bootstrap、e1-native-performance、open-path-latency、l3-regression保持未验证。六条件各百次、startup、真实长压力、P03/全tab与整体审查未完成。
 - Task: `ad-scan-performance-serving-snapshot-and-bootstrap` 返回in_progress并释放评审者，整体Review未勾选。不实施Tasks3–7，不提交、推送或安装。临时诊断只用于归因，不持久化修复。
 
@@ -1473,7 +1479,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - 针对性验证：`python3 -B -m unittest discover -s scripts -p 'scan*serving*test.py'` 最终42项通过、0 failures/0 skips，包括上述 Swift 行为与已有跨时钟、混 cohort、错误/缺失身份等回归。修正后的私有 A/B App 均构建通过。初次构建发现候选专属 servingHeader 不兼容 A，已在最终候选中改用共同 snapshot 合同并重新验证；不复用失败构建的样本。
 - 真实首次导入：既有新冻结4,299文件/734,012,799 bytes 的逐项校验副本，corpus SHA-256 `10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380`。当前真实 run_matrix，first-import/B/startup-frame，pairs1；空DB、无缓存，无 CLI 预导入。模型首可用2,066.408569ms，partial=true/sessionDomainAvailable=false；实际bitmap的精确数字校验通过，startup frame为2,222.636098ms，1 attempt/0 failure/1 valid startup frame。cohort `1b959ef4486f0ae7062c99ea1a51f9da3a380b4158378342b3921f5a9eacd5b9`，无身份拒绝。App准确停止、已接受worker正常空闲。
 - 限制：n=1不计算p95/p99、不判P11预算通过或失败，无native icon输入样本；没有完成六条件百次、完整startup、真实长压力、P03/全tab或整体独立实现审查。冻结输入仍低于另列的5,071文件规模。原R17 Native298/0fail/1既有skip及未变Go/build证据仅在原适用范围复用，whole L3仍待确认。
-- 持久事实：[R18 修复验证](../evidence/serving-r18-repair-20261019.json)，SHA-256 `699f69282c54a81cda4f5ad7695383e635a12c0fc34f0e7c30ffd3d4217c5312`。保留输入/构建/探针/源码/时钟和起点身份、样本、清理及局限，不保留像素或识别文本，不依赖临时导出目录。
+- 持久事实：R18 修复验证，SHA-256 `699f69282c54a81cda4f5ad7695383e635a12c0fc34f0e7c30ffd3d4217c5312`。保留输入/构建/探针/源码/时钟和起点身份、样本、清理及局限，不保留像素或识别文本，不依赖临时导出目录。
 - 内容与交接：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；R18入口282项输入核对仅矩阵实现与矩阵测试变化，随后同步任务/本附记及脱敏证据。CEv1目标 `scan-serving-repair-r18-OJlioQrE-state`，WorkUnit `scan-performance:serving-snapshot-and-bootstrap`；Task2边界保持开放。修复者Codex，无本轮委派，交回同一任务独立复评；无产品修改、Tasks3–7或Git交付。
 
 ## Round 19 — 2026-10-19
@@ -1505,7 +1511,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Reviewer: Codex主进程，原R18评审者，未承担本次修复；接受 REPAIR OJlioQrEE6bGEL0D 的已释放交接。无委派、无产品/测试/配置修改。Method: 源码及生成Swift回归审查、准确清单比较、CEv1证据核对、持久真实样本的cohort/summary重算。
 - Scope: 仅SP-SB-R18-F1及关联验证适用性；不是整个Task2实现评审通过。SP-SB-R11-F1 closed: 统计/准入结论保留；SP-SB-R14-F1 closed: 准确起点恢复结论保留；SP-SB-R16-F1 closed: Native测试前置修复结论保留。
 - Reviewed state: HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；入口 `scan-serving-repair-r18-OJlioQrE-state` 的283项文件SHA-256全部匹配，macOS26.7.2。相对R18，仅矩阵实现/矩阵测试两项代码变化，其他变化是任务/评审同步和新修复事实。矩阵SHA-256 `e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f`。
-- Evidence reuse: [R18修复验证](../evidence/serving-r18-repair-20261019.json) SHA-256 `699f69282c54a81cda4f5ad7695383e635a12c0fc34f0e7c30ffd3d4217c5312` 已直接核对。42项回归0失败/0跳过、负向控制及A/B构建证据绑定准确候选，可复用，无需因复评重跑。
+- Evidence reuse: R18修复验证 SHA-256 `699f69282c54a81cda4f5ad7695383e635a12c0fc34f0e7c30ffd3d4217c5312` 已直接核对。42项回归0失败/0跳过、负向控制及A/B构建证据绑定准确候选，可复用，无需因复评重跑。
 - Actual first-import: 4,299文件冻结语料的空DB/无cache真实样本，当前cohort_identity/summarize重算与记录完全一致：cohort `1b959ef4486f0ae7062c99ea1a51f9da3a380b4158378342b3921f5a9eacd5b9`，1 attempt、0 failure、1 startup frame、0 icon frames、p95=null。模型partial、session尚不可用；模型2,066.408569ms和数值帧2,222.636098ms分开。n=1不支持性能尾分布、预算或六条件验收；本轮没有新增原生启动。
 - L3 applicability: 按Task2声明的L3回归范围逐项核对，而非沿用“仍待整体确认”的笼统状态。相对 `scan-serving-state-resume-20261012-r4`，175项Go/module/build输入零变化，复用 `scan-serving-l3-resume-20261012-r4` 的full Go、相关race、vet、darwin双架构部分，不沿用其旧Native结果。相对 `scan-serving-repair-r16-1d4ih44a-state`，70项Native/build输入零变化，复用修复后同macOS26.7.2上的focused1及原始wrapper Shared100/App147/Widget51、0失败/1既有opt-in skip和helper清理。私有采集器仅以本次42项回归、A/B构建及真实首次导入覆盖其变更。新的snapshot比较不引入原始内容日志或持久化像素/OCR文本；未变隐私边界及Native日志策略不因阶段切换重跑。由这些互补范围形成当前目标的l3-regression通过证据，不让任何一个局部测试单独代替整项。
 - L3 limits: 该通过只覆盖适用回归/构建/并发与隔离检查，不包含E1百次、长压力/P03、资源预算或真实性能门；SchemaSignalAcceptanceTests既有opt-in skip仍不是独立验收证据。后续源码、依赖、工具链或相关环境变化须重新评估受影响部分。
@@ -1558,7 +1564,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Artifact: 当前A/B私有构建均成功，原报告不覆盖。B App SHA-256 `f457f8e3cd7675d1ea697de8c92ed9eafbd3238b08c15c71cec76211f3c4631a`，helper `e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40`，probe `61113f71251be5aef78ebf35cfd42ae9ed1626403da6d8552192dfd7d6dc13f4`。结束后重新核对匹配，没有在测量中并行构建或测试。
 - Preparation incident: 主进程只读schema查询在原备份seed目录留下0byte WAL与32KiB SHM，strict seed-set guard在任何App/样本开始前拒绝。原目录保留，验证空WAL和worker idle后，复制两份DB原字节到干净合法seed并逐项比对哈希；只修改临时driver的seed定位。更正前后均未放宽保护，准备错误不计性能失败。更正后driver SHA-256 `563ed60db96b99083b5d0db362fbd1b7f7489e014f74af6ce36a184dfd8152ab`，计划于2026-10-19T07:34:00.635740Z在采样前写入。
 - Result: 采集器summary仍为NOT_VERIFIED，因为未形成完整百次/全部条件；正式预算判定由上述固定100秩约束作FAIL。12个startup帧中位3,730.523486ms、最大5,267.367348ms仅为逐组描述，不挪用为模型预算或icon延迟。零icon输入样本；六条件百次、其他startup、真实长压力、P03/全tab及剩余独立审查仍未完成。
-- Evidence: [R20 P02固定100证伪事实](../evidence/serving-r20-p02-budget-20261019.json)，SHA-256 `370afa62eaac7b4ff47070c2acbdc39a8a0ab92df5f35f6f36b968d435fe1023`；保留全部12次身份和时钟、事前计划、种子更正、完整模型条件、数学判定及清理。无需临时运行目录或日志解释结论。
+- Evidence: R20 P02固定100证伪事实，SHA-256 `370afa62eaac7b4ff47070c2acbdc39a8a0ab92df5f35f6f36b968d435fe1023`；保留全部12次身份和时钟、事前计划、种子更正、完整模型条件、数学判定及清理。无需临时运行目录或日志解释结论。
 - Final target: `scan-serving-e1-r20-20261019-state`。startup-bootstrap由P02实测否定，independent-review因当前阻断未通过；e1-native-performance及open-path-latency其余范围未验证。R19的九项回归/机制证据（包括L3）在未变内容上有界复用；L3通过不代表性能通过。
 - Task: `ad-scan-performance-serving-snapshot-and-bootstrap` 返回in_progress、释放评审者，整体Review未勾选。发现决定性预算反例后停止扩大验证；根因归属须在Repair中据分段证据确认。无Tasks3–7、提交、推送或安装。
 
@@ -1595,7 +1601,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：冷上下文subagent `r20_review_round1`，默认模型；只读源代码、前后补丁、产物身份、原时钟、检查点恢复与测试日志。主调度核验284项R20输入，仅DesktopCopy.swift及DesktopCopyTests.swift两项变化，直接重算当前文件/日志哈希与三个模型时延后记录结论。修复由独立角色subagent `r20_repair_round1`执行。
 - Content：HEAD14234ec4c96a3376d1072147eeb6e42b8768381a；生产f3fc06d56d6dd49085017da78f171227111a37d1b627668dc2175ddf6a7fc1fd，测试75a838ec4bc2268517b52ae86e89ab180f820cd5c44e8005338a1c38267283a1；最终App041dc54e99c1381030689486916053b39cd9437e7a2a98896580b306cb1637cf，helper e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40。矩阵e973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f未改。
-- Evidence：[第1轮修复与复评事实](../evidence/serving-r21-repair-review-20261019.json)保留各诊断变体独立身份、测量、最终pilot与验证结果；不池化47个诊断/控制样本及3个最终pilot。
+- Evidence：第1轮修复与复评事实保留各诊断变体独立身份、测量、最终pilot与验证结果；不池化47个诊断/控制样本及3个最终pilot。
 - State：同一Task2继续修复；用户授权至多三轮修复/评审，当前已完成第1轮。修复内容通过后才委派完整E1六条件百次、startup、真实压力、P03/全tab及整体独立审查。未启动该后续验收，整体Review未勾选，无Tasks3–7或Git交付。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R20-F1
@@ -1632,7 +1638,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：冷上下文评审角色subagent r20_review_round1复核本轮原始报告、驱动与产物，不参与修复；默认模型。主调度直接验证报告SHA、两文件身份、六组时钟差值后记录。修复角色r20_repair_round1执行低扰动诊断，无新源码修改。
 - Content：产品/测试及HEAD与Round21相同。诊断baseline App3490da6f138e81dabcdd7a9f465d3456efe6301a14c7423b5bfc37506133f996，sizing控制App4d76d2f681dcc9d5d5b99ca49f53ffb0df55950454fee9a537c4a079c80e64b3；两者helper均e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40，不与最终产品样本池化。
-- Evidence：[第2轮低扰动诊断与复核](../evidence/serving-r22-repair-review-20261019.json)保留原始时间点、顺序、身份与限制。无p95/p99或固定100拒绝结论。
+- Evidence：第2轮低扰动诊断与复核保留原始时间点、顺序、身份与限制。无p95/p99或固定100拒绝结论。
 - State：用户三轮上限已完成2轮，整体Task2未过关；完整E1/startup/压力/P03/全tab继续等待修复复评通过。最后一轮由用户授权主调度选用gpt-6-astra/high进行有界修复，独立评审保持分离；无Git交付/Tasks3–7。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R20-F1
@@ -1668,7 +1674,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：subagent r20_review_round1，冷上下文独立评审角色，未参与修复；逐项核对原始JSON、stack、源码身份和时钟。第三轮修复诊断由用户授权主调度选用gpt-6-astra/high的r20_repair_round3执行；前两轮使用默认模型。主调度直接验证源码、原始报告哈希、样本值及完整帧/清理事实，拥有正式记录与门禁。
 - Content：HEAD14234ec4c96a3376d1072147eeb6e42b8768381a；当前DesktopCopy f3fc06d56d6dd49085017da78f171227111a37d1b627668dc2175ddf6a7fc1fd，测试75a838ec4bc2268517b52ae86e89ab180f820cd5c44e8005338a1c38267283a1；最终App041dc54e99c1381030689486916053b39cd9437e7a2a98896580b306cb1637cf、helper e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40。两文件外的产品输入未改。
-- Evidence：[最终轮实测与证据边界](../evidence/serving-r23-final-review-20261019.json)，连同Round21/22的脱敏事实保留全部必要结论，不依赖临时日志。新目标scan-serving-r23-wshRua-state；L3通过只表示适用回归证据组合，不代表性能、压力、P03或完整E1通过。
+- Evidence：最终轮实测与证据边界，连同Round21/22的脱敏事实保留全部必要结论，不依赖临时日志。新目标scan-serving-r23-wshRua-state；L3通过只表示适用回归证据组合，不代表性能、压力、P03或完整E1通过。
 - Stop：三轮均未关闭R20-F1。按用户上限停止，Task2保留in_progress并释放主调度认领，整体Review未勾选。按用户顺序，完整E1六条件百次、startup完整验收、真实长压力、P03/全tab和整体独立审查均未启动；修复复评通过是其前置。无Tasks3–7、提交、推送或交付。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R20-F1（前置：用户重新授权超出本次三轮上限的后续工作）
@@ -1705,7 +1711,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Reviewer/Method：冷上下文subagent r20_review_cycle4，默认模型；实际源码/补丁/日志/产物身份核验及既有真实reader/ExactCacheState路径下串行固定100。修复者r20_repair_cycle4使用用户指定gpt-6-astra/medium。主调度直接核验文件与日志哈希、100组原始时钟、单一开始状态、完整模型/帧/清理及前后身份。
 - Content：HEAD14234ec4c96a3376d1072147eeb6e42b8768381a；生产c4fd9f2cbd40463efbd202dd5f8d1dc256d5fef8e82bf2dfa1063d109c2dfec7，测试17039e1831a093ce711778377b18e8b5e6076a8afa7dcbeff51d0a8df18a2c05。App365af98ef5e19c91e639869a8d2ad0ed8b01ebaf209b71834984a4fa13bba321/helper e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40；原probe61113f71251be5aef78ebf35cfd42ae9ed1626403da6d8552192dfd7d6dc13f4和matrixe973a3f089b0e34c89c6cc815d4bb6881b7ffd30e1007fd921fe9967ad7ce94f未改。
 - Plan：任务评论248c71e2-7950-5922-bcf4-f3481f957865先于采样声明固定100/同起点/6超限即拒绝/无效样本即停；计划于2026-10-19T09:44:22Z写出。冻结4299文件/734012799bytes/corpus10bbdf65dd19c3010f91a432524a1867191935f82bd7f4189f102f10a89b3380已逐文件重新hash，前后相同。cohort446797ffbf0dacc7595433452453cee516b41c0c30cd1eb6886cdc4406096c26。
-- Evidence：[R24有界修复与固定100事实](../evidence/serving-r24-p02-pass-20261019.json)保留逐次原时钟、数值帧、起点身份及正式预算结果。目标scan-serving-r24-renewed-state；startup-bootstrap的其他范围、e1-native-performance、open-path-latency和整体independent-review仍未完成，未假造全面通过。
+- Evidence：R24有界修复与固定100事实保留逐次原时钟、数值帧、起点身份及正式预算结果。目标scan-serving-r24-renewed-state；startup-bootstrap的其他范围、e1-native-performance、open-path-latency和整体independent-review仍未完成，未假造全面通过。
 - Authority：用户在前三轮停止后明确续授三轮，本轮是新增第1轮/累计第4轮。按用户顺序，修复内容和P02通过后，现继续委派剩余E1六条件百次、startup、真实长压力、P03/全tab及整体审查；L3按准确适用范围复用。无Tasks3–7或Git交付。
 
 Task checkpoint：ad-scan-performance-serving-snapshot-and-bootstrap；有界R20-F1关闭，整体完成门NOT_VERIFIED。
@@ -1780,7 +1786,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：独立subagent r20_review_cycle4核验真实产物/报告/源码身份与控制流；主调度直接读取原始拒绝结果并核验两份新文件。修复者为用户指定gpt-6-astra/medium。
 - Content：collector71bccbe696309d469eb281c7183468eb6d093428117786d043d64bc3f92f4c18；test2a92f49bd2d445652e9f532d8e8ed6548e5d2f38678ec416c7ade60cddf49b6b。草稿尚无有效原生切换证据。
-- Evidence：[第5轮草稿失败事实](../evidence/serving-r26-p03-draft-20261019.json)。两次尝试分别是hosting入口与window/NSView/AX子树遍历；确认缺口为目标消歧/选中绑定，不推论为权限错误或产品切换时延失败。
+- Evidence：第5轮草稿失败事实。两次尝试分别是hosting入口与window/NSView/AX子树遍历；确认缺口为目标消歧/选中绑定，不推论为权限错误或产品切换时延失败。
 - Stop scope：本轮为用户续授第2轮/累计第5轮，进入最后第6轮有界修复。完整E1/其余startup/压力/P03仍未完成；整体Review未勾选，无交付。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R25-F1
@@ -1816,7 +1822,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：独立r20_review_cycle4核验当前源码、实际App/helper/framework、原始JSON及build/test日志。主调度直接确认控制流多处查询、原始0样本/清理、报告/日志哈希，以及P02全部既有产品输入未变。修复各轮均按用户指定使用gpt-6-astra/medium，独立评审未参与代码修改。
 - Content：新增collector51027c844b2028b767739348a916e4bcc0c0cd7e72e359b38d1599df7b5b4654，test29f71e2632e4068de14c5d2c69f4842a100cdd0b62399ebea284dcd14cadb5bd。P03私有Appbf298030c9e0bc31b5c64668b355a3188fbdf3f88d584a287e59598d0a9e746f/helper e5919f878a17a4e84f6076526f48700db3c912220cdca17eafbe72031afa4d40/framework b50be358ef78b9b7a880479d181475c861779bca30bb3abce3cc05f1052e7315。该App不是P02已验收App，不混用产物证据。
-- Evidence：[第6轮最终P03事实](../evidence/serving-r27-final-p03-review-20261019.json)。R26的原始临时traversal报告被第6轮inventory运行覆盖；不重建或声称旧字节仍在。R26持久JSON已保留当时failure/controls/samples/cleanup及哈希，原结论可独立理解。
+- Evidence：第6轮最终P03事实。R26的原始临时traversal报告被第6轮inventory运行覆盖；不重建或声称旧字节仍在。R26持久JSON已保留当时failure/controls/samples/cleanup及哈希，原结论可独立理解。
 - Gate：最终目标scan-serving-r27-renewed-state，整体independent-review因P03采集缺口FAIL；P02有界通过、原机制/适用L3回归证据保留。新采集器构建和8项逻辑测试不代表其native契约通过。
 - Stop：新增授权三轮/累计第4–6轮已完成。第4轮修复R20-F1并固定100通过；第5、6轮P03草稿复评FAIL。Task2保留in_progress、释放认领，Review未勾选。六条件首次点击、其余startup、真实长压力、P03/全tab及整体独立审查仍未完成；未交付、未推进Tasks3–7。
 
@@ -1860,7 +1866,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 - Reviewer/Method：冷上下文p03_candidate1_review直接查源码、真实报告和日志；无修改或新性能采样。修复者p03_repair_candidate1为gpt-6-astra/medium。主调度直接核验12份交接哈希、三组原时钟/状态/摘要及negative分组，并检查标题渲染与oracle控制流后记录finding。
 - Content：collector88276d5bf95e57bf62402afaf1da15394bb974166a8b5c22bd7eba5db0ae7929；testfacb6816a4afa7fc1fd1bbb94570457f5f5bf1e18047ecf078e683e08f4bf362。仅两个隔离采集脚本变化，无产品/P01/P02源改动。
-- Evidence：[第1份有效候选与复评事实](../evidence/serving-r28-candidate1-review-20261019.json)。失败实验不计轮；本轮有代码修改、回归、真实三类正向和原生负控后才进入独立评审。
+- Evidence：第1份有效候选与复评事实。失败实验不计轮；本轮有代码修改、回归、真实三类正向和原生负控后才进入独立评审。
 - Count：新授权已用1/3；第2份候选只修SP-SB-R28-F1及其父级未完成的P03 oracle边界。Task2仍in_progress，Review未勾选；原P02通过和适用L3保留，无交付/Tasks3–7。
 
 修复：scan-performance / serving-snapshot-and-bootstrap / SP-SB-R28-F1
@@ -1869,8 +1875,9 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 ## 用户范围决定 — 2026-10-19
 
 本次会话用户在论证 P03 的必要性后，以“按你的做”明确批准删除独立量化验收项，
-保留切换不等待 helper/扫描/OTel 的架构约束。详见
-[需求决定](../requirements.md#p03-独立验收项撤销--2026-10-19)。
+保留切换不等待 helper/扫描/OTel 的架构约束。原文见固定提交
+`c6ea1ca` 中 `docs/topics/scan-performance/requirements.md` 的“P03 独立验收项撤销 — 2026-10-19”一节
+（2026-10-22 全 topic 重新设计后该节已从现行需求中删除）。
 
 - SP-SB-R25-F1 CLOSED：用户取消 P03 专用采集验收，原入口缺口不再要求修复。
 - SP-SB-R28-F1 CLOSED：用户取消 P03 专用采集验收，原正文 oracle 漏检仍为历史事实，
@@ -2094,7 +2101,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   随后整包race仍有既有TestServingFirstBatchPublishesBeforeHistoryAndRetainsFullInventory
   身份读取超时；新测试的JSON对象DeepEqual比较已改成精确序列化字节并focused race通过。
   既有reader超时根因未证实，不能宣称整包race通过，停止重复重跑或扩大修复。
-- 持久事实及源码哈希：[R31修复验证](../evidence/serving-r31-repair-20261019.json)。
+- 持久事实及源码哈希：R31修复验证。
   无新原生/性能采样、预算调整、提交或Tasks3–7工作；R30及验收范围决定保留。
 - 下一前置：有界诊断既有首批发布测试在race下的200ms身份读取超时，确定归因后再决定修复。
   CEv1修复目标scan-serving-r31-repair-e19-state，仅记录验证阻断，不改写原FAIL。
@@ -2113,7 +2120,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   整包race仍不声称通过，原首批测试/产品读取预算保持原样，该限制不能外推成性能保证。
 - 修复范围仍仅serving.go零批次ScanInventory及serving_test.go删除/空库回归；
   Go全量24包/1309项、最终定向race、相关vet和双架构构建复用已记录结果，无新产品变动。
-- 更新后的持久事实：[R31修复验证](../evidence/serving-r31-repair-20261019.json)。
+- 更新后的持久事实：R31修复验证。
   原临时overlay在事实及摘要记录后删除，不作为持久引用。
 - CEv1新交接目标scan-serving-r31-repair-Y5Xrko-state；记录修复与诊断边界，
   independent-review保持not_verified，不把历史BLOCKED改写或把Task2自动判通过。
@@ -2145,7 +2152,7 @@ Task2恢复in_progress，SP-SB-R31-F1保留修复候选/验证未完成，停止
 - 最终race采用包级串行，避免跨包负载干扰真实200ms预算；不宣称任意负载下恒定时延。
   前两次候选的并行/串行失败保留，未当成功复用。最终产品变化后已重做相应验证。
   无新原生性能采样、不改P03/P04/P11决定，不冒充Task2整体独立审查通过。
-- 持久事实：[R31修复验证](../evidence/serving-r31-repair-20261019.json)。
+- 持久事实：R31修复验证。
   CEv1目标scan-serving-r31-reader-final-state；independent-review仍not_verified，
   原BLOCKED和过早交接记录不覆盖改写。Beads交回in_review并释放修复认领。
 
@@ -2192,7 +2199,7 @@ Task2恢复in_progress，SP-SB-R31-F1保留修复候选/验证未完成，停止
   `scripts/run-go-test.sh -race -p 1 ./internal/scanruntime ./internal/store ./internal/desktop -run 'Test(ServingEmptyInventoryReconcilesLikeOrdinaryScan|ServingFirstBatchPublishesBeforeHistoryAndRetainsFullInventory|ServingGenerationReaderRechecksValuesAndFileIdentity|ServingGenerationReaderBudgetAndCancellation|ServingSnapshotRechecksIdentityAfterRead)$'`
   exit0，五项顶层测试通过，删除测试含四组合。Go1.27.1 darwin/amd64，macOS26.7.2。
   原最终完整三包race181项、全量Go24包/1311项及vet/双架构构建事实按
-  [修复验证](../evidence/serving-r31-repair-20261019.json)保留；本次定向检查不是完整包race的替代。
+  修复验证保留；本次定向检查不是完整包race的替代。
 - Disposition：R31-F1关闭，用户明确纳入的身份读取修复无新增阻断；R30及更早关闭结论保留。
   早先race失败、过早完成声明撤回均不改写。通过不保证任意负载下的200ms成功率，
   deadline耗尽仍失败关闭；无新原生性能或整个Task通过结论。

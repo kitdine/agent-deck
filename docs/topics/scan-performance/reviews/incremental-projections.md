@@ -6,6 +6,12 @@ subject: incremental-projections
 
 # incremental-projections 评审记录
 
+> **证据引用处置 — 2026-10-22**：Neo4j 恢复后，按用户要求移除本 topic 期间以文件形式保存的
+> 回退证据与实验记录（原 `docs/topics/scan-performance/evidence/`，以及 Task 1 的
+> `docs/evidence/records/`）。本文原指向这些文件的链接已改为纯文本，文中出现的上述路径均不再是
+> 可用引用；原件仅可从提交 `c6ea1ca6551f525cc8a757ccf2e7889fabf36402` 的 Git 历史追溯。
+> 结构化观测、内容身份与门禁结果以 Neo4j CEv1 为准；历史观察、结论与评审裁决保持原义。
+
 ## Round 1 — 2026-10-20
 
 ## 📋 Task 3 增量投影独立评审
@@ -42,10 +48,10 @@ subject: incremental-projections
 - Reviewer：Codex，冷上下文独立 reviewer；不是本候选的实现者，无子代理。
 - Method：契约/源码路径检查、独立隔离 Go overlay 差分；产品、仓库测试和配置只读。CodeGraph 在当前工作区查询；未能定位新增 affected-view 文件时使用限定源码读取。图关系不作为运行时证据。
 - Scope：Task 3 usage partition invalidation、session 受影响视图和 schema 兼容路径的有界审查。发现决定性阻断后停止扩大验证；不是剩余实现或原生性能的整体通过声明。
-- Evidence：`scripts/run-go-test.sh -overlay=<fresh overlay JSON> ./internal/session -run '^TestReviewBatchRenameCountsAgainstFullView$'` 返回 FAIL；完整 inventory 子例 PASS、priority-batch 子例 FAIL。最小源代码、输入构造、精确结果与修复边界见[持久复现记录](../evidence/incremental-review-r1-20261020.json)，可用新的临时 overlay 重现，不依赖已删除日志。
+- Evidence：`scripts/run-go-test.sh -overlay=<fresh overlay JSON> ./internal/session -run '^TestReviewBatchRenameCountsAgainstFullView$'` 返回 FAIL；完整 inventory 子例 PASS、priority-batch 子例 FAIL。最小源代码、输入构造、精确结果与修复边界见持久复现记录，可用新的临时 overlay 重现，不依赖已删除日志。
 - 复用边界：先前 full Go、相关 race/vet、双架构构建、native 302/1 skip/0 fail 和 E2 20 对结果保留为原范围事实；本轮不重复它们，不将其视为新发现通过。最初精确门为 NOT_VERIFIED（3/4 covered）；P10 原生绘制与 P07 完整资源/事务缺证不因此消失。
 - Completion gate：FAILED
-- 最终门禁：新增一项 `partition-equivalence` fail，绑定原精确 ContentState；Neo4j 已确认 1 个 evidence 节点和 2 条关系，固定 gate 模板返回 FAILED。此前 pass 观察保留，新的反例不改写旧观察；`update-latency` 仍缺证。完整 envelope 见[本轮门禁](../evidence/incremental-review-r1-gate-20261020.json)。
+- 最终门禁：新增一项 `partition-equivalence` fail，绑定原精确 ContentState；Neo4j 已确认 1 个 evidence 节点和 2 条关系，固定 gate 模板返回 FAILED。此前 pass 观察保留，新的反例不改写旧观察；`update-latency` 仍缺证。完整 envelope 见本轮门禁。
 - 结论：存在一项可执行的 P2 正确性发现，故本轮 FAIL；Task 3 返回同一任务修复，Review 不勾选，无提交、推送或安装。
 
 修复：scan-performance / incremental-projections / SP-IP-R1-F1
@@ -94,10 +100,10 @@ subject: incremental-projections
 - Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；ContentState `scan-incremental-repair-r1-97321292d5b8d565`；scoped fingerprint `97321292d5b8d56591766b919c935a09a6306aa565d512c88c28d0d3f9f454f2`。23 项 subject digest 全部匹配，只有 internal/session 相比 Round 1 改变。Go 1.27.1 darwin/amd64、macOS 26.7.2 build 25G325 与修复输入一致。
 - Reviewer：Codex，独立于修复 producer；复用 Round 1 reviewer 上下文，不把本轮称为新的冷上下文整体审查；无子代理。
 - Method / Scope：同一任务既有发现及其修复影响，当前工作区 CodeGraph 同步后定位 scanMode，再检查新增回归及独立重放原反例。产品、仓库测试、配置只读；临时 overlay 不改仓库测试。
-- Evidence：`scripts/run-go-test.sh -overlay=<fresh overlay JSON> ./internal/session -run '^TestReviewBatchRenameCountsAgainstFullView$'` 返回 PASS；两个子例报告与 oracle 同为 1/0。源码、场景、方法及精确结果见[本轮持久记录](../evidence/incremental-rereview-r2-20261020.json)，原反例源码仍在 Round 1 的持久 JSON 中；不引用临时日志。
+- Evidence：`scripts/run-go-test.sh -overlay=<fresh overlay JSON> ./internal/session -run '^TestReviewBatchRenameCountsAgainstFullView$'` 返回 PASS；两个子例报告与 oracle 同为 1/0。源码、场景、方法及精确结果见本轮持久记录，原反例源码仍在 Round 1 的持久 JSON 中；不引用临时日志。
 - Evidence reuse：修复候选 full Go、session/scanruntime、相关 race/vet 与双架构构建沿用原精确状态证据，不因阶段变化重跑。其余 22 项未变，原生 wire/302 项检查只在原适用范围复用。原 E2 性能统计保留在父状态，不声明已在修复候选重测或达标。
 - Completion gate：NOT_VERIFIED
-- 本轮最终门禁：新增独立 pass evidence 的 1 个节点及 2 条关系已精确回读，固定模板再次确认 NOT_VERIFIED，3/4 required covered；没有当前 fail、失效或未决影响。完整 envelope 见[Round 2 门禁](../evidence/incremental-rereview-r2-gate-20261020.json)。
+- 本轮最终门禁：新增独立 pass evidence 的 1 个节点及 2 条关系已精确回读，固定模板再次确认 NOT_VERIFIED，3/4 required covered；没有当前 fail、失效或未决影响。完整 envelope 见Round 2 门禁。
 - Gate boundary：四项必需标准中三项技术准则已有当前目标证据，`update-latency` 仍缺 P10 原生 source-write→新值绘制和 P07 聚合资源/写事务 p95/max。复评 PASS 不等于 Task 3 验收完成；保留 in_review，不进入 awaiting_commit，不启动下一 Task。Topic 仍有 Tasks 4–7，无 containing-unit 完成边界。
 - 结论：本轮所有既有发现均已关闭，复评 PASS；Task 3 Review 可勾选，完成门继续开放。没有提交、推送、安装或真实库迁移。
 
@@ -147,7 +153,7 @@ Task checkpoint：ad-scan-performance-incremental-projections；content_state=97
 ### SP-IP-R3-F1 修复附记 — 2026-10-21
 
 - Disposition：SP-IP-R3-F1 -> repaired in candidate，等待独立复评；保留 Round 3 FAIL，未自行宣布 CLOSED 或 Review PASS。
-- 候选身份：`scan-p07-r3-repair-state-62eb7acb7f74a58d`，SHA-256 `62eb7acb7f74a58d7ba41415eefcf4a3b32466cf625159a8085b2d3e8be9f758`。10 项仪表源/测试/说明及依赖身份见[修复证据](../evidence/p07-r3-repair-20261021.json)。23 项产品输入逐项匹配 `scan-incremental-repair-r1-97321292d5b8d565`，没有修改产品 SQL、事务选项、超时、错误/重试语义或验收标准。
+- 候选身份：`scan-p07-r3-repair-state-62eb7acb7f74a58d`，SHA-256 `62eb7acb7f74a58d7ba41415eefcf4a3b32466cf625159a8085b2d3e8be9f758`。10 项仪表源/测试/说明及依赖身份见修复证据。23 项产品输入逐项匹配 `scan-incremental-repair-r1-97321292d5b8d565`，没有修改产品 SQL、事务选项、超时、错误/重试语义或验收标准。
 - 修复前复现：将保留的合成 store 回归模板注入私有 overlay，使用全新临时库和单个合成分区，实际调用 BeginUsagePartition、PublishUsagePartition；原仪表记录 0 笔，期望 2 笔，定向测试 FAIL。修复后重放同一模板，两个调用各产生一笔有效 autocommit 记录，发布 revision/payload 的原值校验通过。模板与可复现命令见[工具说明](../../../../scripts/p07measure/README.md)；事实和身份已直接保留在修复证据，不依赖已清理的临时输出。
 - 修复：overlay 覆盖 DB/Conn 单语句隐式写；QueryRow 保留原对象和惰性求值，直到原有 Scan 返回才封口。嵌套 QueryRow.Scan 的类型驱动改写只执行每个调用一次。观察到的 raw/Go 显式事务内语句不重复计数；未知 SQL、复合语句、缺少 Scan、延迟 prepared 写及未观测终点的多行写明确产生不完整记录。日志/摘要升级 v2，拒绝旧显式事务 v1，以免旧日志被解释为完整覆盖。
 - 验证：仪表 Go 单测 16 PASS / 1 fixture-entry skip；定向 race 14 PASS / 1 fixture-entry skip，入口 skip 已由两次受控子进程覆盖。Python ProcessSet/summary 7 PASS；同一 store overlay 回归 PASS；vet 及 Darwin amd64/arm64 overlay 构建 PASS，二进制未启动。RSS 源前缀 SHA-256 与原证据相同，复用原生合成 RSS 机制证据，不重复原生或代表性性能采样。
@@ -200,7 +206,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 ### SP-IP-R4-F1 修复附记 — 2026-10-21
 
 - Disposition：SP-IP-R4-F1 -> repaired in candidate，正式独立复评待执行；保留 Round 4 FAIL 和 R3 finding 的 CLOSED 历史，不自行宣布新的正式 PASS/CLOSED。
-- 候选身份：`scan-p07-r4-repair-state-f1a100f58f67f932`，SHA-256 `f1a100f58f67f932bfb83e8de503e4aa1c7f2647873818b068f19e683a403da1`。13 项工具源/测试/说明和 4 项依赖身份见[修复证据](../evidence/p07-r4-repair-20261021.json)。23 项产品输入仍匹配 `scan-incremental-repair-r1-97321292d5b8d565`；产品 SQL、业务行为、事务语义、超时和验收标准未变。
+- 候选身份：`scan-p07-r4-repair-state-f1a100f58f67f932`，SHA-256 `f1a100f58f67f932bfb83e8de503e4aa1c7f2647873818b068f19e683a403da1`。13 项工具源/测试/说明和 4 项依赖身份见修复证据。23 项产品输入仍匹配 `scan-incremental-repair-r1-97321292d5b8d565`；产品 SQL、业务行为、事务语义、超时和验收标准未变。
 - 修复前复现：实际 session.List 的合成 overlay 夹具在执行只读查询时增加 367 字节事务日志，期望为 0，因此 FAIL。修复后同一夹具增加 0 字节，优先级赢家仍为 synthetic/active；夹具中真实的 core/session 各一笔合成写入继续完整，collector 返回 complete=true、rejected=0、unmatched=0。
 - 修复：仅为 WITH 分支增加有界结构识别；核对全部 CTE 声明、查询体及最终 SELECT/VALUES，区分引号、注释、括号，支持 recursive、多重/嵌套 CTE、列名及 materialization hints。修改型根/查询体、复合语句、歧义/未闭合声明与超过 64 查询层的输入继续 unknown，不把 WITH 前缀整体放行。该识别器不是完整 SQLite 语法验证器。
 - 验证：Go 普通/定向 race 各 17 PASS / 1 fixture-entry skip；两次受控子进程覆盖该入口。实际 session.List 和 R3 分区回归均 PASS，后者仍是两笔有效 autocommit，revision/payload 未变。原 Python collector 从实际夹具 trace 重算通过；vet 和 Darwin amd64/arm64 overlay 构建通过，二进制未启动。RSS、既有边界时钟及日志/摘要 schema 未改，不重复原生或代表性性能采样。
@@ -232,9 +238,9 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 ### 📝 总结
 
 - Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；仪表 ContentState `scan-p07-r4-repair-state-f1a100f58f67f932`，SHA-256 `f1a100f58f67f932bfb83e8de503e4aa1c7f2647873818b068f19e683a403da1`。13 项工具文件和 4 项依赖逐项匹配，23 项产品主体也逐项匹配 `scan-incremental-repair-r1-97321292d5b8d565`；没有改绑产品证据。
-- Reviewer / Method：Codex，正式复评角色，未参与 R4 修复，无本轮委派；先前 Sol ultra 预审仅作历史材料。定向源码核查后，新建私有 HOME/TMPDIR 和 Go overlay，使用项目 wrapper 重放 5 项 CTE/完整性单测及 2 项实际产品路径合成回归，7 PASS、0 skip、0 fail；再从 session fixture trace 独立重算 collector。事实、命令、身份和限制见[本轮复评证据](../evidence/p07-r4-rereview-r5-20261021.json)。
+- Reviewer / Method：Codex，正式复评角色，未参与 R4 修复，无本轮委派；先前 Sol ultra 预审仅作历史材料。定向源码核查后，新建私有 HOME/TMPDIR 和 Go overlay，使用项目 wrapper 重放 5 项 CTE/完整性单测及 2 项实际产品路径合成回归，7 PASS、0 skip、0 fail；再从 session fixture trace 独立重算 collector。事实、命令、身份和限制见本轮复评证据。
 - Evidence reuse：相同工具/依赖身份及 Go 1.27.1、macOS 26.7.2 环境下的修复阶段 race、vet、Darwin 双架构构建继续复用；RSS 与既有事务边界实现未变，不重跑原生或性能采样。识别器是保守的读根识别器，不是完整 SQLite 语法验证器；现有合成观察开销也不代表正式 P07 输入上的开销。
-- Completion gate：FAILED。复用[修复阶段精确目标 Neo4j 回执](../evidence/p07-r4-repair-gate-20261021.json)，产品目标仍为 `scan-incremental-repair-r1-97321292d5b8d565`，4 项中 3 项 PASS、`update-latency` FAILED；本轮没有新的 gate 查询或 CEv1 性能证据写入。P10 历史 attempted=1、failed=1、有效延迟样本=0；P07 attempted=0、valid=0。P10 自动通知至原生新值绘制、P07 新授权的代表性冻结输入及完整资源/事务/前台/切换约束仍是完成门前置。
+- Completion gate：FAILED。复用修复阶段精确目标 Neo4j 回执，产品目标仍为 `scan-incremental-repair-r1-97321292d5b8d565`，4 项中 3 项 PASS、`update-latency` FAILED；本轮没有新的 gate 查询或 CEv1 性能证据写入。P10 历史 attempted=1、failed=1、有效延迟样本=0；P07 attempted=0、valid=0。P10 自动通知至原生新值绘制、P07 新授权的代表性冻结输入及完整资源/事务/前台/切换约束仍是完成门前置。
 - Disposition：SP-IP-R4-F1 CLOSED；既有已关闭项未回归，没有新发现，正式复评 PASS。Task 3 Review 可勾选，Task 3 仍开放并保持 in_review，不进入 awaiting_commit 或 Tasks 4–7。没有真实数据访问、产品修改或 Git 交付。
 
 Task checkpoint：ad-scan-performance-incremental-projections；reviewed content_state=f1a100f58f67f932bfb83e8de503e4aa1c7f2647873818b068f19e683a403da1；产品 gate target=scan-incremental-repair-r1-97321292d5b8d565；gate=FAILED。
@@ -256,7 +262,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - 仪表：`scan-ip-update-repair-instrumentation-d9db8dbe33f327da`，SHA-256
   `d9db8dbe33f327da0b246ef6818139fb349bcf4c233a06044ee7641bda00f03d`。
 - HEAD：`14234ec4c96a3376d1072147eeb6e42b8768381a`；两类身份各自保存 scoped subjects 和摘要配方，
-  见[内容身份](../evidence/incremental-update-repair-content-states-20261021.json)。
+  见内容身份。
 - 五个 Go 产品目录及依赖摘要与原产品身份一致；原 partition/nonadditive/generation 技术证据经
   Change、三个 MAY_INVALIDATE/PRESERVES 评估和新目标 roll-up 显式复用。旧观察未改绑。
   新增 App 接线、coordinator trigger、时钟及相关测试使用新身份和本轮直接证据。
@@ -321,10 +327,10 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   文件日志校准约增加 23–45 microseconds/write；RSS collector CPU/wall 已如实报告，未称可忽略。
   启停屏障等待留在合成进程窗口内，不进入 SQL 区间。
 
-[完整修复事实](../evidence/incremental-update-repair-20261021.json)、
-[完整 RSS trace](../evidence/incremental-update-repair-20261021-rss.jsonl)、
-[本轮早结束失败 trace](../evidence/incremental-update-repair-20261021-rss-failed-window.jsonl)、
-[完整合成事务记录](../evidence/incremental-update-repair-20261021-transactions.jsonl) 均为持久证据。
+完整修复事实、
+完整 RSS trace、
+本轮早结束失败 trace、
+完整合成事务记录 均为持久证据。
 
 ### 精确门禁与交接边界
 
@@ -333,7 +339,7 @@ provider 与四个固定模板，通过现有 Neo4j MCP 写入本轮事实并完
 新增节点 11/11、关系 21/21；MCP 返回 creation metadata，所有 ID 均新建，计数与批次一致。
 固定 gate 对新产品目标查得 **NOT_VERIFIED（3/4）**，仅 `update-latency` 缺验收，
 invalidated/unresolved 均为空。旧目标重新查询仍为 FAILED（3/4）；两者分存于
-[门禁回执](../evidence/incremental-update-repair-gate-20261021.json)，未用旧 FAILED 代替新查询。
+门禁回执，未用旧 FAILED 代替新查询。
 
 代表性 P07 attempted/valid 仍为 **0/0**；P10 正式分布尚未建立，历史 attempted=1、failed=1、valid=0
 保持原义。本轮修复及比例验证交回同一任务的独立复评，Task 3 保持开放/in_review。
@@ -373,7 +379,7 @@ canonical manifest 的 SHA-256 作为唯一 cohort ID，生成后先回报该身
 记录仅说明路径/SHA256 条目的排序和拼接，未保留目录文件筛选清单。按全文件及构建说明的运行源码
 范围进行有界核对后仍不一致，故停止继续猜测配方。此结果不证明产品内容已漂移；它说明尚不能把
 本次当前源码与已有 native/CLI 运行观察绑定。元数据整体摘要可重现也不能替代主体核对。
-方法、明确边界和当前值见[前置核对记录](../evidence/incremental-update-rereview-preflight-20261021.json)。
+方法、明确边界和当前值见前置核对记录。
 
 前置：修复交接方补齐上述目录原始 per-file 清单/哈希及精确摘要配方；若确认内容已改变，登记新候选、
 影响及适用验证，保留旧观察身份。解除此前置后再继续同一 update-latency 复评，不重复旧 Round 2/5。
@@ -404,17 +410,17 @@ Task 3 保持 in_review、Review 未勾选；没有新增代码、构建、原�
 | P07 WAL 初始化被拒绝 | CLOSED。[精确单语句分类](../../../../scripts/p07measure/autocommit.go#L83) 保留 write-capable autocommit，并计入 Exec 返回前的完整等待；真实文件 SQLite 的定向回归确认模式改变及连接池等待。未知/复合写仍 fail closed。 |
 | P07 结束窗口不完整 | CLOSED。[进程屏障](../../../../scripts/p07measure/process.go#L17) 与 [collector 结束规则](../../../../scripts/scan_performance_p07.py#L162) 保留根进程至 worker 终点、完整最终帧及 summary 写完。定向回归与原始 RSS trace 的端点/身份核对均通过，旧失败 trace 保留。 |
 | CEv1 协议包不可用 | RESOLVED。已使用明确的 ai-tools source checkout，复用其未修改固定模板，通过现有 Neo4j MCP 查询当前精确产品目标。 |
-| 本轮候选身份前置阻塞 | RESOLVED。[只读复算](../evidence/incremental-update-repair-digest-replay-20261021.py) 重现 69 个 CLI 文件和 15 个 App 文件的全部条目及原目录摘要，新增/缺失/内容/排序差异均为空。清单是本次按原算法重建，不冒称修复时已独立留存。原候选、旧哈希和观察未改变。 |
+| 本轮候选身份前置阻塞 | RESOLVED。只读复算 重现 69 个 CLI 文件和 15 个 App 文件的全部条目及原目录摘要，新增/缺失/内容/排序差异均为空。清单是本次按原算法重建，不冒称修复时已独立留存。原候选、旧哈希和观察未改变。 |
 
 ### 📝 总结
 
 - Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；产品 `scan-ip-update-repair-product-45f7482757f82715` / SHA-256 `45f7482757f8271567909e80d93980b3678ab2c3f97895ef51afa44f04e67c45`；独立仪表 `scan-ip-update-repair-instrumentation-d9db8dbe33f327da` / SHA-256 `d9db8dbe33f327da0b246ef6818139fb349bcf4c233a06044ee7641bda00f03d`。产品 31 项、仪表 8 项主体已完成当前核对。
-- Reviewer / Method：Codex 独立复评，未参与本次修复，无委派。沿用上次已完成的定向源码检查；本轮新执行 Go 3 项、Python 9 项回归，全部 PASS。独立重算持久事务记录、核对 RSS 逐帧求和/去重及根/worker 屏障端点，并复算原生时钟和完整 snapshot/oracle。完整方法与结果见[复评证据](../evidence/incremental-update-rereview-r6-20261021.json)。
+- Reviewer / Method：Codex 独立复评，未参与本次修复，无委派。沿用上次已完成的定向源码检查；本轮新执行 Go 3 项、Python 9 项回归，全部 PASS。独立重算持久事务记录、核对 RSS 逐帧求和/去重及根/worker 屏障端点，并复算原生时钟和完整 snapshot/oracle。完整方法与结果见复评证据。
 - Actual product channel：当前候选既有合成 App 试样的写入至绘制为 841.069733ms；按已落盘端点计算为 840.600532ms。旧/新 publication ID 不同，new numeric frame 有效；snapshot 与 full oracle 完整归一化结果相同、partial=false，SHA-256 `2a4412b2f47f819c9f565e9a7256f978625c54e2095c2ea6d009ef62447931cd`。首次点击未路由和后续 ready-click 的字段保持原义；本轮只复核已打开 popover 的更新端点，不将其当作 E1 首击成功。发布分段时钟为 helper 提交后 App 安装 envelope 的端点，不称 SQLite commit 时间。
 - Meter channel：原始 478 笔终结记录/75 个 Go process logs 重算一致，core/session WAL 分别 50/20，complete=true、rejected=0、unmatched=0。原始 RSS 35 帧均完整；根进程保留至最后一帧，两个受管 Go 进程的起止 PID/birth 端点均匹配。103,563,264 bytes 为这条合成 trace 的 sampled maximum。跨场景事务汇总仅证明计量覆盖，不作为正式分布；旧拒绝和无效帧记录不删改。
 - Evidence reuse：候选和工具链匹配后，复用修复阶段 native 79 项、Go meter 20 项、race/vet、Darwin 双架构构建及实际 App/CLI 运行证据；本轮没有重建或重跑 GUI。原五个 Go 产品目录未变，既有技术回归继续按 scope 复用。原 R1/R3/R4 CLOSED 和 Round 2/5 的正式结论保留其历史身份。
-- Documentation routing：配方全文保留为[证据附件](../evidence/incremental-update-repair-digest-recipe-20261021.txt)，由 `.md` 改为 `.txt`；内容 SHA-256 仍为 `ea69cf7dbd20a880979370ea4f3167cf13e8a7fb863248f05424313b9cb07d35`。此举只纠正附件被主题审计识别为未登记文档的问题，不改产品身份。
-- Completion gate：NOT_VERIFIED。固定模板对当前产品目标的新查询确认 4 项必需准则中 3 项已有有效证据，仅 `update-latency` 缺正式代表性验收；invalidated/unresolved 均为空。完整 envelope 与本轮记录回执见[精确门禁](../evidence/incremental-update-rereview-r6-gate-20261021.json)。旧目标的 FAILED 留在原身份上，没有被覆盖，也未用它替代新目标查询。
+- Documentation routing：配方全文保留为证据附件，由 `.md` 改为 `.txt`；内容 SHA-256 仍为 `ea69cf7dbd20a880979370ea4f3167cf13e8a7fb863248f05424313b9cb07d35`。此举只纠正附件被主题审计识别为未登记文档的问题，不改产品身份。
+- Completion gate：NOT_VERIFIED。固定模板对当前产品目标的新查询确认 4 项必需准则中 3 项已有有效证据，仅 `update-latency` 缺正式代表性验收；invalidated/unresolved 均为空。完整 envelope 与本轮记录回执见精确门禁。旧目标的 FAILED 留在原身份上，没有被覆盖，也未用它替代新目标查询。
 - Acceptance boundary：本轮确认修复和合成运行通道；P10 正式分布尚未建立，历史 attempted=1、failed=1、valid=0 原义保留；代表性 P07 attempted=0、valid=0。仍需新授权的只读冻结输入、固定 cohort/DB 起点和正式计划，随后完成 P10 p95、P07 RSS/完整事务及前台/切换约束。没有真实数据采集、产品/测试/配置修改、Tasks 4–7 或交付。
 - 结论：记录的修复阻塞均已关闭，未发现新问题，复评 PASS。Task 3 Review 已通过；完成门仍开放，任务保持 in_review，不进入 awaiting_commit。
 
@@ -452,7 +458,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 行为风险：缺失存活子进程的帧可能进入有效trace，低估engine+collector+后代聚合RSS，制造P07预算通过的错误证据。正常退出的证明并不能证明一个新fork在切面之前已被覆盖或已退出。
 
-证据：一次确定性fake-metadata复现（不是原生RSS或性能样本）。根PID1/9先完成成员枚举；采集PID1驻留时创建PID2并保留至切面，随后交付父PID1的fork事件。切面成员应为`[1,2,9]`，合成RSS合计300000150 bytes；实际输出`[1,9]`、150 bytes、`complete=true`、`issues=[]`，同时lifecycle中确有fork_observed。源码SHA256 `4282cfb5560ff7bf5be2f5edb0fa5a4891aa7a4975899e511e3aa1e081217f64`匹配当前仪表。原始结果和可复制程序分别见[复现事实](../evidence/incremental-update-review-r7-membership-repro-20261021.json)与[复现程序](../evidence/incremental-update-review-r7-membership-repro-20261021.txt)。合成数值仅用于证明少计，不是实际RSS超预算结论。
+证据：一次确定性fake-metadata复现（不是原生RSS或性能样本）。根PID1/9先完成成员枚举；采集PID1驻留时创建PID2并保留至切面，随后交付父PID1的fork事件。切面成员应为`[1,2,9]`，合成RSS合计300000150 bytes；实际输出`[1,9]`、150 bytes、`complete=true`、`issues=[]`，同时lifecycle中确有fork_observed。源码SHA256 `4282cfb5560ff7bf5be2f5edb0fa5a4891aa7a4975899e511e3aa1e081217f64`匹配当前仪表。原始结果和可复制程序分别见复现事实与复现程序。合成数值仅用于证明少计，不是实际RSS超预算结论。
 
 💡 有界修复：将采集期间fork事件纳入切面成员闭合。对相关父进程/后代做同帧有界补采和出生身份验证；未能证明新后代已采集或在切面前退出时必须记录明确缺口并使帧/trace无效。不能仅忽略事件、填零、过滤子进程或修补历史trace。覆盖无Go-ledger子/孙进程在枚举后及补采期间出生、仍存活/已退出、PID复用和闭合预算耗尽等控制。固定50ms、完整窗口、观察开销和未知即无效规则保留。
 
@@ -475,7 +481,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 完成门禁：FAILED
 
-精确目标为`scan-ip-bounded-product-e14fca302e5e8572`，固定模板查询与新事实写入回执见[Round7证据](../evidence/incremental-update-review-r7-20261021.json)及[精确门禁](../evidence/incremental-update-review-r7-gate-20261021.json)。评审FAIL与该已有性能门失败分别记录。
+精确目标为`scan-ip-bounded-product-e14fca302e5e8572`，固定模板查询与新事实写入回执见Round7证据及精确门禁。评审FAIL与该已有性能门失败分别记录。
 
 ### 后续指令
 
@@ -514,9 +520,9 @@ issues 含 fork_membership_unresolved；不是实际 RSS 超预算的结论。
 逐项及完整状态均不变，现有 Go/SQL/native UI 和三个技术准则证据显式复用，未重跑。
 CEv1 新增5节点/6关系并精确读回；旧整仪表校准不复用于新 RSS 完整性，事务反例保留。
 精确产品门仍 FAILED、4项 required 中3项有有效证据、候选影响均已解决；不是修复通过
-即可完成 Task3。详见 [修复结果](../evidence/incremental-update-repair-r7-result-20261021.json)、
-[门禁](../evidence/incremental-update-repair-r7-gate-20261021.json) 与
-[复评交接](../evidence/incremental-update-repair-r7-handoff-20261021.md)。
+即可完成 Task3。详见 修复结果、
+门禁 与
+复评交接。
 
 独立复评确认本发现后，按 Round7 原定范围完成尚未覆盖的新增差异审查；不重复 Round6，
 不恢复点击/P10计时，不重新采集真实 HOME，不进入 Tasks4–7 或 Git 交付。
@@ -603,7 +609,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 - Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；
   产品 `scan-ip-bounded-product-92c37854995da877`，fingerprint
   `92c37854995da8777f3eda52de8444bdec1bfae542274bc5fa269525c0ea962a`。
-  [内容清单](../evidence/incremental-p07-repair-content-states-20261022.json)包含234项；
+  内容清单包含234项；
   相对 Round8 仅 source_coverage.go、requirements/evaluation 两文档变化，新增批次测试和
   RSS 决定快照。仪表 `a1f70d08e822de14` 与编排 `067e1bcc6aee7761` 完全未变。
 - Reviewer / Method：用户明确要求同配置 subagent 独立评审；以 `fork_turns=none`
@@ -623,7 +629,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   用最终新 overlay 运行合成库存回归，12笔 explicit Begin→Commit返回端点及
   Begin/body/terminal 相加均正确；4717源 core35.875382ms/session37.961969ms。
   这些仅为校准；没有代表性新候选分布，不能据此宣称正式 p95/max 或 Task3 接受。
-  全部必要事实和时钟直接保留在[开发记录](../evidence/incremental-p07-repair-20261022.json)。
+  全部必要事实和时钟直接保留在开发记录。
 - race 验证限制：四包组合391 PASS/1 FAIL；唯一顶层失败为
   `TestServingEmptyInventoryReconcilesLikeOrdinaryScan/seeded=true/serving=true`，
   `internal/scanruntime/serving_test.go:466` 报 `seed not published`，无 DATA RACE 报告。
@@ -632,13 +638,13 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
   子代理在收到此新事实后维持有界代码 PASS，同时明确不能据此排除回归。
 - 用户决定：收到用户本机 `proc:::create` 被 SIP 拒绝的结果后，用户明确指示
   “无法验证就写明后修改验证条件取消该条目验证 不要继续花费时间”。
-  [决定快照](../evidence/incremental-p07-rss-validation-withdrawal-20261022.json)
+  决定快照
   保存旧 criterion/门禁及修订。仅 Task3 aggregate RSS 强制量化验证取消；
   256MiB工程预算保留且未验证，完整事务 p95≤50ms/max≤250ms、原子性及其他任务独立资源门不变。
   后补的 canonical criterion/读回字段由主代理直接核对，不改变已独立审查的用户决定。
 - 完成门禁：NOT_VERIFIED。三个未变技术准则经当前事务回归和范围评估显式 roll-up；
   update-latency 只有本轮校准/评审事实，代表性完整事务分布与上述 race 风险尚未闭环。
-  [精确门禁](../evidence/incremental-p07-repair-gate-20261022.json)绑定当前产品。
+  精确门禁绑定当前产品。
   原候选 max384.921506/285.331956ms、原 FAILED 门、旧无效RSS和全部历史评审保持原义。
 - 状态：独立有界评审 PASS，Task3 Review 勾选；任务仍开放/in_review，不进入 awaiting_commit。
   本轮没有重新读取真实 HOME/cohort、捕获输入、GUI、点击、RSS/P10计时、安装或Git交付。
@@ -679,7 +685,7 @@ Task checkpoint：ad-scan-performance-incremental-projections；上述产品内�
 - Reviewed state：HEAD `14234ec4c96a3376d1072147eeb6e42b8768381a`；
   `scan-ip-bounded-product-92c37854995da877` /
   `92c37854995da8777f3eda52de8444bdec1bfae542274bc5fa269525c0ea962a`。
-  对[既有清单](../evidence/incremental-p07-repair-content-states-20261022.json)
+  对既有清单
   复算产品234、仪表23、编排4项，全部匹配；没有新的产品内容状态。
 - Reviewer / Method / Scope：Codex主代理进行剩余证据与gate审查；沿用用户已授权的
   同配置、冷上下文独立评审角色，仅读收集race材料。主代理直接核对私有overlay差异、
@@ -704,14 +710,14 @@ Task checkpoint：ad-scan-performance-incremental-projections；上述产品内�
   这4次诊断PASS不构成修复、全race通过或排除回归的证明。缺失的是原失败窗口的
   publication实际错误/parent context，以及seed究竟为nil还是totals错误。
   已完成本轮唯一实验，不再追加尝试。必要事实已直接固化于
-  [本轮证据](../evidence/incremental-p07-review-r10-20261022.json)，不依赖临时路径。
+  本轮证据，不依赖临时路径。
 - Evidence reuse：复用full Go1358 PASS/7skip、vet、Darwin双架构及独立9项回归；
   三项技术criterion仍有精确目标roll-up，代码未变，无新增候选影响或重新运行义务。
   既有全局whitespace31项冻结patch问题和两个旧handoff的topic矩阵问题不改写为通过。
 - 完成门禁：VERIFIED。用户随后按下文接受附记批准两项验收修订，当前接受目标为
   `scan-ip-bounded-product-22d321fe2ab870af`。原R10首次query在p92目标为
-  `NOT_VERIFIED`，其[原始回执](../evidence/incremental-p07-review-r10-gate-20261022.json)
-  保留不改；[新准则精确回执](../evidence/task3-p07-acceptance-gate-20261022.json)
+  `NOT_VERIFIED`，其原始回执
+  保留不改；新准则精确回执
   覆盖四项必需criterion。WorkUnit仍为Task，Topic还有Tasks4–7，不跨Topic完成边界。
 - 原R10判定范围：证据审查PASS确认复用和未解决结论有据；当时不是P07接受、
   代表性事务达标或race关闭，当时任务保持in_review。后续接受仅依据下文用户批准修订，
@@ -730,7 +736,7 @@ Task checkpoint：ad-scan-performance-incremental-projections；上述产品内�
 用户明确批准两项修订：取消代表性事务分布强制验证（50/250ms工程预算保留且未验证），
 并保留原race391 PASS/1 FAIL、接受为本次Task3验收例外。根因仍unresolved，
 不是race修复、全race通过或新的一轮独立实现评审；RSS取消决定保持，256MiB仍未验证。
-[批准审计](../evidence/task3-p07-acceptance-revision-20261022.json)保存此前criterion和
+批准审计保存此前criterion和
 NOT_VERIFIED门禁，原R10观察、历史max失败、旧无效RSS及复合not_verified事实均不改写。
 
 本次只改两份验收文档并新增批准记录；正常产品/测试/config与已独立评审的p92候选完全相同。
@@ -744,9 +750,9 @@ oracle相等、双方partial=false，含sessions/非可加/All。按新准则重
 `22d321fe2ab870aff91e83e5265dfc4fae1a3dca305116b7556624bdc51c6efb`；
 固定模板精确门VERIFIED，四项必需criterion均覆盖、missing/unresolved为空。
 12个新节点/24条关系均预检和精确读回；criterion的当前声明也已精确读回。
-[最终回执](../evidence/task3-p07-acceptance-gate-20261022.json)、
-[最终接受结果](../evidence/task3-p07-acceptance-result-20261022.json)与
-[内容清单](../evidence/task3-p07-acceptance-content-states-20261022.json)给出独立身份和复用依据。
+最终回执、
+最终接受结果与
+内容清单给出独立身份和复用依据。
 Task3达到按用户修订条件的验收检查点，Beads为awaiting_commit，尚未closed；
 默认Task3交付边界仍要求授权提交，不套用Task2的local acceptance/no Git例外。
 未提交、推送、安装、发布，未启动Tasks4–7或宣称Topic完成。

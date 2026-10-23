@@ -6,6 +6,20 @@ subject: baseline-and-open-path
 
 # baseline-and-open-path 评审记录
 
+> **证据引用处置 — 2026-10-22**：Neo4j 恢复后，按用户要求移除本 topic 期间以文件形式保存的
+> 回退证据与实验记录（原 `docs/topics/scan-performance/evidence/`，以及 Task 1 的
+> `docs/evidence/records/`）。本文原指向这些文件的链接已改为纯文本，文中出现的上述路径均不再是
+> 可用引用；原件仅可从提交 `c6ea1ca6551f525cc8a757ccf2e7889fabf36402` 的 Git 历史追溯。
+> 结构化观测、内容身份与门禁结果以 Neo4j CEv1 为准；历史观察、结论与评审裁决保持原义。
+
+> 2026-10-17 权威迁移说明：当前唯一证据权威为 Neo4j 的 `completion-evidence/v1`，
+> namespace 为 `github.com/kitdine/agent-deck`。本文旧轮次中的离线查询结果仅为历史事实，
+> 不改写为当时执行过 Neo4j 查询。原始记录可按原 ID 在 `GitEvidenceRecord` 归档中定位；
+> 正式 gate 使用 `CEv1Node` 的 WorkUnit 与 ContentState ID，不能把旧 gate-request ID 当作 WorkUnit。
+> 历史测量原件及其哈希保持不变；原件内旧采样器的本地 state 路径仅为当时的代码记录，
+> 重放时必须通过 MCP 从 Neo4j 导出对应原始 state 到私有输入，不能恢复已撤销的本地 provider。
+> 本次仅移除旧策略的操作指令和本地路径引用；历史判定、原始证据 ID 和任务完成状态不变。
+
 ## Round 1 — 2026-10-11
 
 ### 📋 Task 1 独立实现评审
@@ -20,10 +34,10 @@ subject: baseline-and-open-path
 - Reviewed state：HEAD `14078ec7c2ca9fb19e22a30177dfc5ece2729c48`；338 个范围内文件的本地内容指纹
   `08d3f2b36b74daced2aad12984dfee53b85f2b481323b97400002fa6a9f1891a`。
 - WorkUnit：`scan-performance:baseline-and-open-path`；Beads：`ad-scan-performance-baseline-and-open-path`。
-- Authority：用户 2026-10-11 批准的 v0.7.0 Git 文本证据权威，profile `agentdeck-git-evidence/v1`。
+- Authority：用户 2026-10-11 批准的 v0.7.0 历史离线证据。
   不以 Neo4j 恢复作为前置，不把历史图谱门禁声明当作本轮已查询的结果。
 - Contract：`scan-baseline-contract-r1-20261012`；ContentState：`scan-baseline-state-r1-20261012`；
-  gate request：`scan-baseline-gate-r1-20261012`，均位于 `docs/evidence/records/`。
+  gate request：`scan-baseline-gate-r1-20261012`，均已迁入 Neo4j，按原始记录 ID 查询。
 - 完成门禁：FAILED
 
 ### 🔴 严重问题 — 必须修复
@@ -155,7 +169,7 @@ Evidence：
   私有 preparation stash，空闲后逐个验证原 inventory size/SHA-256 并 copy2 回缺失位置，
   不覆盖既有文件，保留 stash。无两个 harness 进程并行后，复用此冻结集重新执行完整测量。
 - 原生两对四条件 E0 复核已完成，harness exit 1；完整脱敏替代事实见
-  [修复 E0](../evidence/baseline-and-open-path-repair-r1.json)。共 5,372 文件、
+  修复 E0。共 5,372 文件、
   3,477,927,102 bytes，新 corpus `ee716afe6b2e90713b33317b8dcab5899e3fc0e96e2a35ea7f0cf46b5f2f7c96`。
   6 个成功样本全部五个 tab 与 old/new numeric bitmap 有效、latestDataChanged=true；
   update_latest 为 11,228,110,096–11,547,022,424 ns。
@@ -174,7 +188,7 @@ Evidence：
   readyClickRequired=true，不称原始 first-click 成功。保留默认 quota，未配置官方凭据或测真实 quota 网络。
 - 原 Go/parser/统计/Shared 计量未在修复中改变；复用 Round 1 中有精确内容绑定的 source-impact/privacy
   观察，另评估新 bitmap/常量仍仅内存验证或固定脱敏字段。未因阶段改变重跑完整 Go/race/release 门。
-- 修复候选证据交接（不是 Task 完成声明）：Git-text contract
+- 修复候选证据交接（不是 Task 完成声明）：历史离线证据 contract
   `scan-baseline-contract-repair1-20261012` 新增回归及替代 E0 的 scope，五项必需 criterion 不变；
   state `scan-baseline-state-repair1-20261012`，fingerprint
   `17d5cb67753e844c8efd6051e53a4364139effecb51c824b4c3de48c85c33aad`。
@@ -200,9 +214,9 @@ Evidence：
 - Reviewed state：HEAD `14078ec7c2ca9fb19e22a30177dfc5ece2729c48`；内容指纹
   `17d5cb67753e844c8efd6051e53a4364139effecb51c824b4c3de48c85c33aad`。
 - WorkUnit：`scan-performance:baseline-and-open-path`；Beads：`ad-scan-performance-baseline-and-open-path`。
-- Authority：用户批准的 v0.7.0 Git 文本权威，profile `agentdeck-git-evidence/v1`。
+- Authority：用户批准的 v0.7.0 历史离线证据。
 - Contract：`scan-baseline-contract-repair1-20261012`；ContentState：`scan-baseline-state-repair1-20261012`；
-  gate request：`scan-baseline-gate-repair1-20261012`；记录位于 `docs/evidence/records/`。
+  gate request：`scan-baseline-gate-repair1-20261012`；原始记录已迁入 Neo4j，按 ID 查询。
 - 完成门禁：VERIFIED
 
 ### 🔴 严重问题 — 必须修复
