@@ -35,7 +35,7 @@ Settings 含用户要求的 OTel 开关；Widget 不改表面，保留既有兼�
 | 顺序 | 文档 | 本次变化与评审重点 |
 | --- | --- | --- |
 | 1 | requirements.md | P01–P11 恢复原值、删除全部豁免/撤销段；已测未达标事实作为输入；测量能力要求；不可达时返回设计而非豁免 |
-| 2 | performance-evaluation.md | 测量契约：产品内起止打点、单一时钟、自动刺激、固定种子夹具、环境与机器、样本与统计、无效样本处理；逐项可测性判定；候选采用规则与决策门 |
+| 2 | performance-evaluation.md | 测量契约：产品内起止打点、单一时钟、自动刺激、冻结真实语料夹具与日期平移、环境与机器、样本与统计、无效样本处理；逐项可测性判定；候选采用规则与决策门 |
 | 3 | architecture.md | 打开路径（首击分段与 NSPopover 下限探测）、启动恢复优先、usage 并行 reduce + 单一有序写者、短事务、测量打点接口；其余契约不变 |
 | 4 | tasks.md | 本矩阵：首项为测量工具、基线按新契约重测；文件边界、删除项、验证级别、准则与依赖 |
 
@@ -76,7 +76,8 @@ content-state 门禁 `VERIFIED`；测量类准则的证据按性能评估·记�
 - 在现有代码上修改；任务内确认不再使用的代码、测试与脚本随任务删除，删除前以引用搜索确认。
 - 性能门只用测量契约规定的方法、样本数与统计；正式批次失败即任务未完成，不能改口径或豁免。
   若证明目标在既定约束下不可达，停止并返回设计。
-- 测试与测量只用临时 HOME/隔离 state root 与生成夹具，不读取真实日志或生产数据库。
+- 测试只用临时 HOME/隔离 state root 与合成夹具；测量只用隔离 state root 与冻结语料的平移工作副本。
+  除 `measurement-harness` 中经用户批准的冻结（含重新冻结）外，不读取真实日志或生产数据库。
 - 提交、推送、PR、安装、发布不在任务授权内。
 
 ## 1. measurement-harness
@@ -91,7 +92,11 @@ content-state 门禁 `VERIFIED`；测量类准则的证据按性能评估·记�
   `AgentDeckApp`、`EmbeddedHelperRunner`、`DesktopRefreshScheduler` 接入打点。
 - 新增 `internal/perftrace`；在 `internal/store` 写事务封装、`internal/ingest`、`internal/usage`、
   `internal/session`、`internal/scanruntime`、`internal/desktop` serving 写入、`cmd/agentdeck` 接入打点与进程自报资源。
-- 新增 `cmd/agentdeck-perf`：`fixture`（`rep`/`small` profile、`append`）、`template`、`run`、`stats`、`gate`。
+- 新增 `cmd/agentdeck-perf`：`corpus freeze`/`corpus shift`（冻结真实语料与按锚定日平移）、`fixture`
+  （仅 `small` 合成 profile，供测试）、`append`、`template`、`run`、`stats`、`gate`。每次冻结（含重新
+  冻结）都须用户事先批准，在本任务中执行（2026-10-23 已批准一次重新复制）；语料身份与聚合清单写入
+  CEv1。批次按性能评估“工作副本、模板与样本起点”编排：固定 HOME 路径、模板记录源树绑定指纹、
+  按运行单元核对与重置、写入条件前后重新生成工作副本。
 - 发布打包与 Release 配置保持只构建 `./cmd/agentdeck`，不含驱动。
 
 删除：`DesktopPerformanceStage`/`DesktopPerformanceTrace` 及其测试、`MenuBarItemController` 的 DEBUG 基线采集
@@ -104,7 +109,11 @@ content-state 门禁 `VERIFIED`；测量类准则的证据按性能评估·记�
 验证（L3）：Go 全量 `scripts/run-go-test.sh ./...`、`perftrace`/store 封装 race、vet、
 macOS 双架构构建（Debug/Release/Perf 三配置）、native 全量 XCTest；时钟同源测试（按[性能评估·原则](performance-evaluation.md#原则)第 2 条核对四个来源：Swift
 `clock_gettime_nsec_np`、Go `unix.ClockGettime`、`NSEvent.timestamp`、`ri_proc_start_abstime`，偏差 ≤1 ms）；
-记录隐私测试（输出不含路径、会话 ID、正文）；关闭时零记录测试；夹具确定性测试（同参数两次生成身份相同）；
+记录隐私测试（输出不含路径、会话 ID、正文）；关闭时零记录测试；夹具确定性测试（合成夹具同参数两次生成身份相同；同一语料与锚定日两次平移得到相同工作副本身份，
+时间字段长度与其余字节不变，跨 DST 归属日不变；平移后落入春季不存在与秋季重复时刻的确定性结果；
+原始处在秋季重复区间或平移后越过后续记录的文件回退为 UTC 平移且文件内 UTC 先后不变）；
+模板起点测试（运行单元起点的源树绑定指纹与模板一致；复制得到的源树指纹不同并被判为工具无效；
+从模板起步的 no-op 扫描读取字节与 decode 记录数为 0；累积写入序列内不重置）；
 Release 产物不含 `PerfDriver` 符号。E0：按[性能评估的工具 pilot 表](performance-evaluation.md#样本与统计)
 运行其中标为 `measurement-harness` 的条件，工具无效为 0；P05 的 pilot 归 `otel-capture-and-reconciliation`。
 若点击刺激出现未路由样本，按性能评估在本任务评审中确认替代刺激。
@@ -118,7 +127,7 @@ Release 产物不含 `PerfDriver` 符号。E0：按[性能评估的工具 pilot 
 
 基线：B0 = 提交 `14234ec`（旧 `baseline-and-open-path` 任务的原交付，主题产品行为改动之前）的构建，
 只用于 P09；P08 是绝对门，不与 B0 比较。S0 = 本任务开始时的内容状态（含 `measurement-harness` 打点与
-旧 `bounded-source-pipeline` 任务保留的候选），用于 P01–P04、P06 基线臂、P07、P08、P09、P10、P11。两者均在同一机器、同一 `rep` 夹具与模板上测量。
+旧 `bounded-source-pipeline` 任务保留的候选），用于 P01–P04、P06 基线臂、P07、P08、P09、P10、P11。两者均在同一机器、同一冻结语料的同一工作副本与模板上测量。
 
 范围：按性能评估的正式样本数跑完整批次（P09 为 B0/S0 20 对 ABBA 交错）；给出分段：P01 首击超出部分所在段、
 P02 启动期争用来源、P07 事务按 label 的 top 分布与 RSS 上界构成、P09 关键路径（usage/session/derive）、

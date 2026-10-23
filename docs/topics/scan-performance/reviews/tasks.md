@@ -324,3 +324,140 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - Evidence：`scripts/check-docs.py` exit 0；`scripts/check-review-records.py` exit 0；`git diff --check` 通过。
 - CEv1：Neo4j MCP 本会话连接失败，未查询、未写入；门禁 BLOCKED，待 provider 恢复后记录并重查。
 - 结论：唯一发现关闭，判 PASS；完成门禁未 VERIFIED。
+
+## Round 8 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：任务矩阵评审
+
+📊 总体评分：10/10
+
+✅ Verdict: PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-corpus-r-20261023-tasks-state，绑定状态同步后 blob 520a510c，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 文档矩阵把本轮改动的四份文档 Review 复位，评审顺序表第 2 行反映新夹具契约。
+- 全局约束区分测试（合成夹具）与测量（冻结语料的平移工作副本），并把唯一一次读取真实日志限定在 `measurement-harness` 经批准的冻结中；`measurement-harness` 交付项列出 `corpus freeze`/`corpus shift`、`small` 仅供测试，验证项新增平移确定性测试；基线段改为同一冻结语料的同一工作副本。均与 performance-evaluation.md、requirements.md 一致。
+- SP-TASKS-R5..R7 已关闭的发现在当前内容中未回归。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，核对本轮 diff 及其与需求、性能评估、架构的一致性；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `4df3e113ee80484bba3b21ca13e86d223738e875`；digest `fb6568b685b4653c93bb330fd385080819a7a1841971f0a06acbff9bbb4100a2`。本轮之后状态同步把 architecture.md、tasks.md 两行的 Review 打勾，tasks.md 的 blob 随之改变；差异只有这两个复选框，证据绑定同步后的 blob。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 依赖：performance-evaluation.md 本轮 FAIL；SP-PE-R8-F1/F2 的修复要求同步本文件 `measurement-harness` 验证项，届时本文件改动须重评，本结论只覆盖当前内容。
+- 结论：无发现，判 PASS。
+
+## Repair candidate — 2026-10-23（Round 8 后，承接 performance-evaluation Round 8–9）
+
+Repairer：Claude Code 主会话；范围为 performance-evaluation.md Round 9 总结记录的跨目标承接项（SP-PE-R8-F1 (d) 与 SP-PE-R8-F2/F3 引起的本文件同步），以及与 SP-PE-R9-F1/F2 修复的一致性。Round 8 的 PASS 只覆盖其所评内容；本次修改使本文件需要重新评审。本节不是 Review Round，也不自行声明 PASS。
+
+- 冻结措辞 -> repaired in candidate：`measurement-harness` 交付项把“冻结一次”改为“每次冻结（含重新冻结）都须用户事先批准”（2026-10-23 已批准一次重新复制），并写明批次按性能评估“工作副本、模板与样本起点”编排：固定 HOME 路径、模板记录源树绑定指纹、按运行单元核对与重置、写入条件前后重新生成工作副本。
+- 验证项 -> repaired in candidate：夹具确定性测试增加平移后落入春季不存在与秋季重复时刻的确定性结果，以及逐文件回退为 UTC 平移且文件内先后不变；新增模板起点测试：运行单元起点指纹与模板一致、复制得到的源树指纹不同并判为工具无效、从模板起步的 no-op 扫描读取字节与 decode 记录数为 0、累积写入序列内不重置。
+- 文档矩阵：tasks.md 的 Review 复位为未勾选。
+
+修复目标：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `5fcc157c95dd20f7ed2f5dae469a6e8f3bdd2228`；
+digest `018dcaef4d95024413fc68618b17fc45c99ce3ddd1c46647f81a8e96cfe70a67`。
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` 仍为 exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件。
+CEv1：修复不跨越完成边界，未写入；Round 8 记录的 VERIFIED 门绑定旧 blob，不覆盖当前内容，待复评。
+
+## Round 9 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：任务矩阵复评（承接 performance-evaluation Round 8–9）
+
+📊 总体评分：9/10
+
+✅ 复评结论：FAIL
+
+完成门禁：NOT_VERIFIED（复评未通过；Round 8 的 VERIFIED 绑定旧 blob，不覆盖当前内容）
+
+### 🔴 严重问题 — 必须修复
+
+[tasks.md:79–80] SP-TASKS-R9-F1（低）：全局约束仍写“经用户批准的一次冻结”，与第 96–97 行及性能评估允许经批准重新冻结相矛盾
+- 处置：仍开放（属于 performance-evaluation.md Round 9 承接到本文件的冻结措辞同步项；上轮承接只点名了第 96–97 行，第 80 行同一措辞未改）。
+- 行为风险：第 80 行“除 `measurement-harness` 中经用户批准的一次冻结外，不读取真实日志或生产数据库”把读取真实日志限定为一次。第 96–97 行与性能评估第 127–128、138–141 行都允许在代表性不足时经批准重新冻结，requirements.md 第 181–183 行写的是“每次冻结（含重新冻结）”。重新冻结时，实现者按全局约束会认为它被禁止，按交付项又会认为它被允许，同一文件内两处相反。
+- 证据：`rg -n '一次冻结|每次冻结' tasks.md` 命中第 80 行与第 96 行，两处措辞不同。
+💡 有界修复：把第 80 行改为“除 `measurement-harness` 中经用户批准的冻结（含重新冻结）外”，其余不变。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 承接项中的冻结措辞（第 96–97 行）已改为“每次冻结（含重新冻结）都须用户事先批准”，并写明批次按性能评估“工作副本、模板与样本起点”编排（第 98–99 行）。
+- 承接项中的验证项已补齐（第 113–116 行）：平移后落入春季不存在与秋季重复时刻的确定性结果；逐文件回退为 UTC 平移且文件内先后不变；模板起点测试覆盖运行单元起点指纹一致、复制得到的源树被判为工具无效、从模板起步的 no-op 扫描读取字节与 decode 记录数为 0、累积写入序列内不重置。与 performance-evaluation.md 第 155–161、180–189 行一致。
+- 文档矩阵中 tasks.md 的 Review 已复位，符合内容变化后需重评的规则。
+
+### 📝 总结
+
+- 逐项处置：performance-evaluation Round 9 承接到本文件的同步项中，验证项 closed，第 96–97 行冻结措辞 closed，第 80 行同一措辞未同步，记为 SP-TASKS-R9-F1（低），仍开放。
+- Reviewer/Method：Claude Code 主会话（Round 8 评审者），核对修复候选的当前内容及其与 performance-evaluation.md、requirements.md 的一致性；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `5fcc157c95dd20f7ed2f5dae469a6e8f3bdd2228`；digest `018dcaef4d95024413fc68618b17fc45c99ce3ddd1c46647f81a8e96cfe70a67`。本轮之后状态同步把 performance-evaluation.md 一行的 Review 打勾，tasks.md 的 blob 随之改变。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 结论：一项低严重度发现仍开放，判 FAIL；修复范围为 SP-TASKS-R9-F1。
+
+## Repair candidate — 2026-10-23（Round 9 后）
+
+Repairer：Claude Code 主会话；范围仅为 Round 9 的 SP-TASKS-R9-F1。Round 9 的分数、Verdict 与 NOT_VERIFIED 门保留；本节不是 Review Round，也不自行声明 PASS，待独立复评确认。
+
+- SP-TASKS-R9-F1 -> repaired in candidate：第 80 行“除 `measurement-harness` 中经用户批准的一次冻结外”改为“除 `measurement-harness` 中经用户批准的冻结（含重新冻结）外”，其余不变；`rg -n '一次冻结'` 在本文件已无命中，与第 96–97 行、performance-evaluation.md 第 127–128、138–141 行及 requirements.md 第 181–183 行一致。
+
+修复目标：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `e79c7dc919958ede728951dee2f61202f50e847d`；
+digest `537d415756328645cb44be2a24750e46e58db3ec7a3fbe4dbad6989effb6f1d5`。
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` 仍为 exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 10 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：任务矩阵复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-corpus-rr3-20261023-tasks-state，绑定状态同步后 blob f83ac6e，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-TASKS-R9-F1 closed：第 80 行改为“除 `measurement-harness` 中经用户批准的冻结（含重新冻结）外，不读取真实日志或生产数据库”；`rg -n '一次冻结'` 在本文件无命中，与第 96–97 行、performance-evaluation.md 第 127–128、138–141 行及 requirements.md 第 181–183 行一致。
+- Round 9 已关闭的承接项（第 96–99 行冻结与批次编排措辞、第 113–116 行平移与模板起点验证项）在当前内容中未回归。
+
+### 📝 总结
+
+- 逐项处置：SP-TASKS-R9-F1 closed；无新发现。
+- Reviewer/Method：Claude Code 主会话（Round 8/9 评审者），核对修复候选的当前内容及其与 performance-evaluation.md、requirements.md 的一致性；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `e79c7dc919958ede728951dee2f61202f50e847d`；digest `537d415756328645cb44be2a24750e46e58db3ec7a3fbe4dbad6989effb6f1d5`。本轮之后状态同步把 tasks.md 一行的 Review 打勾，blob 随之改变；差异只有这一个复选框，证据绑定同步后的 blob。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 本记录引用的其他记录发现均已在其所属记录中关闭，此处逐项注明以免被读作本文件的开放项（不改变本轮结论）：
+  - A1-F1 closed：见 `reviews/architecture.md` Round 2（`A1-F1 CLOSED`）。
+  - M1-F1 closed：见 `reviews/ux-menubar.md` Round 2。
+  - C1-F1 closed：见 `reviews/ux-cli.md` Round 2。
+  - S1-F1 closed：见 `reviews/ux-settings.md` Round 2。
+  - SP-ARCH-R3-F1 closed：见 `reviews/architecture.md` Round 4，Round 5 确认未回归。
+  - SP-PE-R5-F2 closed：见 `reviews/performance-evaluation.md` Round 6。
+  - SP-PE-R5-F3 closed：见 `reviews/performance-evaluation.md` Round 6。
+  - SP-PE-R5-F4 closed：见 `reviews/performance-evaluation.md` Round 6；本文件同步项 SP-TASKS-R6-F1 已于本记录 Round 7 关闭。
+  - SP-PE-R5-F7 closed：见 `reviews/performance-evaluation.md` Round 6。
+  - SP-PE-R5-F9 closed：见 `reviews/performance-evaluation.md` Round 7（Round 5 的 F1..F5、F7..F10 未回归）。
+  - SP-PE-R8-F1 closed：见 `reviews/performance-evaluation.md` Round 9；第 (d) 项本文件同步已于本记录 Round 9 关闭。
+  - SP-PE-R8-F2 closed：见 `reviews/performance-evaluation.md` Round 9；本文件同步已于本记录 Round 9 关闭。
+  - SP-PE-R9-F1 closed：见 `reviews/performance-evaluation.md` Round 10。
+- 结论：唯一发现关闭，判 PASS。
