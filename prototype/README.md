@@ -24,7 +24,9 @@ scan-performance 中的本地自动更新按文件事件定义，不要求用户
 原生隔离实验为 `tools/scan-performance-native-ab.py` 与 `tools/scan-performance-native-input.mjs`。
 数据准备、真实首帧与 OTel 的不同验证边界记录在专题 performance-evaluation.md。
 首次空库当天优先、已有库今天只读和历史待采集today的隔离对照见
-[首次加载评估](../docs/topics/scan-performance/performance-evaluation.md#首次加载与已有历史数据的对照)。
+首次加载评估（固定提交 `c6ea1ca` 中
+`docs/topics/scan-performance/performance-evaluation.md` 的“首次加载与已有历史数据的对照”一节；
+2026-10-22 重新设计后已从现行性能评估中删除）。
 对应harness为 `tools/scan-performance-firstload.mjs` / `scan-performance-firstload-patch.py`、
 `scan-performance-db-bootstrap.mjs`、`scan-performance-history-today.mjs`。
 这是引擎数据准备证据，不是原型浏览器或真实popover的首帧证据。
