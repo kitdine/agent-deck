@@ -250,3 +250,81 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 Task checkpoint：ad-scan-performance-doc-req；content_state `7d243492e937b85e7b5bc578cadc57de62513b6fd228769f05c595bfb96be52f`；gate VERIFIED。
 提交建议：经授权后提交 requirements.md 及其评审记录（含 Round 5/6），以及 SP-REQ-R5-F2 对 `reviews/serving-snapshot-and-bootstrap.md` 的改动；其余三份尚未通过，不要混入。
 推送建议：经授权后推送到 `origin/feature/scan-performance`；推送前核验提交范围、贡献归属、trailer 与签名。
+
+## Round 7 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：需求文档评审
+
+📊 总体评分：8/10
+
+✅ Verdict: FAIL
+
+完成门禁：NOT_VERIFIED（评审未通过，不记录通过证据）
+
+### 🔴 严重问题 — 必须修复
+
+[requirements.md:46–55] SP-REQ-R7-F1（低）：2026-10-23 决定段插在 2026-10-22 决定列表中间，把原属 10-22 的两条决定改挂到 10-23 名下
+- 行为风险：第 46 行引出的 2026-10-22 列表在第 50 行后被新段落截断；“在现有代码上开发，确认无用的代码、脚本和测量工具在实现中删除”与“证据只进入 Neo4j CEv1 与评审记录”两条（第 54–55 行）现在紧跟 2026-10-23 段落，读者会把它们归为 10-23 的夹具决定。这改变了用户决定的出处与时间，后续按决定日期追溯授权时会读错。
+- 证据：`git diff -- requirements.md` 显示新段落插在第 50 行（“可测性在设计阶段判定。”）与原列表第三条之间；原文中这四条同属 2026-10-22 列表。
+💡 有界修复：把 2026-10-23 段落移到 2026-10-22 列表全部四条之后（第 55 行之后），内容不变。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 夹具来源、隐私边界（只复制三个来源根、不进入仓库/评审记录/Beads/CEv1、删除须批准）、合成夹具仅用于测试、测量只用平移工作副本，在“测量能力”“验收约束”两处表述一致，与性能评估一致。
+- 三个来源根与产品发现一致：`internal/ingest/ingest.go:161–163` 只发现 `~/.codex/archived_sessions`、`~/.claude/projects`、`~/.codex/sessions`。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，逐段核对本轮 diff 与全文相关段落，核对来源根与产品代码；无委派，无产品修改。
+- Scope：requirements.md 本轮夹具变更及其与 performance-evaluation.md、tasks.md 的一致性。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `71aa14957c23afe851e1793c8a4f09532fdd12c0`；digest `8bc2bbf27de63c04640585cf8c493acdc0c2664fea00afff60e93c208f97aa58`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均为 `reviews/incremental-projections.md` 指向已在 `measurement-harness` 工作树中删除的 P07 脚本的链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 结论：唯一发现为本文件缺陷，判 FAIL。
+
+## Repair candidate — 2026-10-23（Round 7 后）
+
+Repairer：Claude Code 主会话；范围为 Round 7 的 SP-REQ-R7-F1，并按 performance-evaluation.md SP-PE-R8-F3 的修复同步本文件措辞。Round 7 的分数、Verdict 与 NOT_VERIFIED 门保留；本节不是 Review Round，也不自行声明 PASS，待独立复评确认。
+
+- SP-REQ-R7-F1 -> repaired in candidate：2026-10-23 决定段移到 2026-10-22 列表全部四条之后，内容不变；“在现有代码上开发……”与“证据只进入 Neo4j CEv1……”两条回到 2026-10-22 列表。
+- 关联 SP-PE-R8-F3（同步，不是本文件发现）：“测量能力”中的夹具条目由“一次性冻结”改为“每次冻结（含重新冻结）都须用户批准，是测量读取真实日志的唯一时机；新副本以新的语料身份启用，旧副本保留至用户批准删除，每个批次只绑定一个语料身份”，与性能评估一致。
+
+修复目标：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `3644a7f21862ad35f59d9c63da5fe11a9619333f`；
+digest `ff5ab952cbe8d7f881df6e0f84b0aa3e3a6e6a1b2d14102f50a53d1a9c068db4`。
+验证：`git diff --check` 通过；`python3 scripts/check-docs.py` 仍为 exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，与 Round 7 相同，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 8 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：需求文档复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-corpus-rr-20261023-req-state，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-REQ-R7-F1 closed：第 46–52 行的 2026-10-22 列表恢复为完整四条，2026-10-23 决定段位于其后（第 54–55 行），“在现有代码上开发……”与“证据只进入 Neo4j CEv1……”重新归属 2026-10-22。
+- 关联同步（SP-PE-R8-F3）一致：“测量能力”第 180–184 行写明每次冻结（含重新冻结）须用户批准、是测量读取真实日志的唯一时机、新副本以新语料身份启用、旧副本保留至批准删除、每批次只绑定一个语料身份，与 performance-evaluation.md 第 124–141 行一致。2026-10-23 决定段的“经批准一次性复制”指当日那一次复制，与性能评估第 128 行“2026-10-23 的批准只覆盖当日这一次复制”相容。
+- Round 5–7 已关闭的发现在当前内容中未回归。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话（Round 7 评审者），逐条核对 Round 7 发现与修复候选的当前内容及其与性能评估的一致性；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `3644a7f21862ad35f59d9c63da5fe11a9619333f`；digest `ff5ab952cbe8d7f881df6e0f84b0aa3e3a6e6a1b2d14102f50a53d1a9c068db4`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 依赖：performance-evaluation.md 本轮仍 FAIL（SP-PE-R9-F1、F2），其修复不涉及需求边界；若修复改动本文件，本结论失效。
+- 结论：唯一发现关闭，判 PASS。
