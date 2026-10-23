@@ -534,7 +534,7 @@ OTLP integer/string number 解码保留整数精度；负值、overflow、cached
   取代 `AGENTDECK_SCAN_PROFILE` 的 stderr 摘要与分散的原子计数，v1 stdout 不变。
 - **`PerfDriver`**：仅在 `Perf` 构建配置中编译（`#if AGENTDECK_PERF`），读取脚本执行点击投递、
   切换意图、打开 popover、等待终点与正确性核对，完成后退出。Release/Debug 配置不含它。
-- **`cmd/agentdeck-perf`**：夹具生成、数据库模板准备、批次编排（启动 Perf 构建 App、运行 CLI、
+- **`cmd/agentdeck-perf`**：冻结真实语料与按锚定日平移（测量夹具）、合成夹具（仅测试）、数据库模板准备、批次编排（启动 Perf 构建 App、运行 CLI、
   写入 append、OTel mock producer）、环境检查、统计与门判定；输出供写入 CEv1 的摘要。
   不进入发布打包。
 

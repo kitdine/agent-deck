@@ -241,3 +241,35 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - Evidence：`scripts/check-docs.py` exit 0；`scripts/check-review-records.py` exit 0；`git diff --check` 通过。
 - CEv1：Neo4j MCP 本会话连接失败，未查询、未写入；门禁 BLOCKED，待 provider 恢复后按上述 digest 记录并重查。
 - 结论：唯一发现关闭，判 PASS；完成门禁未 VERIFIED。
+
+## Round 6 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：架构评审
+
+📊 总体评分：10/10
+
+✅ Verdict: PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-corpus-r-20261023-arch-state，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 本轮唯一改动（第 537 行）把 `cmd/agentdeck-perf` 职责改为“冻结真实语料与按锚定日平移（测量夹具）、合成夹具（仅测试）”，与 performance-evaluation.md 夹具一节、tasks.md `measurement-harness` 交付项一致；仍声明不进入发布打包。
+- 模板拷贝方式与现有实现一致：`cmd/agentdeck-perf/template.go:117` 使用 `VACUUM INTO`。
+- SP-ARCH-R3/R4 已关闭的发现在当前内容中未回归。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，核对本轮 diff 及其与性能评估、任务矩阵、现有 `cmd/agentdeck-perf` 代码的一致性；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `a2b7c6e2b37845573f3701b6c9bd2ad6807a2f46`；digest `f7333dc22ec7d2526b5b427b0beaafe6af0ee03f71c6035727d0de50de55d56e`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 依赖：performance-evaluation.md 本轮 FAIL（SP-PE-R8-F1..F3），其修复只涉及测量契约，不改变本文件的职责划分；若修复改动本文件，本结论失效并须重评。
+- 结论：无发现，判 PASS。
