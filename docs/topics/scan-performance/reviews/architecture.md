@@ -106,3 +106,138 @@ Task checkpoint：ad-scan-performance-doc-arch；content_state `4ac50212992e065f
 提交建议：将该文档、关联契约修复和复评记录纳入完整设计批次的授权提交。
 
 推送建议：feature/scan-performance；须核验远端及分别获得提交/推送授权。
+
+## Round 3 — 2026-10-22
+
+## 📋 全 topic 重新设计：架构评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+[architecture.md:33] SP-ARCH-R3-F1（中）：删除 `prototype/tools/scan-performance-*` 会破坏已评审的 UX 标本身份
+- 行为风险：`ux/prototype/serving/manifest.json` 以路径和 SHA-256 固定了 8 个 `prototype/tools/scan-performance-*` 文件，`prototype/README.md:22–29,327` 也把它们写成标本 harness。tasks.md 又声明 UX 标本“无变化、沿用原评审”。按本表删除后，manifest 指向不存在的文件，三份 UX 评审所依据的标本身份随之失效。
+- 证据：manifest.json:206–234；`fd scan-performance prototype/tools` 共 8 个文件。
+- 💡 有界修复：明确处置——要么把 prototype tools 留作标本历史，从删除范围中排除；要么在删除的同时更新 manifest/README，并按规则重开受影响 UX 文档的 Review。此处与 tasks.md 同步修改。
+
+### 🟡 建议改进 — 推荐
+
+[architecture.md:101–102] SP-ARCH-R3-F2（低）：下限探测阈值被表述为“判定不可达”。问题同 performance-evaluation SP-PE-R5-F7，按同一修复同步本处。
+
+[architecture.md:530] SP-ARCH-R3-F3（低）：Go `perftrace` 自报 `ri_lifetime_max_phys_footprint` 缺少无 CGO 的取数机制。问题同 SP-PE-R5-F5，需在产品侧接口一并写明。
+
+### 🟢 优点
+
+当前代码表中的事实已逐条核实：`togglePopover`（MenuBarItemController.swift:178）、`popoverPreparation`、FSEvents latency 0.1、`parallelDecodeWorkers = 4` 及 1 MiB 阈值（64 MiB / 64）、`temp_store` 内存模式、`scanInventory → scanFileMode` 串行、`session.scanMode/scanOne`、`AcceptInventory` 单事务循环。并行 reduce 只做纯计算、跨 source 判定留在有序写者内，这一边界让 worker=1 等价性可以检验；短事务对 append 与 rewrite 分别处理，没有让查询看到半个重建。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，冷读并直接核对 Swift/Go 源码；无委派，无产品修改。
+- Scope：architecture.md 中本次改动的章节（当前代码表、系统结构、打开路径、启动顺序、流水线、短事务、测量打点），以及它们与其余已评审契约的一致性。
+- Reviewed state：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `28f1686684e08d0756adb6f6d549a16864b4bcb1`；digest `93ff018b15136f95cbddd94442a2abce901222e169de347b0f99736248fcd73c`。
+- Evidence：上述源码位置的 rg 检索；manifest/README 引用检索；`scripts/check-docs.py` 未报告本文问题。
+- CEv1：WorkUnit `scan-performance:architecture.md` 仍绑定旧 ContentState，当前 digest 无记录，门禁 NOT_VERIFIED。
+- 结论：一项中严重度、两项低严重度问题未关闭，判 FAIL。
+
+## Repair candidate — 2026-10-22
+
+Repairer：Claude Code 主会话；范围仅为 Round 3 的 SP-ARCH-R3-F1..F3。Round 3 的分数、Verdict 与 NOT_VERIFIED 门保留；
+本节不是 Review Round，也不自行声明 PASS。各项均待独立复评确认。
+
+- SP-ARCH-R3-F1 -> repaired in candidate：选择评审给出的第一种处置。`prototype/tools/scan-performance-*` 从删除行拆出，
+  单列为“保留为已评审 UX 标本的一部分，不删除、不修改，也不作为测量工具”；manifest 与 UX 评审身份因此不变，
+  不需要重开 UX Review。tasks.md 同步。
+- SP-ARCH-R3-F2 -> repaired in candidate：打开路径第 2 步改为与性能评估 E2 相同的两档表述，并链接 E2；
+  其后“若第 2 步判定不可达”改为“第 2 步停止后用户选择改用其他窗口形态”。
+- SP-ARCH-R3-F3 -> repaired in candidate：Go `perftrace` 改为以标准库 `syscall.Getrusage(RUSAGE_SELF)` 自报 `ru_maxrss`
+  与 CPU，不需要 CGO，不读取 `phys_footprint`；口径与性能评估 P07 一致。
+
+修复目标：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `10903444fa5815be3634e25f689e059127b37574`；
+digest `e886369d0dd1f67b3f72af153ba10e2b17fbd5a1b2cf4cebb1bc87ba6cefde9d`。
+验证：`python3 scripts/check-docs.py` exit 0。
+范围外观察（未修改，交复评判断）：architecture.md 第 17 行与第 331 行仍以“Task 4 候选”指旧 `bounded-source-pipeline`
+候选，与 SP-TASKS-R5-F5/SP-PE-R5-F8 同类，但不在 Round 3 已记录的发现内。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 4 — 2026-10-22
+
+## 📋 全 topic 重新设计：架构复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+[architecture.md:17,331] SP-ARCH-R4-F1（低，新）：“Task 4 候选”仍指旧 `bounded-source-pipeline`
+- Disposition：new。这是 SP-PE-R5-F8、SP-TASKS-R5-F5 同类的问题，Round 3 漏记；修复者已在附记中指出，但没有修改。
+- 行为风险：新矩阵中 Task 4 是尚未开始的 `parallel-source-pipeline`；“已保留的 Task 4 候选”会被读成新任务的产物。
+- 💡 有界修复：两处都改为旧 `bounded-source-pipeline` 任务的候选。
+
+### 🟢 优点
+
+- SP-ARCH-R3-F1 closed：`prototype/tools/scan-performance-*` 单列为保留的 UX 标本，不删除、不修改，manifest 固定身份因此保持有效；tasks.md 同步排除。
+- SP-ARCH-R3-F2 closed：打开路径第 2 步改为两档表述并链接 E2，UX 变更条件与之一致。
+- SP-ARCH-R3-F3 closed：Go `perftrace` 以 `syscall.Getrusage` 自报 `ru_maxrss` 与 CPU，不需要 CGO，与性能评估 P07 口径一致。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话（Round 3 评审者），核对当前正文；无委派，无产品修改。
+- Reviewed state：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `10903444fa5815be3634e25f689e059127b37574`；digest `e886369d0dd1f67b3f72af153ba10e2b17fbd5a1b2cf4cebb1bc87ba6cefde9d`。
+- Evidence：`check-docs.py` exit 0；`rg "Task ?[0-9]"` 命中第 17、331 行。
+- CEv1：FAIL，不写入，门禁 NOT_VERIFIED。
+- 结论：3 项均已关闭，但新增 1 项低严重度问题，判 FAIL。
+
+## Repair candidate — 2026-10-22（Round 4 后）
+
+Repairer：Claude Code 主会话；范围仅为 Round 4 的 SP-ARCH-R4-F1。Round 4 的分数、Verdict 与 NOT_VERIFIED 门保留；
+本节不是 Review Round，也不自行声明 PASS，待独立复评确认。
+
+- SP-ARCH-R4-F1 -> repaired in candidate：“当前代码与改变的位置”与“流水线、重读与发布”两处的“Task 4 候选”均改为旧
+  `bounded-source-pipeline` 任务的候选；全文 `rg "Task ?[0-9]"` 已无命中。
+
+修复目标：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `44a2b088364b56f9098c7a6b658ecc902832b9ee`；
+digest `152ed9217ab91842fbcc69e45a2b0b46706acc971d4ab3faf42041a78b97955b`。
+验证：`python3 scripts/check-docs.py` exit 0；`git diff --check` 通过。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 5 — 2026-10-22
+
+## 📋 全 topic 重新设计：架构复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+完成门禁：BLOCKED（CEv1 provider 本会话不可达）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-ARCH-R4-F1 closed：第 17、331 行均改为旧 `bounded-source-pipeline` 任务的候选；全文 `rg "Task ?[0-9]"` 无命中。
+- SP-ARCH-R3-F1..F3 在当前内容中未回归。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话（Round 3/4 评审者），核对当前正文；无委派，无产品修改。
+- Reviewed state：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `44a2b088364b56f9098c7a6b658ecc902832b9ee`；digest `152ed9217ab91842fbcc69e45a2b0b46706acc971d4ab3faf42041a78b97955b`。
+- Evidence：`scripts/check-docs.py` exit 0；`scripts/check-review-records.py` exit 0；`git diff --check` 通过。
+- CEv1：Neo4j MCP 本会话连接失败，未查询、未写入；门禁 BLOCKED，待 provider 恢复后按上述 digest 记录并重查。
+- 结论：唯一发现关闭，判 PASS；完成门禁未 VERIFIED。

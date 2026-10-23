@@ -1,31 +1,40 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-22
 ---
 
 # 展示恢复、事件更新与有界采集
 
-完整契约候选。依赖 [requirements.md](requirements.md)、[菜单栏](ux/menubar.md)、
-[CLI](ux/cli.md) 和 [性能决策门](performance-evaluation.md)。不改变现有产品实现。
+完整契约。依赖 [requirements.md](requirements.md)、[菜单栏](ux/menubar.md)、
+[CLI](ux/cli.md) 和 [性能评估与测量契约](performance-evaluation.md)。
+2026-10-22 全 topic 重新设计：依据已有实测重新取舍打开路径、启动顺序、usage 消费并行化、
+短事务与测量打点；serving 快照、coverage、生命周期、OTel 等已评审契约保持不变。
 
 ## 当前代码与改变的位置
 
-源码事实绑定 HEAD `32df0ae1223796f1e43bbd45a40f1efb9f7ff56e`：
+源码事实绑定分支 HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402` 加工作区内未提交的
+旧 `bounded-source-pipeline` 任务的候选（`internal/ingest/parallel_decode.go`、`activity.ScanMessage` 单遍扫描、
+可写连接 `temp_store=MEMORY` 及相关测试）：
 
 | 当前边界 | 已核实事实 | 本设计变化 |
 | --- | --- | --- |
-| `apps/macos/AgentDeckApp/MenuBarItemController.swift` | `togglePopover` 直接 show，每次重建 hosting controller | 保留直接 show；评估预备视图/复用，禁止把数据更新放进点击路径 |
-| `apps/macos/AgentDeckApp/MenuBarViewModel.swift` | 从 coordinator 转 presentation，默认 quota/today/all | 读取已准备的 publication；按 publication+preferences memoize，避免首帧重复投影 |
-| `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` | coordinator 初始为空；full refresh 先额度，再 host.refresh；扫描 helper 有 timeout | 启动恢复独立；额度 observation、数据更新与首屏解耦；有限请求/订阅语义分开 |
-| `internal/desktop/derived_cache.go` | 四类派生值、8 MiB 上限、generation/日期/时区/版本校验 | 保留计算缓存；另建完整、可较旧但身份有效的 serving snapshot |
-| `internal/store/derived_generation.go` | core epoch/revision/dirty 与 session epoch | 复用身份；增加 active/build generation 与 serving publication 身份，不能混同来源 cursor |
-| `internal/ingest/ingest.go` | metadata discovery、usage/session shared decode、双域 planning、预算和 workers | 分批 planning、chunk 记账、consumer reducer 状态、有界队列与优先调度 |
-| `internal/scanruntime/scanruntime.go` | 单协调者、有限 round、receipt、subscriber-only cancellation | 首先复用有限模式；事件合并后提交有限任务；额外常驻能力由收益/持续接收门决定 |
-| `cmd/agentdeck/main.go` 与 [CLI Manual](../../specs/cli-manual.md) | scan 同步；stats/summary 有 `--no-scan`，signals 没有 | 共用已提交事实与发布结果；保留当前命令语义，不暗改旧输出 |
+| `apps/macos/AgentDeckApp/MenuBarItemController.swift` | `NSPopover` + 常驻 `NSHostingController`；ready 后在未上屏的借用窗口中预布局一次（`popoverPreparation`）；`togglePopover` 直接 show；DEBUG 内含 Vision/OCR 基线采集 | 按打开路径一节处理首击；删除 DEBUG 基线采集与 OCR；接入数据帧打点 |
+| `apps/macos/AgentDeckApp/MenuBarViewModel.swift` | 从 coordinator 转 presentation，默认 quota/today/all | 读取已准备 publication；按 publication+selection memoize；切换意图为公开入口供 P03 打点 |
+| `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` | 启动恢复、quota、bootstrap 并行；helper 按需启动 | 启动顺序改为恢复优先（见下）；额度与数据更新仍与首屏解耦 |
+| `apps/macos/AgentDeckShared/DesktopRefreshScheduler.swift` | FSEvents（latency 0.1 s）触发有限更新 | 保留；打点 `source.fsevent`；合并与漏事件校对见事件更新 |
+| `apps/macos/AgentDeckShared/DesktopLog.swift` | `DesktopPerformanceStage` 固定阶段与有限 trace | 由 `PerfTrace` 取代（单调时钟、默认关闭、跨进程同源） |
+| `internal/desktop` serving / `internal/store` generation 与 coverage | serving snapshot、generation vector、持久 inventory/coverage、当天 bootstrap 已实现 | 契约不变；补短事务切分与打点 |
+| `internal/ingest/ingest.go` | 共享 reader + 预算 admission；usage/session 两个 consumer 各一条消费循环；≥1 MiB 独占 source 4 worker 有序解码（候选） | 保留共享读与有序解码；预算覆盖新增的并行 reduce |
+| `internal/usage/usage.go` | `scanInventory` 逐 source 串行调用 `scanFileMode`，同一 goroutine 内完成 parse、activity 分类、会话重建与 SQL 写入；profile 约占 27% CPU | 拆成并行 source reduce + 单一有序写者（见流水线一节） |
+| `internal/session/session.go` | `scanMode` 逐 source 串行 `scanOne` | 同一模式，按 E1 关键路径证据决定是否并行化 |
+| `internal/scanruntime/scanruntime.go` | 单协调者、有限 round、receipt、subscriber-only cancellation、首批发布 | 契约不变 |
+| `cmd/agentdeck/main.go` 与 [CLI Manual](../../specs/cli-manual.md) | scan 同步；stats/summary 有 `--no-scan` | 共用已提交事实与发布结果；保留当前命令语义 |
+| `scripts/scan-performance-*`、`scripts/scan_performance_*`、`scripts/p07*` | 历次实验各自的私有 harness | 由 `cmd/agentdeck-perf` 与产品内打点取代后删除 |
+| `prototype/tools/scan-performance-*` | 8 个文件，由 `ux/prototype/serving/manifest.json` 以路径与 SHA-256 固定，并由 `prototype/README.md` 列为标本 harness | 保留为已评审 UX 标本的一部分，不删除、不修改，也不作为任何指标的测量工具 |
 
 CodeGraph 用于关系定位；SQL、Swift 生命周期和磁盘缓存直接核对源码。
-运行时耗时仍需 E0/E1，不把这张表当作性能根因证明。
+运行时耗时以测量契约为准，不把这张表当作性能根因证明。
 
 ## 按数据是否已经整理选择启动路径
 
@@ -35,8 +44,8 @@ CodeGraph 用于关系定位；SQL、Swift 生命周期和磁盘缓存直接核�
 2. **已有库：** 有有效展示保存文件就恢复；没有则直接读今天的已提交事实。
    不先调用global scan，也不因现有Presentation同时准备90天/7d/30d而阻塞首批今天视图。
    周/月、工作信号、会话详情按需/后台准备；缺失项目数等显示—而非0。
-3. **今天尚未采集：** 旧有效视图先供阅读，增量任务处理新日志。
-   可在usage域提交时先查询今天，但实测该域仍可耗时12秒；原样复用管线不保证实时更新。
+3. **今天尚未采集：** 旧有效视图先供阅读，增量任务处理新日志并须满足 P10。
+   usage 域可先提交先发布；处理耗时由并行 reduce 与增量投影承担，不靠缩小查询范围。
 4. **发布不依赖全局终结：** 采用现有域进度/有限任务能力，在安全提交点产生partial publication。
    Native reader读取不可等待全局worker释放锁；发布文件只对应已提交generation vector。
    历史重算使数据较旧/部分，不使身份仍有效的首批视图消失。
@@ -70,14 +79,53 @@ flowchart LR
     Facts -->|read-only custom query| CLI
 ```
 
-Go workers 已可运行在多 OS threads；当前已有并行，不按核心数增加 workers。
-先优化实测显著的会话处理和派生统计，数据一致性通过后再调 worker/分段预算。
-默认不启动 parser 子进程，多进程 adoption 必须满足 E3。
+Usage 与 session 两个 consumer 目前各以一条循环逐 source 处理，usage 一侧在全量重建中是串行瓶颈。
+本设计把每个 consumer 内部拆成“并行 source reduce → 单一有序写者”：reduce 纯计算、不碰 SQL，
+写者按 inventory 顺序提交，因此写入顺序、跨 source 所有权判定与串行实现一致。
+worker 数按测量契约的完整周期规则在 1/2/4/8 中选择，受统一内存预算约束。
+默认不启动 parser 子进程，多进程 adoption 必须满足候选采用规则。
 OTel 接收必须持续存活，可由显式启用的 App 随行 receiver 满足；这项连续接收需求
 与 popover 快开收益分开评估。OTel off 时快开不依赖 receiver。
 
-实施顺序：首次当天/已有库当天准备与快照恢复 → usage增量提交热点及统计分区 → 文件事件合并与 CLI 发布衔接 →
-有据的并行预算调整 → 可选 OTel。若 profiler 证明 helper/IPC 占主耗时，才采用下面的常驻扩展。
+实施顺序：测量工具与基线 → 打开路径与启动恢复 ∥ 并行 reduce 与短事务 → 增量更新 →
+文件事件合并与 CLI 衔接 → OTel → 全矩阵验收。若 P10/P05 分段证明 helper 启动/身份重建占主导，
+才采用下面的常驻扩展。
+
+## 打开路径
+
+点击路径只做：`handleClick` → `togglePopover` → `NSPopover.show` → 已有 hosting view 首次/再次上屏。
+不读 SQL、不解码、不启动 helper、不 await 任何异步工作。已测首击 p95 537 ms 的成本在首次窗口创建、
+布局与提交，而不是数据准备；重复点击已接近预算。因此按以下顺序处理，每步以 P01 分段打点
+（`input.event`、`popover.show.*`、`popover.layout.data`、`frame.commit`、`frame.vsync`）决定是否继续：
+
+1. **分段定位。** 首击与重复点击分别给出各段分布，确认首击超出部分落在 show、布局还是提交/上屏。
+2. **NSPopover 首次显示下限探测。** 以静态文本 content 测同一路径的首击下限；
+   p95 >200 ms 即既定 UX 下不可达，p95 在 (150, 200] ms 为预先声明的决策阈值（不是不可达证明），
+   两者都停止并返回设计（见[性能评估 E2](performance-evaluation.md#决策门)）。
+3. **预热放到 ready 之后、空闲时。** 保留现有借用窗口预布局，并补齐首次上屏所需的一次性成本：
+   在不上屏、不夺焦点的前提下完成字体/材质/图层后备存储与 display link 的初始化；
+   预热在主线程空闲时分片执行，单片 ≤8 ms，避免拖慢启动恢复（P02）与重复点击。
+4. **首帧内容最小化。** 首帧只需要当前选择的 hero 与当前面板的可见部分；
+   其余面板与折叠区内容在首帧之后构建。这不改变可见内容与交互，只改变构建时机。
+5. **保持同一 hosting 层级与控件身份。** 关闭不销毁 content；几何变化只更新 root，不重建控制器。
+
+既定 UX 要求“复用既有 popover”，因此不以自绘面板替代 NSPopover；若第 2 步停止后用户选择改用
+其他窗口形态，这属于 UX 变更，须用户决定并重新评审菜单栏 UX。
+
+切换（P03）只在已准备的 publication 内重新投影，presentation 按 `(publication_id, selection)` memoize；
+切换意图入口是 view model 的公开方法，测量与控件 action 走同一入口。
+
+## 启动顺序
+
+已测 App-ready → 可用模型 p95 1,105 ms，超出 P02 的 750 ms；恢复本身在早期实验中约 15 ms，
+差额来自启动期争用。启动顺序固定为：
+
+1. `app.ready` 后立即在高优先级后台任务做只读身份检查与 serving 文件读取/校验/解码，
+   prepared view 在后台构建，MainActor 只交换 publication。
+2. 恢复完成（或身份未知/缓存不可用，转入 P04/P11 路径）之前，不启动 quota 网络请求、
+   bootstrap helper、预热分片或 watcher 首轮校对；它们在 `model.usable` 之后依次开始。
+   这不改变它们的语义，只改变开始时机；若 750 ms 内恢复未完成，它们照常开始，不被无限推迟。
+3. 无缓存时（P04）与空库（P11）沿用当天优先 bootstrap，首批发布不等待全局 scan terminal。
 
 ## 生命周期与所有权
 
@@ -187,7 +235,7 @@ App 在显示 status item 的同时，后台做轻量 read-only identity check�
 
 后台校验、decode、格式化与 prepared-view 构建后，MainActor 只交换 publication/view model。
 点击不 await 引擎、helper、disk read 或网络；已经存在的 memory publication 直接 bind。
-采用 native signposts 判断 hosting controller 重建是否需要优化，不在缺少测量时重写整个 UI。
+打开路径的优化以 `PerfTrace` 分段为依据（见“打开路径”），不在缺少测量时重写整个 UI。
 
 无 serving cache但有已提交数据库：优先用今天的indexed read/派生 partitions 构建首批展示，
 禁止先扫描日志。完全首次导入：先发布带 unavailable 组的结构，再在来源 chunk 提交后
@@ -254,7 +302,7 @@ JSON在stdout保持一个完整envelope、warnings含code，exit0表示读取成
 DB/coverage读取错误按原错误envelope至stderr、exit1，不返回partial:false成功结果。
 只有相关完整inventory及缺口持久提交后才清除来源提示，不靠开关或单一usage结果。
 v1不新增强制data字段；wire-v2提供细分coverage；Widget保持其既有兼容契约。
-Task2实现coverage及stored-only映射，Task5验CLI/App并发和完成水位。
+`serving-open-path` 维持 coverage 及 stored-only 映射，`event-updates-and-cli` 验 CLI/App 并发和完成水位。
 
 ### 调度与发现
 
@@ -265,7 +313,7 @@ watermark 可复用，否则产生一个有限 follow-up。新事件归下一轮
 历史任务按 source/segment yield。初始加权轮询为实时 4、interactive 2、history 1；
 aging 最多 5 秒使 history 获一次时间片，实时流不能饿死历史。每批 planning 先满足
 usage/session Plan-or-Skip 并 Seal 后才 read；不等待全目录所有消费者的 planning 才开始首批。
-权重是 E2 候选配置，需求里的 resource/latency 硬门禁优先。
+权重是 E5 候选配置，需求里的 resource/latency 硬门禁优先。
 
 持久 manifest 记录 source path 的私有映射、identity、size、mtime/ctime、consumer versions、
 cursor、最近有效 event date。文件系统通知只将路径/目录标 dirty。每个 root 保存验证进度，
@@ -279,21 +327,63 @@ Claude 平目录、Codex archived_sessions 和未知日期来源不能被“只�
 
 ## 流水线、重读与发布
 
-本节是测量后按需采用的改动边界，不先全盘迁移 facts/schema。
-若瓶颈是派生统计，先做下一节的 dirty 分区；若 source reducer 重读/内存主导，
-再引入 checkpoint/chunk。每项独立比较完整更新周期，未改善则保留现有实现。
+本节是测量后按需采用的改动边界，不先全盘迁移 facts/schema。每项独立比较完整周期，
+未改善则撤回（见性能评估·候选采用规则）。已保留的旧 `bounded-source-pipeline` 任务候选（大 source 有序并行解码、
+`activity.ScanMessage` 单遍扫描、可写连接 `temp_store=MEMORY`）作为起点，
+在并行 reduce 落地后重新按完整周期与正确性验证；不再带来收益或无法通过 race 的部分删除。
+
+### 并行 source reduce 与单一有序写者
+
+```mermaid
+flowchart LR
+    Reader[Shared reader / ordered decode] --> Q[Bounded per-consumer queue]
+    Q --> R1[reduce worker 1]
+    Q --> R2[reduce worker N]
+    R1 --> W[Ordered writer]
+    R2 --> W
+    W --> Tx[Short transactions + checkpoint]
+```
+
+- **Reduce（并行）**：输入是一个 source 的待处理范围与其已提交 checkpoint（cursor、累计 token、
+  session/turn/model 上下文、parser/reducer 版本）的只读快照；输出是该 source 的完整结果：
+  事件、工具调用、工作信号、会话片段、新 checkpoint 与统计计数。reduce 不读写 SQLite，
+  不访问其他 source 的状态。usage 的 parse、`activity` 分类与会话片段计算都在这里。
+- **写者（单一、有序）**：按 inventory 顺序接收 reduce 结果；跨 source 判定（归档副本的
+  source ownership、会话合并 `rebuildSessions`、orphan 恢复）只在写者内按顺序执行，
+  因此与串行实现语义一致。checkpoint 与该 source 的事实在同一事务提交。
+- **快照一致性**：reduce 读取的 checkpoint 在 round 开始时一次性载入；同一 round 内一个 source
+  只出现一次，写者提交前校验 checkpoint 未被他人推进，否则丢弃结果并以 `source_changed` 有限重试一次。
+- **等价性**：并行结果与串行 full oracle 按逻辑行、请求身份、会话与完整视图哈希逐项比较；
+  worker=1 时行为与现状逐字节一致，作为回归基准。
+- session consumer 采用同一模式；是否实施由基线分段决定（usage 优化后 session 成为关键路径才做）。
+
+### 短事务
+
+P07 要求写事务 p95 ≤50 ms、max ≤250 ms。所有写事务经 store 的统一封装，按 `tx.<domain>.<label>` 打点：
+
+- **按工作量切分**：写者在累计行数或估计成本达到上限时提交并开启新事务；上限初值 512 行，
+  由 E1/E3 分段校准，目标是单事务 max 远低于 250 ms。大 source 的结果跨多个事务提交，
+  中间 checkpoint 只在完整物理记录与其结果都已提交后推进，崩溃后从最后 checkpoint 续做。
+  append 的分块提交只暴露正确的前缀；rewrite/truncate/parser 重读的 source 若需分块，
+  必须按“持久状态与 source 原子性”一节写 shadow generation，完成后短事务切换，不能让查询看到半个重建。
+  若 E1 分段显示单 source 重建可在一个 ≤250 ms 事务内完成，则不引入 shadow，保持现有表结构。
+- **inventory 接受**：先在独立 staging 行分批写入（每批短事务），最后以一个只更新 head 指针的短事务
+  原子切换；未切换的 staging 对查询不可见，崩溃后丢弃。这取代当前“一个事务写入全部来源行”的做法。
+- **派生与投影**：受影响分区的重算分批写 shadow，最终短事务 swap active generation。
+- 事务内不做文件 I/O、JSON 解码或网络等待；这些在事务外完成。
 
 ### 实际内存预算
 
-统一 admission 包括 raw bytes、decoded records、usage/session reducer state、writer queue 和
-projection 临时值；不要对同一 shared record 重复收费，也不要释放仍被任一 consumer 引用的 bytes。
-候选 workers=2，允许 1/2/4/8 的 E2 选择；pool=32 MiB 是 decode/reduce 阶段上限，
-总 RSS 满足 256 MiB，不是“32 MiB pool 证明 RSS 32 MiB”。队列长度和字节均有上限。
+统一 admission 包括 raw bytes、decoded records、reduce 中间状态、写者队列和 projection 临时值；
+不要对同一 shared record 重复收费，也不要释放仍被任一 consumer 引用的 bytes。
+reduce 结果在交给写者前按估计字节计入预算，写者提交后释放；写者落后时 reduce 阻塞（backpressure），
+不无限排队。pool 上限与 worker 数一起由完整周期测量选择；聚合 RSS 上界（所有重叠 helper 自报峰值之和）
+必须 ≤256 MiB，单个 pool 上限不是 RSS 证明。
 
 256 KiB raw chunk，物理行跨 chunk 保持 newline/tail 状态；大行用私有 bounded spill，
-长度超上限报告明确 source failure，不无限增长内存。spill 不在正式证据中被引用，
-成功或失效后一次清理，崩溃残留按 identity 安全处理。
-对 slow consumer backpressure 有界，其他来源仍可调度，不使单一大 source 占满全局预算。
+长度超上限报告明确 source failure，不无限增长内存。spill 成功或失效后一次清理，
+崩溃残留按 identity 安全处理。对 slow consumer backpressure 有界，其他来源仍可调度，
+不使单一大 source 占满全局预算。
 
 ### Consumer checkpoint
 
@@ -328,8 +418,8 @@ source head 发布；不能逐块 delete/replace 正在查询的旧 source。存
 不让外部事件 ID 因 generation 改变。usage/session 两库各自 source head 原子，不能宣称跨库事务。
 
 迁移需列出直接 SQL readers/writers、FTS、backup/restore、source-removal 和旧客户端影响；
-E0 源码影响清单及 L3 migration test 是 implementation 的前置门。不要用数据库 view 魔法
-假定所有旧查询自然兼容。若 footprint 或 E2 无法证明收益，回设计缩减 shadow 边界；
+E1 源码影响清单及 L3 migration test 是 implementation 的前置门。不要用数据库 view 魔法
+假定所有旧查询自然兼容。若 footprint 或 E3 无法证明收益，回设计缩减 shadow 边界；
 不能退回大事务并仍宣称通过 P07。旧 generation 清理不在前台路径，仅清理已不可引用版本。
 
 发布按 source/domain checkpoint 可推进；global scan terminal 仍等请求的有限域完成。
@@ -428,6 +518,26 @@ OTLP integer/string number 解码保留整数精度；负值、overflow、cached
 新 source adapter 不改变 pricing 或父子/auxiliary 的展示决策；原始 model/thread/root 均保留
 并允许 unknown。与相关 Bug/专题做接口验收，不在这里强行把 unknown memory 归到 guardian。
 
+## 测量打点与测量工具
+
+测量契约（起止点、样本、统计、机器条件）由[性能评估](performance-evaluation.md#测量契约)规定；
+这里只定义产品侧接口。
+
+- **Swift `PerfTrace`**（`AgentDeckShared`）：固定阶段枚举、`CLOCK_UPTIME_RAW` 纳秒、进程内有界环形缓冲；
+  `AGENTDECK_PERF_OUT` 未设置时只有一次分支判断。退出或驱动请求时写 0600 文件。取代
+  `DesktopPerformanceStage`/`DesktopPerformanceTrace` 与 `MenuBarItemController` 内 DEBUG 基线采集。
+- **数据帧探针**：`perfDataFrame(key:)` 视图修饰器、提交后 run loop 观察者与窗口 display link，
+  按性能评估定义产生 `popover.layout.data`、`frame.commit`、`frame.vsync`；关闭时修饰器不注册任何回调。
+- **Go `internal/perftrace`**：同一时钟与阶段命名；helper 继承 `AGENTDECK_PERF_OUT`；
+  store 写事务封装统一记录 `tx.*`；进程退出前以标准库 `syscall.Getrusage(RUSAGE_SELF)` 自报
+  `ru_maxrss` 与 user/sys CPU，不需要 CGO，也不读取 `phys_footprint`（P07 门按 RSS 口径，见性能评估）。
+  取代 `AGENTDECK_SCAN_PROFILE` 的 stderr 摘要与分散的原子计数，v1 stdout 不变。
+- **`PerfDriver`**：仅在 `Perf` 构建配置中编译（`#if AGENTDECK_PERF`），读取脚本执行点击投递、
+  切换意图、打开 popover、等待终点与正确性核对，完成后退出。Release/Debug 配置不含它。
+- **`cmd/agentdeck-perf`**：夹具生成、数据库模板准备、批次编排（启动 Perf 构建 App、运行 CLI、
+  写入 append、OTel mock producer）、环境检查、统计与门判定；输出供写入 CEv1 的摘要。
+  不进入发布打包。
+
 ## 故障、升级与验证
 
 | 故障 | 展示 | 引擎/CLI |
@@ -445,4 +555,4 @@ OTLP integer/string number 解码保留整数精度；负值、overflow、cached
 必须 full Go regression，concurrency/migration/receiver 必须 race、vet、双 macOS build 与 privacy
 fault tests；Swift producer→wire→decode→App 首帧必须有 native 证据。
 App 与 CLI 的 logical totals、source identity、FTS、cached reports 和 Widget v1 在同一候选比较。
-本轮文档与共享原型是设计证据，尚无上述实现结果或产品 CEv1 VERIFIED。
+设计文档与共享原型不是实现结果；各任务的产品结论只来自其评审记录与 CEv1 门禁。
