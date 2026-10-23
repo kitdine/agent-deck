@@ -4,6 +4,12 @@ topic: scan-performance
 subject: requirements.md
 ---
 
+> **证据引用处置 — 2026-10-22**：Neo4j 恢复后，按用户要求移除本 topic 期间以文件形式保存的
+> 回退证据与实验记录（原 `docs/topics/scan-performance/evidence/`，以及 Task 1 的
+> `docs/evidence/records/`）。本文原指向这些文件的链接已改为纯文本，文中出现的上述路径均不再是
+> 可用引用；原件仅可从提交 `c6ea1ca6551f525cc8a757ccf2e7889fabf36402` 的 Git 历史追溯。
+> 结构化观测、内容身份与门禁结果以 Neo4j CEv1 为准；历史观察、结论与评审裁决保持原义。
+
 ## Round 1 — 2026-10-09
 
 ## 📋 需求边界评审
@@ -151,3 +157,96 @@ Task checkpoint：ad-scan-performance-doc-req；content_state `c5e705d5e7a69f78f
 p99=623.638814ms的原预算失败保留。当前验收结论由tasks.md顶端最终状态和
 evidence/task2-acceptance-waiver-20261020-receipt.json的精确门禁/本地完成回执管理。
 本次用户直接批准的文字调整无需另造独立Review PASS；无产品代码变更。
+
+## Round 5 — 2026-10-22
+
+## 📋 全 topic 重新设计：需求文档评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+[requirements.md:76] SP-REQ-R5-F1（低）：“Task 4 保留的候选”沿用旧编号
+- 行为风险：新矩阵中 Task 4 是尚未开始的 `parallel-source-pipeline`，旧编号指 `bounded-source-pipeline`；读者会把未实施任务的结果当作已测事实。
+- 证据：tasks.md 的 Tasks 矩阵把 4 定义为 `parallel-source-pipeline`；26.8% pilot 来自旧 bounded 候选（c6ea1ca 的 tasks.md）。
+- 💡 有界修复：改用锚点名或“旧 `bounded-source-pipeline` 候选”。
+- Disposition：OPEN，由下一轮 Repair 关闭。
+
+[reviews/serving-snapshot-and-bootstrap.md:1879] SP-REQ-R5-F2（低）：本次重写删除了 `#p03-独立验收项撤销--2026-10-19` 一节，历史记录的入链锚点失效
+- 行为风险：历史决定的引用落空，读者无法找到用户 10-19 决定的原文。
+- 证据：`python3 scripts/check-docs.py` 报告 `missing Markdown anchor: ../requirements.md#p03-独立验收项撤销--2026-10-19`。
+- 💡 有界修复：参照本次证据链接的处置方式，在该历史记录中改为纯文本，并指明原文所在固定提交 `c6ea1ca` 的 requirements.md；历史裁决不改。
+- Disposition：OPEN，由下一轮 Repair 关闭。
+
+### 🟢 优点
+
+P01–P11 与 `c376984` 逐字一致（已比对原表）；豁免与撤销已完整撤回；“不可达则返回设计、由用户决定”把豁免路径从实现与评审阶段移出。已测未达标事实都有可追溯来源，并且标明只作设计输入。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，冷读四份重设计文档并逐条核对源码、Git 历史（`c376984`、`14234ec`、`c6ea1ca`）、评审记录与 Neo4j；无委派，无产品修改。
+- Scope：requirements.md 全文，以及它与 performance-evaluation/architecture/tasks 的一致性。
+- Reviewed state：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `a631df60f5a5af78e83860610cc91defa27670e2`；digest `ffff14ee95635598dc4f115be51d5a7c855bdf6e7bc9aca3ea12e49342ad8f9a`（SHA256(`head=<HEAD>;document=<blob>`)）。
+- Evidence：`git show c376984:…/requirements.md` 的 P01–P11 行与当前全等；`scripts/check-docs.py` 报告上述两条失效锚点之一（另一条归 performance-evaluation）；`check-review-records.py --base HEAD` exit 0；`git diff --check` 通过。
+- CEv1：WorkUnit `scan-performance:requirements.md` 仍绑定 `c376984` 时期的 ContentState；当前 digest 无对应记录，门禁 NOT_VERIFIED。FAIL 轮次不写入评审证据。
+- 结论：两项低严重度问题都未关闭，按规则判 FAIL；需求实质内容没有阻断性问题。
+
+## Repair candidate — 2026-10-22
+
+Repairer：Claude Code 主会话；范围仅为 Round 5 的 SP-REQ-R5-F1..F2。Round 5 的分数、Verdict 与 NOT_VERIFIED 门保留；
+本节不是 Review Round，也不自行声明 PASS。
+
+- SP-REQ-R5-F1 -> repaired in candidate：requirements.md 的“已测未达标事实”改称“旧 `bounded-source-pipeline` 任务保留的候选”，
+  对照点改为“该任务开始前的 HEAD”；同文件来源段（第 60 行）同类的“Task 4 候选改动”一并改名。待独立复评确认。
+- SP-REQ-R5-F2 -> repaired in candidate：`reviews/serving-snapshot-and-bootstrap.md` 的 2026-10-19 用户范围决定改为纯文本，
+  指向固定提交 `c6ea1ca` 中 requirements.md 的“P03 独立验收项撤销 — 2026-10-19”一节；该历史裁决与其处置未改。待独立复评确认。
+
+修复目标：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `cace39f60f38674b5e4830eb86e28be6ae66c70c`；
+digest `7d243492e937b85e7b5bc578cadc57de62513b6fd228769f05c595bfb96be52f`（SHA256(`head=<HEAD>;document=<blob>`)）。
+验证：`python3 scripts/check-docs.py` exit 0，F2 所报失效锚点已消失。P01–P11 表未改。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 6 — 2026-10-22
+
+## 📋 全 topic 重新设计：需求文档复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-REQ-R5-F1 closed：第 60、76 行改称旧 `bounded-source-pipeline` 任务的候选，对照点改为“该任务开始前的 HEAD”；全文已无指代新矩阵的 “Task N”。
+- SP-REQ-R5-F2 closed：`reviews/serving-snapshot-and-bootstrap.md:1875–1880` 改为纯文本，指向固定提交 `c6ea1ca` 中 requirements.md 的“P03 独立验收项撤销 — 2026-10-19”一节。已核实该提交中这一节存在（`### P03 独立验收项撤销 — 2026-10-19`，第 229 行）、c6ea1ca 已在 `origin/feature/scan-performance` 上，历史裁决原文未改。
+- P01–P11 仍与 `c376984` 逐字一致；本轮修复未引入新问题。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，即 Round 5 评审者，与修复者是不同角色；逐条核对当前正文、固定提交与检查工具，不依据修复附记的自述。无委派，无产品修改。
+- Scope：Round 5 的两项问题，以及修复引入回归的可能。
+- Reviewed state：HEAD `c6ea1ca6551f525cc8a757ccf2e7889fabf36402`；document blob `cace39f60f38674b5e4830eb86e28be6ae66c70c`；digest `7d243492e937b85e7b5bc578cadc57de62513b6fd228769f05c595bfb96be52f`；ContentState `scan-perf-redesign-rr1-20261022-req-state`。
+- Evidence：`python3 scripts/check-docs.py` exit 0，无缺失锚点；`check-review-records.py --base HEAD` exit 0；`git diff --check` 通过。
+- CEv1：新增 ContentState 1 个、evidence 2 个（`…-integrity`、`…-semantic`，outcome `pass`）、关系 4 条，写入前按 ID 与指纹核实均不存在。门禁按 WorkUnit `scan-performance:requirements.md` 的 required criteria 查询：`document-integrity`、`boundary-and-acceptance` 在目标状态各有 1 条有效通过证据，均未被 invalidate 或 supersede，结果 **VERIFIED**（2/2）。
+- 结论：两项问题均已关闭，无新问题，判 PASS。
+
+Task checkpoint：ad-scan-performance-doc-req；content_state `7d243492e937b85e7b5bc578cadc57de62513b6fd228769f05c595bfb96be52f`；gate VERIFIED。
+提交建议：经授权后提交 requirements.md 及其评审记录（含 Round 5/6），以及 SP-REQ-R5-F2 对 `reviews/serving-snapshot-and-bootstrap.md` 的改动；其余三份尚未通过，不要混入。
+推送建议：经授权后推送到 `origin/feature/scan-performance`；推送前核验提交范围、贡献归属、trailer 与签名。
