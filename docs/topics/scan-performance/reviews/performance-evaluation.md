@@ -369,3 +369,148 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - CEv1：Neo4j MCP（`neo4j`）本会话连接失败，未查询、未写入；无已配置的本地镜像，按 Evidence 规则门禁为 BLOCKED，待 provider 恢复后按上述 digest 记录证据并重查门禁。
 - 残余不确定性：`ps -o rss=` 以 KiB 报告，与字节单位的 `ri_resident_size` 比较时须换算，属实现常识，不构成发现。
 - 结论：全部发现关闭，判 PASS；完成门禁未 VERIFIED。
+
+## Round 8 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：性能评估与测量契约评审
+
+📊 总体评分：6/10
+
+✅ Verdict: FAIL
+
+完成门禁：NOT_VERIFIED（评审未通过，不记录通过证据）
+
+### 🔴 严重问题 — 必须修复
+
+[performance-evaluation.md:154–158] SP-PE-R8-F1（高）：数据库模板与源文件树的绑定关系未定义，而产品的“未变”判定依赖 inode、ctime 与绝对路径
+- 行为风险：本节规定“每个样本从模板复制”数据库，但没有规定每个样本使用哪一份源文件树、以什么方式得到、append 之后如何恢复。产品判定来源未变要求路径、`dev:ino`、size、mtime 与 ctime 全部等于入库时的值；任何复制（包括 APFS clone）都会产生新 inode 与新 ctime，路径不同的隔离 HOME 还会让所有来源变为“新增/移除”。按现文实现时，从模板起步的样本会把全部来源当作已变更重新读取：P08 的 no-op 扫描不再是 no-op（计数门必然失败或被测成全量），P02/P04/P06/P10 的起点混入一次全量重读。append（P08、P10、P07 的 100 次增量）还会永久改写工作副本，使后续条件的源文件与模板、与 CEv1 中记录的工作副本身份不再一致；P08 要求的“每场景 3 次结果完全相同”也需要每次从同一起点开始，文中没有给出恢复方法。
+- 证据：`internal/ingest/ingest.go:973–978` 以 `fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)` 为 identity，`internal/ingest/stat_darwin.go:8` 以 `Ctimespec` 为 changedAt；`internal/ingest/ingest.go:945` 与 `internal/usage/usage.go:895–899` 要求 identity、size、mtime、changedAt 全等才算未变，否则记为 Mutated 并重读；`usage_source_files` 以 `path` 为主键（`internal/usage/usage.go:1387`）。现有 `cmd/agentdeck-perf/run.go:240–252` 每个样本以 `cp -cR` 克隆源文件到新的 `/private/tmp/agentdeck-perf.*` HOME，恰好触发上述全部失配；ctime 无法由用户态设置。
+💡 有界修复：在“模板与增量”中规定源文件树与模板的生命周期：(a) 模板只对生成它的那一份源文件树（同路径、同 inode、同 ctime）有效，并把这一绑定写入模板身份；(b) 说明各条件的样本如何取得与模板匹配的起点（例如：只读条件共享同一份工作副本与固定 HOME 路径；会写入源文件的条件每个样本或每个场景重新生成工作副本并重建模板，或给出其他能保持起点一致的办法），以及由此产生的成本；(c) 规定 append 之后工作副本的处置，使 P08 三次结果可比、后续条件不受污染；(d) 同步 tasks.md `measurement-harness` 的验证项（例如：从模板起步的 no-op 扫描读取字节为 0）。
+
+### 🟡 建议改进 — 推荐
+
+[performance-evaluation.md:133–151] SP-PE-R8-F2（中）：日期平移的时间语义不完整，实现者须自行发明规则
+- 行为风险：(1) `D_last` 是“最晚记录日期”，但未说明按 UTC 还是按批次时区取日期；记录时间戳为 UTC（`...Z`），晚间记录在两种口径下落在不同日期，直接决定 `d` 与“今天相关”集合。(2) 第 1 步“换算为本地时间、加 d 个日历日、再写回”没有规定平移后落在 DST 跳变处的本地时刻如何处理：春季跳过的时刻（如 02:30）不存在，秋季重复的时刻（01:00–02:00）有两个 UTC 值。语料跨越数月、批次在 2026-11-01 前后进行，这两类时刻几乎必然出现；Go `time.Date` 对重复时刻不保证取哪一个，这与第 3 步“逐字节一致”的身份承诺冲突，也可能让同一会话内记录的 UTC 先后颠倒。
+- 证据：第 135 行只写“最早与最晚记录日期 `D_last`”；第 143–145 行只写“本地日期与时刻保持对应，跨 DST 不改变归属日”。产品以 `time.Parse(time.RFC3339Nano, …)` 后 `.UTC()` 归一（`internal/session/session.go:1463–1468`、`internal/usage/usage.go:1202–1204`）。
+💡 有界修复：明确 `D_last` 按批次时区取本地日期；规定不存在与重复本地时刻的确定性处理（例如：不存在时刻按跳变量前移、重复时刻取与原记录相同的 UTC 偏移或取较早者），并要求平移后同一文件内记录的 UTC 顺序不变（违反则计数并记为工具无效）；tasks.md 的确定性测试同步覆盖这两类时刻。
+
+[performance-evaluation.md:124–137] SP-PE-R8-F3（低）：重新冻结的授权与旧副本处置未规定
+- 行为风险：第 124 行把冻结定为“一次性，经用户批准”，第 136–137 行又允许在代表性不足时“改日在当天使用之后重新冻结”，但没有说明重新冻结是否需要再次批准（它会再次读取真实日志），也没有说明旧副本是否保留、批次如何选择副本身份。tasks.md 第 96–97 行写“冻结一次……2026-10-23 已批准重新复制”，与“可能多次冻结”的读法不一致。
+- 证据：上述行文；requirements.md 第 180–182 行只写“一次性冻结”“冻结之后测量不再读取真实日志”。
+💡 有界修复：写明每次冻结（含重新冻结）都需用户批准；新副本以新的语料身份启用，旧副本保留至用户批准删除；批次只绑定一个语料身份。
+
+### 🟢 优点
+
+- 取消合成 `rep` 夹具的理由有代码事实支撑（会话内部结构未复现导致 O(turn²) 路径），并另有 Bug 承接产品缺陷。
+- 来源根与产品发现一致（`internal/ingest/ingest.go:161–163`）；平移字段覆盖产品实际读取的时间字段（Codex/Claude 顶层 `timestamp`；Codex 会话开始时间不从 UUIDv7 读取，见 `internal/usage/usage.go:1199`）；`VACUUM INTO` 与 `cmd/agentdeck-perf/template.go:117` 一致。
+- 隐私边界清晰：副本不进入仓库、评审记录、Beads 或 CEv1，只记录身份与聚合值；不存在“未来记录”与跨午夜两条约束都已写明。
+
+### 📝 总结
+
+- Reviewer/Method：Claude Code 主会话，逐段核对夹具一节与 P01–P11 表，对照 `internal/ingest`、`internal/usage`、`internal/session` 的来源判定与时间解析代码以及现有 `cmd/agentdeck-perf`；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `73f095177cd92fbfeecc734266c0ba5812c1e583`；digest `2af631041dadfa15b7a3066cec06f197ce4292d6b1def3b13593b45566f45ad2`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 残余不确定性：“批次开始须晚于平移后最后一条记录”使每日可用的批次窗口从冻结时刻（本地）起算、止于午夜前 45 分钟；这是现文规则的直接推论，不单列发现，但修复 F1 时估算批次时长应考虑它。
+- 结论：三项发现均为本文件缺陷，判 FAIL；修复范围为 SP-PE-R8-F1..F3。
+
+## Repair candidate — 2026-10-23（Round 8 后）
+
+Repairer：Claude Code 主会话；范围仅为 Round 8 的 SP-PE-R8-F1..F3。Round 8 的分数、Verdict 与 NOT_VERIFIED 门保留；本节不是 Review Round，也不自行声明 PASS，待独立复评确认。修复前已核对 F1 的代码事实：`internal/ingest/ingest.go` `fileGeneration` 以 `dev:ino` 为 identity，`stat_darwin.go` 以 ctime 为 changedAt，`internal/usage/usage.go` 只在 identity、size、mtime、changedAt 全等时视为未变。
+
+- SP-PE-R8-F1 -> repaired in candidate（tasks.md 部分未修，见下）：“模板与增量”改为“工作副本、模板与样本起点”六条：(1) 每批次工作副本生成在固定路径 `/private/tmp/agentdeck-perf.<batch-id>/home/`，作为全部样本的 HOME；(2) 模板另记录源树绑定指纹（排序后 `relative_path:dev:ino:size:mtime_ns:ctime_ns` 的 SHA-256）与 HOME 绝对路径；(3) 每个样本先重算指纹，不等即工具无效，再只重置 state root、App Group 隔离目录与 defaults，源文件树不复制，从模板起步的 no-op 扫描读取字节与 decode 记录数必须为 0；(4) 只读条件共享同一工作副本与模板；(5) 写入条件开始前在同一路径重新平移生成副本并重建模板，结束后丢弃，后续只读条件前再次重新生成；P08 append 每次运行各重新生成一次；P07 增量与 P10 写入在同一副本上累积；(6) 写明重新生成的成本与批次窗口约束。
+  - 未修部分：F1 的第 (d) 项要求同步 tasks.md `measurement-harness` 的验证项（如“从模板起步的 no-op 扫描读取字节为 0”）。本次授权范围只有 requirements.md 与 performance-evaluation.md，tasks.md 未改；该同步需要另行授权的修复或下一轮任务矩阵修订。
+- SP-PE-R8-F2 -> repaired in candidate：记录日期一律按批次时区取本地日期，`D_last` 为最晚可解析时间戳的本地日期；平移写明 `L` → `L'` 的确定性解析：唯一时刻取之，春季不存在的时刻按跳变前偏移解释，秋季重复的时刻取较早者；原为 `Z` 写回 UTC、带偏移写回同一偏移；平移后每个文件内 UTC 先后关系必须保持，违反对数随批次记录，非零即工作副本无效。tasks.md 确定性测试对这两类时刻的覆盖同属上面的未修部分。
+- SP-PE-R8-F3 -> repaired in candidate：冻结标题改为“每次都须用户批准”，写明 2026-10-23 的批准只覆盖当日一次复制；重新冻结须经用户批准；新增“多个副本”条：新语料身份、旧副本保留至用户批准删除、每个批次只绑定一个语料身份、比较只在同一身份内进行。requirements.md 同步。tasks.md 第 96–97 行“冻结一次”的措辞未改，同属上面的未修部分。
+
+修复目标：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `96777aeb8a98e3edb2e8712a79d0db5007c9a5ec`；
+digest `e2d9870e8ec39de277af5dbb2d586ebde8c5d822c42eb3eac659d17858327965`。
+验证：`git diff --check` 通过；`python3 scripts/check-docs.py` 仍为 exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，与 Round 8 相同，不属于本文件。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 9 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：性能评估与测量契约复评
+
+📊 总体评分：7/10
+
+✅ 复评结论：FAIL
+
+完成门禁：NOT_VERIFIED（复评未通过，不记录通过证据）
+
+### 🔴 严重问题 — 必须修复
+
+[performance-evaluation.md:175–184] SP-PE-R9-F1（中）：“样本起点”按每个样本重置并核对指纹，与累积写入条件及在同一进程内连续采样的条件冲突
+- 处置：新（由 SP-PE-R8-F1 的修复引入）。
+- 行为风险：第 3 条规定“每个样本开始前”重算源树绑定指纹、不等即工具无效，并把 state root、App Group 目录与 defaults 重置为模板。但第 5 条又规定 P07 的 100 次增量与 P10 的 100 次写入“在同一副本上依次累积”：第 1 次写入后源文件的 size/mtime/ctime 已变，从第 2 个样本起指纹必然与模板不等，按字面实现整批为工具无效；若仍按样本重置 state root，库会回到模板而源文件保留此前全部追加，每个样本都要补导入之前所有追加，与“每个样本只计本次写入”矛盾。另外 P01 重复层（10 个进程各 20 次开/关）、P03（300 次切换）、P10 都在同一个运行中的 App 内连续采样，运行中的 App 无法在样本之间重置 state root、App Group 目录与 defaults。重置与核对的单位因此没有定义。
+- 证据：第 175–178 行“每个样本开始前重算源树绑定指纹……然后只把 state root……重置为模板副本”；第 183–184 行“P07 的 100 次增量与 P10 的 100 次写入在同一副本上依次累积，每个样本只计本次写入”；P01/P03/P10 的样本定义见第 256–266 行的可测性表。
+💡 有界修复：把第 3 条的单位从“每个样本”改为“每个运行单元”（一次 App/CLI 进程启动，或一个条件的写入序列开始前），并分别写明：只读条件在每次进程启动前核对并重置；累积写入序列只在序列开始时与模板核对，序列内不重置，每个样本的期望起点为“模板 + 此前各次追加”；同一进程内的连续样本不重置。
+
+[performance-evaluation.md:154–156] SP-PE-R9-F2（低）：“UTC 先后关系不变，否则工作副本无效”对原本就跨越秋季重复区间的文件没有出路
+- 处置：新（由 SP-PE-R8-F2 的修复引入）。
+- 行为风险：若冻结语料中某个文件在原始秋季回拨日的 01:00–02:00 两段都有记录（例如先 01:50 EDT、后 01:10 EST），按本地墙钟平移到非跳变日后两者必然变为 01:50、01:10，UTC 先后颠倒。按第 155–156 行这使工作副本无效，且同一语料在任何锚定日都会重现；重新冻结也不能去掉这些历史记录，于是该语料永久不可用，文中没有给出处理方式。语料覆盖 2025-11-02 时这一情形是否出现取决于真实使用时段，无法事先排除。
+- 证据：第 147–156 行的平移与先后关系规则；第 153 行只规定平移后落在重复区间时取较早时刻，没有覆盖平移前就处在重复区间的记录。
+💡 有界修复：为平移前处在重复区间的记录规定确定性处理（例如按其原 UTC 偏移选择平移后的偏移，或对这类记录改按 `d × 24 h` 的 UTC 平移），使先后关系可以保持；或在冻结时检查并把这类记录数写入清单，并写明出现时的处置。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-PE-R8-F1 closed（本文件部分）：第 165–187 行写明产品“未变”判定依赖路径、`dev:ino`、size、mtime 与 ctime；模板只对生成它的源树有效并记录源树绑定指纹与 HOME 路径；样本之间不复制源文件；只读与写入条件分开处理；append 后重新生成，P08 三次起点相同；成本与批次窗口已写明。已核实所引代码事实：Perf 构建接受 `/private/tmp/agentdeck-perf.` 前缀（`apps/macos/AgentDeckApp/AgentDeckApp.swift:11–27`），隔离 App Group 目录为 `testHome/app-group`，defaults 为 `com.kitdine.agentdeck.acceptance` suite（同文件第 160–164 行）。F1 第 (d) 项（同步 tasks.md 验证项）不属于本文件，见下方承接。
+- SP-PE-R8-F2 closed：第 136–137 行规定记录日期与 `D_last` 按批次时区 `America/New_York` 取本地日期；第 149–153 行对平移后的唯一、不存在、重复三类本地时刻给出确定性规则，不依赖语言库默认值；第 154–156 行要求文件内 UTC 先后不变并计数。
+- SP-PE-R8-F3 closed：第 124–128 行写明每次冻结（含重新冻结）须用户事先批准，2026-10-23 的批准只覆盖当日一次复制；第 140–141 行写明新语料身份、旧副本保留至批准删除、每批次只绑定一个语料身份、比较只在同一身份内进行；requirements.md 已同步。
+
+### 📝 总结
+
+- 逐项处置：SP-PE-R8-F1 closed（本文件部分）；SP-PE-R8-F2 closed；SP-PE-R8-F3 closed；SP-PE-R9-F1 new（中）；SP-PE-R9-F2 new（低）。
+- 跨目标承接：SP-PE-R8-F1 (d) 与 SP-PE-R8-F2/F3 引起的 tasks.md 同步（`measurement-harness` 验证项：从模板起步的 no-op 扫描读取字节为 0、指纹核对、平移的不存在/重复时刻与 UTC 先后测试；第 96–97 行“冻结一次”措辞）属于 tasks.md，不是本文件的开放发现 -> open，承接者：Beads `ad-scan-performance-doc-tasks`。
+- Reviewer/Method：Claude Code 主会话（Round 8 评审者），逐条核对 Round 8 发现与修复候选的当前内容，核实修复中引用的 macOS 隔离代码；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `96777aeb8a98e3edb2e8712a79d0db5007c9a5ec`；digest `e2d9870e8ec39de277af5dbb2d586ebde8c5d822c42eb3eac659d17858327965`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 结论：Round 8 三项发现均已关闭，修复引入两项新发现，判 FAIL；修复范围为 SP-PE-R9-F1、F2。
+
+## Repair candidate — 2026-10-23（Round 9 后）
+
+Repairer：Claude Code 主会话；范围为 Round 9 的 SP-PE-R9-F1、F2，以及 Round 9 总结中承接到 tasks.md 的同步项（tasks.md 侧见其评审记录）。Round 9 的分数、Verdict 与 NOT_VERIFIED 门保留；本节不是 Review Round，也不自行声明 PASS，待独立复评确认。
+
+- SP-PE-R9-F1 -> repaired in candidate：第 3 条改为“运行单元起点”。运行单元 = 一次 App 进程启动（含其内全部连续样本）、一次 CLI 进程或一个条件的累积写入序列；指纹核对与 state root、App Group 目录、defaults 的重置在运行单元开始前进行，不等则该运行单元全部样本工具无效。同一 App 进程内的连续样本之间不重置。P07 的 100 次增量与 P10 的 100 次写入只在序列开始时核对与重置一次；第 n 个样本的期望起点是“模板 + 前 n−1 次追加”，每个样本只计本次写入，P10 的正确性以本次写入后的期望值为准。
+- SP-PE-R9-F2 -> repaired in candidate：新增“逐文件先后保护”。平移以文件为单位；若按本地日历规则平移后文件内 UTC 先后颠倒，整个文件改为 UTC 平移 `d × 24 h`，先后关系必然保持，不再使工作副本无效。复核时另发现，原规则在平移后落入春季跳过区间时也会越过后续记录（例如 02:30 与 03:10 平移到跳变日后为 03:30 与 03:10），同一回退一并覆盖。回退文件中距本地午夜不足 1 小时的记录可能改变归属日；回退文件数与归属日改变的记录数随批次记录，冻结清单另记录原始处在秋季重复区间的记录数。
+
+修复目标：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `60a29725e96e2255bc1b54612f34bb6326e6e89d`；
+digest `9932d41e9b62b92ec4b211581aeac3bb8495bef1e6b177d2e8df5d6814c3facd`。
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` 仍为 exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，与 Round 9 相同，不属于本文件。
+CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待复评。
+
+## Round 10 — 2026-10-23
+
+## 📋 冻结真实语料夹具变更：性能评估与测量契约复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-corpus-rr2-20261023-perf-state，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-PE-R9-F1 closed：第 180–189 行把重置与核对的单位定义为运行单元（一次 App 进程启动及其内全部连续样本、一次 CLI 进程、或一个条件的累积写入序列）；同一 App 进程内的连续样本（P01 重复层、P03、P10）之间不重置；P07 增量与 P10 写入只在序列开始时核对并重置，第 n 个样本的期望起点为“模板 + 前 n−1 次追加”，每个样本只计本次写入。逐条件核对：P02/P04/P11 每次启动一个运行单元，P09 每个 CLI 进程一个运行单元，P08 no-op 从模板起步，均能取得与模板一致的起点，不再出现按字面实现即整批无效的情形。
+- SP-PE-R9-F2 closed：第 155–161 行规定逐文件先后保护——按本地日历规则平移后若文件内 UTC 先后关系改变，整个文件改为 `d × 24 h` 的 UTC 平移，先后关系必然保持，不再使工作副本无效；同时覆盖了原始处在秋季重复区间与平移后落入春季跳过区间两种情形。回退的代价（距午夜不足 1 小时的记录可能改变归属日）已写明，并按批次计数；冻结清单记录原始处在重复区间的记录数。规则只依赖确定性计算，与第 3 步工作副本身份逐字节一致的承诺相容。
+- Round 8 的 SP-PE-R8-F1..F3 与更早已关闭的发现在当前内容中未回归（第 127–128、136–141、165–193 行）。
+
+### 📝 总结
+
+- 逐项处置：SP-PE-R9-F1 closed；SP-PE-R9-F2 closed；无新发现。跨目标承接的 tasks.md 同步由 `reviews/tasks.md` Round 9 处置。
+- Reviewer/Method：Claude Code 主会话（Round 8/9 评审者），逐条核对修复候选的当前内容，并对照 P01–P11 可测性表逐条件核对运行单元划分；无委派，无产品修改。
+- Reviewed state：HEAD `4048a2b2679d0ced61ec39e9d4b2618efce054c7`；document blob `60a29725e96e2255bc1b54612f34bb6326e6e89d`；digest `9932d41e9b62b92ec4b211581aeac3bb8495bef1e6b177d2e8df5d6814c3facd`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
+- 残余不确定性：第 6 条成本把 P07 增量与 P10 写入分别计为一次重新生成；可测性表中 P07 的增量即“100 次 P10 增量”，实际编排若合并为同一序列则少一次重新生成，只影响成本估算，不影响口径。
+- 结论：全部发现关闭，判 PASS。
