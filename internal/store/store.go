@@ -27,6 +27,11 @@ const (
 	CodeCredentialNotFound = "credential_not_found"
 )
 
+// writablePragmas also keeps SQLite statement journals in memory. A file-backed
+// statement journal buffers its first 64 KiB as one allocation, which the
+// pure-Go allocator maps and unmaps again for every multi-row write statement.
+const writablePragmas = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=temp_store(2)"
+
 // OpenSessions opens the separately purgeable session-search database. It is
 // deliberately not part of the core schema so deleting the index can never
 // delete providers, credentials, or usage data.
@@ -38,7 +43,7 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 	if err := preparePrivateSQLiteFiles(path); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	db, err := openWritableSQL(path+"?"+writablePragmas, "session")
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +59,9 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 	for _, statement := range []string{
 		"CREATE TABLE IF NOT EXISTS session_exclusions (kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, value))",
 		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, changed_at INTEGER NOT NULL DEFAULT 0, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL, parser_context TEXT NOT NULL DEFAULT '')",
+		// Source preparation and publication both resolve renames by identity.
+		// Keep this non-unique: distinct discovered paths may share an inode.
+		"CREATE INDEX IF NOT EXISTS session_sources_identity ON session_sources(identity)",
 		"CREATE TABLE IF NOT EXISTS session_metadata (source_path TEXT NOT NULL REFERENCES session_sources(source_path) ON DELETE CASCADE, client TEXT NOT NULL, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', parser_version INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY(source_path, client, session_id))",
 		"CREATE VIRTUAL TABLE IF NOT EXISTS session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, event_at UNINDEXED, kind UNINDEXED, text)",
 	} {
@@ -394,11 +402,11 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 	if err != nil {
 		return nil, err
 	}
-	databasePath := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	databasePath := path + "?" + writablePragmas
 	if !create {
-		databasePath = "file:" + path + "?mode=rw&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+		databasePath = "file:" + path + "?mode=rw&" + writablePragmas
 	}
-	db, err := sql.Open("sqlite", databasePath)
+	db, err := openWritableSQL(databasePath, "core")
 	if err != nil {
 		return nil, err
 	}

@@ -695,9 +695,14 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	oldPrefix := ""
 	update.newSource = !found && src.noOrphanDocuments
 	if found {
-		oldPrefix, err = prefixHash(path, state.cursor)
-		if err != nil {
-			return sourceUpdate{}, false, err
+		if state.cursor >= 4096 && info.Size() >= 4096 {
+			// Both checks cover exactly the first 4096 bytes.
+			oldPrefix = prefix
+		} else {
+			oldPrefix, err = prefixHash(path, state.cursor)
+			if err != nil {
+				return sourceUpdate{}, false, err
+			}
 		}
 	}
 	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
@@ -749,9 +754,11 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		if err = sharedStream.ValidateCapturedRange(); err != nil {
 			return sourceUpdate{}, false, err
 		}
-		prefix, err = prefixHash(path, sharedSource.Size)
-		if err != nil {
-			return sourceUpdate{}, false, err
+		if !ingest.SameGeneration(*sharedSource, info) {
+			prefix, err = prefixHash(path, sharedSource.Size)
+			if err != nil {
+				return sourceUpdate{}, false, err
+			}
 		}
 		update.precondition.bounded = true
 		update.precondition.identity = sharedSource.Identity
@@ -809,13 +816,16 @@ func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update 
 	if update.precondition.bounded {
 		limit = update.precondition.size
 	}
-	prefix, err := prefixHash(update.path, limit)
-	if err != nil {
-		return err
-	}
 	precondition := update.precondition
 	_, changedAt, stable := ingest.FileGeneration(info)
 	exactMismatch := info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || (precondition.changedAt != 0 && (!stable || changedAt != precondition.changedAt))
+	prefix := precondition.prefixHash
+	if identity != precondition.identity || !stable || precondition.changedAt == 0 || exactMismatch {
+		prefix, err = prefixHash(update.path, limit)
+		if err != nil {
+			return err
+		}
+	}
 	boundedMismatch := info.Size() < precondition.size
 	if identity != precondition.identity || ((!precondition.bounded && exactMismatch) || (precondition.bounded && boundedMismatch)) || prefix != precondition.prefixHash {
 		return ingest.ErrSourceChanged

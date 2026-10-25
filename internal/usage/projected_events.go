@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -70,7 +71,7 @@ func (s *Service) presentationInputs(ctx context.Context, from, to, now time.Tim
 	if !incremental || s.Store.ReadOnly() {
 		return fullEvents, fullPricing, nil
 	}
-	defer s.Profile.start("projected_inputs")()
+	defer perftrace.Span(perftrace.UsageProjectedInputs)()
 	generation, err := s.Store.DerivedSnapshotGeneration(ctx)
 	if err != nil {
 		return nil, nil, err

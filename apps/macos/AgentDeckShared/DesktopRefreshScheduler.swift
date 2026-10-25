@@ -64,7 +64,7 @@ public final class DesktopSourceChangeMonitor {
 			}
 		}
 		guard relevant else { return }
-		DesktopLogger.recordPerformance(DesktopPerformanceInterval().sample(.sourceNotification))
+		PerfTrace.mark(.sourceFSEvent)
 		request()
 	}
 

@@ -92,6 +92,13 @@ func (s Stream) ValidateCapturedRange() error {
 	if !s.entry.capturedReady {
 		return ErrSourceChanged
 	}
+	// The same strong metadata tuple already proves the captured bytes. Avoid
+	// opening another descriptor merely to obtain the same stat result.
+	if info, err := os.Stat(s.Source.Path); err != nil {
+		return err
+	} else if SameGeneration(s.Source, info) {
+		return nil
+	}
 	file, err := os.Open(s.Source.Path)
 	if err != nil {
 		return err
@@ -711,6 +718,12 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 		batchBytes = 0
 		return nil
 	}
+	var decoder *orderedDecoder
+	var pending *pendingBatch
+	if readRange.End-readRange.Start >= parallelDecodeMinBytes {
+		decoder = c.newOrderedDecoder(ctx, source.Path)
+		defer decoder.close()
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -724,6 +737,23 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 		if len(line) > 0 {
 			if line[len(line)-1] != '\n' {
 				tail = append([]byte(nil), line...)
+			} else if decoder != nil {
+				// Same batch boundaries as below; lines are copied because
+				// decoding outlives the reader's buffer.
+				sequence++
+				if pending == nil {
+					pending = &pendingBatch{first: sequence, lines: make([][]byte, 0, 256), offsets: make([]int64, 0, 256)}
+				}
+				pending.lines = append(pending.lines, append([]byte(nil), line...))
+				pending.offsets = append(pending.offsets, offset)
+				pending.bytes += len(line)
+				offset += int64(len(line))
+				if len(pending.lines) >= 256 || pending.bytes >= 1<<20 {
+					if err := decoder.submit(pending); err != nil {
+						return nil, err
+					}
+					pending = nil
+				}
 			} else {
 				sequence++
 				end := offset + int64(len(line))
@@ -735,6 +765,7 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 				decodeErr := json.Unmarshal(line[:len(line)-1], &value)
 				if c.metrics != nil {
 					c.metrics.decodeNS.Add(time.Since(decodeStart).Nanoseconds())
+					c.metrics.records.Add(1)
 				}
 				batch.Records = append(batch.Records, Record{Offset: offset, End: end, Sequence: sequence, Kind: classify(value), Value: value, Malformed: decodeErr != nil})
 				batchBytes += len(line)
@@ -751,6 +782,16 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 		}
 		if readErr != nil {
 			return nil, readErr
+		}
+	}
+	if decoder != nil {
+		if pending != nil {
+			if err := decoder.submit(pending); err != nil {
+				return nil, err
+			}
+		}
+		if err := decoder.drain(); err != nil {
+			return nil, err
 		}
 	}
 	if err := flush(); err != nil {

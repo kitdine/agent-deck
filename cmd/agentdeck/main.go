@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
@@ -383,7 +385,40 @@ func (e *inputError) Unwrap() error {
 }
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	if perftrace.Start(perfRole(os.Args[1:])) && !slices.Contains(os.Args[1:], "watch") {
+		flushTraceOnTermination()
+	}
+	code := execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	_ = perftrace.Close()
+	os.Exit(code)
+}
+
+// flushTraceOnTermination keeps a measured helper's trace when its owner
+// terminates it: flush, then die by SIGTERM as before. Only installed while
+// recording, and never for watch, which handles SIGTERM itself.
+func flushTraceOnTermination() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	go func() {
+		received := <-signals
+		_ = perftrace.Close()
+		signal.Reset(received)
+		_ = syscall.Kill(os.Getpid(), received.(syscall.Signal))
+	}()
+}
+
+// perfRole names this process in measurement traces: the scan worker is the
+// collector, App helper invocations run under desktop, the rest is CLI.
+func perfRole(args []string) perftrace.Role {
+	for _, arg := range args {
+		switch arg {
+		case "scan-worker":
+			return perftrace.RoleCollector
+		case "desktop":
+			return perftrace.RoleHelper
+		}
+	}
+	return perftrace.RoleCLI
 }
 
 func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -1660,13 +1695,6 @@ func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, sco
 		result, err = client.RequestWithProgress(ctx, scope, onProgress)
 	} else {
 		result, err = client.Request(ctx, scope)
-	}
-	if os.Getenv("AGENTDECK_SCAN_PROFILE") == "1" && err == nil {
-		// Private diagnostics are opt-in and never alter v1 stdout or outcomes.
-		_ = json.NewEncoder(opts.stderr).Encode(struct {
-			Type   string                   `json:"type"`
-			Stages scanruntime.StageProfile `json:"stages"`
-		}{Type: "scan_performance", Stages: result.Stages})
 	}
 	return result, err
 }

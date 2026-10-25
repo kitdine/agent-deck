@@ -6,22 +6,6 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
-	func testNativeBaselineRequiresCompleteUsablePublicationBeforeWrite() {
-		func readiness(snapshot: Bool = true, partial: Bool = false, usage: Bool = true,
-			sessions: Bool = true, hero: Bool = true, running: Bool = false, publication: Bool = true) -> MenuBarItemController.BaselineReadiness {
-			MenuBarItemController.BaselineReadiness(snapshotPresent: snapshot, partial: partial,
-				usageAvailable: usage, sessionsAvailable: sessions, heroPresent: hero,
-				rebuilding: running, publicationPresent: publication)
-		}
-		XCTAssertTrue(readiness().usable)
-		XCTAssertEqual(readiness().reason, "complete_usable_baseline")
-		for value in [readiness(snapshot: false), readiness(partial: true), readiness(usage: false),
-			readiness(sessions: false), readiness(hero: false), readiness(running: true), readiness(publication: false)] {
-			XCTAssertFalse(value.usable, value.reason)
-		}
-		XCTAssertEqual(readiness(partial: true).reason, "intermediate_partial_snapshot")
-	}
-
 	private static var retainedFocusWindows = [NSWindow]()
 	func testStandaloneReloadIncludesEveryWidgetKind() {
 		XCTAssertEqual(AgentDeckMain.widgetKinds, [
@@ -245,8 +229,6 @@ final class MenuBarChromeTests: XCTestCase {
 	func testInitialPopoverPreparationWaitsForDataAndRunsOnce() async throws {
 		let host = StubDesktopHost(behavior: .suspendedEnvelope(WireFixture.envelope()))
 		let model = await makeModel(host: host)
-		DesktopPerformanceTrace.start()
-		defer { _ = DesktopPerformanceTrace.finish() }
 		let controller = MenuBarItemController(model: model, openSettings: {})
 		XCTAssertFalse(controller.isInitialPresentationPrepared)
 		let refresh = Task { await model.coordinator.refresh() }
@@ -264,9 +246,8 @@ final class MenuBarChromeTests: XCTestCase {
 		host.behavior = .envelope(WireFixture.envelope())
 		await model.coordinator.refresh()
 		await Task.yield()
-		let captured = DesktopPerformanceTrace.finish()
-		XCTAssertEqual(captured.aggregates.first { $0.stage == .popoverPreparation }?.count, 1)
-		XCTAssertFalse(captured.samples.contains { $0.stage == .popoverOpen })
+		XCTAssertEqual(controller.presentationPreparationCount, 1)
+		XCTAssertFalse(controller.popoverIsShown)
 	}
 
 	func testInitialPopoverPreparationDoesNotShowAWindowOrMoveFocus() async throws {

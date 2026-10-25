@@ -25,7 +25,7 @@ func orphanFixture(t *testing.T) *Service {
 		`CREATE TABLE usage_tool_calls(activity_key TEXT PRIMARY KEY,source_path TEXT)`,
 		`CREATE INDEX usage_tool_calls_source ON usage_tool_calls(source_path)`,
 		`CREATE TABLE usage_tool_files(activity_key TEXT REFERENCES usage_tool_calls(activity_key) ON DELETE CASCADE)`,
-		`CREATE TABLE usage_sessions(client TEXT,session_id TEXT,first_at TEXT,last_at TEXT,started_at TEXT)`,
+		`CREATE TABLE usage_sessions(client TEXT,session_id TEXT,first_at TEXT,last_at TEXT,started_at TEXT,PRIMARY KEY(client,session_id))`,
 		`INSERT INTO usage_source_files VALUES('live','shared','2026-01-01')`,
 		`INSERT INTO usage_events VALUES('live','live','codex','shared','2026-01-02')`,
 		`INSERT INTO usage_sessions VALUES('codex','shared','2026-01-01','2026-01-02','2026-01-01')`,

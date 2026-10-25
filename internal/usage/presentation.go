@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/perftrace"
 )
 
 const (
@@ -261,7 +263,7 @@ func (s *Service) presentation(ctx context.Context, now time.Time, location *tim
 }
 
 func (s *Service) presentationProjected(ctx context.Context, now time.Time, location *time.Location, todayOnly, incremental bool) (PresentationReport, error) {
-	defer s.Profile.start("presentation")()
+	defer perftrace.Span(perftrace.UsagePresentation)()
 	if location == nil {
 		location = time.Local
 	}

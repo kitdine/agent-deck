@@ -3,7 +3,6 @@ package scanruntime
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -111,14 +110,6 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		}
 	}
 	service := usage.New(core, r.home)
-	if os.Getenv("AGENTDECK_SCAN_PROFILE") == "1" {
-		service.Profile = &usage.ScanProfile{}
-		defer func() {
-			r.mu.Lock()
-			r.result.Stages.UsageDetails = service.Profile.Report()
-			r.mu.Unlock()
-		}()
-	}
 	service.PreparedSources = sources
 	fullInventory, err := service.Inventory(ctx)
 	if err != nil {
@@ -166,9 +157,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		if err = ctx.Err(); err != nil {
 			break
 		}
-		coordinator := ingest.NewCoordinator(batch, ingest.Options{RequirePlans: true})
+		coordinator := ingest.NewCoordinator(batch, ingest.Options{RequirePlans: true, Metrics: r.metrics})
 		batchService := usage.New(core, r.home)
-		batchService.Profile = service.Profile
 		batchService.PreparedSources = batch
 		batchService.Coordinator = coordinator
 		batchService.CoverageInventoryID = r.id

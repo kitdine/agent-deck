@@ -125,10 +125,10 @@ Task checkpoint：ad-scan-performance-incremental-projections；content_state=97
 
 **SP-IP-R3-F1 — P1 — P07 事务分布遗漏增量投影路径中的隐式提交写入。**
 
-位置：[overlay 事务选择](../../../../scripts/p07-overlay/main.go#L82)、[仪表边界说明](../../../../scripts/p07measure/README.md#L44)、[BeginUsagePartition 调用](../../../../internal/usage/projected_events.go#L109)、[PublishUsagePartition 调用](../../../../internal/usage/projected_events.go#L146)、[分区写入实现](../../../../internal/store/usage_partitions.go#L130)。
+位置：overlay 事务选择（`scripts/p07-overlay/main.go:82`，提交 `4048a2b`，已由 `measurement-harness` 删除）、仪表边界说明（`scripts/p07measure/README.md:44`，提交 `4048a2b`，已由 `measurement-harness` 删除）、[BeginUsagePartition 调用](../../../../internal/usage/projected_events.go#L109)、[PublishUsagePartition 调用](../../../../internal/usage/projected_events.go#L146)、[分区写入实现](../../../../internal/store/usage_partitions.go#L130)。
 
 - 行为风险：overlay 只包装显式 Begin/BeginTx、Commit/Rollback 和 pinned Conn 的原始事务；summary 也只接受这些显式配对记录。Task 3 增量投影计算会调用 `BeginUsagePartition` 的 `DB.QueryRowContext(UPDATE ... RETURNING).Scan` 和 `PublishUsagePartition` 的 `DB.ExecContext(UPDATE ...)`。它们各自产生隐式 autocommit 写事务，却不会进入逐笔写分布。遗漏慢写可能让 P07 写事务 p95/max 看起来达标，导致验收错误通过。
-- 证据：类型选择器 [main.go](../../../../scripts/p07-overlay/main.go#L80) 对 `*sql.DB` 仅匹配 `Begin`、`BeginTx`、`Conn`；README 明确声明 implicit autocommit SQL 不在分布中。当前产品路径 [projected_events.go](../../../../internal/usage/projected_events.go#L109) 和 [projected_events.go](../../../../internal/usage/projected_events.go#L146) 分别调用 [usage_partitions.go](../../../../internal/store/usage_partitions.go#L131) 的 `DB.QueryRowContext(...).Scan` 与 [usage_partitions.go](../../../../internal/store/usage_partitions.go#L139) 的 `DB.ExecContext`。这些调用不经过已包装的显式事务。当前仪表证据中的 19 笔显式合成事务通过，不覆盖这两个写边界。
+- 证据：类型选择器 main.go（`scripts/p07-overlay/main.go:80`，提交 `4048a2b`，已由 `measurement-harness` 删除） 对 `*sql.DB` 仅匹配 `Begin`、`BeginTx`、`Conn`；README 明确声明 implicit autocommit SQL 不在分布中。当前产品路径 [projected_events.go](../../../../internal/usage/projected_events.go#L109) 和 [projected_events.go](../../../../internal/usage/projected_events.go#L146) 分别调用 [usage_partitions.go](../../../../internal/store/usage_partitions.go#L131) 的 `DB.QueryRowContext(...).Scan` 与 [usage_partitions.go](../../../../internal/store/usage_partitions.go#L139) 的 `DB.ExecContext`。这些调用不经过已包装的显式事务。当前仪表证据中的 19 笔显式合成事务通过，不覆盖这两个写边界。
 - 有界修复：只扩展测量 overlay/collector，使上述 autocommit 写以完整单笔边界进入分布；`UPDATE ... RETURNING` 必须计到 `Scan` 完成，不能只计到 `QueryRowContext` 返回。对显式与隐式事务去重，保证未知/未观测写使 summary 不完整；用合成 SQLite 回归验证每种边界只计一次、计时定义正确且不改变产品 SQL/事务语义。
 
 ### 🟡 建议改进 — 推荐
@@ -154,7 +154,7 @@ Task checkpoint：ad-scan-performance-incremental-projections；content_state=97
 
 - Disposition：SP-IP-R3-F1 -> repaired in candidate，等待独立复评；保留 Round 3 FAIL，未自行宣布 CLOSED 或 Review PASS。
 - 候选身份：`scan-p07-r3-repair-state-62eb7acb7f74a58d`，SHA-256 `62eb7acb7f74a58d7ba41415eefcf4a3b32466cf625159a8085b2d3e8be9f758`。10 项仪表源/测试/说明及依赖身份见修复证据。23 项产品输入逐项匹配 `scan-incremental-repair-r1-97321292d5b8d565`，没有修改产品 SQL、事务选项、超时、错误/重试语义或验收标准。
-- 修复前复现：将保留的合成 store 回归模板注入私有 overlay，使用全新临时库和单个合成分区，实际调用 BeginUsagePartition、PublishUsagePartition；原仪表记录 0 笔，期望 2 笔，定向测试 FAIL。修复后重放同一模板，两个调用各产生一笔有效 autocommit 记录，发布 revision/payload 的原值校验通过。模板与可复现命令见[工具说明](../../../../scripts/p07measure/README.md)；事实和身份已直接保留在修复证据，不依赖已清理的临时输出。
+- 修复前复现：将保留的合成 store 回归模板注入私有 overlay，使用全新临时库和单个合成分区，实际调用 BeginUsagePartition、PublishUsagePartition；原仪表记录 0 笔，期望 2 笔，定向测试 FAIL。修复后重放同一模板，两个调用各产生一笔有效 autocommit 记录，发布 revision/payload 的原值校验通过。模板与可复现命令见工具说明（`scripts/p07measure/README.md`，提交 `4048a2b`，已由 `measurement-harness` 删除）；事实和身份已直接保留在修复证据，不依赖已清理的临时输出。
 - 修复：overlay 覆盖 DB/Conn 单语句隐式写；QueryRow 保留原对象和惰性求值，直到原有 Scan 返回才封口。嵌套 QueryRow.Scan 的类型驱动改写只执行每个调用一次。观察到的 raw/Go 显式事务内语句不重复计数；未知 SQL、复合语句、缺少 Scan、延迟 prepared 写及未观测终点的多行写明确产生不完整记录。日志/摘要升级 v2，拒绝旧显式事务 v1，以免旧日志被解释为完整覆盖。
 - 验证：仪表 Go 单测 16 PASS / 1 fixture-entry skip；定向 race 14 PASS / 1 fixture-entry skip，入口 skip 已由两次受控子进程覆盖。Python ProcessSet/summary 7 PASS；同一 store overlay 回归 PASS；vet 及 Darwin amd64/arm64 overlay 构建 PASS，二进制未启动。RSS 源前缀 SHA-256 与原证据相同，复用原生合成 RSS 机制证据，不重复原生或代表性性能采样。
 - 开销：保留全部三对单语句文件日志校准；Exec 每笔增加约 0.042–0.061 ms，RETURNING→Scan 增加约 0.071–0.366 ms，较慢一对未排除。仅是合成仪表校准，不代表 P07 或可忽略开销。未知/未观测写仍须在未来采样前解决，不能从失败或缺口推导性能通过。
@@ -177,7 +177,7 @@ Task checkpoint：ad-scan-performance-incremental-projections；content_state=97
 
 **SP-IP-R4-F1 — P1 — P07 overlay 将 serving snapshot 的只读 CTE 查询记为未知写入，使事务汇总无法完整。**
 
-位置：[SQL 分类器](../../../../scripts/p07measure/autocommit.go#L13)、[QueryContext overlay 映射](../../../../scripts/p07-overlay/main.go#L89)、[session.List 查询](../../../../internal/session/session.go#L1588)、[desktop snapshot 构建](../../../../internal/desktop/desktop.go#L259)、[serving 发布路径](../../../../internal/scanruntime/serving.go#L238)。
+位置：SQL 分类器（`scripts/p07measure/autocommit.go:13`，提交 `4048a2b`，已由 `measurement-harness` 删除）、QueryContext overlay 映射（`scripts/p07-overlay/main.go:89`，提交 `4048a2b`，已由 `measurement-harness` 删除）、[session.List 查询](../../../../internal/session/session.go#L1588)、[desktop snapshot 构建](../../../../internal/desktop/desktop.go#L259)、[serving 发布路径](../../../../internal/scanruntime/serving.go#L238)。
 
 - Disposition：NEW，未修复。
 - 行为风险：`statementKind` 仅把 `SELECT`、`VALUES` 和 `EXPLAIN` 判为只读；`WITH` 不在白名单中，因此只读 `WITH … SELECT` 返回 `unknown`。`QuerySQL` 经 `statementStart` 将该查询记录成无效的 `unknown_statement`。产品的 `session.List` 使用 `WITH visible AS (…) SELECT …`；`desktop.Service.Build` 会调用 `loadSessions`，而 scanruntime 的 serving snapshot 发布会调用该构建路径。于是正常 P07 重建会把只读 session 查询混入 autocommit 写观察并令完整覆盖条件失败，不能取得可信的写事务分布。
@@ -231,7 +231,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 ### 🟢 优点
 
-- **SP-IP-R4-F1 — CLOSED。** [分类入口](../../../../scripts/p07measure/autocommit.go#L76) 仅在 [CTE 结构识别](../../../../scripts/p07measure/cte.go#L138) 确认完整声明、查询体及最终 SELECT/VALUES 后排除该读操作。修改型根/查询体、复合及歧义输入继续 unknown；[合成测试](../../../../scripts/p07measure/cte_test.go) 还验证实际 CTE UPDATE 语义不变且保留无效观察，不会被读分类掩盖。
+- **SP-IP-R4-F1 — CLOSED。** 分类入口（`scripts/p07measure/autocommit.go:76`，提交 `4048a2b`，已由 `measurement-harness` 删除） 仅在 CTE 结构识别（`scripts/p07measure/cte.go:138`，提交 `4048a2b`，已由 `measurement-harness` 删除） 确认完整声明、查询体及最终 SELECT/VALUES 后排除该读操作。修改型根/查询体、复合及歧义输入继续 unknown；合成测试（`scripts/p07measure/cte_test.go`，提交 `4048a2b`，已由 `measurement-harness` 删除） 还验证实际 CTE UPDATE 语义不变且保留无效观察，不会被读分类掩盖。
 - 实际 `session.List` overlay 回归通过：查询新增日志为 0 字节，优先级赢家及 model 保持为 `synthetic/active`。直接从本轮原始 fixture trace 调用现有 collector 重算，得到 core/session 各 1 笔有效写、explicit/autocommit 各 1 笔，`complete=true`、rejected=0、unmatched=0。
 - **SP-IP-R3-F1 — CLOSED 保持。** 同轮实际分区回归仍记录恰好两笔有效 autocommit，revision/payload 不变。SP-IP-R1-F1 的 Round 2 CLOSED 与产品 Review PASS 继续保留，本轮没有机械重开。
 
@@ -407,8 +407,8 @@ Task 3 保持 in_review、Review 未勾选；没有新增代码、构建、原�
 | 已记录阻塞 | 本轮 disposition 与证据 |
 | --- | --- |
 | P10 缺自动来源通知 | CLOSED。生命周期绑定的 [source monitor](../../../../apps/macos/AgentDeckShared/DesktopRefreshScheduler.swift#L8) 接入现有 [sourceChange 协调入口](../../../../apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift#L2030)，在途通知合并为一次追赶，停止时关闭 stream。现有真实 App 合成试样经文件写入、实际 helper/worker、publication 到可见新值绘制，本轮核对原始时钟、数值帧及完整 oracle 记录。 |
-| P07 WAL 初始化被拒绝 | CLOSED。[精确单语句分类](../../../../scripts/p07measure/autocommit.go#L83) 保留 write-capable autocommit，并计入 Exec 返回前的完整等待；真实文件 SQLite 的定向回归确认模式改变及连接池等待。未知/复合写仍 fail closed。 |
-| P07 结束窗口不完整 | CLOSED。[进程屏障](../../../../scripts/p07measure/process.go#L17) 与 [collector 结束规则](../../../../scripts/scan_performance_p07.py#L162) 保留根进程至 worker 终点、完整最终帧及 summary 写完。定向回归与原始 RSS trace 的端点/身份核对均通过，旧失败 trace 保留。 |
+| P07 WAL 初始化被拒绝 | CLOSED。精确单语句分类（`scripts/p07measure/autocommit.go:83`，提交 `4048a2b`，已由 `measurement-harness` 删除） 保留 write-capable autocommit，并计入 Exec 返回前的完整等待；真实文件 SQLite 的定向回归确认模式改变及连接池等待。未知/复合写仍 fail closed。 |
+| P07 结束窗口不完整 | CLOSED。进程屏障（`scripts/p07measure/process.go:17`，提交 `4048a2b`，已由 `measurement-harness` 删除） 与 collector 结束规则（`scripts/scan_performance_p07.py:162`，提交 `4048a2b`，已由 `measurement-harness` 删除） 保留根进程至 worker 终点、完整最终帧及 summary 写完。定向回归与原始 RSS trace 的端点/身份核对均通过，旧失败 trace 保留。 |
 | CEv1 协议包不可用 | RESOLVED。已使用明确的 ai-tools source checkout，复用其未修改固定模板，通过现有 Neo4j MCP 查询当前精确产品目标。 |
 | 本轮候选身份前置阻塞 | RESOLVED。只读复算 重现 69 个 CLI 文件和 15 个 App 文件的全部条目及原目录摘要，新增/缺失/内容/排序差异均为空。清单是本次按原算法重建，不冒称修复时已独立留存。原候选、旧哈希和观察未改变。 |
 

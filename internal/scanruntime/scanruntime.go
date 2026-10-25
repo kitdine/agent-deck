@@ -29,6 +29,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -90,9 +91,6 @@ type StageProfile struct {
 	TotalMS            int64 `json:"total_ms"`
 	WorkerCPUTimeMS    int64 `json:"worker_cpu_time_ms"`
 	WorkerPeakRSSBytes int64 `json:"worker_peak_rss_bytes"`
-	// Opt-in aggregate diagnostics; worker times overlap, not additive wall time.
-	Ingestion    map[string]float64         `json:"ingestion,omitempty"`
-	UsageDetails map[string]usage.ScanStage `json:"usage_details,omitempty"`
 }
 
 type processResources struct {
@@ -864,6 +862,7 @@ func (s *server) idle() bool {
 type round struct {
 	id          string
 	home        string
+	metrics     *ingest.Metrics // set only while measurement recording is on
 	observation uint64
 	predecessor *round
 	onTerminal  func(Result) error
@@ -942,6 +941,10 @@ func (r *round) execute(ctx context.Context, stateRoot string, lockHeld bool) {
 
 func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool, run roundRunner) {
 	r.once.Do(func() {
+		perftrace.Mark(perftrace.JobStart)
+		if perftrace.Enabled() {
+			r.metrics = &ingest.Metrics{}
+		}
 		resourcesBefore := currentProcessResources()
 		if run == nil {
 			r.executeProduction(ctx, stateRoot, lockHeld)
@@ -950,6 +953,7 @@ func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool
 		}
 		r.setProcessResources(resourcesBefore, currentProcessResources())
 		r.complete()
+		r.markEnd()
 	})
 }
 
@@ -974,7 +978,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if r.beforeDiscovery != nil {
 		r.beforeDiscovery()
 	}
+	finishDiscovery := perftrace.Span(perftrace.ScanDiscovery)
 	sources, discoverErr := ingest.Discover(r.home)
+	finishDiscovery(perftrace.Count{Key: "sources", Value: int64(len(sources))})
 	r.setDiscovery(time.Since(discoverStarted).Milliseconds())
 	// Admission and capability selection share this boundary. A serving request
 	// accepted during discovery upgrades this round before any consumer starts.
@@ -1018,20 +1024,13 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		sessionsErr = acceptDomainInventory(ctx, sessions, r.id, sources, true, started)
 	}
 
-	var metrics *ingest.Metrics
-	if os.Getenv("AGENTDECK_SCAN_PROFILE") == "1" {
-		metrics = &ingest.Metrics{}
-	}
-	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: metrics})
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: r.metrics})
 	defer coordinator.Close()
 	var usageService *usage.Service
 	var usageInventory usage.Inventory
 	usagePlanErr := coreErr
 	if coreErr == nil {
 		usageService = usage.New(core, r.home)
-		if metrics != nil {
-			usageService.Profile = &usage.ScanProfile{}
-		}
 		usageService.CoverageInventoryID = r.id
 		usageService.PreparedSources = sources
 		usageService.Coordinator = coordinator
@@ -1075,7 +1074,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		coordinator.ConsumerDone(ingest.ConsumerSession)
 	}
 	r.setProgressStage("importing")
-	ingestionStarted := time.Now()
+	finishIngest := perftrace.Span(perftrace.IngestRead)
 	coordinator.Start(ctx)
 	var wait sync.WaitGroup
 	wait.Add(1)
@@ -1161,14 +1160,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		}()
 	}
 	wait.Wait()
-	if metrics != nil {
+	if r.metrics != nil {
 		coordinator.Close()
-		r.mu.Lock()
-		r.result.Stages.Ingestion = metrics.Report(time.Since(ingestionStarted))
-		if usageService != nil {
-			r.result.Stages.UsageDetails = usageService.Profile.Report()
-		}
-		r.mu.Unlock()
+		finishIngest(r.metrics.Counts()...)
 	}
 }
 
@@ -1254,6 +1248,7 @@ func (r *round) setSession(result SessionResult) {
 }
 
 func (r *round) setDerivedCache(duration int64) {
+	perftrace.Mark(perftrace.ProjectionDone)
 	r.mu.Lock()
 	r.result.Stages.DerivedCacheMS = duration
 	r.mu.Unlock()
@@ -1266,6 +1261,25 @@ func (r *round) setProcessResources(before, after processResources) {
 	}
 	r.result.Stages.WorkerPeakRSSBytes = after.peakRSS
 	r.mu.Unlock()
+}
+
+// markEnd records the round outcome counters used by P08: ingest work plus
+// the usage events and session documents the round imported.
+func (r *round) markEnd() {
+	if !perftrace.Enabled() {
+		return
+	}
+	r.mu.Lock()
+	counts := []perftrace.Count{
+		{Key: "usage_imported", Value: int64(r.result.Usage.Changes["imported"])},
+		{Key: "session_documents", Value: int64(r.result.Session.Scan.Documents)},
+		{Key: "session_sources", Value: int64(r.result.Session.Scan.Sources)},
+	}
+	r.mu.Unlock()
+	if r.metrics != nil {
+		counts = append(counts, r.metrics.Counts()...)
+	}
+	perftrace.Mark(perftrace.ScanEnd, counts...)
 }
 
 func (r *round) complete() {

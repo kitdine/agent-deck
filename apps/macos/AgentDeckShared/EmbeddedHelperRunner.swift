@@ -226,6 +226,7 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
         let running = RunningProcess(process)
         do {
             try process.run()
+			PerfTrace.mark(.helperStart)
         } catch {
             try? stdoutPipe.fileHandleForWriting.close()
             try? stderrPipe.fileHandleForWriting.close()
@@ -320,6 +321,7 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		let running = RunningProcess(process)
 		do {
 			try process.run()
+			PerfTrace.mark(.helperStart)
 		} catch {
 			try? stdoutPipe.fileHandleForWriting.close()
 			try? stderrPipe.fileHandleForWriting.close()
@@ -475,6 +477,10 @@ public struct EmbeddedHelperRunner: Sendable {
         timeout: Duration = Self.defaultTimeout
     ) {
         var resolvedEnvironment = environment ?? Self.defaultEnvironment()
+		// Helpers record into the App's measurement directory, never their own.
+		if PerfTrace.isEnabled, let traceDirectory = ProcessInfo.processInfo.environment[PerfTrace.environmentKey] {
+			resolvedEnvironment[PerfTrace.environmentKey] = traceDirectory
+		}
         if resolvedEnvironment["HOME"] == nil {
             resolvedEnvironment["HOME"] = Self.defaultEnvironment()["HOME"]
         }
@@ -520,13 +526,13 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
 			throw error
 		}
-		let scanInterval = DesktopPerformanceInterval()
+		let scanStarted = PerfTrace.begin()
 		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
-		DesktopLogger.recordPerformance(scanInterval.sample(.scanRequest))
-		let drainInterval = DesktopPerformanceInterval()
+		PerfTrace.end(.scanRequest, since: scanStarted)
+		let drainStarted = PerfTrace.begin()
 		try await waitForCompletedScanWorkerToReleaseLock()
-		DesktopLogger.recordPerformance(drainInterval.sample(.workerDrain))
-		let requestInterval = DesktopPerformanceInterval()
+		PerfTrace.end(.workerDrain, since: drainStarted)
+		let requestStarted = PerfTrace.begin()
 		let requestStartedAt = Date()
 		let output: HelperProcessLinesOutput
         do {
@@ -570,7 +576,7 @@ public struct EmbeddedHelperRunner: Sendable {
 			stderrTruncated: output.stderrTruncated,
 			errorCode: desktopHelperErrorCode(stderr: output.stderr)
 		)
-		DesktopLogger.recordPerformance(requestInterval.sample(.snapshotRequest))
+		PerfTrace.end(.snapshotRequest, since: requestStarted)
 		guard !output.stdoutLineTruncated, !output.stderrTruncated else {
 			DesktopLogger.recordRefreshFailure(
 				id: refreshID,
@@ -589,10 +595,10 @@ public struct EmbeddedHelperRunner: Sendable {
         }
 
 		do {
-			let decodeInterval = DesktopPerformanceInterval()
+			let decodeStarted = PerfTrace.begin()
 			let payload = try decodeDesktopSnapshotStream(output.stdoutLines)
 			let envelope = try decodeDesktopWireEnvelopeV1(payload)
-			DesktopLogger.recordPerformance(decodeInterval.sample(.snapshotDecode))
+			PerfTrace.end(.snapshotDecode, since: decodeStarted)
 			DesktopLogger.recordRefreshFinish(
 				id: refreshID,
 				durationMilliseconds: elapsedMilliseconds(since: refreshStartedAt),
@@ -626,6 +632,8 @@ public struct EmbeddedHelperRunner: Sendable {
 	}
 
 	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		// The helper verifies the cache identity before it prints the snapshot.
+		let identityStarted = PerfTrace.begin()
 		let output = try await process.runLines(
 			executableURL: embeddedHelperURL(),
 			arguments: helperArguments(["--format", "json", "desktop", "snapshot", "--wire-version", "2"]),
@@ -635,11 +643,14 @@ public struct EmbeddedHelperRunner: Sendable {
 		guard output.exitStatus == 0, !output.stdoutLineTruncated, !output.stderrTruncated,
 			output.stdoutLines.count == 1
 		else { throw HelperExecutionError.malformedOutput }
+		PerfTrace.end(.restoreIdentity, since: identityStarted)
+		let decodeStarted = PerfTrace.begin()
 		let envelope = try JSONDecoder().decode(DesktopServingOutput.self, from: output.stdoutLines[0])
 		guard envelope.schemaVersion == 1, envelope.command == "desktop.serving" else {
 			throw HelperExecutionError.malformedOutput
 		}
 		try envelope.data.validate()
+		PerfTrace.end(.restoreDecode, since: decodeStarted)
 		return envelope.data
 	}
 
@@ -722,12 +733,9 @@ public struct EmbeddedHelperRunner: Sendable {
 				throw HelperExecutionError.outputLimitExceeded
 			}
 			guard output.exitStatus == 0 else {
-				// Only codes/counts enter the trace; raw helper output stays private.
-				let lines: [Data] = output.stderr.split(separator: 10)
-				let line = lines.last ?? output.stderr
-				let code = (try? JSONDecoder().decode(DesktopHelperErrorProbe.self, from: line))?.error?.code ?? "unclassified"
-				DesktopPerformanceTrace.recordFailure(DesktopPerformanceFailure(stage: .scanRequest, code: code,
-					exitStatus: output.exitStatus, stdoutBytes: output.stdoutBytes, stderrBytes: output.stderr.count))
+				// Only counts enter the trace; raw helper output stays private.
+				PerfTrace.mark(.helperExit, PerfCount("exit_status", Int64(output.exitStatus)),
+					PerfCount("stdout_bytes", Int64(output.stdoutBytes)), PerfCount("stderr_bytes", Int64(output.stderr.count)))
 				throw HelperExecutionError.nonZeroExit(output.exitStatus)
 			}
 			_ = try decodeDesktopScanEventStream(output.stdoutLines)
@@ -1892,6 +1900,8 @@ public final class DesktopRefreshCoordinator {
 	@ObservationIgnored private let wallNow: @MainActor @Sendable () -> Date
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var activeRestore: Task<Void, Never>?
+	@ObservationIgnored private var modelUsableMarked = false
+	@ObservationIgnored private var coverageCompleteMarked = false
 	@ObservationIgnored private var activeQuotaOperation: Task<QuotaOperationResult, Never>?
 	@ObservationIgnored private var activeQuotaID: QuotaOperationID?
 	@ObservationIgnored private var pendingFullTrigger: DesktopFullRefreshTrigger?
@@ -1952,8 +1962,17 @@ public final class DesktopRefreshCoordinator {
 		pendingQuotaPriority = nil
 	}
 
+	/// The App has bound a publication; the first binding makes the model usable.
+	private func markPublicationBound() {
+		PerfTrace.mark(.publicationBound)
+		if !modelUsableMarked {
+			modelUsableMarked = true
+			PerfTrace.mark(.modelUsable)
+		}
+	}
+
 	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
-		let installation = DesktopPerformanceInterval()
+		let installStarted = PerfTrace.begin()
 		if let previous = servingHeader {
 			let old = previous.generation
 			let new = prepared.header.generation
@@ -1971,9 +1990,13 @@ public final class DesktopRefreshCoordinator {
 				}
 			}
 		}
-		guard prepared.header.matchesCurrentDay(now: wallNow()) else { return }
+		guard prepared.header.matchesCurrentDay(now: wallNow()) else {
+			PerfTrace.mark(.servingSkip, PerfCount("reason", 1))
+			return
+		}
 		if !prepared.header.sessionPrepared, let previous = servingHeader,
 			previous.sessionPrepared, previous.matchesCurrentDay(now: wallNow()) {
+			PerfTrace.mark(.servingSkip, PerfCount("reason", 2))
 			return
 		}
 		servingHeader = prepared.header
@@ -1983,7 +2006,15 @@ public final class DesktopRefreshCoordinator {
 		} else {
 			state = .ready(prepared.payload)
 		}
-		DesktopLogger.recordPerformance(installation.sample(.servingPublication))
+		PerfTrace.end(.servingInstall, since: installStarted)
+		markPublicationBound()
+		// P11's full-history end: the first bound publication whose usage and
+		// session coverage are both complete.
+		if PerfTrace.isEnabled, !coverageCompleteMarked, prepared.header.usageCoverage.state == "complete",
+			prepared.header.sessionCoverage.state == "complete" {
+			coverageCompleteMarked = true
+			PerfTrace.mark(.publicationComplete)
+		}
 	}
 
 	/// Runs only C9's quota probe and C10's alert delivery, without the full
@@ -2031,7 +2062,7 @@ public final class DesktopRefreshCoordinator {
 		trigger: DesktopFullRefreshTrigger,
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit
 	) async {
-		if trigger == .sourceChange { DesktopLogger.recordPerformance(DesktopPerformanceInterval().sample(.sourceQueued)) }
+		if trigger == .sourceChange { PerfTrace.mark(.jobEnqueue) }
 		if let activeRefresh {
 			pendingFullTrigger = DesktopFullRefreshTrigger.merged(pendingFullTrigger, trigger)
 			await activeRefresh.value
@@ -2065,7 +2096,7 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func performFullRefresh(trigger: DesktopFullRefreshTrigger, recentLimit: Int) async {
-		if trigger == .sourceChange { DesktopLogger.recordPerformance(DesktopPerformanceInterval().sample(.sourceProcessing)) }
+		if trigger == .sourceChange { PerfTrace.mark(.sourceProcessing) }
 		generation &+= 1
 		let currentGeneration = generation
 		activeFullGeneration = currentGeneration
@@ -2118,9 +2149,9 @@ public final class DesktopRefreshCoordinator {
 			}
 			return
 		}
-		let quotaInterval = DesktopPerformanceInterval()
+		let quotaStarted = PerfTrace.begin()
 		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
-		DesktopLogger.recordPerformance(quotaInterval.sample(.quota))
+		PerfTrace.end(.quota, since: quotaStarted)
 		fullQuotaPhaseCompleted = true
 		guard currentGeneration == generation, !Task.isCancelled else { return }
 
@@ -2254,13 +2285,12 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 
-		let publicationInterval = DesktopPerformanceInterval()
 		latestSnapshot = envelope
 		scanProgress = nil
 		state = .ready(envelope)
+		markPublicationBound()
 		fullAttempt = .succeeded(generation: generation, completedAt: wallNow())
 		await publishWidgetSnapshot(envelope)
-		DesktopLogger.recordPerformance(publicationInterval.sample(.publication))
 		scheduleSuccessReset(generation: generation)
 	}
 
@@ -2290,6 +2320,31 @@ public final class DesktopRefreshCoordinator {
 	private func publishFailure(_ issue: DesktopRefreshIssue, generation: Int) {
 		guard generation == self.generation else {
 			return
+		}
+		if PerfTrace.isEnabled {
+			let code: Int64 = switch issue {
+			case .helper: 1
+			case .invalidWire: 2
+			case .storageUnavailable: 3
+			case .unavailable: 4
+			}
+			// Helper failures add their kind and exit status; integers only.
+			var helperKind: Int64 = 0
+			var exitStatus: Int64 = 0
+			if case let .helper(error) = issue {
+				switch error {
+				case .missingEmbeddedHelper: helperKind = 1
+				case .invalidRecentLimit: helperKind = 2
+				case .launchFailed: helperKind = 3
+				case .timedOut: helperKind = 4
+				case .cancelled: helperKind = 5
+				case let .nonZeroExit(status): helperKind = 6; exitStatus = Int64(status)
+				case .outputLimitExceeded: helperKind = 7
+				case .malformedOutput: helperKind = 8
+				}
+			}
+			PerfTrace.mark(.refreshFailed, PerfCount("issue", code), PerfCount("helper_kind", helperKind),
+				PerfCount("exit_status", exitStatus))
 		}
 		fullAttempt = .failed(generation: generation, issue: issue, completedAt: wallNow())
 		state = .degraded(previous: latestSnapshot, issue: issue)

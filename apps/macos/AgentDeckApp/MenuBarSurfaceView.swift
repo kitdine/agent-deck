@@ -213,6 +213,7 @@ struct MenuBarSurfaceView: View {
 			FooterView(model: model)
 		}
 		.background(DesktopVisualTheme.background)
+		.perfDataFrame(model.perfDataFrame)
 	}
 
 	private var scanProgressStatus: some View {
@@ -283,7 +284,7 @@ struct MenuBarSurfaceView: View {
 	}
 
 	private var clientTabs: some View {
-		Picker(t(DesktopCopy.clientFilter), selection: $model.selectedClient) {
+		Picker(t(DesktopCopy.clientFilter), selection: Binding(get: { model.selectedClient }, set: { model.selectClient($0) })) {
 			ForEach(model.clientTabs) { tab in
 				Text(verbatim: "\(tab.label) \(tab.value ?? "")").tag(tab.id)
 			}
@@ -335,7 +336,7 @@ struct MenuBarSurfaceView: View {
 		HStack(spacing: 2) {
 			ForEach(model.periodOptions) { option in
 				Button {
-					model.selectedPeriod = option.id
+					model.selectPeriod(option.id)
 				} label: {
 					Text(option.label)
 						.frame(maxWidth: .infinity, minHeight: 26)
@@ -359,7 +360,7 @@ struct MenuBarSurfaceView: View {
 		HStack(spacing: MenuBarGeometry.withinRow) {
 			ForEach(model.panelTabs) { tab in
 				Button {
-					model.selectedPanel = tab.id
+					model.selectPanel(tab.id)
 				} label: {
 					HStack(spacing: MenuBarGeometry.withinRow) {
 						Image(systemName: tab.symbol)

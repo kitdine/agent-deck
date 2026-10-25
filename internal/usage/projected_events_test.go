@@ -40,12 +40,11 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 ('d','claude','shared','d','2026-11-01T07:30:00Z','unknown',31,4,'g',0)`)
 	check := func(name string, wantReads int64) PresentationReport {
 		t.Helper()
-		s.Profile = nil
 		full, err := s.Presentation(ctx, now, location)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s.Profile = &ScanProfile{}
+		before := s.eventsRangeReads.Load()
 		projected, err := s.ProjectedPresentation(ctx, now, location)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -53,7 +52,7 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 		if !reflect.DeepEqual(projected, full) {
 			t.Fatalf("%s differs from full oracle", name)
 		}
-		if got := s.Profile.Report()["events_range"].Calls; got != wantReads {
+		if got := s.eventsRangeReads.Load() - before; got != wantReads {
 			t.Fatalf("%s read %d partitions, want %d", name, got, wantReads)
 		}
 		return projected

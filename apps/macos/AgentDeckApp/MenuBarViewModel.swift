@@ -324,6 +324,56 @@ final class MenuBarViewModel {
 	var selectedClient = "all"
 	var selectedPeriod = "today"
 	var selectedPanel: MenuBarPanel = .quota
+
+	// MARK: Selection intents
+
+	// Controls and the measurement driver change the selection only through
+	// these entry points, so `select.intent` marks the same work for both.
+	// Its dimension count (1 client, 2 period, 3 panel) lets P03 be judged per dimension.
+	func selectClient(_ id: String) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 1))
+		markSelectionPending()
+		selectedClient = id
+	}
+
+	func selectPeriod(_ id: String) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 2))
+		markSelectionPending()
+		selectedPeriod = id
+	}
+
+	func selectPanel(_ panel: MenuBarPanel) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 3))
+		markSelectionPending()
+		selectedPanel = panel
+	}
+
+	private func markSelectionPending() {
+		guard PerfTrace.isEnabled else { return }
+		PerfFrameProbe.shared.beginSelection()
+	}
+
+	/// The identity and hero totals of the data frame this selection renders.
+	var perfDataFrame: PerfDataFrame? {
+		guard PerfTrace.isEnabled, let snapshot, let period = activePeriod else { return nil }
+		let publication = coordinator.servingHeader?.publicationID ?? snapshot.generatedAt
+		var day: Int64 = 0
+		if let date = DesktopFormat.timestamp(snapshot.generatedAt) {
+			let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+			let year: Int = parts.year ?? 0
+			let month: Int = parts.month ?? 0
+			let dayOfMonth: Int = parts.day ?? 0
+			day = Int64(year * 10000 + month * 100 + dayOfMonth)
+		}
+		return PerfDataFrame(
+			key: PerfDataFrame.key(publication: publication, client: selectedClient, period: selectedPeriod, panel: presentedPanel.rawValue),
+			tokens: period.totals.tokens, events: period.totals.events, sessions: period.totals.sessions,
+			client: PerfDataFrame.code(client: selectedClient), period: PerfDataFrame.code(period: period.period),
+			day: day, cost: PerfDataFrame.cost(period.totals), partial: qualifiers.contains(.partial) ? 1 : 0,
+			committed: Int64(coordinator.servingHeader?.usageCoverage.committed ?? 0),
+			sources: Int64(coordinator.servingHeader?.usageCoverage.sources ?? 0),
+			coverageComplete: coordinator.servingHeader?.usageCoverage.state == "complete" ? 1 : 0)
+	}
 	var showsHealthDetail = false
 	private(set) var copiedHealthRowID: String?
 	@ObservationIgnored private var healthCopyGeneration = UUID()
@@ -364,10 +414,7 @@ final class MenuBarViewModel {
 
 	var presentation: DesktopPresentationState {
 		_ = dateRevision
-		let interval = DesktopPerformanceInterval()
-		let result = DesktopPresentationState.derive(from: coordinator.state, now: now())
-		DesktopLogger.recordPerformance(interval.sample(.presentation))
-		return result
+		return DesktopPresentationState.derive(from: coordinator.state, now: now())
 	}
 
 	var surface: DesktopPresentationSurface { presentation.surface }

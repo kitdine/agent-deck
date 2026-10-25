@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import WidgetKit
 
-#if DEBUG
+#if DEBUG || AGENTDECK_PERF
 enum DebugTestIsolationError: Error, Equatable {
 	case unsafeHome
 }
@@ -16,6 +16,8 @@ func debugTestHome(environment: [String: String]) throws -> URL? {
 			"/private/tmp/agentdeck-menubar-acceptance.",
 			"/tmp/agentdeck-macos-xctest.",
 			"/private/tmp/agentdeck-macos-xctest.",
+			"/tmp/agentdeck-perf.",
+			"/private/tmp/agentdeck-perf.",
 		]
 		guard acceptedPrefixes.contains(where: testHome.path.hasPrefix) else {
 			throw DebugTestIsolationError.unsafeHome
@@ -69,10 +71,6 @@ enum AgentDeckMain {
 	]
 
 	static func main() {
-		let processEntryUptime = DispatchTime.now().uptimeNanoseconds
-		#if DEBUG
-		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" { DesktopPerformanceTrace.start() }
-		#endif
 		if Array(CommandLine.arguments.dropFirst()) == [widgetReloadArgument] {
 			for kind in widgetKinds {
 				WidgetCenter.shared.reloadTimelines(ofKind: kind)
@@ -82,28 +80,14 @@ enum AgentDeckMain {
 		}
 		let application = NSApplication.shared
 		let delegate = AgentDeckApplicationDelegate()
-		#if DEBUG
-		delegate.baselineProcessEntryUptime = processEntryUptime
-		#endif
 		application.delegate = delegate
 		application.setActivationPolicy(.accessory)
-		#if DEBUG
-		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
-			// The standalone instrumentation owns its delegate for the whole run;
-			// NSApplication's delegate reference does not provide that ownership.
-			withExtendedLifetime(delegate) { application.run() }
-			return
-		}
-		#endif
 		application.run()
 	}
 }
 
 @MainActor
 final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
-	#if DEBUG
-	var baselineProcessEntryUptime: UInt64 = 0
-	#endif
 	private let preferences: DesktopPreferences
 	private let refreshCoordinator: DesktopRefreshCoordinator
 	private let switchController: SwitchController
@@ -119,6 +103,9 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private var acceptanceWindow: NSWindow?
 	private let sourceHome: URL
 	private var sourceMonitor: DesktopSourceChangeMonitor?
+	#if AGENTDECK_PERF
+	private var perfDriver: PerfDriver?
+	#endif
 
 	override init() {
 		var runner = EmbeddedHelperRunner()
@@ -135,7 +122,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			.appendingPathComponent("settings.json", isDirectory: false)
 		var automaticRefreshEnabled = true
 		var sourceHome = FileManager.default.homeDirectoryForCurrentUser
-		#if DEBUG
+		#if DEBUG || AGENTDECK_PERF
 		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
 		// starts this application delegate, including its initial helper refresh.
 		// resolveDebugHome is the single fail-closed decision for every
@@ -150,21 +137,21 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
 		switch resolveDebugHome(environment: ProcessInfo.processInfo.environment) {
 		case .real:
+			#if AGENTDECK_PERF
+			// A measurement build never reads or writes real AgentDeck state.
+			preconditionFailure("Perf builds require an isolated AGENTDECK_TEST_HOME")
+			#else
 			break
+			#endif
 		case .isolated(let testHome):
 			sourceHome = testHome
 			var isolatedEnvironment = [
 				"HOME": testHome.path, "LANG": "en_US_POSIX", "LC_ALL": "en_US_POSIX", "PATH": "/usr/bin:/bin",
 			]
-			if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
+			if PerfTrace.isEnabled {
+				// App and helpers run in the batch's timezone (anchor date).
 				isolatedEnvironment["TZ"] = ProcessInfo.processInfo.environment["TZ"] ?? "America/New_York"
 				isolatedEnvironment["TMPDIR"] = ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory()
-				isolatedEnvironment["AGENTDECK_SCAN_PROFILE"] = "1"
-				if let logDirectory = ProcessInfo.processInfo.environment["AGENTDECK_P07_TX_DIR"] {
-					let resolvedLog = URL(fileURLWithPath: logDirectory).resolvingSymlinksInPath().path
-					precondition(resolvedLog.hasPrefix(testHome.resolvingSymlinksInPath().path + "/"), "Private P07 log directory required")
-					isolatedEnvironment["AGENTDECK_P07_TX_DIR"] = logDirectory
-				}
 			}
 			runner = EmbeddedHelperRunner(
 				appBundleURL: Bundle.main.bundleURL,
@@ -233,7 +220,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
-		#if !DEBUG
+		if PerfTrace.isEnabled {
+			PerfTrace.mark(.processStart, at: PerfTrace.processStartUptime())
+			PerfTrace.mark(.appReady)
+		}
+		#if !DEBUG && !AGENTDECK_PERF
 		// Homebrew's install-step sandbox cannot contact PlugInKit. Register only
 		// this signed host's own nested extension, after normal App launch.
 		let extensionURL = Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/AgentDeckWidget.appex")
@@ -273,15 +264,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
-		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
-			guard case let .isolated(home) = resolveDebugHome(environment: ProcessInfo.processInfo.environment),
-				automaticRefreshEnabled, let itemController else {
-				preconditionFailure("Native baseline requires a standalone isolated Debug launch")
-			}
-			Task { @MainActor in
-				await itemController.captureNativeBaseline(home: home, processEntryUptime: baselineProcessEntryUptime)
-				NSApp.terminate(nil)
-			}
+		#endif
+		#if AGENTDECK_PERF
+		if let itemController {
+			perfDriver = PerfDriver(model: model, itemController: itemController)
+			perfDriver?.start()
 		}
 		#endif
 	}
@@ -289,6 +276,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		func applicationWillTerminate(_ notification: Notification) {
 			sourceMonitor?.stop()
 			refreshCoordinator.stopAppWork()
+			PerfTrace.flush()
 		periodicRefresh?.cancel()
 		periodicDriver.cancel()
 		if let wakeObserver {

@@ -21,10 +21,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -331,7 +333,6 @@ type ScanProgressReporter interface {
 }
 
 type Service struct {
-	Profile      *ScanProfile
 	ProcessAlive func(int) bool
 	Store        *store.Store
 	Home         string
@@ -339,6 +340,7 @@ type Service struct {
 	// ClientProcesses is injectable so overlap handling has deterministic tests.
 	ClientProcesses         func(string) ([]int, error)
 	beforeSessionRouteWrite func()
+	eventsRangeReads        atomic.Int64 // stored-event range reads, for projection tests
 	Stat                    func(string) (os.FileInfo, error)
 	Open                    func(string) (SourceFile, error)
 	MachineIdentity         func(context.Context) (string, error)
@@ -1060,8 +1062,8 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 }
 
 func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
-	defer s.Profile.start("source_total")()
-	finishPrepare := s.Profile.start("source_prepare")
+	defer perftrace.Span(perftrace.UsageSource)()
+	finishPrepare := perftrace.Span(perftrace.UsagePrepare)
 	defer func() {
 		if finishPrepare != nil {
 			finishPrepare()
@@ -1266,7 +1268,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			return r, err
 		}
 	}
-	finishWait := s.Profile.start("publication_lock_wait")
+	finishWait := perftrace.Span(perftrace.UsagePublicationWait)
 	finishPrepare()
 	finishPrepare = nil
 	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
@@ -1275,7 +1277,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		return r, err
 	}
 	defer release()
-	defer s.Profile.start("source_publication")()
+	defer perftrace.Span(perftrace.UsagePublication)()
 	// Lock acquisition can wait while the source is rewritten or truncated.
 	// Validate after that wait, immediately before publishing the captured data.
 	if err = validateCaptured(); err != nil {
@@ -1386,7 +1388,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err != nil {
 		return r, err
 	}
-	finishSessions := s.Profile.start("session_rebuild")
+	finishSessions := perftrace.Span(perftrace.UsageSessionRebuild)
 	err = rebuildSessions(ctx, tx, affected)
 	finishSessions()
 	if err != nil {
@@ -1395,7 +1397,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, path, entry.Identity, entry.Size, cursor); err != nil {
 		return r, err
 	}
-	finishCommit := s.Profile.start("source_commit")
+	finishCommit := perftrace.Span(perftrace.UsageCommit)
 	err = tx.Commit()
 	finishCommit()
 	return r, err
@@ -1502,7 +1504,6 @@ type turnSignal struct {
 	startedAt       string
 	messageClass    string
 	intentSub       string
-	brainstorming   bool
 }
 
 // note records a turn-opening message's reduction against the index that turn
@@ -1513,13 +1514,12 @@ type turnSignal struct {
 func (state *parseState) note(client, startedAt, text string, turnIndex int) {
 	messageClass, intentSub := activity.ScanMessage(text)
 	signal := turnSignal{
-		client:        client,
-		session:       state.session,
-		turnIndex:     turnIndex,
-		startedAt:     startedAt,
-		messageClass:  messageClass,
-		intentSub:     intentSub,
-		brainstorming: activity.BrainstormingApplies(text),
+		client:       client,
+		session:      state.session,
+		turnIndex:    turnIndex,
+		startedAt:    startedAt,
+		messageClass: messageClass,
+		intentSub:    intentSub,
 	}
 	for i := range state.signals {
 		if state.signals[i].session == signal.session && state.signals[i].turnIndex == turnIndex {
@@ -1844,14 +1844,25 @@ func affectedSessions(ctx context.Context, tx *sql.Tx, path string) (map[string]
 
 func rebuildSessions(ctx context.Context, tx *sql.Tx, affected map[string][2]string) error {
 	for _, pair := range affected {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM usage_sessions WHERE client=? AND session_id=?", pair[0], pair[1]); err != nil {
-			return err
-		}
 		// A session can span several transcripts — subagent files carry the same
 		// session id — and every one of them opens after the session did, so the
 		// earliest observation is the session's own start.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at,started_at) SELECT client,session_id,MIN(event_at),MAX(event_at),COALESCE((SELECT MIN(f.session_started_at) FROM usage_source_files f WHERE f.session_id=? AND f.session_started_at<>''),'') FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, pair[1], pair[0], pair[1]); err != nil {
+		result, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at,started_at) SELECT client,session_id,MIN(event_at),MAX(event_at),COALESCE((SELECT MIN(f.session_started_at) FROM usage_source_files f WHERE f.session_id=? AND f.session_started_at<>''),'') FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id
+ON CONFLICT(client,session_id) DO UPDATE SET first_at=excluded.first_at,last_at=excluded.last_at,started_at=excluded.started_at
+WHERE (usage_sessions.first_at,usage_sessions.last_at,usage_sessions.started_at) IS NOT (excluded.first_at,excluded.last_at,excluded.started_at)`, pair[1], pair[0], pair[1])
+		if err != nil {
 			return err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		// No aggregate row means either an unchanged session or no remaining
+		// events. Only the latter removes the prior row and invalidates views.
+		if changed == 0 {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM usage_sessions WHERE client=? AND session_id=? AND NOT EXISTS(SELECT 1 FROM usage_events WHERE client=? AND session_id=?)`, pair[0], pair[1], pair[0], pair[1]); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1873,7 +1884,7 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
-	defer s.Profile.start("orphan_candidates")()
+	defer perftrace.Span(perftrace.UsageOrphanScan)()
 	// Subtract registered paths using the covering source indexes first. The
 	// usual no-orphan case then avoids joining every event/tool row to the
 	// registry twice per scan. Only orphan paths need their logical session IDs.
@@ -1928,7 +1939,7 @@ SELECT a.client,a.session_id FROM usage_tool_calls a WHERE a.source_path IN (
 }
 
 func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
-	defer s.Profile.start("orphan_cleanup")()
+	defer perftrace.Span(perftrace.UsageOrphanCleanup)()
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -2919,7 +2930,7 @@ type readPriceResolver struct {
 }
 
 func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
-	defer s.Profile.start("price_resolver")()
+	defer perftrace.Span(perftrace.UsagePriceResolver)()
 	timeline, err := s.Store.LoadProviderTimeline(ctx)
 	if err != nil {
 		return readPriceResolver{}, err
@@ -4035,7 +4046,8 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 }
 
 func (s *Service) eventsRangeFiltered(ctx context.Context, from, to time.Time, client, model string, exact bool) ([]storedEvent, error) {
-	defer s.Profile.start("events_range")()
+	defer perftrace.Span(perftrace.UsageEventsRange)()
+	s.eventsRangeReads.Add(1)
 	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" || exact {
