@@ -123,7 +123,7 @@ Repairer：Claude Code 主会话（Round 1 前的实现者）；范围为 BR-R1-
 - BR-R1-F1 -> repaired in candidate（用户决定）：
   - **用户决定（2026-10-25，修复指令）：** "对于文件数要求 需要变更"。
   - **需求变更：** [requirements.md](../requirements.md) P09 行改为“批次绑定的冻结真实语料的全量重建”；“数值验收”增加
-    P09 输入规模规则：不设 ≥5,071 文件下限，语料须满足[性能评估·夹具](../performance-evaluation.md#夹具冻结的真实语料)
+    P09 输入规模规则：不设 ≥5,071 文件下限，语料须满足 `performance-evaluation.md` 的“夹具：冻结的真实语料”一节
     的冻结范围与当天代表性下限，文件数与总字节随批次语料身份记录。5,071 保留为原始缺陷背景。
   - **本批语料：** 身份 `1d9ee56f…57e3f4`，2,232 个文件，未复制或改动语料。
 - BR-R1-F2 -> repaired in candidate：

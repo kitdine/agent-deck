@@ -570,7 +570,7 @@ Repairer：Claude Code 主会话（本次 E2 增补的设计者）；范围为 S
     都不可采用、以及任一需要的探测无有效结果。无有效结果时停止并报告阻塞，不进入 UX 变更或目标变更分支；
     明确缺失的 p95 不按 “>150 ms” 处理，只有两种形态都有有效结论时才可进入目标变更分支。
   - **交接同步：** [architecture.md](../architecture.md) 首次窗口暖启动一节把不可见/不夺焦点写为候选约束（违反即候选不可行，
-    不是工具无效），面板探测受同一约束，任一探测无工具有效结果时停止报告阻塞；[tasks.md](../tasks.md) serving-open-path
+    不是工具无效），面板探测受同一约束，任一探测无工具有效结果时停止报告阻塞；`tasks.md` 的 serving-open-path
     范围同步三类结论与阻塞出口。未预先选择 UX 或修改目标。
 
 修复目标：HEAD `7e7e7e340c238c3991877e160cbc59f2a19da005`；performance-evaluation blob
@@ -594,7 +594,7 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 
 ✅ 复评结论：PASS
 
-完成门禁：BLOCKED
+完成门禁：VERIFIED
 
 ### 🔴 严重问题 — 必须修复
 
@@ -625,3 +625,14 @@ Task checkpoint：ad-scan-performance-doc-perf；content_state `09d8a9bddb429ef8
 推送建议：门禁 VERIFIED 后，再按独立授权推送 origin/feature/scan-performance；前提同上，并核验实际提交范围、贡献归属、trailer 与 SSH 签名，远端当前状态尚未核验。
 
 后续前提：处理 apps/macos/.build/index-build 生成产物引起的 L0 阻塞，完成 check-docs.py 并补齐当前内容的 document-integrity 证据与门禁查询；不重复已完成的复评。
+
+### L0 与门禁同步 — 2026-10-26
+
+用户授权处理文档检查阻塞。本轮最初的 BLOCKED 与原始失败原因保留为历史；上方单一完成门禁字段更新为本次最终查询结果，语义 PASS 未重新评审。
+
+- `.gitignore` 新增精确的 `apps/macos/.build/` 规则；目录没有被跟踪的文件，未删除或改写构建产物。
+- 仅修正 performance-evaluation 与 baseline-remeasure 评审记录各一处检查器不支持的缩进续行链接，改为明确文件名／章节文本；历史结论、观察与 finding 含义未变。
+- 最终 `python3 scripts/check-docs.py` 退出 0，覆盖空白、diff、文档集、链接与评审结构；产品代码／测试／配置未改（忽略规则除外）。
+- 当前 HEAD `67ac8b7da27f581a58d4014a7b218321fcd1042f`；正文 blob 与本轮已评版本一致。新 digest `423e90b93bdd1562dd82e0e7cadf02ad7b1476e37ab70a919eef7ea47e050f07`，ContentState `scan-perf-doc-l0-20261026-perf-state`；新 L0 证据与显式目标绑定的语义 roll-up 分别为 `scan-perf-doc-l0-20261026-perf-integrity`、`scan-perf-doc-l0-20261026-perf-review`。
+- 原观察保留原身份；只评估本次 HEAD、忽略规则与记录格式变更对语义结论没有影响。旧 blocked 观察不改写，新状态不继承旧环境阻塞。
+- 本段取代上方 checkpoint 的阻塞前提：门禁 VERIFIED；文档本体已在此前授权提交中交付，本次忽略规则及记录同步尚未提交，因此协调转 awaiting_commit，暂不关闭任务。不执行提交或推送。

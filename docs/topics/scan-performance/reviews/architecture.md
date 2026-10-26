@@ -282,7 +282,7 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 
 ✅ 评审结论：PASS
 
-完成门禁：BLOCKED
+完成门禁：VERIFIED
 
 ### 🔴 严重问题 — 必须修复
 
@@ -315,3 +315,14 @@ Task checkpoint：ad-scan-performance-doc-arch；content_state `b61ea1ccc9693e8b
 推送建议：同一 L0 前提解决、门禁 VERIFIED 后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。
 
 后续前提：处理 apps/macos/.build/index-build 引起的 L0 阻塞，完成 check-docs.py 并补齐本内容的 document-integrity 证据与门禁；不重复已完成的架构评审。
+
+### L0 与门禁同步 — 2026-10-26
+
+用户授权处理文档检查阻塞。本轮最初的 BLOCKED 与原始失败原因保留为历史；上方单一完成门禁字段更新为本次最终查询结果，语义 PASS 未重新评审。
+
+- `.gitignore` 新增精确的 `apps/macos/.build/` 规则；目录没有被跟踪的文件，未删除或改写构建产物。
+- 仅修正 performance-evaluation 与 baseline-remeasure 评审记录各一处检查器不支持的缩进续行链接，改为明确文件名／章节文本；历史结论、观察与 finding 含义未变。
+- 最终 `python3 scripts/check-docs.py` 退出 0，覆盖空白、diff、文档集、链接与评审结构；产品代码／测试／配置未改（忽略规则除外）。
+- 当前 HEAD `67ac8b7da27f581a58d4014a7b218321fcd1042f`；正文 blob 与本轮已评版本一致。新 digest `4bcfaf2ccda7fb00a4347b99106fba3b085930c6664b4752c11c6827c02d85fd`，ContentState `scan-perf-doc-l0-20261026-arch-state`；新 L0 证据与显式目标绑定的语义 roll-up 分别为 `scan-perf-doc-l0-20261026-arch-integrity`、`scan-perf-doc-l0-20261026-arch-review`。
+- 原观察保留原身份；只评估本次 HEAD、忽略规则与记录格式变更对语义结论没有影响。旧 blocked 观察不改写，新状态不继承旧环境阻塞。
+- 本段取代上方 checkpoint 的阻塞前提：门禁 VERIFIED；文档本体已在此前授权提交中交付，本次忽略规则及记录同步尚未提交，因此协调转 awaiting_commit，暂不关闭任务。不执行提交或推送。
