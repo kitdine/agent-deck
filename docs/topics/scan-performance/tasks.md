@@ -23,7 +23,7 @@ updated: 2026-10-22
 | ux/menubar.md | [x] | [x] |
 | ux/cli.md | [x] | [x] |
 | architecture.md | [x] | [x] |
-| performance-evaluation.md | [x] | [ ] |
+| performance-evaluation.md | [x] | [x] |
 | tasks.md | [x] | [ ] |
 | ux/settings.md | [x] | [x] |
 | ux/widget.md | n/a | n/a |

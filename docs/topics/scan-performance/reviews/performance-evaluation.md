@@ -514,3 +514,114 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
 - 残余不确定性：第 6 条成本把 P07 增量与 P10 写入分别计为一次重新生成；可测性表中 P07 的增量即“100 次 P10 增量”，实际编排若合并为同一序列则少一次重新生成，只影响成本估算，不影响口径。
 - 结论：全部发现关闭，判 PASS。
+
+## Round 11 — 2026-10-26
+
+## 📋 E2 追加探测决策契约评审
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[performance-evaluation.md:374–385] SP-PE-R11-F1（中）：暖启动不可行被归为工具无效，但后续决策既与整批作废规则冲突，也没有覆盖面板探测无效的出口。
+
+- 行为风险：同批次中 popover 暖启动若夺焦点一次，374 行要求 pilot 工具无效为零，241 行通则要求整批作废、修工具后重测；384–385 行却要求按第 2 条继续面板探测。实现者必须自行决定是否保留或废弃该批次。如果面板暖启动也夺焦点，两个条件都没有有效 p95，377–382 行三个数值分支全部无法适用；不能把缺失 p95 当成大于 150 ms 并据此建议修改目标。
+- 证据：371–372 行两个条件共享可见帧／焦点变化即工具无效的定义；374 行要求零无效；377–382 行只按有效 p95 分支；384–385 行仅指定暖启动无效后进入第 2 条，没有定义面板无效的处置。架构 122–131 行也将不可见、不夺焦点列为候选本身必须满足的约束，不是已经证明可靠的测量工具前提。
+- 💡 有界修复：区分候选不满足不可见／焦点约束与真正的测量工具故障；写清适用范围是单条件还是整批，以及 popover 有效／不可行、panel 有效／不可行／工具故障的决策出口。没有有效测量时不得进入数值失败或目标不可达分支。同步必要的架构／任务交接措辞，不预先选择 UX 或修改目标。
+- 处置：open，待修复；本轮未修改被评文档。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 已通过 Neo4j 回读核实 floor 证据的 100 次、零失败／零工具无效、p95 198.49 ms 与 blocked 结果，正文没有把决策档称为产品通过。
+- 保留真实数据帧的正式 P01 门和 k，窗口形态变更仍须 UX 评审。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档决策表推演、上游需求与架构交叉核对、CEv1 原观察回读；无委派，无产品修改，未重跑性能批次。
+- Scope：当前性能评估契约，重点为返回设计后新增 E2 探测与失败出口；历史 Round 10 已关闭发现不重新打开。其通过身份不覆盖后续相对门、样本编排和本次 E2 增补。
+- Reviewed state：HEAD `7e7e7e340c238c3991877e160cbc59f2a19da005`；document blob `47c46ed9721fc9f424432bbbd71c820a6915a528`；SHA256(`head=<HEAD>;document=<blob>`) = `4e5871dac99320eaece4412ed2f96e2475f0ac06eae8198eaba0a9832c9dbe83`。
+- Dependencies：requirements blob `315b3305c39c42d894be91b69310b434bc683630`；architecture blob `729ce59a0cdf71253ea7300e26cfc8f16e9bacb7`。工作区 `agent-deck.scan-performance`，分支 `feature/scan-performance`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0。`python3 scripts/check-docs.py` 在 `make check-whitespace` 阶段失败：已有未跟踪的 `apps/macos/.build/index-build` 中生成 JSON／lock 缺尾换行、生成 Swift header 含尾空白；未执行到后续链接检查。此检查限制不归因为被评文档缺陷，也不清理他人的构建输出。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-doc-r11-20261026-state`；本轮失败证据 `scan-perf-doc-r11-20261026-review`，结构检查限制 `scan-perf-doc-r11-20261026-integrity`。历史观察保持不变。
+- 结论：一个确定的决策契约缺口足以阻止通过，按评审规则停止扩大验证；文档矩阵 Review 保持未勾选，dispatch 返回修复。
+
+修复：scan-performance / reviews/performance-evaluation.md / SP-PE-R11-F1
+
+## Repair candidate — 2026-10-26（Round 11 后）
+
+Repairer：Claude Code 主会话（本次 E2 增补的设计者）；范围为 SP-PE-R11-F1。Round 11 的评分、结论与 FAILED 门保留；
+本节不是 Review Round，不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-PE-R11-F1 -> repaired in candidate：
+  - **结果分类：** [performance-evaluation.md](../performance-evaluation.md) “E2 下限探测结果与追加探测”把每个条件的正式批次
+    结论分为三类：工具无效（沿用样本类别中的原因，按通则只作废该条件批次并整批重测；工具修复触及另一条件所用代码时
+    该条件也重测；修复后仍无工具有效批次即“无有效结果”）、候选不可行（暖启动产生可见帧或改变前台应用/key 窗口，
+    是被测候选违反约束，批次保持有效、照常报告 p95，但该形态不得采用）、有效且可行（按 p95 与 150 ms 判定）。
+    pilot 的“工具无效为 0”只针对第一类，因此候选违反约束不再与整批作废通则冲突。
+  - **判定出口：** 改为 warm × panel 的出口表，覆盖 warm 达标、warm 不达标或不可行后 panel 达标、两者都有有效结论且
+    都不可采用、以及任一需要的探测无有效结果。无有效结果时停止并报告阻塞，不进入 UX 变更或目标变更分支；
+    明确缺失的 p95 不按 “>150 ms” 处理，只有两种形态都有有效结论时才可进入目标变更分支。
+  - **交接同步：** [architecture.md](../architecture.md) 首次窗口暖启动一节把不可见/不夺焦点写为候选约束（违反即候选不可行，
+    不是工具无效），面板探测受同一约束，任一探测无工具有效结果时停止报告阻塞；[tasks.md](../tasks.md) serving-open-path
+    范围同步三类结论与阻塞出口。未预先选择 UX 或修改目标。
+
+修复目标：HEAD `7e7e7e340c238c3991877e160cbc59f2a19da005`；performance-evaluation blob
+`b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`；architecture blob `5ddf672966cd8aac77e57f0b9270733dd4191497`；
+tasks blob `87bd4dd43e2907ef8f547a183c3bcd197e2004a0`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0。`check-docs.py` 仍被既有未跟踪
+`apps/macos/.build/index-build` 生成内容阻塞在 whitespace 前置检查（同 Round 11 所述），未清理他人构建输出，不声称该检查通过。
+
+#### 下一步指令
+
+复评：scan-performance / performance-evaluation.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 12 — 2026-10-26
+
+## 📋 E2 追加探测决策契约复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：BLOCKED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-PE-R11-F1 closed：工具故障仅使受影响条件的批次作废；共享工具修复触及另一条件时，该条件重测。候选违反不可见／焦点约束属于有效的不可行结论，不能采用，不再与工具无效混同。
+- 已逐格核对 warm 达标、warm 超时延阈值／不可行后 panel 达标、两者有有效结论但不可采用、warm 无有效结果、panel 无有效结果五种出口。缺失 p95 明确不能当作大于 150 ms；工具故障未解决时停止报告阻塞。
+- architecture 的候选约束和 tasks 的 serving-open-path 交接均已同步；本轮不批准具体窗口形态或目标调整。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，原 Round 11 评审者；Method：对照独立修复者 Claude Code 的候选，推演决策表并检查相关契约；无委派、无产品修改。
+- Scope：SP-PE-R11-F1 及其修复引入的分支；历史已关闭发现维持原处置。未发现新增或回归问题。本轮不代替 architecture.md、tasks.md 的独立整份文档评审。
+- Reviewed state：HEAD `7e7e7e340c238c3991877e160cbc59f2a19da005`；document blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`；SHA256(`head=<HEAD>;document=<blob>`) = `09d8a9bddb429ef8dea8747911d8627aed8d2be958e6eeac68e81ebe0da9f7c8`。
+- Dependencies：requirements blob `315b3305c39c42d894be91b69310b434bc683630` 未变；architecture blob `5ddf672966cd8aac77e57f0b9270733dd4191497`；tasks 修复输入 blob `87bd4dd43e2907ef8f547a183c3bcd197e2004a0`，本轮仅把 performance-evaluation 的 Review 勾选。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：当前修复状态运行 `python3 scripts/check-docs.py` exit 1，仍在 `make check-whitespace` 因已有未跟踪 `apps/macos/.build/index-build` 生成 JSON／lock 缺尾换行、Swift header 尾空白而停止，链接检查未执行。该工作区检查限制不是本文件的新语义发现；未清理或改写他人的构建输出。最终记录结构、topic 文档集与 scoped diff hygiene 分别检查，不冒充完整 L0 通过。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-doc-r12-20261026-state`；新观察 `scan-perf-doc-r12-20261026-review` 为 pass，`scan-perf-doc-r12-20261026-integrity` 为 blocked。Round 11 的失败证据继续绑定旧内容，不覆盖或删除；当前状态不复用其失败结果。
+- 结论：唯一开放发现关闭，复评 PASS；document-integrity 未完成，任务保持 in_review，不进入 awaiting_commit。topic 还有其他文档与实现任务，未跨越 topic 完成边界。
+
+Task checkpoint：ad-scan-performance-doc-perf；content_state `09d8a9bddb429ef8dea8747911d8627aed8d2be958e6eeac68e81ebe0da9f7c8`；gate BLOCKED。
+提交建议：门禁 VERIFIED 后，授权提交本次性能评估修复、评审记录与必要矩阵变更；前提是处理既有构建产物引起的 L0 阻塞并补齐 document-integrity 证据，不混入未评产品改动。
+推送建议：门禁 VERIFIED 后，再按独立授权推送 origin/feature/scan-performance；前提同上，并核验实际提交范围、贡献归属、trailer 与 SSH 签名，远端当前状态尚未核验。
+
+后续前提：处理 apps/macos/.build/index-build 生成产物引起的 L0 阻塞，完成 check-docs.py 并补齐当前内容的 document-integrity 证据与门禁查询；不重复已完成的复评。
