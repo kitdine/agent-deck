@@ -273,3 +273,45 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
 - 依赖：performance-evaluation.md 本轮 FAIL（SP-PE-R8-F1..F3），其修复只涉及测量契约，不改变本文件的职责划分；若修复改动本文件，本结论失效并须重评。
 - 结论：无发现，判 PASS。
+
+## Round 7 — 2026-10-26
+
+## 📋 E2 暖启动与追加探测架构评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：BLOCKED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 首次窗口暖启动保持候选身份，明确不闪现、不夺焦点、不触发 helper／数据读取，并规定暖启动期间的点击先结束暖启动再走正常打开路径；不会仅凭静态文本下限宣布产品验收通过。
+- popover 与 panel 使用相同候选约束；候选不可行与工具无效分开，缺少有效测量时停止，与 performance-evaluation.md Round 12 已评决策出口一致。面板仅用于探测，采用仍须菜单栏 UX 评审。
+- 保留同一 hosting 层级、关闭不销毁 content；启动恢复、内容最小化与切换优化的实施边界明确。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立增量架构评审，CodeGraph 定位后核对当前源码、依赖契约及失败／点击交错场景；无委派，无产品修改。
+- Scope：新增“首次窗口暖启动与追加探测”及其与打开路径、启动顺序、性能契约和任务范围的衔接。与 Round 6 对比，实质新增为本节；冻结真实语料工具职责沿用 Round 6 结论，其他未变契约不重做全面审计。SP-ARCH-R3-F1..F3、SP-ARCH-R4-F1 保持关闭，无新增发现。
+- Reviewed state：HEAD `a427d97bb760d775e9762fc8c0d14522aec63888`；document blob `5ddf672966cd8aac77e57f0b9270733dd4191497`；SHA256(`head=<HEAD>;document=<blob>`) = `b61ea1ccc9693e8b30f191d9e1cf2b1633cad627a8dbfc553ab95b87f1aab690`。
+- Dependencies：performance-evaluation blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`（Round 12 PASS，独立 L0 门仍阻塞）；requirements blob `315b3305c39c42d894be91b69310b434bc683630`。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Source evidence：`MenuBarItemController.swift:232–256` 在未上屏借用窗口中布局，未调用 popover.show；`194–215` 在首次打开调用 show 后才激活窗口，`52–60` 保持 transient／无动画且 Perf 下可替换静态内容；`264–265` 关闭仅调用 performClose。以上支持设计对现有路径的描述，不证明 AppKit 内部资源创建时刻或暖启动性能。
+- Runtime limits：不可见暖启动能否成立、同步 show 是否满足原有单片 ≤8 ms 预算、关闭后窗口资源保留、真实数据 content 的副作用、点击与暖启动结束的交错，以及 helper 调度是否改善争用，均需任务实现与实验验证。设计未给这些实验结果签发 PASS，也不豁免原有预算、生命周期或候选采用规则。
+- Evidence：当前 `python3 scripts/check-docs.py` exit 1，在 `make check-whitespace` 因既有未跟踪 `apps/macos/.build/index-build` 生成文件缺尾换行／尾空白停止，链接阶段未执行。最终 topic 文档集、评审记录结构及 scoped diff hygiene 单独检查；不把这些检查代替完整 L0。未清理他人的构建产物。
+- CEv1：WorkUnit `scan-performance:architecture.md`；ContentState `scan-perf-arch-r7-20261026-state`；语义观察 `scan-perf-arch-r7-20261026-review` 为 pass，结构前置限制 `scan-perf-arch-r7-20261026-integrity` 为 blocked。旧状态的通过证据不直接改绑。其他文档／实现任务仍未完成，不查询 topic 完成门。
+- 结论：本次架构增补 PASS；矩阵 architecture Review 勾选；document-integrity 仍阻塞，Beads 保持 in_review，不进入 awaiting_commit。
+
+Task checkpoint：ad-scan-performance-doc-arch；content_state `b61ea1ccc9693e8b30f191d9e1cf2b1633cad627a8dbfc553ab95b87f1aab690`；gate BLOCKED。
+提交建议：处理构建产物引起的 L0 阻塞、补齐 document-integrity 且门禁 VERIFIED 后，授权提交架构增补、其评审记录与必要矩阵变更；不混入产品实现。
+推送建议：同一 L0 前提解决、门禁 VERIFIED 后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。
+
+后续前提：处理 apps/macos/.build/index-build 引起的 L0 阻塞，完成 check-docs.py 并补齐本内容的 document-integrity 证据与门禁；不重复已完成的架构评审。

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-22
+updated: 2026-10-26
 ---
 
 # 展示恢复、事件更新与有界采集
@@ -111,6 +111,33 @@ OTel 接收必须持续存活，可由显式启用的 App 随行 receiver 满足
 
 既定 UX 要求“复用既有 popover”，因此不以自绘面板替代 NSPopover；若第 2 步停止后用户选择改用
 其他窗口形态，这属于 UX 变更，须用户决定并重新评审菜单栏 UX。
+
+### 第 2 步之后：首次窗口暖启动与追加探测（2026-10-26）
+
+第 2 步实测下限 p95 198.49 ms，落在决策档（见[性能评估·E2 下限探测结果](performance-evaluation.md#e2-下限探测结果与追加探测2026-10-26-返回设计)）。
+现有预布局只让 hosting view 在借用窗口里完成布局，NSPopover 自己的窗口、后备存储与
+window server 侧资源仍在第一次 `show` 时创建；首击又恰在 quota/bootstrap/watcher 启动之后。
+处理顺序：
+
+1. **首次窗口暖启动（候选，保留既定 UX）。** `model.usable` 之后、主线程空闲时，对同一 NSPopover
+   以状态栏按钮为锚执行一次 `show`，在同一 MainActor 回合内（首个 Core Animation 提交之前）把其窗口
+   `alphaValue` 置 0、`ignoresMouseEvents` 置真，不调用 `activatePopoverWindow`、不请求 key，
+   保持一个提交周期后 `performClose` 并恢复 alpha 与鼠标事件。约束：不产生可见帧、不改变前台
+   应用与 key 窗口、不触发 helper 或数据读取；用户在暖启动期间点击时，先完成关闭再按正常路径打开。
+   只执行一次；关闭不销毁 content，与第 5 步一致。上述约束是候选本身必须满足的条件，不是测量前提：
+   `P01-floor-warm` 中任一运行单元违反即判该候选不可行（不是工具无效），不进入产品路径；
+   约束成立且首击受益（判定见性能评估）前同样不进入产品路径。
+2. **面板形态（仅作探测）。** `P01-floor-panel` 用同尺寸、`.popover` 材质的非激活 `NSPanel`
+   测同一首击下限，只用于在 1 不可行或不达标时判断“改窗口形态”是否真能提供余量；它的暖启动受同一约束。
+   它不是本设计采用的形态，采用与否按性能评估的判定出口交给 UX 评审；任一探测没有工具有效的结果时，
+   停止并报告阻塞，不据此提出 UX 或目标变更。
+3. **争用归因。** 两个探测都报告首击时存活的 helper 进程数；若下限的尾部集中在 helper 存活的样本，
+   启动顺序中 `model.usable` 之后的后台工作改用低优先级 QoS（`.utility`）启动 helper 并让首击窗口
+   之前的 2 s 内至多一个 helper 运行，这只改变调度，不改变它们的语义与兜底。
+
+与窗口形态无关的部分不等待上述判定：第 4 步首帧内容最小化、第 5 步层级保持、
+启动顺序、切换 memoize，以及 P02/P03/P04/P11 与 P01 重复层、重建中层的工作照常实施；
+只有第 3 步中针对 NSPopover 窗口本身的暖启动等 `P01-floor-warm` 的结果。
 
 切换（P03）只在已准备的 publication 内重新投影，presentation 按 `(publication_id, selection)` memoize；
 切换意图入口是 view model 的公开方法，测量与控件 action 走同一入口。
