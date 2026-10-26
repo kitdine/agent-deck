@@ -952,8 +952,10 @@ func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool
 			r.setResult(run(ctx, stateRoot, r.home, r.id, lockHeld))
 		}
 		r.setProcessResources(resourcesBefore, currentProcessResources())
-		r.complete()
+		// scan.end is recorded before the result is published: a caller that
+		// stops tracing as soon as its request returns must still see it.
 		r.markEnd()
+		r.complete()
 	})
 }
 
@@ -1084,6 +1086,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerUsage)
+			defer perftrace.Span(perftrace.ScanUsage)()
 			started := time.Now()
 			changes, err := usageService.ScanInventory(ctx, usageInventory)
 			duration := time.Since(started).Milliseconds()
@@ -1112,6 +1115,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		// Cache publication is best effort and remains independent from the
 		// durable usage outcome. Scope-specific callers have already observed
 		// their terminal domain result before this derived work completes.
+		defer perftrace.Span(perftrace.ScanDerive)()
 		started := time.Now()
 		r.setProgressStage("statistics")
 		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
@@ -1125,8 +1129,11 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerSession)
+			// Ends when the scan returns, before the wait for usage below.
+			finishSession := perftrace.Span(perftrace.ScanSession)
 			started := time.Now()
 			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}, CoverageInventoryID: r.id})
+			finishSession()
 			if err != nil {
 				finishDomainInventory(sessions, r.id, err)
 				r.setSession(failedSession(err, time.Since(started).Milliseconds()))

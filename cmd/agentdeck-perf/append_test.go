@@ -77,12 +77,32 @@ func TestAppendDrivesExactIngestCounters(t *testing.T) {
 		t.Fatalf("no-op rescan read sources: %v", counts)
 	}
 
+	files, err := todayFiles(opts.out, opts.anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizes := func() (total, anchors int64) {
+		for _, path := range files {
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			total += info.Size()
+			anchors += anchorConsumers * min(declaredAnchorBytes, info.Size())
+		}
+		return total, anchors
+	}
+	before, anchors := sizes()
 	result, err := appendRecords(opts.out, opts.anchor, 11, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Files != manifest.TodayFiles || result.Records != manifest.TodayFiles {
 		t.Fatalf("append touched %d files, want %d today-related files", result.Files, manifest.TodayFiles)
+	}
+	// P08's bound is computed from what was written, not from what was read.
+	if after, _ := sizes(); result.DeltaBytes != after-before || result.AnchorBytes != anchors {
+		t.Fatalf("append reported delta %d anchors %d, want %d and %d", result.DeltaBytes, result.AnchorBytes, after-before, anchors)
 	}
 	counts := scanCounts(t, client)
 	if counts["decoded_records"] != int64(result.Records) || counts["usage_imported"] != int64(result.Records) {

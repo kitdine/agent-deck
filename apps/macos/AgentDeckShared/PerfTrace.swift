@@ -36,6 +36,9 @@ public enum PerfStage: String, Sendable, CaseIterable {
 	case sourceProcessing = "app.source_processing"
 	case driverDone = "driver.done"
 	case driverInvalid = "driver.invalid"
+	/// Another app took the front from the shown popover: the run unit measured
+	/// nothing about the product and is rerun.
+	case driverInterrupted = "driver.interrupted"
 	case driverPreconditionTimeout = "driver.precondition_timeout"
 	case selectNoData = "select.no_data"
 	/// An event-stimulus click that never reached `handleClick` in a run that

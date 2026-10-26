@@ -14,6 +14,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"golang.org/x/sys/unix"
@@ -252,6 +253,12 @@ func (s Service) prepareServingSnapshot(ctx context.Context, request Request, to
 		if err = writeServingSnapshot(s.StateRoot, contents); err != nil {
 			return ServingSnapshot{}, err
 		}
+		complete := int64(0)
+		if usageCoverage.State == "complete" {
+			complete = 1
+		}
+		perftrace.Mark(perftrace.PublicationCommit, perftrace.Count{Key: "committed", Value: int64(usageCoverage.Committed)},
+			perftrace.Count{Key: "sources", Value: int64(usageCoverage.Sources)}, perftrace.Count{Key: "coverage_complete", Value: complete})
 	}
 	return prepared, nil
 }

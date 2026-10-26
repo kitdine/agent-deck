@@ -9,6 +9,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -147,6 +148,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	scan := session.ScanResult{}
 	r.setProgressStage("importing")
+	finishIngest := perftrace.Span(perftrace.IngestRead)
 	for index, batch := range batches {
 		if err = ctx.Err(); err != nil {
 			break
@@ -190,11 +192,13 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerUsage)
+			defer perftrace.Span(perftrace.ScanUsage)()
 			batchChanges, usageErr = batchService.ScanInventory(ctx, inventory)
 		}()
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerSession)
+			defer perftrace.Span(perftrace.ScanSession)()
 			batchScan, sessionErr = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: batch, Coordinator: coordinator, CoverageInventoryID: r.id, Batch: true})
 		}()
 		wait.Wait()
@@ -225,16 +229,25 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		}
 		// Publish after this safe commit checkpoint, before any history body is
 		// admitted. Neither a global terminal nor worker exit is required.
+		finishBatchDerive := perftrace.Span(perftrace.ScanDerive)
 		publication, publishErr := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, true)
+		finishBatchDerive()
 		if publishErr == nil {
 			r.setServingPublication(publication)
 		}
 	}
-	if err == nil {
-		err = service.FinalizeInventory(ctx, fullInventory)
+	if r.metrics != nil {
+		finishIngest(r.metrics.Counts()...)
 	}
 	if err == nil {
+		finishFinalize := perftrace.Span(perftrace.ScanUsage)
+		err = service.FinalizeInventory(ctx, fullInventory)
+		finishFinalize()
+	}
+	if err == nil {
+		finishSession := perftrace.Span(perftrace.ScanSession)
 		_, err = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, CoverageInventoryID: r.id})
+		finishSession()
 	}
 	if err == nil && !metadataOnly {
 		err = finishAcceptedInventory(ctx, core, r.id)
@@ -250,8 +263,11 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: time.Since(started).Milliseconds()})
 	r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: time.Since(started).Milliseconds()})
+	finishDerive := perftrace.Span(perftrace.ScanDerive)
 	_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 	publication, publishErr := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
+	finishDerive()
+	perftrace.Mark(perftrace.ProjectionDone)
 	if publishErr == nil {
 		r.setServingPublication(publication)
 	}

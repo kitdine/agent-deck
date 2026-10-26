@@ -56,7 +56,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `measurement-harness` | [x] | [x] |
-| 2. `baseline-remeasure` | [ ] | [ ] |
+| 2. `baseline-remeasure` | [x] | [x] |
 | 3. `serving-open-path` | [ ] | [ ] |
 | 4. `parallel-source-pipeline` | [ ] | [ ] |
 | 5. `incremental-update` | [ ] | [ ] |
@@ -65,6 +65,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | 8. `cross-surface-acceptance` | [ ] | [ ] |
 
 `measurement-harness` 的当前评审与修复交接见 [评审记录](reviews/measurement-harness.md)。
+`baseline-remeasure` 的当前评审与修复交接见 [评审记录](reviews/baseline-remeasure.md)。
 
 依赖：1 → 2 → 3、4；4 的前台准则在 3 通过后验证；3、4 → 5 → 6 → 7 → 8。
 额外常驻 Go 引擎与多进程 parser 不是预建任务，只在性能评估的候选采用规则满足后经设计增补选入。
@@ -99,7 +100,7 @@ content-state 门禁 `VERIFIED`；测量类准则的证据按性能评估·记�
   冻结）都须用户事先批准，在本任务中执行（2026-10-23 已批准一次重新复制）；语料身份与聚合清单写入
   CEv1。批次按性能评估“工作副本、模板与样本起点”编排：固定 HOME 路径、模板记录源树绑定指纹、
   按运行单元核对与重置、写入条件前后重新生成工作副本。`run` 支持基线与候选两臂按运行单元 ABBA 交错；
-  负载与 `CPU_Speed_Limit` 每个运行单元记录、不作无效条件；`stats`/`gate` 输出两臂比值与配对 bootstrap
+  负载每个运行单元记录、不作无效条件（供电与 `CPU_Speed_Limit` 不检查，2026-10-25 用户决定）；`stats`/`gate` 输出两臂比值与配对 bootstrap
   95% 区间，并按 `k` 判定通过、不确定或未通过。
 - 发布打包与 Release 配置保持只构建 `./cmd/agentdeck`，不含驱动。
 

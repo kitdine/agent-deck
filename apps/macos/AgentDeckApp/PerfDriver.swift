@@ -67,6 +67,9 @@ final class PerfDriver {
 	private var eventNumber = 0
 	/// When wait_usable last succeeded; the P06 window is timed from it.
 	private var usableAt: ContinuousClock.Instant?
+	/// Watches for another app taking the front while the popover is shown.
+	private var resignObserver: NSObjectProtocol?
+	private var interrupted = false
 
 	init(model: MenuBarViewModel, itemController: MenuBarItemController) {
 		self.model = model
@@ -82,11 +85,26 @@ final class PerfDriver {
 			finish()
 			return
 		}
+		// The system dismisses the transient popover when another app takes the
+		// front. Whatever the step (a click, a selection, or P10 holding it open
+		// while sources are written), its frames can then no longer appear: the
+		// stimulus was interrupted from outside. The run ends at once and
+		// `agentdeck-perf run` reruns the unit instead of counting a product
+		// failure.
+		resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.willResignActiveNotification,
+			object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let self, self.itemController.popoverIsShown else { return }
+				self.markInterrupted()
+			}
+		}
 		Task { @MainActor in
 			for (index, step) in script.steps.enumerated() {
+				guard !interrupted else { break }
 				// A product that never becomes usable is a product failure, not a
 				// tool failure: record it and end the run.
 				let succeeded = await run(step)
+				if interrupted { break }
 				if !succeeded, step.op == .waitUsable {
 					PerfTrace.mark(.driverPreconditionTimeout, PerfCount("step", Int64(index)))
 					break
@@ -102,6 +120,10 @@ final class PerfDriver {
 	}
 
 	private func finish() {
+		if let resignObserver {
+			NotificationCenter.default.removeObserver(resignObserver)
+			self.resignObserver = nil
+		}
 		PerfFrameProbe.shared.stop()
 		PerfTrace.flush()
 		fromRunLoop { NSApp.terminate(nil) }
@@ -127,7 +149,11 @@ final class PerfDriver {
 			if usable { usableAt = ContinuousClock.now }
 			return usable
 		case .sleep:
-			try? await Task.sleep(for: timeout)
+			// An outside interruption ends a long hold (P10) at once.
+			let end = ContinuousClock.now.advanced(by: timeout)
+			while !interrupted, ContinuousClock.now < end {
+				try? await Task.sleep(for: min(.milliseconds(100), end - ContinuousClock.now))
+			}
 			return true
 		case .close:
 			itemController.closePopover()
@@ -240,14 +266,20 @@ final class PerfDriver {
 
 	/// A missing frame is a product failure unless another app took the front
 	/// and the system dismissed the transient popover: then the stimulus was
-	/// interrupted from outside and the sample is tool-invalid.
+	/// interrupted from outside and the unit is rerun.
 	private func framedOrUndisturbed(_ framed: Task<Bool, Never>) async -> Bool {
 		if await framed.value { return true }
 		if !itemController.popoverIsShown, !NSApp.isActive {
-			PerfTrace.mark(.driverInvalid, PerfCount("dismissed_inactive", 1))
+			markInterrupted()
 			return false
 		}
 		return true
+	}
+
+	private func markInterrupted() {
+		guard !interrupted else { return }
+		interrupted = true
+		PerfTrace.mark(.driverInterrupted)
 	}
 
 	/// The status item is placed once its window is visible with a window
@@ -276,6 +308,12 @@ final class PerfDriver {
 			if requiredOnScreen, !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
 			await nextWindowChange(within: .milliseconds(50))
 			ready = satisfied()
+		}
+		if !ready, required, requiredOnScreen, !NSApp.isActive {
+			// Another app keeps the front and its menu bar hides the item: the
+			// stimulus is blocked from outside, so the unit is rerun.
+			markInterrupted()
+			return false
 		}
 		if !ready, required {
 			let window = itemController.statusItem.button?.window
@@ -317,9 +355,12 @@ final class PerfDriver {
 		}
 		// A nil frame can never be matched, so no unrelated frame ends the wait.
 		PerfFrameProbe.shared.expectedKey = expected ?? Int64.min
-		_ = await framed.value
+		// As for a click: a frame that never arrives because another app took
+		// the front and the system dismissed the popover is an interrupted
+		// stimulus, not a product failure.
+		let undisturbed = await framedOrUndisturbed(framed)
 		PerfFrameProbe.shared.expectedKey = nil
-		return true
+		return undisturbed
 	}
 
 	/// P06's window starts only when no helper is alive. Helpers, including a

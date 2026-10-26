@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -191,16 +192,100 @@ func armOracle(cfg runConfig, plan conditionPlan) func() (oracle, error) {
 	}
 }
 
-// runUnit runs one run unit into <out>/sample-NNNN. Environment, oracle and
-// run errors make the unit tool-invalid; only I/O on the batch is returned.
+// maxUnitAttempts bounds how often one run unit is rerun after an outside
+// interruption before it is recorded tool-invalid.
+const maxUnitAttempts = 5
+
+// interruptedDir holds the attempts of run units that were interrupted from
+// outside; stats reports them and never reads them as samples.
+const interruptedDir = "interrupted"
+
+// runUnit runs one run unit into <out>/sample-NNNN. An attempt interrupted
+// from outside the product — another app took the front from the shown
+// popover, or the screen was locked — measured nothing about the product: it
+// is kept under <out>/interrupted and the same unit runs again (2026-10-25
+// user decision). Environment, oracle and run errors make the unit
+// tool-invalid; only I/O on the batch is returned.
 func runUnit(cfg runConfig, plan conditionPlan, index int, s schedule, expected func() (oracle, error)) error {
 	dir := filepath.Join(cfg.Out, fmt.Sprintf("sample-%04d", index))
+	for attempt := 1; ; attempt++ {
+		if err := runUnitOnce(cfg, plan, index, s, expected, dir); err != nil {
+			return err
+		}
+		reason := unitInterruption(dir)
+		if reason == "" {
+			return nil
+		}
+		if attempt == maxUnitAttempts {
+			return markInvalid(dir, fmt.Sprintf("interrupted %d times, last: %s", attempt, reason))
+		}
+		kept := filepath.Join(cfg.Out, interruptedDir)
+		if err := os.MkdirAll(kept, 0o700); err != nil {
+			return err
+		}
+		if err := writeJSON(filepath.Join(dir, "interrupted.json"), map[string]string{"reason": reason}); err != nil {
+			return err
+		}
+		if err := os.Rename(dir, filepath.Join(kept, fmt.Sprintf("sample-%04d-attempt-%d", index, attempt))); err != nil {
+			return err
+		}
+		waitUnlocked()
+		if plan.writes {
+			cfg.Batch.Dirty = true
+		}
+	}
+}
+
+// unitInterruption names an outside interruption of the attempt in dir, or "".
+func unitInterruption(dir string) string {
+	if raw, err := os.ReadFile(filepath.Join(dir, "invalid.json")); err == nil {
+		var invalid struct {
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(raw, &invalid) == nil && invalid.Reason == screenLockedReason {
+			return screenLockedReason
+		}
+		return ""
+	}
+	paths, _ := filepath.Glob(filepath.Join(dir, "app-*.jsonl"))
+	if len(paths) == 0 {
+		// CLI conditions have no window a locked screen or another app can take.
+		return ""
+	}
+	if screenLocked() {
+		return screenLockedReason
+	}
+	for _, path := range paths {
+		file, err := readTraceFile(path)
+		if err != nil {
+			return ""
+		}
+		for _, record := range file.Records {
+			if record.Stage == "driver.interrupted" {
+				return "another app took the front from the shown popover"
+			}
+		}
+	}
+	return ""
+}
+
+const screenLockedReason = "screen locked"
+
+// waitUnlocked waits until the console session is unlocked.
+func waitUnlocked() {
+	for screenLocked() {
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func runUnitOnce(cfg runConfig, plan conditionPlan, index int, s schedule, expected func() (oracle, error), dir string) error {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return err
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
 	}
+	waitUnlocked()
 	if reason := sampleEnvironment(cfg, dir); reason != "" {
 		return markInvalid(dir, reason)
 	}
@@ -214,11 +299,11 @@ func runUnit(cfg runConfig, plan conditionPlan, index int, s schedule, expected 
 		}
 	}
 	if err := plan.run(cfg, dir, index, s); err != nil {
+		// An interrupted attempt is rerun, not recorded invalid.
+		if unitInterruption(dir) != "" {
+			return nil
+		}
 		return markInvalid(dir, err.Error())
-	}
-	// A screen locked while the unit ran is the same environment failure.
-	if screenLocked() {
-		return markInvalid(dir, "screen locked during the run unit")
 	}
 	return nil
 }
@@ -290,8 +375,6 @@ type batchEnvironment struct {
 	CPU           string           `json:"cpu"`
 	MemBytes      string           `json:"mem_bytes"`
 	OS            string           `json:"os"`
-	ACPower       bool             `json:"ac_power"`
-	LowPower      bool             `json:"low_power_mode"`
 	Timezone      string           `json:"timezone"`
 	AnchorDate    string           `json:"anchor_date"`
 	Corpus        string           `json:"corpus_identity"`
@@ -325,11 +408,6 @@ func batchPreflight(cfg runConfig) (batchEnvironment, error) {
 		Corpus: b.WorkingCopy.Corpus, WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days,
 		FallbackFiles: b.WorkingCopy.FallbackFiles, Unparsed: b.WorkingCopy.Unparsed, Template: b.Template,
 		Generations: b.Generations, StartedAt: perftrace.Now(),
-		ACPower:  strings.Contains(output("/usr/bin/pmset", "-g", "batt"), "AC Power"),
-		LowPower: strings.Contains(output("/usr/bin/pmset", "-g"), "lowpowermode         1"),
-	}
-	if !env.ACPower || env.LowPower {
-		return env, errors.New("batch requires AC power and low power mode off")
 	}
 	if others := otherAgentDeckProcesses(cfg.App); len(others) > 0 {
 		return env, fmt.Errorf("another AgentDeck instance is running (pid %s); quit it first", strings.Join(others, ","))
@@ -355,35 +433,19 @@ func otherAgentDeckProcesses(app string) []string {
 }
 
 // sampleEnvironment records the machine state for one run unit. Load is
-// recorded, never a reason to invalidate: ABBA interleaving cancels it. Only
-// battery power, actual CPU throttling, a locked screen or another AgentDeck
-// instance invalidate the run unit.
+// recorded, never a reason to invalidate: ABBA interleaving cancels it. Only a
+// locked screen or another AgentDeck instance invalidate the run unit; the
+// power source and CPU speed limit are not checked (2026-10-25 user decision).
 func sampleEnvironment(cfg runConfig, dir string) string {
-	// A throttled CPU recovers within minutes; wait for it before the unit
-	// starts instead of invalidating every unit while it cools down.
-	therm := output("/usr/bin/pmset", "-g", "therm")
-	waitedNS := int64(0)
-	for deadline := time.Now().Add(5 * time.Minute); !thermalNominal(therm) && time.Now().Before(deadline); {
-		time.Sleep(10 * time.Second)
-		waitedNS += int64(10 * time.Second)
-		therm = output("/usr/bin/pmset", "-g", "therm")
-	}
 	environment := map[string]any{
 		"load_1m":           loadAverage(),
-		"thermal_nominal":   thermalNominal(therm),
-		"ac_power":          strings.Contains(output("/usr/bin/pmset", "-g", "batt"), "AC Power"),
 		"started_uptime_ns": perftrace.Now(),
-		"thermal_wait_ns":   waitedNS,
 		"screen_locked":     screenLocked(),
 	}
 	_ = writeJSON(filepath.Join(dir, "environment.json"), environment)
 	switch {
-	case !environment["ac_power"].(bool):
-		return "not on AC power"
-	case !environment["thermal_nominal"].(bool):
-		return "CPU speed limited (thermal throttling)"
 	case environment["screen_locked"].(bool):
-		return "screen locked"
+		return screenLockedReason
 	case len(otherAgentDeckProcesses(cfg.App)) > 0:
 		return "another AgentDeck instance is running"
 	}
@@ -399,18 +461,6 @@ func screenLocked() bool {
 
 func screenLockedIn(registry string) bool {
 	return strings.Contains(registry, `"CGSSessionScreenIsLocked"=Yes`)
-}
-
-// thermalNominal reads `pmset -g therm`: the CPU is not thermally limited
-// when CPU_Speed_Limit is absent or 100.
-func thermalNominal(report string) bool {
-	for _, line := range strings.Split(report, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 3 && fields[0] == "CPU_Speed_Limit" && fields[1] == "=" {
-			return fields[2] == "100"
-		}
-	}
-	return true
 }
 
 func loadAverage() float64 {
@@ -523,8 +573,15 @@ type cliRun struct {
 }
 
 func runCLI(binary, home, stateDir, traceDir, tz, label string, args ...string) (cliRun, error) {
+	return runCLIWith(binary, home, stateDir, traceDir, tz, label, nil, nil, args...)
+}
+
+// runCLIWith is runCLI with extra environment and the command's stderr, which
+// P09's B0 arm needs for its original opt-in scan profile.
+func runCLIWith(binary, home, stateDir, traceDir, tz, label string, env []string, stderr io.Writer, args ...string) (cliRun, error) {
 	command := exec.Command(binary, append([]string{"--state-dir", stateDir}, args...)...)
-	command.Env = []string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}
+	command.Env = append([]string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}, env...)
+	command.Stderr = stderr
 	if traceDir != "" {
 		command.Env = append(command.Env, perftrace.EnvOut+"="+traceDir)
 	}
@@ -823,10 +880,14 @@ func conditionPlans() map[string]conditionPlan {
 						return err
 					}
 					if scenario == "append" {
-						if err := runAppendCLI(cfg, "", 1, true); err != nil {
+						appended, err := runAppendResult(cfg, "", 1, true)
+						if err != nil {
 							return err
 						}
 						cfg.Batch.Dirty = true
+						if err := writeJSON(filepath.Join(traceDir, appendFile), appended); err != nil {
+							return err
+						}
 					}
 					run, err := runCLI(cfg.Agentdeck, home(cfg), state(cfg), traceDir, cfg.TZ, scenario, "scan")
 					if err = recordCLI(dir, run, err); err != nil {
@@ -837,7 +898,11 @@ func conditionPlans() map[string]conditionPlan {
 			}},
 		// One B0/S0 pair per unit, B0 first in odd pairs and S0 first in even
 		// ones, so consecutive pairs are ABBA groups. Every arm is its own CLI
-		// run unit from an empty state root on the same sources.
+		// run unit from an empty state root on the same sources. The scan runs
+		// in a detached worker, so the front process's rusage is not the
+		// rebuild's cost: S0 traces into <dir>/S0 (the worker's own lifetime,
+		// stage spans and ingest counters), and B0, which has no new markers,
+		// writes its original opt-in scan profile to <dir>/B0/profile.jsonl.
 		"P09": {pilot: schedule{Units: 3}, formal: schedule{Units: 20},
 			run: func(cfg runConfig, dir string, index int, _ schedule) error {
 				if cfg.B0 == "" {
@@ -847,11 +912,24 @@ func conditionPlans() map[string]conditionPlan {
 					if err := cfg.Batch.startRunUnit(stateEmpty); err != nil {
 						return err
 					}
-					binary := cfg.Agentdeck
-					if arm == "B0" {
-						binary = cfg.B0
+					armDir := filepath.Join(dir, arm)
+					if err := os.Mkdir(armDir, 0o700); err != nil {
+						return err
 					}
-					run, err := runCLI(binary, home(cfg), state(cfg), "", cfg.TZ, arm, "scan")
+					if err := os.Chmod(armDir, 0o700); err != nil {
+						return err
+					}
+					var run cliRun
+					var err error
+					if arm == "B0" {
+						var profile bytes.Buffer
+						run, err = runCLIWith(cfg.B0, home(cfg), state(cfg), "", cfg.TZ, arm, []string{b0ProfileEnv + "=1"}, &profile, "scan")
+						if writeErr := os.WriteFile(filepath.Join(armDir, b0ProfileFile), profile.Bytes(), 0o600); err == nil {
+							err = writeErr
+						}
+					} else {
+						run, err = runCLI(cfg.Agentdeck, home(cfg), state(cfg), armDir, cfg.TZ, arm, "scan")
+					}
 					if err = recordCLI(dir, run, err); err != nil {
 						return err
 					}
@@ -868,6 +946,15 @@ func conditionPlans() map[string]conditionPlan {
 			run: runP10},
 	}
 }
+
+// B0 (14234ec) prints its stage profile, worker CPU and peak RSS and ingest
+// counters to stderr as one scan_performance JSON line when this is set.
+const (
+	b0ProfileEnv  = "AGENTDECK_SCAN_PROFILE"
+	b0ProfileFile = "profile.jsonl"
+	// appendFile is P08's append result, next to the append scan's traces.
+	appendFile = "append.json"
+)
 
 func p09Order(index int) []string {
 	if index%2 == 0 {
@@ -1063,6 +1150,12 @@ func replayAppendCLI(cfg runConfig, traceDir, plan string) error {
 // runAppendCLI runs this tool's append as its own process so its trace (role
 // driver, source.written) lands in the sample directory.
 func runAppendCLI(cfg runConfig, traceDir string, n int, all bool) error {
+	_, err := runAppendResult(cfg, traceDir, n, all)
+	return err
+}
+
+// runAppendResult runs one append and returns what it wrote.
+func runAppendResult(cfg runConfig, traceDir string, n int, all bool) (appendResult, error) {
 	args := []string{"append", "--home", cfg.Batch.Home, "--anchor", cfg.Batch.Anchor, "--tz", cfg.TZ,
 		"--seed", strconv.FormatUint(cfg.Seed, 10), "--n", strconv.Itoa(n)}
 	if all {
@@ -1073,10 +1166,17 @@ func runAppendCLI(cfg runConfig, traceDir string, n int, all bool) error {
 	if traceDir != "" {
 		command.Env = append(command.Env, perftrace.EnvOut+"="+traceDir)
 	}
-	if output, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("append %d: %v: %s", n, err, output)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		return appendResult{}, fmt.Errorf("append %d: %v: %s", n, err, stderr.Bytes())
 	}
-	return nil
+	var result appendResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		return appendResult{}, fmt.Errorf("append %d: result: %w", n, err)
+	}
+	return result, nil
 }
 
 // sampleDirs lists a batch's sample directories in order.

@@ -285,10 +285,13 @@ var conditionIntervals = map[string]struct {
 
 // batchReport is the stats output: sample accounting plus condition results.
 type batchReport struct {
-	Condition   string         `json:"condition"`
-	Samples     int            `json:"samples"`
-	ToolInvalid int            `json:"tool_invalid"`
-	Reasons     []string       `json:"tool_invalid_reasons,omitempty"`
+	Condition   string   `json:"condition"`
+	Samples     int      `json:"samples"`
+	ToolInvalid int      `json:"tool_invalid"`
+	Reasons     []string `json:"tool_invalid_reasons,omitempty"`
+	// Interrupted counts run-unit attempts interrupted from outside and rerun;
+	// they are kept under interrupted/ and are not samples.
+	Interrupted int            `json:"interrupted_reruns"`
 	Summary     *summary       `json:"summary,omitempty"`
 	Values      map[string]any `json:"values,omitempty"`
 }
@@ -448,6 +451,9 @@ func runStats(root, condition string, w io.Writer) error {
 		return err
 	}
 	report := batchReport{Condition: condition, Samples: len(dirs), Values: map[string]any{"schedule": s}}
+	if attempts, err := filepath.Glob(filepath.Join(root, interruptedDir, "sample-*")); err == nil {
+		report.Interrupted = len(attempts)
+	}
 	invalid := func(dir string, err error) {
 		report.ToolInvalid++
 		report.Reasons = append(report.Reasons, filepath.Base(dir)+": "+err.Error())
@@ -588,6 +594,19 @@ func runStats(root, condition string, w io.Writer) error {
 						}
 					}
 				}
+				if scenario == "append" {
+					bound, err := appendBound(filepath.Join(dir, scenario), counts["read_bytes"])
+					if err != nil {
+						invalid(dir, err)
+						continue
+					}
+					previous, seen := report.Values["append_bound"].(map[string]int64)
+					if seen && fmt.Sprint(previous) != fmt.Sprint(bound) {
+						invalid(dir, fmt.Errorf("append bound differs from the first run: %v vs %v", bound, previous))
+						continue
+					}
+					report.Values["append_bound"] = bound
+				}
 				key := scenario + "_counts"
 				previous, seen := report.Values[key].(map[string]int64)
 				if seen && fmt.Sprint(previous) != fmt.Sprint(counts) {
@@ -597,23 +616,35 @@ func runStats(root, condition string, w io.Writer) error {
 				report.Values[key] = counts
 			}
 		}
+		if bound, ok := report.Values["append_bound"].(map[string]int64); ok {
+			report.Values["append_within_bound"] = bound["read_bytes"] <= bound["bound_bytes"]
+		}
 	case condition == "P09":
 		arms := map[string][]interval{}
 		cpu := map[string][]interval{}
+		costs := map[string][]p09Arm{}
 		for i, dir := range dirs {
 			runs, err := p09Pair(dir, i+1)
+			pair := make([]p09Arm, len(runs))
+			for j := 0; err == nil && j < len(runs); j++ {
+				pair[j], err = p09ArmCost(dir, runs[j])
+			}
 			if err != nil {
 				invalid(dir, err)
 				continue
 			}
-			for _, run := range runs {
+			for j, run := range runs {
+				costs[run.Label] = append(costs[run.Label], pair[j])
 				arms[run.Label] = append(arms[run.Label], interval{Value: run.WallNS, Failed: run.ExitCode != 0})
 				cpu[run.Label] = append(cpu[run.Label], interval{Value: run.UserNS + run.SysNS})
 			}
 		}
 		b0, s0 := summarize(arms["B0"]), summarize(arms["S0"])
 		report.Values["B0_wall"], report.Values["S0_wall"] = b0, s0
-		report.Values["B0_cpu"], report.Values["S0_cpu"] = summarize(cpu["B0"]), summarize(cpu["S0"])
+		report.Values["B0_front_cpu"], report.Values["S0_front_cpu"] = summarize(cpu["B0"]), summarize(cpu["S0"])
+		for label, list := range costs {
+			report.Values[label+"_rebuild"] = p09ArmSummary(list)
+		}
 		if b0.MedianMS > 0 {
 			report.Values["s0_over_b0_median"] = s0.MedianMS / b0.MedianMS
 		}
@@ -674,6 +705,130 @@ func cliRunCounts(dir string, want map[string]int) error {
 
 // p09Pair reads one P09 unit: exactly one B0 and one S0 run in the order
 // p09Order gives its index, so consecutive units are ABBA groups.
+// appendBound reads P08's append result and compares the scan's read bytes
+// with delta + declared anchors (requirements, P08).
+func appendBound(dir string, readBytes int64) (map[string]int64, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, appendFile))
+	if err != nil {
+		return nil, fmt.Errorf("append result: %w", err)
+	}
+	var appended appendResult
+	if err := json.Unmarshal(raw, &appended); err != nil {
+		return nil, fmt.Errorf("append result: %w", err)
+	}
+	if appended.Files == 0 || appended.DeltaBytes <= 0 {
+		return nil, errors.New("append result: nothing appended")
+	}
+	return map[string]int64{"files": int64(appended.Files), "delta_bytes": appended.DeltaBytes,
+		"anchor_bytes": appended.AnchorBytes, "bound_bytes": appended.DeltaBytes + appended.AnchorBytes,
+		"read_bytes": readBytes, "excess_bytes": readBytes - appended.DeltaBytes - appended.AnchorBytes}, nil
+}
+
+// p09Arm is one P09 arm's full-rebuild cost from its own measurement: S0's
+// traces (worker lifetime, stage spans, ingest counters) or B0's original
+// scan profile, plus the front process from cli-runs.
+type p09Arm struct {
+	WorkerCPUNS, FrontCPUNS, RSSBoundBytes, ReadBytes int64
+	Stages                                            map[string]int64 // ns
+}
+
+func p09ArmCost(dir string, run cliRun) (p09Arm, error) {
+	arm := p09Arm{FrontCPUNS: run.UserNS + run.SysNS, Stages: map[string]int64{}}
+	if run.Label == "B0" {
+		raw, err := os.ReadFile(filepath.Join(dir, "B0", b0ProfileFile))
+		if err != nil {
+			return p09Arm{}, fmt.Errorf("B0 profile: %w", err)
+		}
+		var profile struct {
+			Type   string `json:"type"`
+			Stages struct {
+				DiscoveryMS     int64              `json:"discovery_ms"`
+				UsageMS         int64              `json:"usage_ms"`
+				SessionMS       int64              `json:"session_ms"`
+				DerivedCacheMS  int64              `json:"derived_cache_ms"`
+				TotalMS         int64              `json:"total_ms"`
+				WorkerCPUTimeMS int64              `json:"worker_cpu_time_ms"`
+				WorkerPeakRSS   int64              `json:"worker_peak_rss_bytes"`
+				Ingestion       map[string]float64 `json:"ingestion"`
+			} `json:"stages"`
+		}
+		found := false
+		for _, line := range strings.Split(string(raw), "\n") {
+			if json.Unmarshal([]byte(line), &profile) == nil && profile.Type == "scan_performance" {
+				found = true
+			}
+		}
+		read, counted := profile.Stages.Ingestion["read_bytes"]
+		if !found || profile.Stages.WorkerPeakRSS <= 0 || !counted {
+			return p09Arm{}, errors.New("B0 profile: no complete scan_performance record")
+		}
+		ms := int64(1e6)
+		arm.WorkerCPUNS = profile.Stages.WorkerCPUTimeMS * ms
+		// The front process waits for the worker's result: their lifetimes
+		// overlap, so the sum of the two peaks bounds the aggregate (P07 method).
+		arm.RSSBoundBytes = profile.Stages.WorkerPeakRSS + run.MaxRSS
+		arm.ReadBytes = int64(read)
+		arm.Stages["discovery"], arm.Stages["usage"], arm.Stages["session"], arm.Stages["derive"], arm.Stages["total"] =
+			profile.Stages.DiscoveryMS*ms, profile.Stages.UsageMS*ms, profile.Stages.SessionMS*ms, profile.Stages.DerivedCacheMS*ms, profile.Stages.TotalMS*ms
+		return arm, nil
+	}
+	files, err := readSample(filepath.Join(dir, "S0"))
+	if err != nil {
+		return p09Arm{}, fmt.Errorf("S0 traces: %w", err)
+	}
+	collectors, scanEnds := 0, 0
+	for _, file := range files {
+		for _, record := range file.Records {
+			switch {
+			case record.Stage == "resource.lifetime" && file.Role == "collector":
+				collectors++
+				arm.WorkerCPUNS += record.N["user_ns"] + record.N["sys_ns"]
+			case record.Stage == "scan.end" && file.Role == "collector":
+				// A missing counter is unknown, not a zero read: only a
+				// recorded read_bytes (zero included) counts.
+				read, counted := record.N["read_bytes"]
+				if !counted {
+					return p09Arm{}, errors.New("S0 traces: scan.end without read_bytes")
+				}
+				scanEnds++
+				arm.ReadBytes += read
+			case strings.HasPrefix(record.Stage, "scan.") && record.Dur != nil:
+				arm.Stages[strings.TrimPrefix(record.Stage, "scan.")] += *record.Dur
+			}
+		}
+	}
+	if collectors == 0 || scanEnds == 0 || arm.Stages["usage"] == 0 || arm.Stages["session"] == 0 || arm.Stages["derive"] == 0 {
+		return p09Arm{}, errors.New("S0 traces: no complete collector rebuild")
+	}
+	arm.RSSBoundBytes = peakRSSUpperBound(files)
+	return arm, nil
+}
+
+// p09ArmSummary reports an arm's worker and total CPU, RSS upper bound, read
+// bytes and stage durations as distributions over its runs.
+func p09ArmSummary(list []p09Arm) map[string]any {
+	series := map[string][]interval{}
+	var reads []int64
+	for _, arm := range list {
+		series["worker_cpu"] = append(series["worker_cpu"], interval{Value: arm.WorkerCPUNS})
+		series["total_cpu"] = append(series["total_cpu"], interval{Value: arm.WorkerCPUNS + arm.FrontCPUNS})
+		for stage, ns := range arm.Stages {
+			series["stage_"+stage] = append(series["stage_"+stage], interval{Value: ns})
+		}
+		reads = append(reads, arm.ReadBytes)
+	}
+	out := map[string]any{"runs": len(list), "read_bytes": reads}
+	for key, values := range series {
+		out[key] = summarize(values)
+	}
+	var rss []int64
+	for _, arm := range list {
+		rss = append(rss, arm.RSSBoundBytes)
+	}
+	out["rss_upper_bound_bytes"] = rss
+	return out
+}
+
 func p09Pair(dir string, index int) ([]cliRun, error) {
 	runs, err := readCLIRuns(dir)
 	if err != nil {

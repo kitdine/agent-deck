@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 
 type traceRecord struct {
 	Stage string           `json:"stage"`
+	T     int64            `json:"t"`
 	Dur   int64            `json:"dur"`
 	N     map[string]int64 `json:"n"`
 }
@@ -135,13 +138,21 @@ func TestIngestionCountersMeasureActualRereads(t *testing.T) {
 	if updated.Usage.Changes["imported"] != 1 || counts["usage_imported"] != 1 {
 		t.Fatalf("append did not import exactly one usage event: %#v %v", updated.Usage.Changes, counts)
 	}
-	for _, stage := range []perftrace.Stage{perftrace.UsageSource, perftrace.UsagePublication, perftrace.UsagePublicationWait, perftrace.UsageSessionRebuild, perftrace.UsageCommit, perftrace.JobStart, perftrace.IngestRead} {
+	for _, stage := range []perftrace.Stage{perftrace.UsageSource, perftrace.UsagePublication, perftrace.UsagePublicationWait, perftrace.UsageSessionRebuild, perftrace.UsageCommit, perftrace.JobStart, perftrace.IngestRead,
+		perftrace.ScanUsage, perftrace.ScanSession, perftrace.ScanDerive, perftrace.PublicationCommit} {
 		if got := len(stageRecords(records, string(stage))); got != 1 {
 			t.Fatalf("%s markers = %d, want 1 for a single-source append", stage, got)
 		}
 	}
 	if got := len(stageRecords(records, string(perftrace.UsageOrphanScan))); got != 2 {
 		t.Fatalf("planning and import orphan checks were not both measured: %d", got)
+	}
+	served := stageRecords(records, string(perftrace.PublicationCommit))[0]
+	if served.N["coverage_complete"] != 1 || served.N["committed"] != served.N["sources"] || served.N["sources"] < 1 {
+		t.Fatalf("publication.commit coverage counts = %v", served.N)
+	}
+	if derive := stageRecords(records, string(perftrace.ScanDerive))[0]; served.T < derive.T || served.T > derive.T+derive.Dur {
+		t.Fatal("derive span does not enclose the serving publication")
 	}
 	publication := stageRecords(records, string(perftrace.UsagePublication))[0]
 	commit := stageRecords(records, string(perftrace.UsageCommit))[0]
@@ -150,6 +161,43 @@ func TestIngestionCountersMeasureActualRereads(t *testing.T) {
 	}
 	if len(txStages(records)) == 0 {
 		t.Fatal("no write transaction was recorded")
+	}
+}
+
+// A caller may stop tracing as soon as the round's result is published, so
+// scan.end must already be recorded when it is.
+func TestScanEndIsRecordedBeforeTheResultIsPublished(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "perf")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(perftrace.EnvOut, dir)
+	if !perftrace.Start(perftrace.RoleCollector) {
+		t.Fatal("tracing did not start")
+	}
+	r := newRound(t.TempDir())
+	r.onTerminal = func(Result) error { return perftrace.Close() }
+	r.executeWith(context.Background(), t.TempDir(), false, func(context.Context, string, string, string, bool) Result {
+		return Result{Usage: UsageResult{State: "completed"}, Session: SessionResult{State: "completed"}}
+	})
+	t.Setenv(perftrace.EnvOut, "")
+	raw, err := os.ReadFile(filepath.Join(dir, "collector-000001.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stages []string
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n")[1:] {
+		var record traceRecord
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatal(err)
+		}
+		stages = append(stages, record.Stage)
+	}
+	if !slices.Contains(stages, string(perftrace.ScanEnd)) {
+		t.Fatalf("scan.end was not recorded before publication: %v", stages)
 	}
 }
 
@@ -193,6 +241,18 @@ func TestServingRoundRecordsEveryBatch(t *testing.T) {
 	}
 	if got := len(stageRecords(records, string(perftrace.UsageOrphanCleanup))); got != 1 {
 		t.Fatalf("usage.orphan_cleanup markers = %d, want 1 final reconciliation", got)
+	}
+	// Two batches, each with its own usage, session and publication, then the
+	// final reconciliation, session pass and full publication.
+	for stage, want := range map[perftrace.Stage]int{perftrace.ScanUsage: 3, perftrace.ScanSession: 3, perftrace.ScanDerive: 3,
+		perftrace.PublicationCommit: 3, perftrace.IngestRead: 1, perftrace.ProjectionDone: 1} {
+		if got := len(stageRecords(records, string(stage))); got != want {
+			t.Fatalf("%s markers = %d, want %d", stage, got, want)
+		}
+	}
+	commits := stageRecords(records, string(perftrace.PublicationCommit))
+	if first, last := commits[0], commits[len(commits)-1]; first.N["coverage_complete"] != 0 || last.N["coverage_complete"] != 1 {
+		t.Fatalf("serving publications did not progress from partial to complete: %v %v", first.N, last.N)
 	}
 	if counts := scanEnd(t, records); counts["read_bytes"] <= 0 || counts["decoded_records"] <= 0 {
 		t.Fatalf("serving batches did not share ingest counters: %v", counts)

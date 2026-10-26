@@ -216,12 +216,12 @@ helper 继承同一目录；进程以角色和启动序号区分，不以路径�
 验收机为当前开发机：Intel Core i7-9750H（6 核 12 线程）、32 GiB、macOS 26.7.x、
 Go 1.27.x、Xcode 26.4。换机、换主版本或硬件变化即重测基线，不跨机器比较。
 
-每个批次要求并记录：交流电源、低电量模式关闭、`caffeinate -dimsu` 保持唤醒、屏幕已解锁；
+每个批次要求并记录：`caffeinate -dimsu` 保持唤醒、屏幕已解锁；
 无其他 AgentDeck 实例（测量 App 使用独立 bundle ID 与隔离 HOME/state root）；冻结语料与工作副本
 目录含 `.metadata_never_index`。验收机是日常使用的电脑，不要求空闲：每个运行单元开始前记录 1 分钟
-load average 与 `pmset -g therm` 的 `CPU_Speed_Limit`，随样本保存，但不因负载使样本无效。只有以下
-情形使运行单元的样本为工具无效：未接交流电源、`CPU_Speed_Limit` 低于 100（实际降频）、另有
-AgentDeck 实例运行。负载的影响由交替执行抵消：A/B 双方使用同一工具版本、同一工作副本与数据库模板，
+load average，随样本保存，但不因负载使样本无效。只有以下情形使运行单元的样本为工具无效：屏幕锁定、
+另有 AgentDeck 实例运行。供电方式（交流/电池、低电量模式）与 CPU 降频（`CPU_Speed_Limit`）不检查、
+不记录（2026-10-25 用户决定：验收机自行切换充放电，降频不作排除条件）。负载的影响由交替执行抵消：A/B 双方使用同一工具版本、同一工作副本与数据库模板，
 按运行单元交错执行（ABBA）。
 
 ### 样本与统计
@@ -233,6 +233,7 @@ AgentDeck 实例运行。负载的影响由交替执行抵消：A/B 双方使用
 | --- | --- | --- |
 | 有效 | 终点到达、正确性核对通过 | 计入分布 |
 | 产品失败 | 终点超时、正确性不符、数据帧不可交互、漏通知 | 以 +∞ 计入分布，必然影响尾分位；不剔除 |
+| 外部打断 | 另一程序夺走已显示 popover 的前台（驱动记 `driver.interrupted`）、运行单元期间屏幕锁定 | 不计入分布，不使批次无效：该次尝试移到批次的 `interrupted/` 留档，`stats` 报告 `interrupted_reruns`，等待解锁后同一运行单元重跑；同一单元第 5 次仍被打断则记工具无效（2026-10-25 用户决定） |
 | 工具无效 | 刺激未路由、环境条件不满足、oracle 失败、跨午夜、打点缺失 | 整批作废；修复工具后整批重测，原批保留在 CEv1 作为无效记录 |
 
 终点超时：P01/P03 5 s，P02/P04 30 s，P05/P10 30 s，P11 60 s。
@@ -291,8 +292,8 @@ CEv1 证据记录：工具源码内容摘要、App/helper/framework 二进制 SH
 | P05 | OTel 已启用、App 运行、popover 打开；`cmd/agentdeck-perf otel` 以种子向 loopback receiver 发送可计量事件 | `otel.ack` → 含该事件的 `frame.vsync`；另报 producer 发送 → `otel.ack` | 100 个事件 | 可测（mock producer）。真实 Codex producer 的端到端 freshness 另报，不作门 |
 | P06 | App 运行、自动更新开、无文件变化/无 OTel、工作副本已提交；窗口定义见下 | CPU、稳定 RSS、维护激活数，口径见下 | 每臂 3 × 30 min | 可测。“新增”= 候选 − 同条件基线臂（同一 run 序号配对）；每次运行都须达标。另报 App 总量与 OS 唤醒差 |
 | P07 | 工作副本空库全量重建，期间同时执行 P01 重建层；以及 100 次 P10 增量 | RSS：所有时间上重叠的 helper/collector 进程自报的 `ru_maxrss` 求和（保守上界）；事务：全部 `tx.*` 耗时 | 3 次全量重建 + 100 次增量；事务取全部 | 可测。每个进程的峰值 RSS ≥ 它在任一时刻的 RSS，故求和 ≥ 真实聚合 RSS 峰值；求和 ≤256 MiB 即证明真实聚合 ≤256 MiB，不需要进程树追踪。门按需求的 RSS 口径；`phys_footprint` 只由 App 另报，不进入门。事务 p95 ≤50 ms、max ≤250 ms 按全部事务计 |
-| P08 | 工作副本已提交库：no-op 扫描；一次 append（每个今天相关文件追加一条） | ingest 计数器：decode 记录数、读取字节、导入行数 | 每场景 3 次（结果须完全相同） | 可测。确定性计数，门为精确等式/不等式，是绝对门，不与 B0 比较，B0 也没有这些计数器 |
-| P09 | 工作副本空库，`agentdeck scan`（CLI，同步完成）；基线 B0 = `14234ec` 构建 | 进程 wall（启动到退出）、user+sys CPU、读取字节、各阶段打点、RSS 上界 | 正式 20 对，ABBA 交错 | 可测。门：候选中位 wall ≤ 0.70 × B0 中位，且同批满足 P07。B0 无新打点，用外部 wall/rusage 与其原有 profile 摘要 |
+| P08 | 工作副本已提交库：no-op 扫描；一次 append（每个今天相关文件追加一条） | ingest 计数器：decode 记录数、读取字节、导入行数 | 每场景 3 次（结果须完全相同） | 可测。确定性计数，门为精确等式/不等式，是绝对门，不与 B0 比较，B0 也没有这些计数器。append 上界 = 本次实际追加字节 + 声明 anchors，anchors 按每个被追加文件 2 个 consumer（usage、session）× min(4096, 追加前大小) 计（产品 `ingest.Coordinator.Plan` 的校验后缀），由 append 命令按写入内容报告，不从实读量反推；统计输出实读字节、上界、差值与是否在界内 |
+| P09 | 工作副本空库，`agentdeck scan`（CLI，同步完成）；基线 B0 = `14234ec` 构建 | 进程 wall（启动到退出）、user+sys CPU、读取字节、各阶段打点、RSS 上界 | 正式 20 对，ABBA 交错 | 可测。门：候选中位 wall ≤ 0.70 × B0 中位，且同批满足 P07。B0 无新打点，用外部 wall/rusage 与其原有 profile 摘要。扫描在脱离的 worker 中运行，前台 rusage 不含重建成本，只另报：S0 臂的 CPU、RSS 上界、读取字节与各阶段取本臂 worker 自身的打点（collector 生命周期、`scan.*`、`scan.end`），B0 臂取其 `AGENTDECK_SCAN_PROFILE=1` profile 的 worker CPU、worker 峰值 RSS（加前台峰值作上界）、ingestion `read_bytes` 与各阶段；任一臂缺本臂数据即工具无效，不用其他条件的样本替代；S0 臂缺 collector 的 `scan.end` 或该事件缺 `read_bytes` 计数即属缺本臂数据，不以零填补，记录的零值仍有效 |
 | P10 | App 运行、自动更新开、popover 打开、工作副本已提交；`append` 写入一条完整记录并 fsync | `source.written` → hero 摘要等于新期望值的 `frame.vsync`；另报 `source.fsevent`、`job.*`、`publication.*` 各段 | 100 次（4 条写入序列 × 25），间隔 ≥5 s | 可测。30 s 内未更新记为产品失败（漏通知不改记成功） |
 | P11 | 空 state root、工作副本；启动后驱动在 `app.ready` 立即打开 popover | `app.ready` → 显示今天用量（partial 标记明示）的 `frame.vsync`；另报来源选择、读取、统计、绘制各段与 `process.start` 起点 | 首批 100；完整历史完成时间 5 次（`publication` 的 coverage 达 complete） | 可测。首批样本在首个数据帧后结束进程；完整历史另跑 |
 

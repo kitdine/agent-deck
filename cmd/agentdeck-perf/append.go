@@ -21,14 +21,27 @@ import (
 
 const streamAppend = 0x617070656e64 // "append"
 
-// appendResult tells the oracle what the append added.
+// appendResult tells the oracle what the append added, and P08 the bytes it
+// added and the anchor reads the product declares for them.
 type appendResult struct {
 	Files       int   `json:"files"`
 	Records     int   `json:"records"`
 	TokensDelta int64 `json:"tokens_delta"`
 	CodexFiles  int   `json:"codex_files"`
 	ClaudeFiles int   `json:"claude_files"`
+	DeltaBytes  int64 `json:"delta_bytes"`
+	AnchorBytes int64 `json:"anchor_bytes"`
 }
+
+// declaredAnchorBytes is the validation anchor the product reads before an
+// appended range: each consumer (usage and session) plans a suffix of at most
+// this many bytes ending at its cursor (ingest.Coordinator.Plan). P08's
+// append bound is delta_bytes + anchor_bytes, where anchor_bytes sums
+// anchorConsumers × min(declaredAnchorBytes, size before the append) per file.
+const (
+	declaredAnchorBytes = 4096
+	anchorConsumers     = 2
+)
 
 func runAppend(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("append", flag.ContinueOnError)
@@ -173,9 +186,16 @@ func writeAppend(home string, plan plannedAppend, traced bool) (appendResult, er
 		if !filepath.IsLocal(record.Path) {
 			return appendResult{}, fmt.Errorf("planned record path %q leaves HOME", record.Path)
 		}
-		if err := appendDurably(filepath.Join(home, record.Path), record.Line); err != nil {
+		path := filepath.Join(home, record.Path)
+		info, err := os.Stat(path)
+		if err != nil {
 			return appendResult{}, err
 		}
+		if err := appendDurably(path, record.Line); err != nil {
+			return appendResult{}, err
+		}
+		result.DeltaBytes += int64(len(record.Line)) + 1
+		result.AnchorBytes += anchorConsumers * min(declaredAnchorBytes, info.Size())
 		result.Files++
 		result.Records++
 		result.TokensDelta += record.Tokens
