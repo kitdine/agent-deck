@@ -19,7 +19,7 @@ updated: 2026-10-26
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| requirements.md | [x] | [ ] |
+| requirements.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
 | ux/cli.md | [x] | [x] |
 | architecture.md | [x] | [x] |

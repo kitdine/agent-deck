@@ -328,3 +328,113 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
 - Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` 通过；`python3 scripts/check-docs.py` exit 1，12 条均来自 `reviews/incremental-projections.md` 的失效脚本链接，不属于本文件（承接者：Beads `ad-scan-performance-measurement-harness`）。
 - 依赖：performance-evaluation.md 本轮仍 FAIL（SP-PE-R9-F1、F2），其修复不涉及需求边界；若修复改动本文件，本结论失效。
 - 结论：唯一发现关闭，判 PASS。
+
+## Round 9 — 2026-10-26
+
+## 📋 当前测量有效性与验收边界评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[requirements.md:185–188] SP-REQ-R9-F1（中）：屏幕锁定同时被定义为外部打断和无效样本，批次处理冲突。
+
+- 行为风险：同一运行单元开始后锁屏，185–187 行要求留档、报告打断计数并重跑该单元，不算无效；188 行却说屏幕锁定使样本无效，再按185行首句使整批无效。实现者无法从本需求确定应重跑一个单元还是废弃整批。
+- 证据：185–187 行明确把屏幕锁定列入被产品以外打断的运行单元；188 行没有“运行前准入”等范围限定。performance-evaluation.md 的“样本与统计”明确把运行单元期间锁屏作为外部打断，同一单元第5次仍被打断才记工具无效，与需求后一句的无条件判无效不一致。
+- 💡 有界修复：按已有用户决定区分运行前环境准入和运行期间外部打断，删除或限定188行的锁屏无效陈述，并明确第5次仍被打断时才进入工具无效／整批处理。保持已有负载、供电与降频决定，不新增排除条件。
+- 处置：open，待修复；本轮不改需求正文。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 相对门的 k 固定、P05 无基线时的独立绝对门、P09 冻结语料范围均显式记录，不把历史性能观察当新验收样本。
+- 每次冻结须批准、语料隐私与首次／已有数据路径的边界保持明确；历史已关闭发现不重新打开。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立需求契约阅读、与已评性能契约和当前任务矩阵对照、对单次运行中锁屏场景作决策推演；无委派、无产品／测试／配置修改。
+- Scope：当前需求文档，重点为 Round 8 后的相对门与环境有效性决定。SP-REQ-R7-F1 及此前已关闭发现维持原处置；本轮发现一个新的内部矛盾后停止扩大验证。
+- Reviewed state：HEAD `75ebb5a2703b8edd9ca0ccaf4814ab1fa67046c7`；document blob `315b3305c39c42d894be91b69310b434bc683630`；SHA256(`head=<HEAD>;document=<blob>`) = `9ab161ad6f675e289bb92c373862e15ec15c7b98d9762e59ace64330dab9ad92`。
+- Dependencies：performance-evaluation blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`；tasks blob `070b1709af301ac4c73835d8396a7b748bcbb0df`。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：完整 `python3 scripts/check-docs.py` 在追加记录后退出0，涵盖 L0、局部链接、文档集及评审结构；该结构通过不消除语义矛盾。未运行产品测试、性能批次或读取真实语料。
+- CEv1：WorkUnit `scan-performance:requirements.md`；ContentState `scan-perf-req-r9-20261026-state`；`scan-perf-req-r9-20261026-review` 记录语义失败，`scan-perf-req-r9-20261026-integrity` 记录结构通过。历史观察保留原绑定。
+- 结论：FAIL，需求 Review 保持未勾选，Beads 返回修复；不影响任务矩阵此前独立的 PASS 与授权提交，不授权产品开发。
+
+修复：scan-performance / reviews/requirements.md / SP-REQ-R9-F1
+
+## Repair candidate — 2026-10-26（Round 9 后）
+
+Repairer：Claude Code 主会话；范围为 SP-REQ-R9-F1。Round 9 的评分、结论与 FAILED 门保留；本节不是 Review Round，
+不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-REQ-R9-F1 -> repaired in candidate：
+  - [requirements.md](../requirements.md)“无效样本”条删除“只有屏幕锁定或另有 AgentDeck 实例运行才使样本无效”这一无条件陈述，
+    改为区分两种范围：**运行单元开始前的环境准入**——屏幕锁定时等待解锁后再开始，不产生样本、不算无效；另有 AgentDeck
+    实例运行时该运行单元为工具无效；**运行单元期间的屏幕锁定**只按外部打断处理（留档、计数、重跑同一单元）。
+  - 与已评的 [performance-evaluation.md](../performance-evaluation.md) 样本类别表“外部打断”行一致，写明同一单元
+    第 5 次仍被打断才记为工具无效，并按该条首句使批次无效。
+  - 与测量工具现行行为一致（只读核对）：`cmd/agentdeck-perf/run.go` 在运行单元开始前 `waitUnlocked()` 再
+    `sampleEnvironment()`，另有实例时记无效；运行后 `unitInterruption()` 把锁屏与 `driver.interrupted` 作为打断重跑，
+    第 `maxUnitAttempts`（5）次记无效。
+  - 负载、供电与降频的既有用户决定未改，未新增排除条件。
+
+观察（不在本 finding 范围，未修改）：[performance-evaluation.md](../performance-evaluation.md) 环境一段仍写“只有以下情形使运行单元的
+样本为工具无效：屏幕锁定、另有 AgentDeck 实例运行”，未限定为运行前准入；其样本类别表已按运行期间打断处理。
+是否同步交由该文档的评审/修复决定。
+
+修复目标：HEAD `75ebb5a2703b8edd9ca0ccaf4814ab1fa67046c7`；requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`python3 scripts/check-docs.py` exit 0（修正本记录一处缩进续行链接后）；`git diff --check` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / requirements.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 10 — 2026-10-26
+
+## 📋 锁屏准入与外部打断规则复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无本文件开放问题。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-REQ-R9-F1 closed：运行单元开始前锁屏只等待解锁，不产生样本；运行期间锁屏只作外部打断，留档、计数并重跑同一单元；第5次仍打断才工具无效并使批次无效。三种情况的处理不再冲突。
+- 另有 AgentDeck 实例的无效规则及负载、供电、降频的既有决定保持不变，未新增排除条件。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，Round 9 评审者；Method：核对 Claude Code 修复候选与锁屏前／中／连续5次打断场景，交叉检查性能评估的样本分类；无委派，无产品修改。
+- Scope：SP-REQ-R9-F1 及修复影响；本文件唯一开放发现关闭，无新增或回归发现。历史已关闭发现维持处置，不重新认证运行时工具实现。
+- 跨目标承接：SP-REQ-R10-X1（中，非本文件发现）-> open，承接者 Beads `ad-scan-performance-doc-perf`。performance-evaluation.md:222–223 仍无条件把锁屏列为工具无效，而其样本表235行把运行中锁屏作外部打断；风险是同一输入获得单元重跑／整批作废两个决定。有界处理为该文档定向评审后同步范围限定，不修改本需求、不重开 SP-REQ-R9-F1。本轮不改该文档正文或其既有评审裁决。
+- Reviewed state：HEAD `75ebb5a2703b8edd9ca0ccaf4814ab1fa67046c7`；document blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`；SHA256(`head=<HEAD>;document=<blob>`) = `6cc93d7f9a83a11a20e261497a0278d1921969a492a730646d0b2ee2bd3b21b5`。
+- Dependencies：performance-evaluation blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`，其上述残余矛盾已具名承接；任务矩阵仅同步本文件 Review 勾选，不改变已评任务范围。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：最终 `python3 scripts/check-docs.py` exit 0，涵盖空白、diff、文档集、局部链接与评审结构；未运行产品测试或性能批次。
+- CEv1：WorkUnit `scan-performance:requirements.md`；ContentState `scan-perf-req-r10-20261026-state`；新语义与结构观察均 pass，历史 Round 9 fail 保持原绑定；本文件门 VERIFIED，不代表其他文档的后续发现已解决。
+- 结论：需求复评 PASS，矩阵 Review 勾选，Beads 转 awaiting_commit。仍有其他文档跟进和实现任务，未到 topic 完成边界；未提交／推送。
+
+Task checkpoint：ad-scan-performance-doc-req；content_state `6cc93d7f9a83a11a20e261497a0278d1921969a492a730646d0b2ee2bd3b21b5`；gate VERIFIED。
+提交建议：授权提交需求规则修复、本评审记录及对应矩阵勾选，不混入产品改动。
+推送建议：实际提交范围、贡献归属、trailer 与 SSH 签名核验后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
+
+评审：scan-performance / performance-evaluation.md
