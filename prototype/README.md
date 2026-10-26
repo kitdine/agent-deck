@@ -290,3 +290,14 @@ axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检
 违规都返回 `FAIL`。测试仅覆盖 `.w-note > small`，不代表整个页面无障碍通过。
 使用 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|recovered`
 逐个验证可读数据态。原生 Increase Contrast 另行验收，浏览器结果不替代它。
+
+## 辅助会话 CLI 框架标本（auxiliary-session-classification）
+
+共享 CLI surface 新增 `auxiliary` 页签：`?surface=cli&auxiliary=work`。
+Scenario 控件包含三范围、空态、unknown、详情、覆盖/撤销、partial/stale、加载、
+错误与只读浏览器；Columns 控件为 40/48/80/120。CLI 文本为英文，数据均为合成。
+标本不执行命令，JSON 区为待架构供应的字段需求而非冻结 wire。
+全屏场景增加 Rows（8/10/24/40）与 Selected row（1/8/12）舞台轴，URL 为 auxRows/auxSelected；
+列数低于 48 或行数低于 10 自动显示尺寸拒绝；有效全屏固定行预算并保持选中行和退出帮助可见。
+usage 扫描标本保留 stderr progress、signals scan_incomplete 和 stats --no-scan 的区别。
+设计见 [ux/cli.md](../docs/topics/auxiliary-session-classification/ux/cli.md)。

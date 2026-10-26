@@ -15,7 +15,7 @@ updated: 2026-10-26
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| ux/cli.md | [ ] | [ ] |
+| ux/cli.md | [x] | [x] |
 | ux/menubar.md | [ ] | [ ] |
 | ux/settings.md | [ ] | [ ] |
 | ux/widget.md | [ ] | [ ] |
@@ -34,5 +34,7 @@ UX 按项目 prototype 权威提供标本，架构落实数据契约，再完成
 尚未分解；requirements → 各表面框架 → architecture → 各表面最终核对 → tasks。
 每个实际文档有单独 Beads 文档任务；不建立实现任务，不以规划源记录 closed 代替产品验收。
 当前 requirements 最新独立复评为 PASS，Review 已勾选；文档完整性证据门禁仍开放。
+CLI framework 最新独立复评为 PASS，文档完整性证据门禁仍开放，见 [reviews/ux-cli.md](reviews/ux-cli.md)；
+architecture 后仍需 final-surface reconciliation，不代表最终表面完成。
 评审与修复交接见 [reviews/requirements.md](reviews/requirements.md)。
 未合并主题状态只在本文件及 Beads 维护，不更新 main 的 docs/status.md。

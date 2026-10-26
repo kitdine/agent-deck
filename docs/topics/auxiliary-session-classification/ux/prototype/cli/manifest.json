@@ -1,0 +1,127 @@
+{
+  "stage": "framework-repair-r1",
+  "date": "2026-10-26",
+  "retention": "Repository-owned design artifacts; retain with topic review history.",
+  "entry": "?surface=cli&auxiliary=browser&auxCols=48&auxRows=10&auxSelected=8",
+  "scenarios": [
+    "work",
+    "auxiliary",
+    "all",
+    "empty",
+    "noIndex",
+    "unknown",
+    "detail",
+    "override",
+    "cleared",
+    "partial",
+    "stale",
+    "unavailable",
+    "invalid",
+    "ambiguous",
+    "writeFailed",
+    "saveUnknown",
+    "noChange",
+    "scopeFailed",
+    "notFound",
+    "nonTTY",
+    "browser",
+    "scopeMenu",
+    "loading",
+    "tooSmall",
+    "signals",
+    "signalsScanning",
+    "signalsScanIncomplete",
+    "statsScanning",
+    "statsStored"
+  ],
+  "columns": [
+    40,
+    48,
+    80,
+    120
+  ],
+  "rows": [
+    8,
+    10,
+    24,
+    40
+  ],
+  "selected_rows": [
+    1,
+    8,
+    12
+  ],
+  "checks": {
+    "fullscreen_geometry": {
+      "cases": 240,
+      "failures": 0,
+      "oracles": [
+        "physical columns and rows",
+        "exact frame line count",
+        "no overflow",
+        "small-terminal refusal",
+        "selected row visible",
+        "footer quit visible"
+      ]
+    },
+    "scan_states": {
+      "cases": 4,
+      "failures": 0,
+      "states": [
+        "signalsScanning",
+        "statsScanning",
+        "signalsScanIncomplete",
+        "statsStored"
+      ]
+    },
+    "limitation": "Browser specimens only; no product scan, PTY or persistence proof."
+  },
+  "historical_screenshots": [
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/work-80.png",
+      "sha256": "eedfe782d30fa6f3f43038bfda8fe4328220b674cb06198f94df3031a0ccb7f9"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/override-40.png",
+      "sha256": "e9c87d02a39e3fc5c46737ae0c8730a88b94984cf9f83ba74437b1b6f16e15ca"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/scope-failed-48.png",
+      "sha256": "a8e8ee4722bbcfa610e3c36e8e301c852fd5f17ae3ee7f245f6838a5fadcd495"
+    }
+  ],
+  "files": [
+    {
+      "path": "prototype/src/auxiliaryCli.js",
+      "sha256": "be02abdc92ed83c6fcce800056f7340b4bdf952b7ca519b7f138eaab14d880cb"
+    },
+    {
+      "path": "prototype/src/AuxiliaryCli.jsx",
+      "sha256": "9de0e3966d489d9695000cb68e106e4f4fedb55d045fe6122299d4e56fda6237"
+    },
+    {
+      "path": "prototype/src/Cli.jsx",
+      "sha256": "6ac7a0110b62abdb96c7d79b60fd3814914c0dc5df4ee3768f82c33e3f2538a0"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-browser-40x10.png",
+      "sha256": "12b6f6e43c317f397288163883b06a9bbf471ca635a338955b868e059f02208f"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-browser-48x10.png",
+      "sha256": "7c4e8230c9d3fd7e98b37c9cb1bf39a5d82664c22bcffd5aabf0b8ca03919e44"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-failed-80x24.png",
+      "sha256": "6936c71cfc193c4ebc3eea644939c38fe40b6b30d9852802f2416225d348c6bd"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-browser-120x40.png",
+      "sha256": "e1f7a23409e32c7776d4ff22a0c5929353dc7af00a4a8a5142f6ba8c728b30e3"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-signals-incomplete.png",
+      "sha256": "71601716a5a043b11871c593455e8050ff56ed95599e06e83702df8ed8f88674"
+    }
+  ]
+}
