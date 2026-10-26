@@ -636,3 +636,105 @@ Task checkpoint：ad-scan-performance-doc-perf；content_state `09d8a9bddb429ef8
 - 当前 HEAD `67ac8b7da27f581a58d4014a7b218321fcd1042f`；正文 blob 与本轮已评版本一致。新 digest `423e90b93bdd1562dd82e0e7cadf02ad7b1476e37ab70a919eef7ea47e050f07`，ContentState `scan-perf-doc-l0-20261026-perf-state`；新 L0 证据与显式目标绑定的语义 roll-up 分别为 `scan-perf-doc-l0-20261026-perf-integrity`、`scan-perf-doc-l0-20261026-perf-review`。
 - 原观察保留原身份；只评估本次 HEAD、忽略规则与记录格式变更对语义结论没有影响。旧 blocked 观察不改写，新状态不继承旧环境阻塞。
 - 本段取代上方 checkpoint 的阻塞前提：门禁 VERIFIED；文档本体已在此前授权提交中交付，本次忽略规则及记录同步尚未提交，因此协调转 awaiting_commit，暂不关闭任务。不执行提交或推送。
+
+## Round 13 — 2026-10-26
+
+## 📋 锁屏有效性规则定向评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[performance-evaluation.md:222–235] SP-PE-R13-F1（中）：环境段与样本类别表对锁屏的处理冲突。
+
+- 处置：new，承接 requirements.md Round 10 的 SP-REQ-R10-X1；该跨文档发现由本 finding 正式承接，后续以本记录闭环。
+- 行为风险：同一次运行期间锁屏，222–223行的无条件工具无效规则会使整批作废；235行却要求留档计数后重跑同一单元，第5次仍被打断才无效。运行前已经锁屏的情况也没有在环境段明确等待与不产生样本，和已评需求不一致。
+- 证据：222行“只有以下情形使运行单元的样本为工具无效：屏幕锁定”；235行外部打断表将“运行单元期间屏幕锁定”定义为“不使批次无效”；requirements.md:185–190 已区分运行前等待、运行中打断及第5次仍打断。
+- 💡 有界修复：同步环境段为运行前准入／运行中打断两种范围，明确运行前锁屏等待解锁、不产生样本；运行中沿用样本表，第5次仍被打断才工具无效。保留另有实例、负载、供电与降频规则，不改统计阈值或样本数。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 样本类别表已有留档、计数、有限重试与失败出口；无需重设计测量方案。
+- E2 结果分类与候选约束的前轮修复未变，SP-PE-R11-F1 维持关闭。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立定向契约评审，推演锁屏前／中场景并对照已评需求；无委派，无产品或性能正文修改。
+- Scope：SP-REQ-R10-X1 所指环境有效性矛盾；确认一个阻断问题后停止扩大验证。历史结论保留原状态，新 finding 不重开此前已关闭问题。
+- Reviewed state：HEAD `48712967713facb5df1ed2c3539ce0387fc7aa99`；document blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`；SHA256(`head=<HEAD>;document=<blob>`) = `abb4b060ee3822d11915b44c7672f94452e0b0bae10e3f60f6730e526ef40005`。
+- Dependency：requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：最终 `python3 scripts/check-docs.py` exit 0，结构／文档集／链接／空白检查通过，不消除语义矛盾；无产品测试或性能批次重跑。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-pe-r13-20261026-state`；语义 fail 与结构 pass 分开记录。此前通过观察保留原内容绑定。
+- 结论：FAIL；矩阵 performance-evaluation Review 复位，Beads 返回修复。需求修复提交及其 PASS 不因此撤回，本记录尚未提交。
+
+修复：scan-performance / reviews/performance-evaluation.md / SP-PE-R13-F1
+
+## Repair candidate — 2026-10-26（Round 13 后）
+
+Repairer：Claude Code 主会话；范围为 SP-PE-R13-F1（承接 requirements.md 的 SP-REQ-R10-X1）。Round 13 的评分、结论与 FAILED 门保留；
+本节不是 Review Round，不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-PE-R13-F1 -> repaired in candidate：
+  - 环境段删除“只有以下情形使运行单元的样本为工具无效：屏幕锁定、另有 AgentDeck 实例运行”的无条件陈述，改为两种范围：
+    运行单元开始前的环境准入——屏幕锁定时等待解锁后再开始，不产生样本，也不算无效；另有 AgentDeck 实例运行时该运行单元为
+    工具无效；运行单元期间的屏幕锁定按样本类别表“外部打断”处理，同一单元第 5 次仍被打断才记工具无效。
+  - 与需求“无效样本”条（requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`）及 `cmd/agentdeck-perf/run.go` 的
+    `waitUnlocked`、`sampleEnvironment`、`unitInterruption` 现行行为一致（只读核对）。
+  - 另有实例、负载、供电与降频规则保留；样本类别表、统计阈值与样本数未改。
+
+修复目标：HEAD `48712967713facb5df1ed2c3539ce0387fc7aa99`；performance-evaluation blob `fc6927338aa7878b549152c83b712ef25d3a4692`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / performance-evaluation.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 14 — 2026-10-26
+
+## 📋 锁屏有效性规则复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-PE-R13-F1 closed：环境段已区分运行前等待解锁、不产生样本，与运行中外部打断重试；第5次仍打断才工具无效。与本文件样本表和已评需求一致。
+- SP-REQ-R10-X1 closed：跨文档承接的同一矛盾随本 finding 闭环；另有实例、负载、供电、降频、样本数和统计阈值未改。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，Round 13 评审者；Method：独立核对 Claude Code 修复候选，对照运行前锁屏、运行中锁屏及第5次打断三个场景与需求规则；无委派，无产品修改。
+- Scope：SP-PE-R13-F1 及其修复影响；唯一开放发现关闭，无新发现或回归。SP-PE-R11-F1 等历史已关闭发现维持原处置；不重跑产品实验或重新认证实现。
+- Reviewed state：HEAD `48712967713facb5df1ed2c3539ce0387fc7aa99`；document blob `fc6927338aa7878b549152c83b712ef25d3a4692`；SHA256(`head=<HEAD>;document=<blob>`) = `025c4a39fa581586d8d028d0de54cb17473213380a907a3bb7b7e39a6ddbdc8f`。
+- Dependency：requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`；仅恢复 tasks.md 中性能评估 Review 勾选，不改变其他任务范围。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：最终 `python3 scripts/check-docs.py` exit 0，覆盖空白、diff、文档集、链接和评审结构；原结构证据不替代当前内容检查。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-pe-r14-20261026-state`；语义及 document-integrity 均 pass，精确门 VERIFIED；旧 Round 13 fail 保留原内容绑定。
+- 结论：复评 PASS，矩阵同步，Beads 转 awaiting_commit。设计文档本轮跟进已闭环，后续为 serving-open-path；topic 实现尚未完成，不查询 topic 完成门。未提交／推送。
+
+Task checkpoint：ad-scan-performance-doc-perf；content_state `025c4a39fa581586d8d028d0de54cb17473213380a907a3bb7b7e39a6ddbdc8f`；gate VERIFIED。
+提交建议：授权提交本次性能契约修复及 Round 13/14 评审记录；矩阵勾选若与 HEAD 一致则无需另行提交，不混入产品改动。
+推送建议：实际提交范围、贡献归属、trailer 与 SSH 签名核验后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
+
+开发：scan-performance / serving-open-path
