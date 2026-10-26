@@ -461,3 +461,109 @@ CEv1：修复不跨越完成边界，未写入；门禁仍为 NOT_VERIFIED，待
   - SP-PE-R8-F2 closed：见 `reviews/performance-evaluation.md` Round 9；本文件同步已于本记录 Round 9 关闭。
   - SP-PE-R9-F1 closed：见 `reviews/performance-evaluation.md` Round 10。
 - 结论：唯一发现关闭，判 PASS。
+
+## Round 11 — 2026-10-26
+
+## 📋 E2 追加探测任务分解评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[tasks.md:151–166] SP-TASKS-R11-F1（中）：新增两个 Perf 探测条件，但 Task 3 的文件边界没有覆盖实现它们所需的测量工具入口。
+
+- 行为风险：范围要求实现并最终删除或采用 `P01-floor-warm`／`P01-floor-panel`，文件清单却只列产品展示／恢复路径，未包含 `PerfDriver.swift`、`cmd/agentdeck-perf` 条件编排和统计。实现者必须越过列明的文件边界，或只能在 App 内实现一个无法由既定批次工具运行和统计的探测。不能把这项新工作默认为已经完成的 measurement-harness 任务负责。
+- 证据：Task 3 文件清单位于 151–153 行，追加条件与退出／清理职责位于 157–166 行。当前 `cmd/agentdeck-perf/run.go:116–119` 从 `conditionPlans()` 查找条件，不存在即返回 unknown condition；778 行只注册现有 `P01-floor`。`stats.go:274–279` 有独立起止点条件表，653 行拒绝未知统计条件。`PerfDriver.swift:10–20` 持有 floor 开关与静态视图，24–69 行定义驱动脚本协议。新增条件不是只改 MenuBarItemController 就能接入的既有工具能力。
+- 💡 有界修复：在 Task 3 文件／验证边界中明确纳入为这两个探测所需的 Perf 驱动、条件编排／统计及对应定向回归；保留 Perf-only、pilot／正式样本、候选不可行与工具无效分流和结束清理约束。不扩大为重写测量工具，不要求先实现后再评文档。
+- 处置：open，待修复。本轮不修改任务定义或产品源码。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- Task 3 的决策出口与已评性能契约／架构一致：缺少有效结果时阻塞，不把缺失 p95 当数值失败，UX／目标变更仍须用户评审。
+- 非窗口工作可并行推进，探测结束需清理或正式采用；原 correctness、P01 各层及 P02/P03/P04/P11 验收未被撤回。
+- SP-TASKS-R9-F1 的冻结措辞修复保留，未回归；文档集检查通过。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立任务分解评审、依赖契约对照、CodeGraph 定位与条件入口源码核实；无委派，无产品／测试／配置修改。
+- Scope：当前 E2 追加探测增补及其文件边界、验证、依赖和文档矩阵；历史已关闭发现维持原处置。发现确定边界缺口后停止扩大验证。
+- Reviewed state：HEAD `5e8c98cbcfefc6366fb5b1fa579dcee119d8276e`；document blob `7411ff26fde01b285ef07fc484978cdcd02c53ec`；SHA256(`head=<HEAD>;document=<blob>`) = `2c0ddcafbc3e21405eadc0f65192e24231871b49f9ff88d4c6345d388cd82a99`。
+- Dependencies：performance-evaluation blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`、architecture blob `5ddf672966cd8aac77e57f0b9270733dd4191497` 已在当前 HEAD 的交付门 VERIFIED；requirements 的 Review 仍未勾选，本轮不替它恢复批准，也不授权进入实现。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`python3 scripts/check-docs.py` exit 0；追加本轮后的完整文档检查亦通过。文档集／结构成功不消除任务边界缺口；未运行产品测试或私有语料测量。
+- CEv1：WorkUnit `scan-performance:tasks.md`；ContentState `scan-perf-tasks-r11-20261026-state`；语义失败证据 `scan-perf-tasks-r11-20261026-review`，结构通过证据 `scan-perf-tasks-r11-20261026-integrity`。历史 PASS 继续绑定原状态。
+- 结论：一个开放 finding，FAIL；tasks.md Review 保持未勾选，Beads 返回修复。没有 Git 交付或其他任务认领。
+
+修复：scan-performance / reviews/tasks.md / SP-TASKS-R11-F1
+
+## Repair candidate — 2026-10-26（Round 11 后）
+
+Repairer：Claude Code 主会话（本次 E2 增补的设计者）；范围为 SP-TASKS-R11-F1。Round 11 的评分、结论与 FAILED 门保留；
+本节不是 Review Round，不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-TASKS-R11-F1 -> repaired in candidate：
+  - **文件边界：** [tasks.md](../tasks.md) Task 3 文件清单后新增 E2 探测的测量工具入口，限定在 Perf 配置与
+    `cmd/agentdeck-perf`，不扩大为重写测量工具：`PerfDriver`（探测开关、静态内容、popover 暖启动与面板探测窗口、
+    探测所需的驱动步骤）、`PerfFrameProbe`（面板窗口的帧终点与暖启动可见帧/前台/key 变化记录）、`run.go` 三个探测
+    条件的 pilot 与正式编排、`stats.go` 起止点与结论分流，以及定向测试 `oracle_test.go`、`stats_test.go`。
+  - **验证边界：** 验证段新增 E2 探测项：计划表（pilot 20、正式 100）、无 oracle 的起止统计、候选不可行与工具无效的
+    分流回归；Perf 构建通过且 Release 产物不含探测开关与面板探测符号；每个运行的探测条件 pilot 工具无效为 0。
+    结束清理写明探测条件、开关与面板代码删除（或暖启动按判定并入产品路径）时定向回归随之移除。
+  - 保留 Perf-only、候选不可行与工具无效分流、结束清理约束；决策出口与性能评估、架构一致，未改。
+
+修复目标：HEAD `5e8c98cbcfefc6366fb5b1fa579dcee119d8276e`；tasks blob `87650934896ee170a6991ec1ac643f5eb6d5d755`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`python3 scripts/check-docs.py` exit 0；`git diff --check` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / tasks.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 12 — 2026-10-26
+
+## 📋 E2 追加探测任务边界复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-TASKS-R11-F1 closed：Task 3 明确纳入 PerfDriver、PerfFrameProbe、run.go、stats.go 及 oracle_test.go／stats_test.go，限定为 E2 探测所需修改，没有把新工作隐含交给已完成的 measurement-harness。
+- 验证覆盖三个条件的 pilot 20／正式 100 编排、无 oracle 统计、工具无效与候选不可行分流、Perf 构建与 Release 隔离，以及清理后的探测测试处置。与已评性能契约、架构一致。
+- 新探测仍不授权 UX／目标变更；无有效测量时停止，原产品正确性与性能验收保留。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，Round 11 评审者；Method：对照 Claude Code 修复交接逐项核对文件／验证边界和依赖契约；复用上一轮已核实且未变的条件入口源码事实，无委派、无产品修改。
+- Scope：SP-TASKS-R11-F1 及修复影响；唯一开放 finding 关闭，无新增或回归发现。历史已关闭发现维持原处置。此为分解文档 PASS，不是实现通过或整套设计全部完成。
+- Reviewed state：HEAD `5e8c98cbcfefc6366fb5b1fa579dcee119d8276e`；修复输入 blob `87650934896ee170a6991ec1ac643f5eb6d5d755`；仅同步本文件 Review 勾选后，最终 blob `070b1709af301ac4c73835d8396a7b748bcbb0df`；SHA256(`head=<HEAD>;document=<blob>`) = `befc42cf91d4576d45653496080e06991209c2b6ae7c4b63049510bf96fa2436`。
+- Dependencies：performance-evaluation blob `b0c0e345f8c47998189a7ad2d21e93c2bc7d2694`、architecture blob `5ddf672966cd8aac77e57f0b9270733dd4191497` 及上一轮依赖核对结果未变。requirements Review 未勾选，Beads `ad-scan-performance-doc-req` 仍 in_review；本轮不恢复其批准，不绕过 tasks.md 所声明的全部文档通过前提。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；最终 `python3 scripts/check-docs.py` exit 0，涵盖空白、diff、文档集、链接与评审结构。不重复运行产品测试或私有语料实验。
+- CEv1：WorkUnit `scan-performance:tasks.md`；ContentState `scan-perf-tasks-r12-20261026-state`；当前目标的 `decomposition-and-dependency-coverage`、`document-integrity` 均通过。旧 Round 11 FAIL 保留原内容绑定；未更改其观察。
+- 结论：任务矩阵复评 PASS，Review 勾选，Beads 转 awaiting_commit；未提交／推送。topic 仍有需求评审和实现任务，不跨越 topic 完成门。
+
+Task checkpoint：ad-scan-performance-doc-tasks；content_state `befc42cf91d4576d45653496080e06991209c2b6ae7c4b63049510bf96fa2436`；gate VERIFIED。
+提交建议：经用户授权提交 tasks.md 的 E2 分解修复、对应 Review 勾选与本记录，保留其他产品改动。
+推送建议：经独立授权推送 origin/feature/scan-performance；先核验实际提交范围、贡献归属、trailer 与 SSH 签名，远端当前状态未核验。
+
+评审：scan-performance / requirements.md

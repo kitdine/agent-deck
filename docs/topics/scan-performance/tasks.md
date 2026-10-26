@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-22
+updated: 2026-10-26
 ---
 
 # Scan performance：设计集与任务矩阵
@@ -24,7 +24,7 @@ updated: 2026-10-22
 | ux/cli.md | [x] | [x] |
 | architecture.md | [x] | [x] |
 | performance-evaluation.md | [x] | [x] |
-| tasks.md | [x] | [ ] |
+| tasks.md | [x] | [x] |
 | ux/settings.md | [x] | [x] |
 | ux/widget.md | n/a | n/a |
 
@@ -151,19 +151,34 @@ P10 各段；更新来源与版本影响图。按需求“数值验收”的换�
 文件：`MenuBarItemController`、`MenuBarSurfaceView`、`MenuBarPanelViews`、`MenuBarViewModel`、
 `AgentDeckApp`、`EmbeddedHelperRunner`、`DesktopWire`；必要时 `internal/desktop` serving 读取与
 `internal/scanruntime` bootstrap 调度。不改 UX 文档声明的布局、文案与交互。
+E2 探测的测量工具入口（只在 Perf 配置与 `cmd/agentdeck-perf` 中，不扩大为重写测量工具）：`PerfDriver`
+（探测开关、静态内容、popover 暖启动与面板探测窗口、驱动脚本中探测所需的步骤）、`PerfFrameProbe`（面板窗口的帧终点与
+暖启动可见帧/前台/key 变化的记录）、`cmd/agentdeck-perf` 的 `run.go` 条件编排（`P01-floor`、`P01-floor-warm`、
+`P01-floor-panel` 的 pilot 与正式样本数）与 `stats.go` 起止点和结论分流（工具无效、候选不可行、有效可行），
+以及它们的定向测试（`oracle_test.go`、`stats_test.go`）。
 
 范围：按架构“打开路径”顺序执行：分段定位 → NSPopover 下限探测（记录结果；p95 >200 ms 为不可达、(150, 200] ms 为预先声明的决策阈值，
-两者都停止返回设计，见性能评估 E2）
+两者都停止返回设计，见性能评估 E2；2026-10-26 实测 p95 198.49 ms，落在决策档并已返回设计）
+→ 追加探测 `P01-floor-warm`、必要时 `P01-floor-panel`（Perf 构建专用，按性能评估“E2 下限探测结果与追加探测”的
+判定出口：区分工具无效、候选不可行与有效可行；warm 有效可行且达标则暖启动并入预热并继续；否则 panel 有效可行且
+达标则停止并提出菜单栏 UX 变更；两者都有有效结论且都不可采用时停止并提出 P01 首击层目标变更；任一需要的探测
+没有工具有效结果时停止并报告阻塞；UX 与目标变更都须用户评审后才继续首击层）
 → ready 后空闲分片预热 → 首帧内容最小化 → 保持 hosting 层级；按“启动顺序”实现恢复优先，
 quota/bootstrap/预热/watcher 在 `model.usable` 后开始（750 ms 兜底）；切换按 `(publication_id, selection)` memoize。
 无缓存与空库沿用当天优先 bootstrap 与持久 coverage。
 删除被新预热机制取代的预布局代码及不再使用的 presentation 路径。
+与窗口形态无关的工作（首帧内容最小化、层级保持、启动顺序、切换 memoize、P02/P03/P04/P11、P01 重复层与重建中层）
+不等待追加探测的判定；探测用的 Perf 开关与条件在任务结束前删除，或在判定为采用时并入产品路径。
 
 正确性回归：身份/epoch/schema/owner/mode/size/损坏/跨天/DST、旧有效数据保留、默认 quota、全部 tab、
 筛选/焦点、慢额度 30 s、扫描 >120 s 与首批发布、partial/unavailable 不补零、`--no-scan` v1 映射。
 
 验证（L3）：相关 Go/desktop/store/scanruntime 回归、Go 全量、race/vet、macOS 双架构构建、native 全量 XCTest；
 正式批次：P01 三层（重建中层用当时的全量重建实现）、P02、P03、P04、P11 按契约样本数。
+E2 探测：`agentdeck-perf` 定向回归覆盖三个探测条件的计划表（pilot 20、正式 100）、无 oracle 的起止统计，以及
+候选不可行与工具无效的分流（暖启动可见帧/前台/key 变化记为候选不可行且批次仍有效；打点缺失等记为工具无效）；
+Perf 构建通过且 Release 产物不含探测开关与面板探测符号；每个运行的探测条件先跑 pilot 且工具无效为 0。
+探测条件、开关与面板探测代码在任务结束前删除，或判定为采用的暖启动并入产品路径；删除后上述定向回归随之移除。
 
 准则：`popover-floor`、`open-path-latency`、`startup-restore`、`selection-latency`、`stored-bootstrap`、
 `first-import`、`serving-correctness`。
