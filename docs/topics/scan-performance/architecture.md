@@ -94,54 +94,40 @@ OTel 接收必须持续存活，可由显式启用的 App 随行 receiver 满足
 ## 打开路径
 
 点击路径只做：`handleClick` → `togglePopover` → `NSPopover.show` → 已有 hosting view 首次/再次上屏。
-不读 SQL、不解码、不启动 helper、不 await 任何异步工作。已测首击 p95 537 ms 的成本在首次窗口创建、
-布局与提交，而不是数据准备；重复点击已接近预算。因此按以下顺序处理，每步以 P01 分段打点
-（`input.event`、`popover.show.*`、`popover.layout.data`、`frame.commit`、`frame.vsync`）决定是否继续：
+不读 SQL、不解码、不启动 helper、不 await 任何异步工作。S0 实测（E1）首击 p95 470 ms、重复点击中位 351 ms /
+p95 512 ms；首击成本主要在首次窗口创建、布局与提交。重复点击的成本来源尚未分段：现有代码已保留同一 hosting
+controller，只在高度变化时替换 root，关闭只 `performClose`（`MenuBarItemController.configurePopoverGeometry`
+与关闭路径，S0 相同），端到端中位不能区分 SwiftUI 视图重算、重新布局、提交/刷新等待或后台争用。2026-10-27
+用户决定不设数值目标，下列各步都是优化，不是决策门；每步以 P01 分段打点（`input.event`、`popover.show.*`、
+`popover.layout.data`、`frame.commit`、`frame.vsync`）衡量收益，按[候选采用规则](performance-evaluation.md#候选采用规则)
+决定保留或撤回：
 
-1. **分段定位。** 首击与重复点击分别给出各段分布，确认首击超出部分落在 show、布局还是提交/上屏。
-2. **NSPopover 首次显示下限探测。** 以静态文本 content 测同一路径的首击下限；
-   p95 >200 ms 即既定 UX 下不可达，p95 在 (150, 200] ms 为预先声明的决策阈值（不是不可达证明），
-   两者都停止并返回设计（见[性能评估 E2](performance-evaluation.md#决策门)）。
-3. **预热放到 ready 之后、空闲时。** 保留现有借用窗口预布局，并补齐首次上屏所需的一次性成本：
-   在不上屏、不夺焦点的前提下完成字体/材质/图层后备存储与 display link 的初始化；
-   预热在主线程空闲时分片执行，单片 ≤8 ms，避免拖慢启动恢复（P02）与重复点击。
-4. **首帧内容最小化。** 首帧只需要当前选择的 hero 与当前面板的可见部分；
-   其余面板与折叠区内容在首帧之后构建。这不改变可见内容与交互，只改变构建时机。
-5. **保持同一 hosting 层级与控件身份。** 关闭不销毁 content；几何变化只更新 root，不重建控制器。
-
-既定 UX 要求“复用既有 popover”，因此不以自绘面板替代 NSPopover；若第 2 步停止后用户选择改用
-其他窗口形态，这属于 UX 变更，须用户决定并重新评审菜单栏 UX。
-
-### 第 2 步之后：首次窗口暖启动与追加探测（2026-10-26）
-
-第 2 步实测下限 p95 198.49 ms，落在决策档（见[性能评估·E2 下限探测结果](performance-evaluation.md#e2-下限探测结果与追加探测2026-10-26-返回设计)）。
-现有预布局只让 hosting view 在借用窗口里完成布局，NSPopover 自己的窗口、后备存储与
-window server 侧资源仍在第一次 `show` 时创建；首击又恰在 quota/bootstrap/watcher 启动之后。
-处理顺序：
-
-1. **首次窗口暖启动（候选，保留既定 UX）。** `model.usable` 之后、主线程空闲时，对同一 NSPopover
+1. **分段定位。** 首击与重复点击分别给出各段分布，确认成本落在 show、布局还是提交/上屏。
+2. **首次窗口暖启动。** 现有预布局只让 hosting view 在借用窗口里完成布局，NSPopover 自己的窗口、后备存储与
+   window server 侧资源仍在第一次 `show` 时创建。`model.usable` 之后、主线程空闲时，对同一 NSPopover
    以状态栏按钮为锚执行一次 `show`，在同一 MainActor 回合内（首个 Core Animation 提交之前）把其窗口
    `alphaValue` 置 0、`ignoresMouseEvents` 置真，不调用 `activatePopoverWindow`、不请求 key，
-   保持一个提交周期后 `performClose` 并恢复 alpha 与鼠标事件。约束：不产生可见帧、不改变前台
-   应用与 key 窗口、不触发 helper 或数据读取；用户在暖启动期间点击时，先完成关闭再按正常路径打开。
-   只执行一次；关闭不销毁 content，与第 5 步一致。上述约束是候选本身必须满足的条件，不是测量前提：
-   `P01-floor-warm` 中任一运行单元违反即判该候选不可行（不是工具无效），不进入产品路径；
-   约束成立且首击受益（判定见性能评估）前同样不进入产品路径。
-2. **面板形态（仅作探测）。** `P01-floor-panel` 用同尺寸、`.popover` 材质的非激活 `NSPanel`
-   测同一首击下限，只用于在 1 不可行或不达标时判断“改窗口形态”是否真能提供余量；它的暖启动受同一约束。
-   它不是本设计采用的形态，采用与否按性能评估的判定出口交给 UX 评审；任一探测没有工具有效的结果时，
-   停止并报告阻塞，不据此提出 UX 或目标变更。
-3. **争用归因（2026-10-27 修订）。** 原定按“首击时存活 helper 数”分层归因，但实测每次首击都恰有
-   启动全量刷新的 `scan` 客户端与其扫描 worker 存活（见[性能评估·争用对照](performance-evaluation.md#追加探测结果与争用对照2026-10-27-返回设计)），
-   分层没有对照。改为对照探测：`P01-floor-warm-quiet` 等启动全量刷新结束（App 在 coordinator 的启动全量
-   刷新返回时打点 `refresh.startup.done`）后再静置 2 s 点击，与 `P01-floor-warm` 交错执行；只在 Perf 构建中存在。
-   对照证明争用主导时，按下文“启动争用削减”处理，不改窗口形态、不改目标。
+   保持一个提交周期后 `performClose` 并恢复 alpha 与鼠标事件。只执行一次；用户在暖启动期间点击时，
+   先完成关闭再按正常路径打开。约束（正确性要求）：不产生可见帧、不改变前台应用与 key 窗口、
+   不触发 helper 或数据读取。静态内容探测中它把首击中位由约 147 ms 降至约 94 ms（见性能评估“已停止的首击窗口探测”）。
+3. **预热放到 ready 之后、空闲时。** 保留现有借用窗口预布局，补齐首次上屏所需的其余一次性成本
+   （字体/材质/图层与 display link 初始化），在主线程空闲时分片执行，单片 ≤8 ms，避免拖慢启动恢复与重复点击。
+4. **首帧内容最小化。** 首帧只需要当前选择的 hero 与当前面板的可见部分；
+   其余面板与折叠区内容在首帧之后构建。这不改变可见内容与交互，只改变构建时机。
+5. **保持同一 hosting 层级与控件身份；重复打开的成本按分段处理。** 关闭不销毁 content；几何变化只更新 root，
+   不重建控制器（行为约束，现有代码已满足）。“再次打开重新计算 presentation 或重建视图树”是待验证假设：
+   先用第 1 步的重复点击分段与 Perf 构建中的视图/控制器身份观察（`body` 求值次数、hosting controller 与 root
+   身份是否变化）区分重复构建与布局/提交成本；只有观察到 publication 与选择未变时仍重复构建，才实施“未变时
+   不重算 presentation、不重建视图树”，并按候选采用规则以重复点击分段衡量；否则按实测的主导段处理。
+6. **启动争用削减。** 见下。
+
+既定 UX 要求“复用既有 popover”，不以自绘面板或其他窗口形态替代 NSPopover。
 
 #### 启动争用削减
 
-首击时与主线程争用的是启动全量刷新。实测在数据未变（读取 0 字节、导入 0 条）时，这次扫描仍在发布阶段
-无条件调用 `PublishServingSnapshot`（`internal/scanruntime/serving.go` 与 `scanruntime.go` 的 derive 段），
-完整重建 serving 视图约 0.6–1.1 s。两个候选按性能评估的候选采用规则一次一个实施、单独判定：
+`model.usable` 之后启动全量刷新与首击、P02 争用。实测在数据未变（读取 0 字节、导入 0 条）时，这次扫描仍在
+发布阶段完整重建 serving 视图约 0.6–1.1 s（`internal/scanruntime/serving.go` 与 `scanruntime.go` 的 derive 段）。
+两个候选按候选采用规则一次一个实施，以 P01 首击、P02、P04、P11 衡量收益：
 
 1. **未变化时复用派生投影，不复用整份 payload（2026-10-27 修订）。** serving payload 不是 generation 的纯函数：
    `Build` 每次按当前时钟写入 `GeneratedAt`、`NextRefreshAt`，并重新加载 provider、subscription（额度
@@ -158,7 +144,7 @@ window server 侧资源仍在第一次 `show` 时创建；首击又恰在 quota/
      消除这类无效写入，否则停止并返回设计。
    - 同一 derive 段内 `PublishDerivedSnapshotCache` 与 `Build` 重复计算同一投影；改为前者写好缓存后由
      `Build` 命中，不另算。
-   `ValidUntil` 到期等合法失效照常重算，不绕过；若重算全部来自合法失效，本候选没有余量，直接进入候选 2。
+   `ValidUntil` 到期等合法失效照常重算，不绕过；若重算全部来自合法失效，本候选没有收益，不实施，直接进入候选 2。
    正确性 oracle：同一数据库、同一注入时钟（`Service.Now` 固定）、同一请求下，命中缓存路径与强制重算路径
    产出的 serving payload 逐字节相等；不跨时刻比较。边界验证：同一 generation、同日内额度跨 stale 阈值前后
    （例：300 分钟窗口、5 分钟 probe interval，观察后第 29 与第 31 分钟）两次发布的 `Stale` 分别为 false、true；
@@ -169,13 +155,7 @@ window server 侧资源仍在第一次 `show` 时创建；首击又恰在 quota/
    `internal/scanruntime` 拉起的扫描 worker 降低自身调度优先级（darwin `setpriority`，nice 10）。
    无缓存与空库（P04/P11）的回合保持默认优先级，首批发布不被延后。只改调度，不改语义、兜底与超时。
 
-每个候选的判据是 `P01-floor-warm`（`model.usable` 后 2 s 点击）的 p95，且 P02、P04、P11 不回归；
-先实施候选 1，未达 150 ms 再叠加候选 2。不推迟启动刷新的开始时机：那会改变启动后的数据新鲜度，
-属于需求变更。
-
-与窗口形态无关的部分不等待上述判定：第 4 步首帧内容最小化、第 5 步层级保持、
-启动顺序、切换 memoize，以及 P02/P03/P04/P11 与 P01 重复层、重建中层的工作照常实施；
-只有第 3 步中针对 NSPopover 窗口本身的暖启动等 `P01-floor-warm` 的结果。
+不推迟启动刷新的开始时机：那会改变启动后的数据新鲜度，属于需求变更。
 
 切换（P03）只在已准备的 publication 内重新投影，presentation 按 `(publication_id, selection)` memoize；
 切换意图入口是 view model 的公开方法，测量与控件 action 走同一入口。
@@ -378,7 +358,7 @@ watermark 可复用，否则产生一个有限 follow-up。新事件归下一轮
 历史任务按 source/segment yield。初始加权轮询为实时 4、interactive 2、history 1；
 aging 最多 5 秒使 history 获一次时间片，实时流不能饿死历史。每批 planning 先满足
 usage/session Plan-or-Skip 并 Seal 后才 read；不等待全目录所有消费者的 planning 才开始首批。
-权重是 E5 候选配置，需求里的 resource/latency 硬门禁优先。
+权重是 E5 候选配置，按 P06/P10 的实测收益选择。
 
 持久 manifest 记录 source path 的私有映射、identity、size、mtime/ctime、consumer versions、
 cursor、最近有效 event date。文件系统通知只将路径/目录标 dirty。每个 root 保存验证进度，
@@ -424,14 +404,14 @@ flowchart LR
 
 ### 短事务
 
-P07 要求写事务 p95 ≤50 ms、max ≤250 ms。所有写事务经 store 的统一封装，按 `tx.<domain>.<label>` 打点：
+P07 衡量写事务时延，长事务（S0 max 378 ms）是优化对象。所有写事务经 store 的统一封装，按 `tx.<domain>.<label>` 打点：
 
 - **按工作量切分**：写者在累计行数或估计成本达到上限时提交并开启新事务；上限初值 512 行，
-  由 E1/E3 分段校准，目标是单事务 max 远低于 250 ms。大 source 的结果跨多个事务提交，
+  由 E1/E3 分段校准，使单事务 max 尽量短。大 source 的结果跨多个事务提交，
   中间 checkpoint 只在完整物理记录与其结果都已提交后推进，崩溃后从最后 checkpoint 续做。
   append 的分块提交只暴露正确的前缀；rewrite/truncate/parser 重读的 source 若需分块，
   必须按“持久状态与 source 原子性”一节写 shadow generation，完成后短事务切换，不能让查询看到半个重建。
-  若 E1 分段显示单 source 重建可在一个 ≤250 ms 事务内完成，则不引入 shadow，保持现有表结构。
+  若 E1 分段显示单 source 重建的事务已经足够短（不再是写事务 max 的来源），则不引入 shadow，保持现有表结构。
 - **inventory 接受**：先在独立 staging 行分批写入（每批短事务），最后以一个只更新 head 指针的短事务
   原子切换；未切换的 staging 对查询不可见，崩溃后丢弃。这取代当前“一个事务写入全部来源行”的做法。
 - **派生与投影**：受影响分区的重算分批写 shadow，最终短事务 swap active generation。
@@ -595,12 +575,12 @@ OTLP integer/string number 解码保留整数精度；负值、overflow、cached
   按性能评估定义产生 `popover.layout.data`、`frame.commit`、`frame.vsync`；关闭时修饰器不注册任何回调。
 - **Go `internal/perftrace`**：同一时钟与阶段命名；helper 继承 `AGENTDECK_PERF_OUT`；
   store 写事务封装统一记录 `tx.*`；进程退出前以标准库 `syscall.Getrusage(RUSAGE_SELF)` 自报
-  `ru_maxrss` 与 user/sys CPU，不需要 CGO，也不读取 `phys_footprint`（P07 门按 RSS 口径，见性能评估）。
+  `ru_maxrss` 与 user/sys CPU，不需要 CGO，也不读取 `phys_footprint`（P07 按 RSS 口径报告，见性能评估）。
   取代 `AGENTDECK_SCAN_PROFILE` 的 stderr 摘要与分散的原子计数，v1 stdout 不变。
 - **`PerfDriver`**：仅在 `Perf` 构建配置中编译（`#if AGENTDECK_PERF`），读取脚本执行点击投递、
   切换意图、打开 popover、等待终点与正确性核对，完成后退出。Release/Debug 配置不含它。
 - **`cmd/agentdeck-perf`**：冻结真实语料与按锚定日平移（测量夹具）、合成夹具（仅测试）、数据库模板准备、批次编排（启动 Perf 构建 App、运行 CLI、
-  写入 append、OTel mock producer）、环境检查、统计与门判定；输出供写入 CEv1 的摘要。
+  写入 append、OTel mock producer）、环境检查、统计与 ABBA 对比；输出供写入 CEv1 的摘要。
   不进入发布打包。
 
 ## 故障、升级与验证

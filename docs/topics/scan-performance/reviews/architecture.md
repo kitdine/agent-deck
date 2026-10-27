@@ -470,3 +470,99 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 Task checkpoint：ad-scan-performance-doc-arch；content_state `8a80d3605f2a7ae6d38a55a2886f86ab3157ed610bcc7bf6761e69531d946c5b`（ContentState `scan-perf-arch-r9-20261027-state`）；gate VERIFIED。
 提交建议：经独立授权后，提交 architecture.md 启动争用削减修订、reviews/architecture.md Round 8–9 记录与 tasks.md 中 architecture 行的矩阵变更；tasks.md 正文修订待其自身评审 PASS 后同批或单独提交；不混入工作区中的 Swift／`cmd/agentdeck-perf` 探测代码改动。
 推送建议：提交后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。
+
+## Round 10 — 2026-10-27
+
+## 📋 无门槛打开路径与优化归因评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+无高严重度发现。
+
+### 🟡 建议改进 — 推荐
+
+- **SP-ARCH-R10-F1（中，OPEN，必须关闭后才可 PASS）** — `architecture.md:97–103`：新文字以重复打开中位 351 ms 直接断言“每次打开仍在重建内容”。端到端耗时不能区分 SwiftUI 重建、重新布局、提交/刷新等待或后台争用，且代码已经保留同一 hosting controller，只有高度变化才替换 root。
+  - 行为风险：把未证明的根因当成已有事实，可能让第 5 步围绕不存在的每次销毁/重建路径实施；第 1 步尚待分段定位与此前的肯定归因互相冲突。
+  - 证据：当前 `MenuBarItemController.swift:308–319` 的 `configurePopoverGeometry` 仅在 `height != preparedHeight` 时写 `rootView`，369–373 行关闭只执行 `performClose`；S0 提交 `7e7e7e3` 同文件 211–223、257–259 行同样如此。源码不能排除框架内部布局工作，但也不能用总体中位数证明每次重建。
+  - 💡 有界修复：将其限定为待验证假设，明确用分段与视图/控制器身份观察区分重复构建和布局/提交成本，再依候选规则决定是否实施；保留“不重建身份”的行为约束，无需为修正文案运行新的性能批次。
+
+### 🟢 优点
+
+暖启动继续受不可见、不夺焦点、不启动 helper 的正确性约束；未变化扫描仅复用已有派生缓存，仍每次 Build，未回归 SP-ARCH-R8-F1 的跨时刻 payload 复用问题。合法缓存失效继续重算。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话；Method：独立增量文档评审，CodeGraph 定位当前 native 打开路径并以 Git 对照 S0；无委派。
+- Scope：本轮打开路径、停止探测、调度/短事务去阈值及测量接口变更；未变化的 payload 修复契约沿用 Round 9，SP-ARCH-R8-F1 保持关闭。统计组问题归 performance-evaluation Round 17。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；blob `b1c93a9e1c22bb31973ba776915773dae60915dd`；digest `1b1d1a1bcc64a7a659188d93933bad17aa5c652824512079dcaae64e390f6c6e`，配方 SHA256(`head=<HEAD>;document=<blob>`)。
+- Evidence：`python3 scripts/check-docs.py` exit 0；当前源码与 `git show 7e7e7e3:apps/macos/AgentDeckApp/MenuBarItemController.swift` 对照。未执行性能批次，不声称证明真正时延根因或暖启动产品收益。
+- CEv1：WorkUnit `scan-performance:architecture.md`；目标 `scan-perf-docbatch-20261027-arch-state`。最终门禁见本轮单一完成门禁字段。
+- 结论：FAIL，Review 未勾选；工作区 `agent-deck.scan-performance` / `feature/scan-performance`。无产品修改或 Git 交付。
+
+下一步指令：修复：scan-performance / reviews/architecture.md / SP-ARCH-R10-F1
+
+## Repair candidate — 2026-10-27（Round 10 后）
+
+Repairer：Claude Code 主会话；范围为 SP-ARCH-R10-F1。Round 10 的结论与 FAILED 门保留；本节不是 Review Round，不自行声明 PASS。未委派。
+
+- SP-ARCH-R10-F1 -> repaired in candidate：
+  - 删除“重复点击中位说明每次打开仍在重建内容”的断言，改为写明重复点击成本来源尚未分段。
+    现有代码已保留同一 hosting controller，仅在高度变化时替换 root，关闭只 `performClose`，S0 相同（只读核对
+    `MenuBarItemController.configurePopoverGeometry` 与关闭路径）。端到端中位不能区分视图重算、重新布局、提交/刷新
+    等待或后台争用。
+  - 第 5 步中，“保持 hosting 层级与控件身份”保留为行为约束。“再次打开重新计算 presentation 或重建视图树”改为待验证
+    假设：先用重复点击分段与 Perf 构建的视图/控制器身份观察（`body` 求值次数、hosting controller 与 root 身份）区分
+    重复构建与布局/提交成本，确认存在重复构建后才实施，并按候选采用规则衡量；否则按实测主导段处理。
+- 同步：tasks.md 第 3 项范围中的对应表述改为同一口径。
+- 不运行新的性能批次。
+
+修复目标：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；architecture blob `31e7ae55d347b4870e09180ef846a6b85fd23414`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / architecture.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 11 — 2026-10-27
+
+## 📋 重复打开成本归因复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+SP-ARCH-R10-F1 closed：97–105 行区分端到端耗时与未定位的成本，第 5 步用分段、body 求值及 hosting/root 身份观察验证假设，确认重复构建后才实施；tasks.md:172–174 同步此边界。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，非修复作者；Method：独立定向文档复评，复用 Round 10 的当前/S0 源码观察，无委派。
+- 处置：SP-ARCH-R10-F1 关闭；SP-ARCH-R8-F1 的派生缓存/Build 约束未变，既有关闭处置保留；无新发现。修复不再把耗时当作框架内部重建的证明。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；blob `31e7ae55d347b4870e09180ef846a6b85fd23414`；SHA256(`head=<HEAD>;document=<blob>`) = `4ed215db32354821bc88b7cb2a36d9fa166120176c0bfe1bb3de381037d81a1b`。
+- Scope：归因修复及任务联动；不宣称真正根因、暖启动收益或 native 正确性已经实测。性能评估与任务分解的开放发现由各自记录承接。
+- CEv1：WorkUnit `scan-performance:architecture.md`；target `scan-perf-docrecheck-20261027-arch-state`；精确 gate VERIFIED，2/2 required criteria 通过，missing/invalidated/unresolved 为空。`python3 scripts/check-docs.py` 与 `git diff --check` exit 0；新证据为该前缀的 `arch-review`、`arch-integrity`。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`；correlation `QtgKmOTPe89-k69i`。整批未完成，不触发 Topic 门禁。
+
+Task checkpoint：ad-scan-performance-doc-arch；content_state `4ed215db32354821bc88b7cb2a36d9fa166120176c0bfe1bb3de381037d81a1b`；gate VERIFIED。
+提交建议：另行授权提交架构、对应评审记录及 Review 勾选，可等待整批修复完成后统一交付。
+推送建议：提交范围、署名、签名及远端核验后，另行授权推送 origin/feature/scan-performance；远端未核验。
