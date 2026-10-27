@@ -567,3 +567,132 @@ Task checkpoint：ad-scan-performance-doc-tasks；content_state `befc42cf91d4576
 推送建议：经独立授权推送 origin/feature/scan-performance；先核验实际提交范围、贡献归属、trailer 与 SSH 签名，远端当前状态未核验。
 
 评审：scan-performance / requirements.md
+
+## Round 13 — 2026-10-27
+
+## 📋 启动争用对照与削减任务边界评审
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[tasks.md:151–154] SP-TASKS-R13-F1（中）：Task 3 承接架构“启动争用削减”候选 1，但文件边界未覆盖消除无效写入所需的写入路径，且这些路径属于后续任务的文件范围。
+
+- 行为风险：架构候选 1 的第一类处理是“无事实变化的写入把派生 generation 置 dirty 或推进 revision；在不改 schema 与 revision 触发器的前提下消除这类无效写入”。触发器挂在事实表上，消除只能改发出写入的代码。Task 3 只列出 `internal/desktop` 的 `derived_cache.go`、`serving_cache.go` 与 `internal/scanruntime` 发布段／worker 优先级。实现者确认原因属于这一类时，必须越过列明边界去改 Task 4（`internal/ingest`、`internal/usage`、`internal/session`、`internal/store` 写事务封装）或 Task 5（`internal/store` dirty/revision）拥有的文件；依赖顺序 3 → 4、5 意味着 Task 3 先改动后续任务的文件而无约定，或只能放弃一条架构已批准的处理。
+- 证据：`internal/store/migrations.go:431–446` 对 `derivedSnapshotGenerationTables` 的每张表安装 INSERT/UPDATE/DELETE 触发器，执行 `revision=revision+1,dirty=1`；`internal/store/usage_partitions.go:199–206` 复用同一触发器族。无变化扫描中的写入来自 `internal/scanruntime/serving.go` derive 前的 `service.FinalizeInventory`（`internal/usage`）、`session.ScanWithOptions`（`internal/session`）与 `finishAcceptedInventory`（store）。Task 4 文件见 tasks.md:193–194，Task 5 见 215–216。
+- 💡 有界修复：在 Task 3 文件边界中以“必要时”形式纳入候选 1 第一类处理所需的写入方（限定为消除无事实变化的写入，不改 schema、触发器与写事务结构），并写明与 Task 4／5 的边界：Task 3 只做无效写入消除，并行 reduce、短事务与分区重算仍归 4／5；或者明确把第一类处理移交 Task 4／5 并从 Task 3 范围删去。二选一，与架构候选 1 的表述保持一致。
+
+[tasks.md:155–159] SP-TASKS-R13-F2（低）：quiet 对照依赖新打点 `refresh.startup.done`，Task 3 的 E2 测量工具入口未列出打点注册文件。
+
+- 行为风险：架构与性能评估要求 App 在 coordinator 的启动全量刷新返回时打点 `refresh.startup.done`（Perf 构建专用），`P01-floor-warm-quiet` 以它为等待起点。打点名在 `PerfTrace.swift` 的枚举中注册，该文件是 Task 1 的交付物，不在 Task 3 列表中；`DesktopRefreshCoordinator` 位于已列出的 `EmbeddedHelperRunner.swift`，但注册点缺失使边界不完整。
+- 证据：`apps/macos/AgentDeckShared/PerfTrace.swift`（HEAD）第 7–36 行以 `case xxx = "<name>"` 枚举全部打点，无 `refresh.startup.done`；`DesktopRefreshCoordinator` 定义于 `EmbeddedHelperRunner.swift:1888`；architecture.md:136–137、performance-evaluation.md:420 规定该打点。
+- 💡 有界修复：在 E2 测量工具入口中加入 `PerfTrace`（仅新增 `refresh.startup.done` 打点）及其定向测试 `PerfTraceTests`，保留 Perf-only 与结束清理约束。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- Task 3 范围准确承接性能评估“追加探测结果与争用对照”的出口：quiet 对照只用于归因，争用主导才逐个实施候选，不改窗口形态与目标；与 performance-evaluation.md:420–457 一致。
+- 文件边界对候选 1 的描述与架构 Round 9 已评口径一致（经已有派生快照缓存复用、不新增复用键、不跳过 `Build`）；候选 2 的 `EmbeddedHelperRunner` QoS 与 scanruntime worker 优先级已列入。
+- 正确性回归补入同一注入时钟下的逐字节等价与各时间边界重算；验证段补入 quiet 条件 helper 存活即工具无效、ABBA 交错，与性能评估契约一致。
+- 历史 SP-TASKS-R11-F1 等已关闭发现未回归。
+
+### 📝 总结
+
+- Reviewer：Claude Code 新会话（冷上下文；非本次 tasks.md 增补的设计或修复会话）；Method：独立增量任务分解评审，对照已评 architecture（Round 9）与 performance-evaluation（Round 16）核对文件边界、验证与跨任务所有权，并核实触发器、写入方与打点注册源码；无委派，无产品修改。
+- Scope：自 HEAD 起 tasks.md 的增补（矩阵、Task 3 文件边界、范围、正确性回归与 E2 验证）。发现边界缺口后未扩大到其他任务全面审计。
+- Reviewed state：HEAD `615d124453b99c6cb504d534f04fb4a019a4a741`；document blob `cd605929316983c557f02041be66182badae812d`；SHA256(`head=<HEAD>;document=<blob>`) = `27b9f90f66c8de7602df757a24366d944bab44b73a40487dccfa9b94afeac89f`。
+- Dependencies：architecture blob `b960650b007556750d6389681035173da110a182`（Round 9 PASS，已交付于 615d124）；performance-evaluation blob `7a17d7fa58017793a01c090145ec20051a70906a`（Round 16 PASS）。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。工作区内另有未提交的 Swift／`cmd/agentdeck-perf` 探测实现改动，不属于本评审对象。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0（文档集检查）；`python3 scripts/check-docs.py` exit 0；`git diff --check` exit 0。结构检查通过不消除边界缺口。
+- CEv1：WorkUnit `scan-performance:tasks.md`；ContentState `scan-perf-tasks-r13-20261027-state`；`scan-perf-tasks-r13-20261027-integrity` pass、`scan-perf-tasks-r13-20261027-review` fail。
+- 结论：两个开放 finding，FAIL；tasks.md Review 保持未勾选，Beads `ad-scan-performance-doc-tasks` 由 closed 重开评审后退回 in_progress。无 Git 交付。
+
+修复：scan-performance / reviews/tasks.md / SP-TASKS-R13-F1、SP-TASKS-R13-F2
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Repair candidate — 2026-10-27（Round 13 后）
+
+Repairer：Claude Code 主会话；范围为 SP-TASKS-R13-F1、SP-TASKS-R13-F2。Round 13 的评分、结论与 FAILED 门保留；
+本节不是 Review Round，不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-TASKS-R13-F1 -> repaired in candidate（选择“必要时纳入 Task 3”，与架构候选 1 保持一致）：
+  - Task 3 文件边界新增一段：实现第一步确认重算原因属于候选 1 第一类（无事实变化的写入把派生 generation 置 dirty
+    或推进 revision）时，必要时修改发出这些写入的调用方：`internal/usage` 的 `FinalizeInventory`、`internal/session` 的
+    `ScanWithOptions`、`internal/scanruntime` 的 `finishAcceptedInventory` 及其调用的 `internal/store` inventory 完成写入。
+    函数位置已只读核对（`usage.go:774`、`session.go:228`、`scanruntime/serving.go:48`）。
+  - 只限于让无事实变化时不发出写入；不改 schema、revision 触发器与写事务结构。
+  - 写明与后续任务的边界：并行 reduce、短事务切分与写事务封装仍归 Task 4，dirty/revision 机制与分区重算仍归 Task 5；
+    若消除需要改动这些机制，停止并返回设计。
+- SP-TASKS-R13-F2 -> repaired in candidate：
+  - E2 测量工具入口加入 `PerfTrace`，只新增探测所需的 `popover.warm` 与 `refresh.startup.done` 打点；定向测试加入
+    `PerfTraceTests`（`apps/macos/AgentDeckTests/PerfTraceTests.swift`）。
+  - 结束清理约束同步为“探测条件、开关、探测打点与面板探测代码在任务结束前删除，或判定为采用的暖启动并入产品路径”。
+- 目标、范围、准则与样本数未改。
+
+修复目标：HEAD `615d124453b99c6cb504d534f04fb4a019a4a741`；tasks blob `995e6aeb403595abc6cc3480f1e1e45448a590d3`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / tasks.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 14 — 2026-10-27
+
+## 📋 启动争用削减任务边界复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-tasks-r14-20261027-state，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-TASKS-R13-F1 -> closed。Task 3 选择“必要时纳入”，与架构候选 1 一致：确认属于第一类时可改发出写入的调用方，
+  且只限于无事实变化时不写；不改 schema、触发器与写事务结构；并行 reduce、短事务与写事务封装归 Task 4，dirty/revision
+  与分区重算归 Task 5，需要改这些机制即停止返回设计。所列调用方经源码核对：`internal/usage/usage.go:774`
+  `FinalizeInventory`、`internal/session/session.go:228` `ScanWithOptions`、`internal/scanruntime/serving.go:48`
+  `finishAcceptedInventory`（调用 `store.FinishInventory`），正是 Round 13 指出的无变化扫描写入来源。
+- SP-TASKS-R13-F2 -> closed。E2 工具入口加入 `PerfTrace`（只新增 `popover.warm` 与 `refresh.startup.done`）及
+  `PerfTraceTests`；`refresh.startup.done` 与 architecture.md、performance-evaluation.md:420 一致，`popover.warm` 已存在于
+  工作区未提交的探测实现 `PerfTrace.swift:52`，列入边界与实际需要相符。结束清理同步覆盖探测打点。
+- 修复未改目标、范围、准则与样本数；Round 13 认可的承接与回归项保持不变。
+
+### 📝 总结
+
+- Reviewer：Claude Code 会话，Round 13 评审者（非修复会话）；Method：逐条核对两项 finding 的有界修复与源码，复用
+  Round 13 已核实的触发器与依赖契约事实；无委派，无产品修改。
+- 处置：SP-TASKS-R13-F1、SP-TASKS-R13-F2 closed；历史发现保持关闭，无新增发现。
+- Reviewed state：HEAD `615d124453b99c6cb504d534f04fb4a019a4a741`；修复输入 blob `995e6aeb403595abc6cc3480f1e1e45448a590d3`；
+  仅同步本文件 Review 勾选后最终 blob `ddd58cc56bf500b454b94eb20b176e0cfff9ea9c`；SHA256(`head=<HEAD>;document=<blob>`) =
+  `c8c5908529e14f4cc3c9db77e6f972dcc836d0576b27efb5556f9ca1832b9ad5`。
+- Dependencies：architecture blob `b960650b007556750d6389681035173da110a182`（Round 9 PASS，已交付于 615d124）；
+  performance-evaluation blob `7a17d7fa58017793a01c090145ec20051a70906a`（Round 16 PASS）。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`python3 scripts/check-docs.py` exit 0（含本轮记录）；
+  `git diff --check` exit 0。
+- CEv1：WorkUnit `scan-performance:tasks.md`；目标 `scan-perf-tasks-r14-20261027-state`；`scan-perf-tasks-r14-20261027-integrity`、
+  `scan-perf-tasks-r14-20261027-review` 均为 pass；关系预检 4/4 ok；精确目标门禁 VERIFIED。Round 13 的 fail 观察保留原绑定。
+- 结论：PASS；tasks.md Review 勾选，Beads `ad-scan-performance-doc-tasks` 转 awaiting_commit；未提交／推送。topic 仍有实现任务，
+  不跨越 topic 完成边界。
+
+Task checkpoint：ad-scan-performance-doc-tasks；content_state `c8c5908529e14f4cc3c9db77e6f972dcc836d0576b27efb5556f9ca1832b9ad5`；gate VERIFIED。
+提交建议：经用户授权后，提交 tasks.md 的启动争用对照／削减分解与 Review 勾选、reviews/tasks.md Round 13–14 及修复记录；不混入工作区的 Swift／`cmd/agentdeck-perf` 探测实现改动。
+推送建议：提交后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。
