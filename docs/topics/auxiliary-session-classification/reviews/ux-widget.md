@@ -54,3 +54,48 @@ Task checkpoint：ad-auxiliary-session-classification-doc-ux-widget；content_st
 推送建议：经授权提交并验证对象、Codex trailer 与 SSH 签名后推送 feature/auxiliary-session-classification；remote/upstream 尚未解析。不以 framework PASS 宣称 final-surface 完成。
 
 设计：auxiliary-session-classification / architecture.md
+
+## Round 2 — 2026-10-27
+
+## 📋 Widget 最终表面评审
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- summary 消费规则与架构 §7 App Group `session_scope_summary` 白名单（available、scope、count、unknown_count、client/period、
+  publication identity/time、安全 reason）逐项对应；`decodeSessionScopeSummary` 先校验 available 与 scope 枚举、client/period
+  精确匹配、publication/time 完整，再校验 count 为非负安全整数、unknown_count 为 null 或 0..count，且 auxiliary 必须 unknown 0。
+  `unknown_count` 字段缺失（undefined）不被当作 null，与文档“字段缺失不是 null”一致。
+- 合成投影经同一 decoder 输出：unknown 场景 Work/All 保留全部、Aux 0，partial 保留 count 而 Unknown —；
+  malformed/selectionMismatch/unknownScope 均复用“会话范围不可用”行，费用不受影响。渲染只显示 scope/count/unknown，
+  reason 不进入可见文本或无障碍名称，满足隐私边界。
+- Published scope 与 Saved default 为独立舞台轴，保存默认不重标旧已发布快照；Magnitude 小号 today、大号 30d 的会话行与既有
+  卡片窗口一致，`widgetClient` 舞台轴只作用于 Quota kind，Magnitude 的 client=all 与现有标本一致。
+- 文档把生产 codec 名称复用、Swift 双向兼容、真实 client/period 组合、跨进程发布顺序与极大整数排版明确留给实现验收，没有以标本冒充。
+
+### 📝 总结
+
+- Reviewer: Claude Code，独立评审会话，未参与 Widget 设计或 final-surface 候选。
+- Method: 单评审者；只读核对 ux/widget.md、architecture.md §7、原型 diff、`auxiliaryWidget.js` 全文与 `Widgets.jsx` 会话行渲染；
+  独立运行 `node prototype/tools/check-auxiliary-widget-final.mjs`（39 项，failures 0）；目视 final-mismatch-zh-light.png
+  （小号“会话范围不可用”，金额/token 与“全部消耗”保留）。未重跑 1,208 项浏览器矩阵或 axe，不作新 native/axe 声明。
+- Scope: ux/widget.md final-surface 候选与共享 Widget 标本；不含 Swift codec、App Group IO、WidgetKit 或原生无障碍验收。
+- Reviewed state: HEAD `8cb1a7d3a5725711c0dbcee584eec712330b07be`；document blob `0e764dbee6e92d2a878508ac7151d54901ff06ca`。
+- Specimen identity: manifest SHA-256 `74d30cabfd89204f365df68db0e4b3db6528a49ab0bdb464624c1b36366ab103`；`files` 13 项 `shasum -c` 全部 OK。
+- Fingerprint: `db8a073f7ae3bdee66f08b2286da7388e68bb2021f2a141bdf4f76d091abef2b`，SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence: `python3 scripts/check-docs.py` 退出 0；`git diff --check` 退出 0；评审记录经 `scripts/check-review-records.py` 校验。
+- WorkUnit: `auxiliary-session-classification:ux/widget.md`；ContentState: `auxiliary-session-classification:ux-widget-r2-db8a073f7ae3bdee`。
+- Completion gate: VERIFIED
+- Disposition: Round 1 无发现；本轮无发现。
+- Residual uncertainty: 真实 App Group 序列化、WidgetKit 时序、极大计数排版与 VoiceOver/Dynamic Type 仍属实现验收。

@@ -4,13 +4,13 @@ created: 2026-10-27
 updated: 2026-10-27
 ---
 
-# 辅助会话隔离：Widget 交互框架
+# 辅助会话隔离：Widget 最终表面设计
 
 ## 阶段、来源与范围
 
 依据 [requirements.md](../requirements.md)、已评审 [Settings](settings.md) 与 [菜单栏](menubar.md)
-框架；继承 [Widget refresh 合同](../../desktop-refresh/ux/widget-refresh.md)。本轮为 framework，
-architecture 必须供应字段后再作 final-surface reconciliation，不修改 Go/Swift 产品代码。
+最终合同与 [architecture.md](../architecture.md) §7；继承 [Widget refresh 合同](../../desktop-refresh/ux/widget-refresh.md)。
+本轮为 final-surface reconciliation；框架历史保留，不修改 Go/Swift 产品代码。
 
 保持现有五种 kind：Magnitude、Composition、Trust、Rhythm、Quota；三种 system family 不变。
 本工作树 `prototype/src/Widgets.jsx` 的 Magnitude 小号和大号已有会话数字，中号没有；
@@ -58,7 +58,7 @@ small 和 large 分别对应自己的当前 client/period 投影，不能复用�
 
 数据少于四位时用本地化整数；数值很长时允许本地化紧凑数字，但无障碍读出完整整数和单位，
 不得截断成看似更小的整数。未知标记、范围和时间不能靠 hover tooltip 才能理解。
-生产数字格式的极大计数、Dynamic Type 与辅助功能验证由最终表面/实现承担；本轮合成计数为 0–6。
+生产数字格式的极大计数、Dynamic Type 与辅助功能验证由实现验收承担；浏览器标本合成计数为 0–6。
 
 原型只使用聚合：today 的 Work/Aux/All 为 3/1/4，30d 为 4/2/6；Work/All 各含 1 个 unknown。
 unknown 场景将所选窗口全部视为未知，Work/All 保留全部、Aux 为 0；partial 的未知数量不可知。
@@ -126,8 +126,8 @@ App Group 新增字段只允许聚合 count、unknown_count、scope、availabili
 | 原生 | WidgetKit timeline、VoiceOver/Dynamic Type、实际客户端/时段配置、跨进程失败与升级验收 |
 
 本轮新设计仅涉及 Magnitude 已有会话行；其他 kind 复用既有语义，不重开此前独立主题。
-architecture 要对字段与格式逐项供应或拒绝；不得以永久隐藏计数代替本需求。
-Widget framework 评审通过后才满足 architecture 的最后一个框架输入，不在本轮关闭任务或提前解开该依赖。
+架构 §7 已供应 session_scope_summary；下节固定消费规则。不得以永久隐藏计数代替本需求。
+本候选待独立最终表面评审；framework PASS 不覆盖本次新增 decoder 合同。
 
 ## 设计自检与证据范围
 
@@ -139,3 +139,59 @@ scoped axe 4.12.1 在浅色 All 与深色 Work 均为 0 violations/0 incomplete�
 最终小号图表最低高度调整不改颜色或语义标记，复用上述可访问性结果；不宣称 native AX 通过。
 保留正常、旧快照、默认未确认与版本不支持标本，内容哈希见 manifest。
 检查仅覆盖合成聚合和浏览器设计，不证明真实来源、极大计数、WidgetKit、App Group 或性能验收。
+
+## Final-surface：summary 与 codec 对齐
+
+设计输入 SUFFICIENT：需求、架构 Round 2、CLI/菜单栏最终合同及 Settings 默认确认/发布合同
+已确定行为，无需新的用户决策。架构输入 blob `5b5a3b5694827900a9380e3879058a6baca4919a`。
+
+`session_scope_summary` 是现有 App Group 外层协议的 additive 聚合，不改变旧 `sessions.total`。
+以下是 summary 语义字段的消费约束；publication_id/generated_at 为本标本采用的身份/时间命名，
+生产 codec 应复用外层已有规范名称并保证等价，不另造第二套快照版本系统。
+
+| 字段 | 消费规则 |
+| --- | --- |
+| available | 必须显式 true 才显示分类数字；缺失/false 不从旧 total 补值 |
+| scope | work/auxiliary/all 枚举；未知 token 仅分类行不可用，不回退 Work |
+| count | 本窗口已去重的非负整数；缺失/负值/溢出拒绝该 summary |
+| unknown_count | 明确整数 0..count 或 null；null 表覆盖未知，显示 —；字段缺失不是 null |
+| client / period | 必须精确匹配本 entry 的实际配置；不接受别的客户端/窗口数字，不硬编码 all/today/30d |
+| publication identity / time | 必须属于同次已接受投影且有效；缺失则分类行不可用；不得以读取时间代替成功时间 |
+| reason | 安全原因枚举/空值；未知原因仅显示通用不可用，不渲染来源原文或数据路径 |
+
+Auxiliary 仅含确定辅助会话，unknown_count 必须为 0；其他范围允许覆盖未知 null。
+计数可信但分类覆盖不足时，保留 count 与 Unknown —；身份/窗口/字段完整性不可信时整个分类行不可用。
+合成 decoder 使用 JS safe integer 作为标本边界；生产使用协议整数类型并在格式化前检查边界，
+不能将 JS 精度限制转成静默舍入。大值按本地化紧凑数字显示，VoiceOver 保留完整整数。
+
+宿主负责将 CLI/core 选择投影转换为白名单 summary，Widget 不重新过滤成员或把 request receipt
+当快照。App Group codec 严格投影允许字段；core 的 read_vector、override revision、request_id、
+session ID 和来源定位不透传。旧消费者忽略新增 summary，新消费者缺 summary 时只降级会话行。
+新 summary 的解析错误不使独立可读消耗归零；外层 schema 不支持/容器不可读则仍整卡 typed failure。
+
+接受边界是完整发布，而不是逐字段刷新：宿主校验同一 client/period、publication 和成功时间后
+原子替换整份候选；不拼接不同代 summary 与会话时间。WidgetKit 已有 entry 可继续显示旧整份快照。
+默认未知时宿主不发布新分类候选；有旧可靠投影保留旧值，没有则 unavailable。
+保存 Auxiliary 而发布失败、WidgetKit 延迟或重复读取旧文件均不能把旧 Work 标签换成 Auxiliary。
+配置切到其他 client/period 后旧窗口不再匹配，不借用旧数字；范围偏好变化本身不使旧已发布 scope 无效。
+跨数据库 read-vector 重试、迟到响应和发布原子性沿用架构/refresh 合同，由宿主处理，Widget 不探测进程。
+
+### 最终状态标本与实现验收
+
+共享标本加入 malformed（缺 unknown_count）、selectionMismatch（窗口不匹配）、unknownScope；
+均复用现有 Session scope unavailable 行和全部消耗布局，不新增交互入口。
+原八状态继续覆盖明确零、覆盖未知、旧版本、默认未知和旧发布；舞台 selector 不是产品控件。
+新增 decoder 检查覆盖缺字段、坏计数、未知范围、实际 client/period 匹配以及 Work+Aux=All。
+
+实现必须补齐：Swift codec 新旧双向兼容与白名单 serialization；实际全部 client/period 组合；
+保存默认→发布失败→旧 entry→成功新发布的跨进程顺序；整卡读取失败优先级；极大整数格式化，
+以及原生三尺寸、VoiceOver/Dynamic Type。任何一项不能由本合成模型或历史截图宣称已验收。
+本轮不调整 WidgetKit 刷新预算、后台服务或现有五种 kind，不新增 Widget scope 写入。
+
+### Final-surface 自检 — 2026-10-27
+
+构建通过；39 项聚合 decoder 模型检查通过。中英 × 深浅四组各 302 项，共 1,208 项
+浏览器断言无失败，覆盖 11 状态、三范围、三个尺寸、保存默认不重标快照、消耗不变和布局边界。
+窗口错配中文浅色截图已目视检查；新增状态沿用原 unavailable 元素，不改变字体、颜色或 AX 结构。
+历史 framework 的 axe 与整卡失败检查保留为历史证据，本轮未宣称重新执行；新增状态仅经过
+当前浏览器矩阵和模型检查。真实 App Group/Swift/WidgetKit、极大计数排版和 native AX 尚待实现验收。

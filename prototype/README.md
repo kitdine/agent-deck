@@ -348,3 +348,10 @@ Settings auxiliary final-surface 使用独立目标 revision 与 request receipt
 新增来源三态与 permissionWarning；来源定位仍仅 CLI 管理，不在窗口展示数据根。
 `node prototype/tools/check-auxiliary-settings-final.mjs` 检查内存模型合同；浏览器脚本覆盖最终窗口交互。
 这不执行实际源访问、SQLite、请求发送或 Widget 发布。
+
+### Auxiliary Widget final-surface candidate
+
+`?surface=widgets&auxWidget=normal` 仍为唯一 Widget 标本入口。新增 malformed、selectionMismatch、
+unknownScope 使用同一 unavailable 行；summary decoder 只验证合成聚合，不读真实 App Group。
+`node prototype/tools/check-auxiliary-widget-final.mjs` 检查字段完整性、窗口匹配、计数边界和分区。
+既有浏览器脚本扩展为 11 状态；最终设计与证据见 auxiliary-session-classification/ux/widget.md。
