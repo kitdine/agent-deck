@@ -322,3 +322,13 @@ Width 为 320/520（URL `asWidth`）。Open settings 重开同一 App 内窗口�
 查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 为未匹配覆盖。
 设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
 检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行，覆盖保存/恢复和默认范围联动。
+
+## 辅助会话 Widget 框架标本
+
+Widgets surface 增加 `?surface=widgets&auxWidget=normal`，仅聚焦现有 Magnitude 三尺寸；
+不传参数仍展示五种 Widget。State 支持 normal/empty/unknown/partial/legacy/defaultUnknown/pending/stale；
+Published scope（`awScope`）与 Saved default（`awDefault`）独立，保存默认不会重标旧快照。
+沿用 widgetRefresh 的 missing/containerUnavailable/readFailed/unsupported，全局读取失败优先。
+设计见 [ux/widget.md](../docs/topics/auxiliary-session-classification/ux/widget.md)；
+`prototype/tools/check-auxiliary-widget.js` 校验三范围聚合、价格不变、尺寸边界及 7/20 桶结构。
+所有新增数据仅为聚合合成值，不模拟真实 WidgetKit 调度或 App Group IO。

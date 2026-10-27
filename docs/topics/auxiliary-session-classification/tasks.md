@@ -18,7 +18,7 @@ updated: 2026-10-26
 | ux/cli.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
 | ux/settings.md | [x] | [x] |
-| ux/widget.md | [ ] | [ ] |
+| ux/widget.md | [x] | [x] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [ ] | [ ] |
 
@@ -38,6 +38,7 @@ CLI framework 最新独立复评为 PASS，文档完整性证据门禁仍开放�
 architecture 后仍需 final-surface reconciliation，不代表最终表面完成。
 菜单栏 framework 最新独立复评为 PASS，文档完整性门禁仍开放，见 [reviews/ux-menubar.md](reviews/ux-menubar.md)；
 Settings framework 最新独立复评为 PASS，文档完整性门禁仍开放，见 [reviews/ux-settings.md](reviews/ux-settings.md)。
-Widget 与 architecture 仍待设计，不将标本检查当作原生实现验收。
+Widget framework PASS 与门禁见 [reviews/ux-widget.md](reviews/ux-widget.md)，当前框架待授权提交；architecture 尚未设计。
+四份 UX 仍需架构后的最终核对，不将标本检查当作原生实现验收。
 评审与修复交接见 [reviews/requirements.md](reviews/requirements.md)。
 未合并主题状态只在本文件及 Beads 维护，不更新 main 的 docs/status.md。

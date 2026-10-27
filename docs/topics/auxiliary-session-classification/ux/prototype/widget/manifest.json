@@ -1,0 +1,105 @@
+{
+  "stage": "framework",
+  "date": "2026-10-27",
+  "retention": "Repository-owned design artifacts retained with topic review history.",
+  "entry": "?surface=widgets&auxWidget=normal",
+  "states": [
+    "normal",
+    "empty",
+    "unknown",
+    "partial",
+    "legacy",
+    "defaultUnknown",
+    "pending",
+    "stale"
+  ],
+  "matrix": {
+    "languages": [
+      "en",
+      "zh"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "scopes": [
+      "work",
+      "auxiliary",
+      "all"
+    ],
+    "sizes": [
+      "small",
+      "medium",
+      "large"
+    ]
+  },
+  "checks": {
+    "build": "passed",
+    "browser": {
+      "assertions": 920,
+      "failures": 0
+    },
+    "read_failure_precedence": {
+      "cases": 4,
+      "typed_failures_per_case": 3,
+      "scoped_counts_per_case": 0
+    },
+    "axe": {
+      "version": "4.12.1",
+      "scopes": [
+        "light All",
+        "dark Work"
+      ],
+      "violations": 0,
+      "incomplete": 0
+    },
+    "reuse": "Global failure branch and axe semantics unaffected by final small chart minimum-height adjustment.",
+    "limits": "Browser aggregate specimens only; no native, WidgetKit, App Group, extreme-count or performance acceptance."
+  },
+  "files": [
+    {
+      "path": "prototype/src/Widgets.jsx",
+      "sha256": "f7f4be564c0306371c3787621312cb7232ba211c36bb515194c40001816fcaaa"
+    },
+    {
+      "path": "prototype/src/auxiliaryWidget.js",
+      "sha256": "2a295457b58829b6d571f30aa64c4fe48443d608746bf7769b8c9bc554aa7278"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-widget.js",
+      "sha256": "9c6fe458e9c0ed24c98bd8827befe283d8a99e48222e9c839fa73f1a92137a77"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/widget/work-en-dark.png",
+      "sha256": "bbacc9c291af0528c1aabe68c6e40ba98a16c3488c218f9304790da12b306943"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/widget/all-zh-light.png",
+      "sha256": "2fe00b6d7c9b781b8f81b7fd6430d2d395fd3dc4a8acdd26da0e00bd2dfa2a51"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/widget/unconfirmed-en-light.png",
+      "sha256": "b7f980f11b9ff0a7845e6e525cbb9fe06a0117cb9de92c73c148e074cc231ea0"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/widget/unsupported-en.png",
+      "sha256": "e48dc93cdd44912b6e6b8d2f1e40b12c6df4ee5923226c8d1e34405f0a23c621"
+    }
+  ]
+}
