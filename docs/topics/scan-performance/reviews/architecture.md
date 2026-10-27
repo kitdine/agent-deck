@@ -326,3 +326,147 @@ Task checkpoint：ad-scan-performance-doc-arch；content_state `b61ea1ccc9693e8b
 - 当前 HEAD `67ac8b7da27f581a58d4014a7b218321fcd1042f`；正文 blob 与本轮已评版本一致。新 digest `4bcfaf2ccda7fb00a4347b99106fba3b085930c6664b4752c11c6827c02d85fd`，ContentState `scan-perf-doc-l0-20261026-arch-state`；新 L0 证据与显式目标绑定的语义 roll-up 分别为 `scan-perf-doc-l0-20261026-arch-integrity`、`scan-perf-doc-l0-20261026-arch-review`。
 - 原观察保留原身份；只评估本次 HEAD、忽略规则与记录格式变更对语义结论没有影响。旧 blocked 观察不改写，新状态不继承旧环境阻塞。
 - 本段取代上方 checkpoint 的阻塞前提：门禁 VERIFIED；文档本体已在此前授权提交中交付，本次忽略规则及记录同步尚未提交，因此协调转 awaiting_commit，暂不关闭任务。不执行提交或推送。
+
+## Round 8 — 2026-10-27
+
+## 📋 启动争用削减架构评审
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[architecture.md:146–154] SP-ARCH-R8-F1（高）：复用键不足以支持整份 serving payload 的复用和逐字节等价承诺。
+
+- 处置：new，open；属于新增候选 1，不重开历史已关闭发现。
+- 行为风险：同一天且数据库 generation 不变时，复用旧 payload 会保留已过期的额度新鲜度或时间相关投影；更新 coverage 头不能更新 payload 中的状态。
+- 证据：`internal/desktop/desktop.go:259–297` 的 Build 每次写入新的 GeneratedAt、NextRefreshAt，并加载 subscription、sessions、health；不是只读 generation 决定的纯函数。`internal/desktop/subscription.go:263–265` 根据 now 计算 Stale；`internal/quota/model.go:107–148` 的阈值为 max(窗口长度的 1/10, 两倍 probe interval)，跨阈值不要求数据库写入。比如同日 300 分钟窗口、5 分钟 probe interval，观察后第 29 分钟与第 31 分钟的 generation 可相同，但完整重建的 Stale 分别为 false 和 true，旧 payload 复用无法等价。
+- 相关边界：`internal/desktop/derived_cache.go:117–143,158–183` 已声明 ValidUntil，取下一小时、本地日和未来价格生效时间的最早值；新增候选只核对本地日，且跳过 Build，不能借用原派生缓存读取时的有效性检查。`internal/desktop/serving_cache.go:232–238` 将完整 Snapshot 和生成时间写进 payload，故即使业务值不变，跨时刻“逐字节相等”也不成立。
+- 💡 有界修复：列出可复用的稳定投影与仍需刷新／重新校验的时间、额度、健康等字段，定义复用的有效期及失效出口；明确完整比较 oracle 的同一时钟／请求条件或精确的归一化字段范围，不能仅以 generation 与本地日相同替代全 payload 等价。补上同日跨额度 stale 阈值、小时和价格生效边界的验证要求；保持不改 schema/revision 触发器的范围约束。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- quiet 对照用于确认争用后才启动优化，正式 P01 口径仍由已评性能契约约束。
+- 无变化扫描若改变 generation，要求先调查并在需要改 schema／触发器时返回设计，避免无边界扩大优化。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，非架构增补作者；Method：独立增量设计评审，以当前工作区 CodeGraph 的逐行源码核对复用输入、时间有效性及发布路径，无委派。
+- Scope：2026-10-27 争用对照与两个削减候选及受影响契约。发现候选 1 的确定性阻断后停止扩大验证；候选 2 的跨进程调度、运行时收益与实现正确性未完成认证。本轮不运行性能批次、不修改产品。
+- Reviewed state：HEAD `78ad48dcfaffa65a4f116f443897a668957764be`；architecture blob `6d3d0f16a3013abca3b306899916fe23674746f5`；SHA256(`head=<HEAD>;document=<blob>`) = `597a5cf79ddc84bc931b69c43abd997eeef46b03c3ebe267870c502cf7752cff`。
+- Dependencies：performance-evaluation blob `7a17d7fa58017793a01c090145ec20051a70906a`（Round 16 PASS、交付门 VERIFIED）；requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`。工作区 `agent-deck.scan-performance` / `feature/scan-performance`；相关源码为本工作区当前内容。
+- Evidence：上述源码静态场景构成反例；`python3 scripts/check-docs.py` exit 0，覆盖空白、diff、链接、受影响文档集与评审结构。历史 SP-ARCH-R3-F1..F3、SP-ARCH-R4-F1 保持原关闭处置。
+- CEv1：WorkUnit `scan-performance:architecture.md`；本轮目标 `scan-perf-arch-r8-20261027-state`。required criteria 为 document-integrity 与 contracts-and-consumer-consistency；新观察 `scan-perf-arch-r8-20261027-integrity` pass、`scan-perf-arch-r8-20261027-review` fail；关系预检 4/4 ok，写入 4 条关系，精确目标门禁 FAILED。旧观察不直接改绑。
+- 结论：FAIL，architecture 的 Documents Review 保持未勾选，同一 dispatch 退回修复；不跨越 topic 完成边界。
+
+修复：scan-performance / reviews/architecture.md / SP-ARCH-R8-F1
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Repair candidate — 2026-10-27（Round 8 后）
+
+Repairer：Claude Code 主会话；范围为 SP-ARCH-R8-F1。Round 8 的评分、结论与 FAILED 门保留；本节不是 Review Round，
+不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-ARCH-R8-F1 -> repaired in candidate：
+  - 候选 1 从“generation 与本地日相同则不调用 `Build`、复用整份 payload”改为“发布段每次调用 `Build`，只经由已有
+    派生快照缓存复用 usage 摘要/presentation 与 work signals”。不新增复用键，不扩大有效期，不跳过 `Build`。
+    源码依据（只读核对）：`internal/desktop/desktop.go` 的 `Build` 每次按时钟写 `GeneratedAt`/`NextRefreshAt`，并加载
+    provider、subscription、sessions、health；`derived_cache.go` 的 `nextDerivedSnapshotValidityBoundary` 与键比较。
+  - 明列每次按当次时钟重建、不复用的字段：生成与下次刷新时间、provider、subscription/额度新鲜度、sessions、health、
+    warnings、coverage 头。可复用投影沿用缓存已评审的键与 `ValidUntil`（下一整点、下一本地日、未来价格生效时间
+    三者取最早），任一不符或到期即重算。
+  - 本候选只处理两类重复计算：无事实变化的写入把派生 generation 置 dirty 或推进 revision（只在不改 schema 与
+    触发器时消除，否则返回设计）；同一 derive 段内 `PublishDerivedSnapshotCache` 与 `Build` 重复计算同一投影。
+    合法失效照常重算；若重算全部来自合法失效，本候选无余量，转候选 2。
+  - 正确性 oracle 改为：同一数据库、同一注入时钟、同一请求下，缓存命中与强制重算的 serving payload 逐字节相等；
+    不跨时刻比较。
+  - 补齐边界验证：同 generation、同日额度跨 stale 阈值前后（300 分钟窗口、5 分钟 probe，第 29 与第 31 分钟）
+    `Stale` 分别为 false 和 true；跨整点、跨未来价格生效、跨本地日、dirty 或 revision 变化时重算；sessions 与 health
+    每次重新加载。
+  - tasks.md 第 3 项的文件边界与正确性回归中引用旧复用说法的两处同步改为上述口径；任务范围、准则与样本数未改。
+
+修复目标：HEAD `78ad48dcfaffa65a4f116f443897a668957764be`；architecture blob `b960650b007556750d6389681035173da110a182`；
+tasks blob `b0e274fca0474e226199ac2a40d37f46f30b2cce`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / architecture.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 9 — 2026-10-27
+
+## 📋 启动争用削减架构复评
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED（CEv1 scan-perf-arch-r9-20261027-state，两项 required criteria 均通过）
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-ARCH-R8-F1 -> closed。候选 1 不再以 generation 与本地日相同复用整份 payload：发布段每次调用 `Build`，
+  逐项列出按当次时钟重建的字段（生成与下次刷新时间、provider、subscription／额度新鲜度、sessions、health、
+  warnings、coverage 头），可复用部分只经由已有派生快照缓存。源码核对：`internal/desktop/derived_cache.go`
+  的 `derivedSnapshotCachePayload` 只含 presentation、summary、work signals 与价格可用性；
+  `derivedSnapshotCacheHeaderMatches` 比较的键与 `nextDerivedSnapshotValidityBoundary`（下一整点、下一本地日、
+  未来价格生效时间取最早）与文中列举一致；`desktop.go` 的 `Build` 在缓存命中时仍执行 `loadProvider`、
+  `loadSubscription`、`loadSessions`、`loadHealth`。因此 Round 8 的同日跨 stale 阈值反例不再成立：`Stale`
+  属于每次重建的 subscription，不在缓存载荷中。
+- 等价 oracle 收窄为同一数据库、同一注入时钟、同一请求下缓存命中与强制重算的 serving payload 逐字节相等，
+  不跨时刻比较；`serving_cache.go` 中随机 `PublicationID` 位于 Header 而非 Payload，固定 `Service.Now` 时
+  Payload 的 `GeneratedAt` 一致，oracle 可执行。边界验证覆盖 stale 阈值（29／31 分钟）、整点、价格生效、
+  本地日、dirty／revision。
+- 范围受控：不新增复用键、不扩大有效期、不改 schema／revision 触发器（需要时返回设计）；若重算全部来自
+  合法失效即无余量并转候选 2，出口完整。tasks.md 第 3 项文件边界与正确性回归的引用同步为新口径，与本文件一致。
+- 候选 2 的落点与现有代码对应：`EmbeddedHelperRunner` 以 `executableURL` 启动 helper（可设
+  `Process.qualityOfService`），扫描 worker 由 `internal/scanruntime/scanruntime.go` 以独立 `scan-worker`
+  子进程拉起；无缓存／空库回合保持默认优先级，P02/P04/P11 不回归作为判据。其运行时收益仍待实施与批次验证，
+  本设计不对其签发性能结论。
+
+### 📝 总结
+
+- Reviewer：Claude Code 新会话（冷上下文，非 Round 8 修复会话，未继承其上下文）；Method：独立增量复评，逐条核对
+  SP-ARCH-R8-F1 的有界修复要求与当前源码（`derived_cache.go`、`desktop.go`、`serving_cache.go`、
+  `scanruntime/serving.go` 与 `scanruntime.go` 的 derive 段、`EmbeddedHelperRunner`），并复查候选 2 的落点；
+  无委派，无产品修改。
+- 处置：SP-ARCH-R8-F1 closed；历史 SP-ARCH-R3-F1..F3、SP-ARCH-R4-F1 保持关闭，未回归；无新增发现。
+- Reviewed state：HEAD `78ad48dcfaffa65a4f116f443897a668957764be`；architecture blob
+  `b960650b007556750d6389681035173da110a182`；SHA256(`head=<HEAD>;document=<blob>`) =
+  `8a80d3605f2a7ae6d38a55a2886f86ab3157ed610bcc7bf6761e69531d946c5b`。
+- Dependencies：tasks blob `b0e274fca0474e226199ac2a40d37f46f30b2cce`（本轮只核对与本文件的一致性，tasks.md
+  自身的评审另行进行）；performance-evaluation blob `7a17d7fa58017793a01c090145ec20051a70906a`；requirements
+  blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check -- docs` exit 0；
+  `python3 scripts/check-docs.py` exit 0（含本轮记录）。
+- Residual：派生缓存命中后剩余的发布段耗时（sessions／health／subscription 加载）是否仍构成争用，以及候选 2
+  的调度收益，只能由实施与 `P01-floor-warm` 批次判定；设计已为两者给出出口。
+- CEv1：WorkUnit `scan-performance:architecture.md`；目标 `scan-perf-arch-r9-20261027-state`；新观察
+  `scan-perf-arch-r9-20261027-integrity`、`scan-perf-arch-r9-20261027-review`，均为 pass；关系预检 4/4 ok，写入 4 条
+  关系；精确目标门禁 VERIFIED。Round 8 的 fail 观察保留原身份，绑定旧状态，不改写。
+- 结论：PASS；矩阵 architecture Review 勾选。
+- Coordination：Beads `ad-scan-performance-doc-arch` 转 awaiting_commit；不执行提交或推送。tasks.md 的 Review 仍未勾选，
+  其 Beads 任务 `ad-scan-performance-doc-tasks` 当前为 closed，需按其自身评审另行处理，本轮不代为流转。
+
+Task checkpoint：ad-scan-performance-doc-arch；content_state `8a80d3605f2a7ae6d38a55a2886f86ab3157ed610bcc7bf6761e69531d946c5b`（ContentState `scan-perf-arch-r9-20261027-state`）；gate VERIFIED。
+提交建议：经独立授权后，提交 architecture.md 启动争用削减修订、reviews/architecture.md Round 8–9 记录与 tasks.md 中 architecture 行的矩阵变更；tasks.md 正文修订待其自身评审 PASS 后同批或单独提交；不混入工作区中的 Swift／`cmd/agentdeck-perf` 探测代码改动。
+推送建议：提交后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。

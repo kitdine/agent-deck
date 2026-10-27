@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # 展示恢复、事件更新与有界采集
@@ -131,9 +131,47 @@ window server 侧资源仍在第一次 `show` 时创建；首击又恰在 quota/
    测同一首击下限，只用于在 1 不可行或不达标时判断“改窗口形态”是否真能提供余量；它的暖启动受同一约束。
    它不是本设计采用的形态，采用与否按性能评估的判定出口交给 UX 评审；任一探测没有工具有效的结果时，
    停止并报告阻塞，不据此提出 UX 或目标变更。
-3. **争用归因。** 两个探测都报告首击时存活的 helper 进程数；若下限的尾部集中在 helper 存活的样本，
-   启动顺序中 `model.usable` 之后的后台工作改用低优先级 QoS（`.utility`）启动 helper 并让首击窗口
-   之前的 2 s 内至多一个 helper 运行，这只改变调度，不改变它们的语义与兜底。
+3. **争用归因（2026-10-27 修订）。** 原定按“首击时存活 helper 数”分层归因，但实测每次首击都恰有
+   启动全量刷新的 `scan` 客户端与其扫描 worker 存活（见[性能评估·争用对照](performance-evaluation.md#追加探测结果与争用对照2026-10-27-返回设计)），
+   分层没有对照。改为对照探测：`P01-floor-warm-quiet` 等启动全量刷新结束（App 在 coordinator 的启动全量
+   刷新返回时打点 `refresh.startup.done`）后再静置 2 s 点击，与 `P01-floor-warm` 交错执行；只在 Perf 构建中存在。
+   对照证明争用主导时，按下文“启动争用削减”处理，不改窗口形态、不改目标。
+
+#### 启动争用削减
+
+首击时与主线程争用的是启动全量刷新。实测在数据未变（读取 0 字节、导入 0 条）时，这次扫描仍在发布阶段
+无条件调用 `PublishServingSnapshot`（`internal/scanruntime/serving.go` 与 `scanruntime.go` 的 derive 段），
+完整重建 serving 视图约 0.6–1.1 s。两个候选按性能评估的候选采用规则一次一个实施、单独判定：
+
+1. **未变化时复用派生投影，不复用整份 payload（2026-10-27 修订）。** serving payload 不是 generation 的纯函数：
+   `Build` 每次按当前时钟写入 `GeneratedAt`、`NextRefreshAt`，并重新加载 provider、subscription（额度
+   `Stale` 按 now 与阈值计算，跨阈值不写库）、sessions 与 health。因此发布段仍每次调用 `Build`，下列
+   字段总是按当次时钟重建，不复用：生成与下次刷新时间、provider、subscription/额度新鲜度、sessions、
+   health、warnings 与 coverage 头。可复用的只有 usage 摘要/presentation 与 work signals 这一稳定投影，且只经由
+   已有的派生快照缓存（`internal/desktop/derived_cache.go`）复用，沿用它已评审的键与有效期：数据库身份、
+   schema、usage/session parser 与算法版本、wire 版本、epoch 与 revision 且未 dirty、时区与本地日窗口，
+   以及 `ValidUntil` = 下一整点、下一本地日与未来价格生效时间中最早者；任一不符或到期即重算。本候选不新增
+   复用键、不扩大有效期、不跳过 `Build`。
+   本候选要消除的是无变化扫描里派生投影的重复计算。实现第一步在工作副本上连续两次扫描，按打点确认第二次
+   发布段重算投影的原因，只处理以下两类：
+   - 无事实变化的写入把派生 generation 置 dirty 或推进 revision；只在不改 schema 与 revision 触发器的前提下
+     消除这类无效写入，否则停止并返回设计。
+   - 同一 derive 段内 `PublishDerivedSnapshotCache` 与 `Build` 重复计算同一投影；改为前者写好缓存后由
+     `Build` 命中，不另算。
+   `ValidUntil` 到期等合法失效照常重算，不绕过；若重算全部来自合法失效，本候选没有余量，直接进入候选 2。
+   正确性 oracle：同一数据库、同一注入时钟（`Service.Now` 固定）、同一请求下，命中缓存路径与强制重算路径
+   产出的 serving payload 逐字节相等；不跨时刻比较。边界验证：同一 generation、同日内额度跨 stale 阈值前后
+   （例：300 分钟窗口、5 分钟 probe interval，观察后第 29 与第 31 分钟）两次发布的 `Stale` 分别为 false、true；
+   跨整点、跨未来价格生效时间、跨本地日、dirty 或 revision 变化时都重算投影；sessions 与 health 每次重新加载。
+   变化数据的分区重算仍属 `incremental-update`。
+2. **启动后台工作低优先级调度。** `model.usable` 之后由启动顺序发起的 helper（quota、bootstrap、启动
+   全量刷新）以 `Process.qualityOfService = .utility` 启动；恢复成功（已有有效 publication）时，该回合由
+   `internal/scanruntime` 拉起的扫描 worker 降低自身调度优先级（darwin `setpriority`，nice 10）。
+   无缓存与空库（P04/P11）的回合保持默认优先级，首批发布不被延后。只改调度，不改语义、兜底与超时。
+
+每个候选的判据是 `P01-floor-warm`（`model.usable` 后 2 s 点击）的 p95，且 P02、P04、P11 不回归；
+先实施候选 1，未达 150 ms 再叠加候选 2。不推迟启动刷新的开始时机：那会改变启动后的数据新鲜度，
+属于需求变更。
 
 与窗口形态无关的部分不等待上述判定：第 4 步首帧内容最小化、第 5 步层级保持、
 启动顺序、切换 memoize，以及 P02/P03/P04/P11 与 P01 重复层、重建中层的工作照常实施；
