@@ -19,7 +19,7 @@ updated: 2026-10-26
 | ux/menubar.md | [x] | [x] |
 | ux/settings.md | [x] | [x] |
 | ux/widget.md | [x] | [x] |
-| architecture.md | [ ] | [ ] |
+| architecture.md | [x] | [x] |
 | tasks.md | [ ] | [ ] |
 
 CLI：选择范围、自动化兼容、分类查看和覆盖；菜单栏：列表/统计及范围切换；
@@ -43,7 +43,8 @@ Widget framework 已独立评审 PASS，architecture 的四份框架输入已齐
 Widget 最终核对依赖 architecture，不建立双向 blocks。
 2026-10-27 范围勘误后，requirements 与三个 UX 的各自已交付对象门禁为 VERIFIED；
 requirements 协调已关闭，三个 UX 保持 in_progress、无受理人，标记待最终核对。
-Widget framework 已提交于 `2510975`，PASS 与门禁见 [reviews/ux-widget.md](reviews/ux-widget.md)；architecture 尚未设计。
+Widget framework 已提交于 `2510975`，PASS 与门禁见 [reviews/ux-widget.md](reviews/ux-widget.md)。
+architecture 最新独立复评为 PASS，见 [reviews/architecture.md](reviews/architecture.md)；当前等待授权提交，随后按各表面范围进行最终核对。
 四份 UX 仍需架构后的最终核对，不将标本检查当作原生实现验收。
 评审与修复交接见 [reviews/requirements.md](reviews/requirements.md)。
 未合并主题状态只在本文件及 Beads 维护，不更新 main 的 docs/status.md。
