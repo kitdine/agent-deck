@@ -342,3 +342,9 @@ clear 的分类为 not_queried，不伪造自动结果；saveUnknown 指向 --re
 前两态无分类数量；后两态保留 unknown 及有效用户覆盖。来源详情使用明确 --id 和逐参数引用的只读命令，
 规则缺失显示 unavailable，全部时长缺失显示 —。成功时间直接格式化呈现模型 generated_at。
 `prototype/tools/check-auxiliary-menubar.js` 包含最终状态和原框架生命周期检查；不代表真实请求竞态或 native 验收。
+
+Settings auxiliary final-surface 使用独立目标 revision 与 request receipt：clear 先显示 not_queried，
+独立 Find/Read current classification 才更新分类；receiptMissing 保持未知，replayed 保留较新覆盖。
+新增来源三态与 permissionWarning；来源定位仍仅 CLI 管理，不在窗口展示数据根。
+`node prototype/tools/check-auxiliary-settings-final.mjs` 检查内存模型合同；浏览器脚本覆盖最终窗口交互。
+这不执行实际源访问、SQLite、请求发送或 Widget 发布。

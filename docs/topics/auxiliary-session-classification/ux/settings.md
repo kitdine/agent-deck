@@ -4,18 +4,19 @@ created: 2026-10-27
 updated: 2026-10-27
 ---
 
-# 辅助会话隔离：Settings 交互框架
+# 辅助会话隔离：Settings 最终表面
 
 ## 依据、阶段与边界
 
-依据 [需求](../requirements.md)、已评审的 [菜单栏框架](menubar.md) 和 [CLI 框架](cli.md)。
-本文件为 framework，定义独立 Settings 窗口的默认范围和单会话覆盖管理。
-architecture 之后须最终核对字段、版本、读写协议和跨表面发布；本轮不修改产品 Go/Swift、
+依据 [需求](../requirements.md)、[菜单栏](menubar.md)、[CLI](cli.md) 与 [架构](../architecture.md)
+Round 2 PASS/VERIFIED（blob `5b5a3b5694827900a9380e3879058a6baca4919a`）。本文件为 final-surface 候选，
+已核对字段、版本、读写协议和跨表面边界，原 framework PASS 保留为历史；本轮不修改产品 Go/Swift、
 真实偏好、会话日志或用户数据库，不声明原生实现完成。
 
 复用 [共享原型](../../../../prototype/README.md) 的 SettingsWindow，新增“会话范围与分类 / Session scope and origin”组。
 入口 `?settings=1&auxSettings=normal`；合成舞台支持 normal/loading/loadFailed/saving/saveFailed/
- saveUnknown/conflict/pending。顶栏 Scenario、Open settings、Complete pending 明确标 stage，
+saveUnknown/receiptMissing/conflict/pending/replayed/permissionWarning，以及独立来源状态 sourceUnconfigured/sourceUnavailable/sourceUnsupported。
+顶栏 Scenario、Open settings、Complete pending 明确标 stage，
 不是产品设置或用户恢复按钮。状态由 App 级模型持有，关闭 Settings 不丢失已接受的操作。
 源码为 `AuxiliarySettings.jsx`、`auxiliarySettingsModel.js`、`auxiliarySettings.css`，
 内容身份与保留截图见 [manifest](prototype/settings/manifest.json)。
@@ -26,7 +27,7 @@ architecture 之后须最终核对字段、版本、读写协议和跨表面发�
 与“点击选项即写入”相比，本组采用选择后明确保存：能在覆盖前看清 client/ID、自动分类和生效范围，
 也能区分草稿与已保存值。操作可逆，不增加二次确认弹窗或全局 Apply。
 
-组内顺序：说明 → 持续状态提示 → 默认范围 → 精确会话查询与分类 → 现有覆盖。
+组内顺序：说明 → 持续状态/请求与回执 → 默认范围 → 精确会话查询与分类 → 现有覆盖 → 只读来源状态。
 现有登录、刷新、额度等设置保持原入口与合同，不共享本组写入请求或错误状态。
 常规 Settings 宽度 520 pt，窄可用宽度 320 pt；窗口体纵向滚动，标题/关闭入口固定可达。
 长 ID、原因和帮助文字自然换行，控件不横向外溢，不以截断隐藏目标身份。
@@ -53,29 +54,44 @@ CLI 文本默认 Work、JSON 默认 All 的需求不变。本操作不影响全�
 禁止把旧详情的保存按钮作用到新输入。
 
 查找结果依次展示安全项目标签、完整 client/ID、effective、automatic、受控 reason、rule version、
-user override。有效/自动分类的 work、auxiliary、unknown 保持三个不同值；规则缺失显示 unavailable。
+user override 与 override revision。有效/自动分类的 work、auxiliary、unknown 保持三个不同值；规则缺失显示 unavailable。
 分类原因不显示正文、路径、系统提示或凭据。旧数据缺信息时仍能理解 unknown；unknown 不是失败或辅助。
 找不到或已被现有 exclude 隐藏的会话使用统一“未找到可见会话”，不暴露被排除文本或绕过访问边界。
 
 新的分类选择只有 Work、Auxiliary、Use automatic origin：
 
 - Work/Auxiliary 设置针对 canonical client/session 的覆盖；真实任务子代理默认仍为工作。
-- Automatic 只撤销覆盖，恢复**当前**自动结果，不保证恢复为最初值；不删除会话、usage 或日志。
+- Automatic 发起 core-only clear，只撤销覆盖，不删除会话、usage 或日志；clear 回执不查询源，不能宣称返回了当前自动结果。
 - “Save this session origin”只提交当前已显示结果的身份和版本；自动结果始终保留可查。
-- 成功后 effective/override 一起更新，automatic 不伪造为用户选择；撤销不存在的覆盖为 No change。
+- --set 成功后按确认结果更新 effective/override，automatic 不伪造为用户选择。
+  clear 后仅确认 override=null/revision，automatic/effective 显示“不可用（未查询）”，提供“查询当前分类”。
+  只有独立的可见会话查询成功后才显示自动/有效分类；未匹配或被 exclude 的对象保持不可用，不绕过源隐私边界。
+  无有效覆盖且 CAS 成功的撤销为 No change，不递增目标 revision。
 - 保存和派生发布分开：持久成功但发布未完成显示 Saved / publication pending，
   用户可知道列表暂时仍旧；不把投影延迟报告为覆盖未保存。
 
-现有覆盖列表仅显示 client/完整 ID、目标类别及 matched/unmatched 状态，可逐条撤销。
+现有覆盖列表显示 client/完整 ID、目标类别、matched/unmatched 与目标 revision，可逐条撤销。
 原始会话已不存在或恢复后尚未匹配时明确“未匹配，未应用”，不误套到另一个会话；允许删除该**覆盖记录**。
 列表无覆盖时显示 No user overrides；列表读取失败为 unavailable，不能展示空列表冒充已清除。
 正式数据获取须有界分页（每页 20 项、稳定 client/ID 排序），页码/总数与可见列表同版本；
 标本只有两条覆盖，无需假造分页控件。新增覆盖通过精确查询入口完成，不提供“清除全部”。
+列表撤销直接提交条目的 core 键、expected_revision 和 request_id，不先要求 sessions 中存在可见会话。
+撤销后的 tombstone 不在列表展示，但保留内部版本以防 ABA；不是删除源会话或覆盖历史版本号。
+回执描述一次操作，不能用旧回执删除当前更高 revision 的覆盖；重放后重新读取覆盖列表决定当前显示。
+
+## 来源适配器状态（只读）
+
+显示 source 名、configured/enabled/available、已支持版本或安全 reason，不显示数据根、数据库路径、
+认证字段或原始映射。未配置、不可读、不支持版本三种原因分别展示；它们不等于默认偏好读取失败。
+该来源不可用时，自动分类按架构为 unknown；用户已确认覆盖继续有效，允许对可见目标设置/撤销覆盖。
+单会话分类查询显示安全原因；明确来源定位只能通过 CLI origin-source 命令配置，Settings 不执行命令、
+不提供路径编辑器、不自动探测 HOME 或启动插件。配置存在也不宣称映射覆盖已验证。
+标本 normal 的可用状态是合成元数据快照，source* 三态均降为 unknown；不表示实际插件运行状态。
 
 ## 保存状态机与窗口生命周期
 
 每次操作绑定类型、client/ID（若适用）、期望版本和请求 ID；接受后与窗口视图分离。
-不以原型的同步回调推断真实 IO 一定成功，架构须提供下列可判别状态。
+不以原型的同步回调推断真实 IO 一定成功，已评架构的下列状态分别呈现。
 
 | 状态 | 可信数据/控制与用户动作 |
 | --- | --- |
@@ -84,20 +100,30 @@ user override。有效/自动分类的 work、auxiliary、unknown 保持三个�
 | dirty | 明确已保存值与待选值；尚未发送；关闭丢弃草稿、不二次询问 |
 | saving | 显示目标与请求值，保持旧已确认值；禁用同组竞争写入/查找；关闭不撤销已接受写入 |
 | saveFailed | 明确 Not saved，旧值保留；Retry same operation 仅重试相同目标，也可修改选择后提交新操作 |
-| saveUnknown | 结果不明，旧值仅为上次确认；禁止再次写入；Read latest values 查证，而不是假称失败或自动重试 |
+| saveUnknown | 结果不明，旧值仅为上次确认；显示 request ID，禁用新操作；Read request receipt 按同 ID 查证，仍 unknown 后提供 Retry same request ID and operation |
 | conflict | 其他 CLI/窗口修改已发生，禁止覆盖新值；Read latest values 后重新选择、显式保存，不自动重放旧草稿 |
 | saved | 仅在持久化确认后显示；控件与已保存值一致，提示应用时机 |
+| saved + permission warning | 已提交值保留，独立显示文件权限加固警告及 doctor 检查提示；不能归入 saveFailed 或回滚 |
 | pending | 已保存、派生发布未完成；旧快照继续可读，时间保持真实；不谎称 Widget 已更新 |
-| noChange | 幂等完成，无重复写入；保留准确有效/自动分类 |
+| noChange | 新请求先 CAS 再判幂等，无重复目标写入；clear 回执仍为 not_queried，不制造分类 |
+| replayed | 原请求回执的 outcome/revision 原样保留，标明它不是当前覆盖状态；不得覆盖较新的列表值 |
 
 本组一次只接受一个写操作；其他偏好组不被无谓禁用。保存错误持续到下一次读回或成功操作，
 不定时消失。状态提示与 pending target 在窗口关闭/重开后保持；局部草稿、查询输入不代表操作所有权。
 原型 saving 由舞台 Complete pending 模拟后台完成；不是产品“强制成功”按钮。
-结果未知标本通过读回确认已落盘；冲突标本读回模拟外部最新值（默认 All 或覆盖 Auxiliary），
+saveUnknown 标本在独立的模拟服务端已完成写入、客户端未收到确认，读回才展示其原回执；
+receiptMissing 标本读不到确认回执，仍保持未知，不按“查不到”推断没保存；此时可再次查询回执，
+或显式选择“以同一请求 ID 重试同一操作”。重试保留 App 级 pending 的 request_id、目标、负载和
+expected_revision，不从窗口草稿生成新请求，也不递增请求 ID。核心先查同 ID 回执：已提交返回原回执，
+不得再次执行或覆盖较新值；未提交才按原 CAS 执行一次。确定的 saved/no_change/replayed 结束 pending，
+解锁本组；回执不是当前分类，当前值按独立读回展示。若 CAS conflict，继续锁定直到 Read latest values，
+该读取结束旧 pending，用户重新选择后才能发新请求。若仍超时/unknown，保留 pending 与查询/同 ID 重试入口。
+标本模拟未提交后的成功恢复；模型检查另外覆盖已提交重放及并发冲突，不把网络恢复成功视为产品保证。
+冲突标本读回模拟外部最新值（默认 All 或覆盖 Auxiliary），
 真实实现必须接受未落盘/已落盘/目标消失等实际结果，不把某一种 fixture 当通用结论。
 
 关闭行为：Escape 或关闭按钮关闭窗口，未提交草稿丢弃；saving/unknown 保存在 App 级状态，
-重开仍可查证。应用退出后的请求收尾、去重和读回属于 architecture，不授予取消或重放未确认写入的权力。
+重开仍可查证。应用退出后的请求收尾、去重和读回属于 architecture，不授予取消或换新 ID 盲目重写的权力；恢复仅使用保留的原请求身份。
 覆盖必须跨重启/重建保留，purge-index 不意外清除；backup/restore 的身份匹配和可移植边界按需求落实。
 
 ## 与菜单栏/Widget 的边界
@@ -121,13 +147,29 @@ Tab/Shift-Tab 按默认 → 查询 → 结果 → 覆盖列表顺序，Enter/Spa
 帮助通过 aria-describedby/原生 accessibility description 绑定，不只视觉贴近。
 正常操作不移动到无关设置；保存反馈用稳定 polite live region，持续状态不重复创建或逐行广播。
 删除列表当前行后焦点移到下一条撤销按钮，若无下一条则到覆盖标题/查询入口；失败保留操作焦点。
-未知结果与冲突必须能通过键盘到达 Read latest values；禁用态保留可读原因。
+未知结果可通过键盘到达 Read request receipt，查询仍 unknown 后可到达同 ID 重试；冲突可到达 Read latest values。禁用态保留可读原因。
 深浅主题复用语义色，文案中英完整；不单靠颜色、spinner 或短暂 toast 区别成功/失败。
 native VoiceOver、Dynamic Type、焦点恢复和窗口与 App 生命周期需要单独验证，浏览器截图不能替代。
 
-## 字段供应与验收设计
+## 已定协议与验收设计
 
-| 领域 | architecture 必须供应 / 可观察 oracle |
+Settings 只调用 Go JSON 接口，沿用 versioned envelope，不解析文本或直接读 SQLite。
+
+| 动作 | 协议与使用的数据 |
+| --- | --- |
+| 默认读取/保存 | session scope get/set；confirmed/value/revision/reason；未确认不补 work，保存携带最后确认版本 |
+| 查找/设置 | session classify --id <id> --client <client>，可见性与绑定验证；origin 的 automatic/effective/reason/rule/revision |
+| 枚举覆盖 | session classify list --page/--limit；条目键/value/binding_status/revision，计数与页一致 |
+| 撤销 | classify --clear 加明确 client；不依赖源存在；回执 override=null，automatic/effective=null，classification_available=false/not_queried |
+| 未知结果读回 | classify --request <request-id>；已知回执保留原目标、outcome、revision，未确认则 outcome=unknown |
+| 来源状态 | 由 Go 提供只读安全元数据；sourceUnavailable 不导致用户覆盖被删除或按钮永久禁用 |
+
+请求 ID 由 App controller 在提交前分配并保留；窗口重建不生成新 ID。重试同操作复用 ID 和负载；
+不同负载重用 ID 为 invalid_request。origin_conflict 读取最新版本后由用户重新选择，不能自动覆盖。
+default revision 与各覆盖键 revision 分开；clear 的版本 tombstone 保留，不能因删除记录回到 0。
+原型模拟独立版本、回执与确定/未知结果，不把本地模型称作真实 CAS、数据库事务或崩溃恢复证明。
+
+| 领域 | 已定合同 / 后续可观察 oracle |
 | --- | --- |
 | 偏好 | 确认值、是否已读取、版本、草稿/待保存分离；保存后重启与跨窗口读回 |
 | 覆盖 | canonical 身份、automatic/effective、override、reason/rule、matched 状态；撤销不改原始数据 |
@@ -137,8 +179,8 @@ native VoiceOver、Dynamic Type、焦点恢复和窗口与 App 生命周期需�
 | 集成 | 新默认用于下次打开与 Widget，临时范围不被覆盖；全部消耗不变，无额外日志重扫 |
 | 验证 | 正常/失败/未知/冲突/保存中关闭重开、no-change、unknown 自动结果、未匹配覆盖、窄宽度和中英主题 |
 
-字段或能力不能供应时，架构明确拒绝并返回受影响设计，不允许用永久禁用或假成功代替需求。
-不定义新数据库表、迁移版本或最终 wire 键；不以设计稿中演示的 reason/rule 值宣称支持真实维护源。
+字段缺失时按已定 availability/unknown 降级，不允许用假成功代替需求；不重新定义架构数据库或迁移方案。
+当前最终表面仍须独立评审；不以演示 reason/rule 值宣称支持真实维护源。
 
 ## 自检与影响评估
 
@@ -152,3 +194,22 @@ App/Settings 的新分支仅在 auxSettings 舞台参数下启用；Popover 新�
 未启用此参数时复跑菜单栏 149 项检查，无失败，已有需求/CLI/菜单栏语义不被本轮重新判定。
 旧菜单栏 manifest 保留为历史目标，不改写其原哈希来冒充本轮证据；新依赖身份绑定于本文件的 manifest。
 后续架构/final-surface 仍需核对新设置与所有消费者的联合内容状态。
+
+### Final-surface 自检 — 2026-10-27
+
+已按架构和 CLI 最终合同完成当前候选，待独立最终表面评审；前述 framework 检查保留为历史。
+`node prototype/tools/check-auxiliary-settings-final.mjs` 的 11 项模型合同检查通过，覆盖目标独立版本、
+未匹配 clear、tombstone/no-change、CAS 先于幂等判定、旧回执不删除新覆盖、ID 负载冲突、未知读回及确认默认。
+最终原型构建通过；中英 × 深浅 × 320/520 八组各 67 项，共 536 项浏览器断言无失败。
+包含原默认确认/窗口重开合同，以及 clear 后独立分类查询、receiptMissing、replayed、来源三态、
+异步 clear 后焦点恢复、已保存但权限加固警告。两组 scoped axe 4.12.1 均为 0 violations/0 incomplete。
+四张最终截图已目视核对；源码/脚本/截图身份见 manifest，旧截图和原 manifest 保留为历史。
+这只是内存模型及呈现验证，不证明 Go CAS、磁盘提交、真实 source/Widget、原生辅助功能或请求故障恢复。
+
+### ASC-SET-R3-F1 修复自检 — 2026-10-27
+
+新增回执查询仍 unknown 后的同 ID/同负载/同 expected_revision 恢复入口，确定结果结束 pending；
+冲突则读最新值后重新决定。14 项模型合同检查通过，含默认/clear 恢复、重复点击不重复提交、
+已提交回执重放不清除较新覆盖，以及 CAS 冲突退出。构建通过；英文深色与中文浅色 320 宽
+各 70 项浏览器断言通过，含关闭重开、恢复解锁与后续新保存。修复截图已目视核对。
+未重跑完整八组/axe；上节数字属于修复前历史，不认证新增入口。仍仅为合成原型验证。

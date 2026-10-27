@@ -1,65 +1,165 @@
 {
-  "stage": "framework-repair-r1",
+  "stage": "final-surface-repair-r3",
   "date": "2026-10-27",
+  "architecture_blob": "5b5a3b5694827900a9380e3879058a6baca4919a",
   "retention": "Repository-owned design artifacts retained with topic review history.",
   "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
-  "scenarios": [
-    "normal",
-    "loading",
-    "loadFailed",
-    "saving",
-    "saveFailed",
-    "saveUnknown",
-    "conflict",
-    "pending"
-  ],
-  "matrix": {
-    "languages": [
-      "en",
-      "zh"
+  "previous_manifest_sha256": "078e780ea02880fa375a801a496f08dd634ad76da92d601c7df9585eafa4479f",
+  "historical_manifest": {
+    "stage": "framework-repair-r1",
+    "date": "2026-10-27",
+    "retention": "Repository-owned design artifacts retained with topic review history.",
+    "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
+    "scenarios": [
+      "normal",
+      "loading",
+      "loadFailed",
+      "saving",
+      "saveFailed",
+      "saveUnknown",
+      "conflict",
+      "pending"
     ],
-    "themes": [
-      "dark",
-      "light"
-    ],
-    "widths": [
-      320,
-      520
-    ]
-  },
-  "checks": {
-    "build": "passed",
-    "browser": {
+    "matrix": {
       "languages": [
         "en",
         "zh"
       ],
+      "themes": [
+        "dark",
+        "light"
+      ],
       "widths": [
         320,
         520
+      ]
+    },
+    "checks": {
+      "build": "passed",
+      "browser": {
+        "languages": [
+          "en",
+          "zh"
+        ],
+        "widths": [
+          320,
+          520
+        ],
+        "theme": "dark",
+        "checks_each": 50,
+        "assertions": 200,
+        "failures": 0
+      },
+      "menubar_compatibility": {
+        "assertions": 149,
+        "failures": 0,
+        "scope": "new settings feature disabled"
+      },
+      "regression": "loading/loadFailed -> close Settings -> reopen Popover -> tab roundtrip: no scope/count before read; successful read then valid initialization and reopen",
+      "reuse": "Unchanged Settings layout/colors retain historical design evidence. New consumer unavailable state visually checked; no fresh axe/native claim.",
+      "limits": "Synthetic state and readback fixture; no real storage, Widget or CEv1 VERIFIED claim."
+    },
+    "files": [
+      {
+        "path": "prototype/src/AuxiliarySettings.jsx",
+        "sha256": "ae9abdc8cf5c887bd74e79d3e1a2eefc77c0079e12d379b8539d704225ef21d3"
+      },
+      {
+        "path": "prototype/src/auxiliarySettingsModel.js",
+        "sha256": "63a591dda3e39ff9cc1a8a39f484280964e9671e1f58d8283b465929948c33c9"
+      },
+      {
+        "path": "prototype/src/auxiliarySettings.css",
+        "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
+      },
+      {
+        "path": "prototype/src/Settings.jsx",
+        "sha256": "4756d6a610a9c5cb0608fca3c72d1fa44590da87913e4a7b8017d18b38bfa054"
+      },
+      {
+        "path": "prototype/src/App.jsx",
+        "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+      },
+      {
+        "path": "prototype/src/Popover.jsx",
+        "sha256": "952c52927cefdabb4c4e8168b78e5d8ef71db0a2b072788d504741276ed487ac"
+      },
+      {
+        "path": "prototype/src/styles.css",
+        "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+      },
+      {
+        "path": "prototype/tools/check-auxiliary-settings.js",
+        "sha256": "fa37b3cf3c1fee8118053119ea3c09a57816dc466a79889ddfc7f7361fd98766"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/saved-en-dark.png",
+        "sha256": "f4c72320bea49fd3c9dc8042c700e909fe180ef505fbea4f2dd9a47aeb15c7b6"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/unknown-en-light-320.png",
+        "sha256": "543dfe3daf4fe22999cb73d02e9a26d159364afea0ea2ebd049ceea579252896"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/origin-zh-dark-320.png",
+        "sha256": "ba9b407263b0c9a2bbc40e578e83207b9a2efecc81c55467a2911f16fd81480d"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/conflict-en-dark-520.png",
+        "sha256": "fb6428a55b215b00d7861e88eaceda889cae2deb48736122eb02ff905d204b00"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r1fix-unconfirmed-popover.png",
+        "sha256": "91285450be48ff3c151ff1d42932206f2d186efd16f7980a673f2ab004dd61bb"
+      }
+    ],
+    "previous_design_checks": {
+      "build": "passed",
+      "browser": {
+        "combinations": 8,
+        "checks_each": 42,
+        "assertions": 336,
+        "failures": 0
+      },
+      "menubar_compatibility": {
+        "assertions": 149,
+        "failures": 0,
+        "scope": "new settings feature disabled"
+      },
+      "axe": {
+        "version": "4.12.1",
+        "scopes": [
+          "light settings group",
+          "dark origin detail"
+        ],
+        "violations": 0,
+        "incomplete": 0
+      },
+      "limits": "Synthetic memory-only model. No product persistence, request races, native AX, Widget, or release acceptance."
+    }
+  },
+  "checks": {
+    "build": "passed",
+    "model_contract_checks": 14,
+    "browser": {
+      "combinations": [
+        "en/dark/320",
+        "zh/light/320"
       ],
-      "theme": "dark",
-      "checks_each": 50,
-      "assertions": 200,
+      "checks_each": 70,
+      "assertions": 140,
       "failures": 0
     },
-    "menubar_compatibility": {
-      "assertions": 149,
-      "failures": 0,
-      "scope": "new settings feature disabled"
-    },
-    "regression": "loading/loadFailed -> close Settings -> reopen Popover -> tab roundtrip: no scope/count before read; successful read then valid initialization and reopen",
-    "reuse": "Unchanged Settings layout/colors retain historical design evidence. New consumer unavailable state visually checked; no fresh axe/native claim.",
-    "limits": "Synthetic state and readback fixture; no real storage, Widget or CEv1 VERIFIED claim."
+    "limits": "Synthetic model only; prior full matrix and axe remain historical, no new native or persistence acceptance."
   },
   "files": [
     {
       "path": "prototype/src/AuxiliarySettings.jsx",
-      "sha256": "ae9abdc8cf5c887bd74e79d3e1a2eefc77c0079e12d379b8539d704225ef21d3"
+      "sha256": "3d67450c20b47bf94a83eeeb76c80b01101a0e5a3bd3f5e42334ccfe1c3d9ee6"
     },
     {
       "path": "prototype/src/auxiliarySettingsModel.js",
-      "sha256": "63a591dda3e39ff9cc1a8a39f484280964e9671e1f58d8283b465929948c33c9"
+      "sha256": "65a28c9b8b0103299e1d30ba61ec8e2cc9c7c35ec891c60b4e50de045fe30110"
     },
     {
       "path": "prototype/src/auxiliarySettings.css",
@@ -75,7 +175,7 @@
     },
     {
       "path": "prototype/src/Popover.jsx",
-      "sha256": "952c52927cefdabb4c4e8168b78e5d8ef71db0a2b072788d504741276ed487ac"
+      "sha256": "1e6c6c10ddb40f9f24abfeacbd768b1a622d7408ed5998300cde11005edb32df"
     },
     {
       "path": "prototype/src/styles.css",
@@ -83,51 +183,65 @@
     },
     {
       "path": "prototype/tools/check-auxiliary-settings.js",
-      "sha256": "fa37b3cf3c1fee8118053119ea3c09a57816dc466a79889ddfc7f7361fd98766"
+      "sha256": "76a079b86ad0fb7a47b8a1d9cbf45991f5369bdbffc1a812ba05afec9ddb7b38"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/saved-en-dark.png",
-      "sha256": "f4c72320bea49fd3c9dc8042c700e909fe180ef505fbea4f2dd9a47aeb15c7b6"
+      "path": "prototype/tools/check-auxiliary-settings-final.mjs",
+      "sha256": "2da3fce03619106b640cfa3b71460acb22fceee8f8ab354025473da42879e778"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/unknown-en-light-320.png",
-      "sha256": "543dfe3daf4fe22999cb73d02e9a26d159364afea0ea2ebd049ceea579252896"
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-clear-not-queried-en-320.png",
+      "sha256": "8e6e7244af242cbc31410a44ae4b584d447d0d494d0d29dbe8e0cb1e0cefdfb1"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/origin-zh-dark-320.png",
-      "sha256": "ba9b407263b0c9a2bbc40e578e83207b9a2efecc81c55467a2911f16fd81480d"
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-receipt-missing-zh-320.png",
+      "sha256": "142ce6497c15c4d607d356d1b3dc4c90af115dd9f05e5006051de6d4fe8fe7a0"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/conflict-en-dark-520.png",
-      "sha256": "fb6428a55b215b00d7861e88eaceda889cae2deb48736122eb02ff905d204b00"
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-source-status-en-320.png",
+      "sha256": "ea63b4edb85efa9d9bff87e0f0fa6ae08034a5d4ad63a2a1118dbdf48516a266"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r1fix-unconfirmed-popover.png",
-      "sha256": "91285450be48ff3c151ff1d42932206f2d186efd16f7980a673f2ab004dd61bb"
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-saved-warning-zh-light.png",
+      "sha256": "35f8d3473e2591622b8427c60e4c455fb951174cc2f50710dcb315a570b0f5fb"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r3fix-receipt-retry-zh-320.png",
+      "sha256": "023e1e26f44f8f9f683c69bef82ce05cd8db04b77eb71cde6519e32dd0b0680f"
     }
   ],
-  "previous_design_checks": {
+  "previous_final_checks": {
     "build": "passed",
+    "model_contract_checks": 11,
     "browser": {
-      "combinations": 8,
-      "checks_each": 42,
-      "assertions": 336,
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "widths": [
+        320,
+        520
+      ],
+      "checks_each": 67,
+      "assertions": 536,
       "failures": 0
-    },
-    "menubar_compatibility": {
-      "assertions": 149,
-      "failures": 0,
-      "scope": "new settings feature disabled"
     },
     "axe": {
       "version": "4.12.1",
       "scopes": [
-        "light settings group",
-        "dark origin detail"
+        "light saved permission warning",
+        "dark clear classification not queried"
       ],
       "violations": 0,
       "incomplete": 0
     },
-    "limits": "Synthetic memory-only model. No product persistence, request races, native AX, Widget, or release acceptance."
-  }
+    "limits": "Memory-only synthetic model, no Go CAS, persistence, requests, source data, Widget or native acceptance."
+  },
+  "historical_screenshots": [
+    "final-receipt-missing-zh-320.png (before R3 repair; superseded by r3fix-receipt-retry-zh-320.png)"
+  ]
 }
