@@ -1,0 +1,20 @@
+.settings-window.as-enabled { width:min(520px,calc(100vw - 32px)); max-height:calc(100vh - 100px); display:flex; flex-direction:column; }
+.as-enabled .settings-body { min-height:0; overflow-y:auto; }
+.as-settings { gap:10px; }
+.as-settings h2 { font-size:16px; margin:0; }
+.as-settings h3 { font-size:14px; margin:0 0 8px; }
+.as-settings h4 { font-size:12px; overflow-wrap:anywhere; }
+.as-settings p,.as-settings dt,.as-settings dd { font-size:12px; line-height:1.5; margin:4px 0; overflow-wrap:anywhere; }
+.as-settings p,.as-settings dt { color:var(--muted); }
+.as-settings .as-status { font-size:12px; line-height:1.5; color:var(--text); }
+.as-settings .as-status:empty { display:none; }
+.as-settings .as-block { border-top:1px solid var(--line); padding-top:12px; }
+.as-settings label { display:flex; flex-direction:column; gap:5px; font-size:12px; margin:8px 0; }
+.as-settings select,.as-settings input,.as-settings button { font:inherit; color:var(--text); background:var(--surface-2); border:1px solid var(--line); border-radius:6px; min-height:32px; padding:6px 8px; max-width:100%; box-sizing:border-box; }
+.as-settings button { font-size:12px; cursor:pointer; }
+.as-settings button:disabled { cursor:default; opacity:.65; }
+.as-settings :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.as-result { margin-top:10px; padding:10px; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+.as-override { display:flex; flex-direction:column; gap:7px; padding:10px 0; font-size:12px; overflow-wrap:anywhere; }
+.as-override button { align-self:flex-start; }
+.as-stage { position:fixed; top:0; left:0; right:0; z-index:50; padding:8px; background:var(--surface); color:var(--text); display:flex; flex-wrap:wrap; gap:8px; font-size:12px; }

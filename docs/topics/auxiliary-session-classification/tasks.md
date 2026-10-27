@@ -17,7 +17,7 @@ updated: 2026-10-26
 | requirements.md | [x] | [x] |
 | ux/cli.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
-| ux/settings.md | [ ] | [ ] |
+| ux/settings.md | [x] | [x] |
 | ux/widget.md | [ ] | [ ] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [ ] | [ ] |
@@ -37,6 +37,7 @@ UX 按项目 prototype 权威提供标本，架构落实数据契约，再完成
 CLI framework 最新独立复评为 PASS，文档完整性证据门禁仍开放，见 [reviews/ux-cli.md](reviews/ux-cli.md)；
 architecture 后仍需 final-surface reconciliation，不代表最终表面完成。
 菜单栏 framework 最新独立复评为 PASS，文档完整性门禁仍开放，见 [reviews/ux-menubar.md](reviews/ux-menubar.md)；
-Settings、Widget 与 architecture 仍待设计，不将标本检查当作原生实现验收。
+Settings framework 最新独立复评为 PASS，文档完整性门禁仍开放，见 [reviews/ux-settings.md](reviews/ux-settings.md)。
+Widget 与 architecture 仍待设计，不将标本检查当作原生实现验收。
 评审与修复交接见 [reviews/requirements.md](reviews/requirements.md)。
 未合并主题状态只在本文件及 Beads 维护，不更新 main 的 docs/status.md。

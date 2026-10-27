@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { WarningCircle, X } from "@phosphor-icons/react";
 import { catalogs } from "./i18n.js";
+import { AuxiliarySettings } from "./AuxiliarySettings.jsx";
 
 // 设置是独立窗口，不是 popover 里的一页——macOS 上 ⌘, 打开的东西从来不长在弹出面板里。
 // 这里的每一项都对应实现里真实存在的偏好键，没有凭空加开关。
@@ -67,7 +68,7 @@ function Field({ id, label, hint, children, error, errorTone = "bad" }) {
   );
 }
 
-export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false }) {
+export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false, auxSettings = null }) {
   const dict = catalogs[lang];
   const windowRef = useRef(null);
   const loginRefusedOnce = useRef(false);
@@ -150,7 +151,8 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
 
   return (
     <section
-      className={`settings-window${embedded ? " embedded" : ""}`}
+      className={`settings-window${embedded ? " embedded" : ""}${auxSettings ? " as-enabled" : ""}`}
+      style={auxSettings ? {width:`min(${new URLSearchParams(window.location.search).get('asWidth')==='320'?'320':'520'}px, calc(100vw - 32px))`} : undefined}
       role="dialog"
       aria-label={dict.settings.title}
       ref={windowRef}
@@ -170,6 +172,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
       </header>
 
       <div className="settings-body">
+        {auxSettings && <AuxiliarySettings lang={lang} {...auxSettings} />}
         <div className="settings-group" data-group="general">
           <span className="settings-group-title">{dict.settings.general}</span>
           <Field

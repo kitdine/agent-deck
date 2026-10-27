@@ -1,0 +1,133 @@
+{
+  "stage": "framework-repair-r1",
+  "date": "2026-10-27",
+  "retention": "Repository-owned design artifacts retained with topic review history.",
+  "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
+  "scenarios": [
+    "normal",
+    "loading",
+    "loadFailed",
+    "saving",
+    "saveFailed",
+    "saveUnknown",
+    "conflict",
+    "pending"
+  ],
+  "matrix": {
+    "languages": [
+      "en",
+      "zh"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "widths": [
+      320,
+      520
+    ]
+  },
+  "checks": {
+    "build": "passed",
+    "browser": {
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "widths": [
+        320,
+        520
+      ],
+      "theme": "dark",
+      "checks_each": 50,
+      "assertions": 200,
+      "failures": 0
+    },
+    "menubar_compatibility": {
+      "assertions": 149,
+      "failures": 0,
+      "scope": "new settings feature disabled"
+    },
+    "regression": "loading/loadFailed -> close Settings -> reopen Popover -> tab roundtrip: no scope/count before read; successful read then valid initialization and reopen",
+    "reuse": "Unchanged Settings layout/colors retain historical design evidence. New consumer unavailable state visually checked; no fresh axe/native claim.",
+    "limits": "Synthetic state and readback fixture; no real storage, Widget or CEv1 VERIFIED claim."
+  },
+  "files": [
+    {
+      "path": "prototype/src/AuxiliarySettings.jsx",
+      "sha256": "ae9abdc8cf5c887bd74e79d3e1a2eefc77c0079e12d379b8539d704225ef21d3"
+    },
+    {
+      "path": "prototype/src/auxiliarySettingsModel.js",
+      "sha256": "63a591dda3e39ff9cc1a8a39f484280964e9671e1f58d8283b465929948c33c9"
+    },
+    {
+      "path": "prototype/src/auxiliarySettings.css",
+      "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
+    },
+    {
+      "path": "prototype/src/Settings.jsx",
+      "sha256": "4756d6a610a9c5cb0608fca3c72d1fa44590da87913e4a7b8017d18b38bfa054"
+    },
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "952c52927cefdabb4c4e8168b78e5d8ef71db0a2b072788d504741276ed487ac"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-settings.js",
+      "sha256": "fa37b3cf3c1fee8118053119ea3c09a57816dc466a79889ddfc7f7361fd98766"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/saved-en-dark.png",
+      "sha256": "f4c72320bea49fd3c9dc8042c700e909fe180ef505fbea4f2dd9a47aeb15c7b6"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/unknown-en-light-320.png",
+      "sha256": "543dfe3daf4fe22999cb73d02e9a26d159364afea0ea2ebd049ceea579252896"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/origin-zh-dark-320.png",
+      "sha256": "ba9b407263b0c9a2bbc40e578e83207b9a2efecc81c55467a2911f16fd81480d"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/conflict-en-dark-520.png",
+      "sha256": "fb6428a55b215b00d7861e88eaceda889cae2deb48736122eb02ff905d204b00"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r1fix-unconfirmed-popover.png",
+      "sha256": "91285450be48ff3c151ff1d42932206f2d186efd16f7980a673f2ab004dd61bb"
+    }
+  ],
+  "previous_design_checks": {
+    "build": "passed",
+    "browser": {
+      "combinations": 8,
+      "checks_each": 42,
+      "assertions": 336,
+      "failures": 0
+    },
+    "menubar_compatibility": {
+      "assertions": 149,
+      "failures": 0,
+      "scope": "new settings feature disabled"
+    },
+    "axe": {
+      "version": "4.12.1",
+      "scopes": [
+        "light settings group",
+        "dark origin detail"
+      ],
+      "violations": 0,
+      "incomplete": 0
+    },
+    "limits": "Synthetic memory-only model. No product persistence, request races, native AX, Widget, or release acceptance."
+  }
+}

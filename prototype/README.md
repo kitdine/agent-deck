@@ -312,3 +312,13 @@ partial、stale、loading、failed、unavailable、override；沿用中英、深
 构建/preview 后，独立 agent-browser 会话可使用
 `agent-browser eval "$(cat prototype/tools/check-auxiliary-menubar.js)"` 检查范围与交互；
 该脚本在初始 work、all clients、today、会话 tab 上运行，不证明真实查询/原生辅助功能。
+
+## 辅助会话 Settings 框架标本
+
+入口 `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions`。
+Settings stage 顶栏选择 normal/loading/loadFailed/saving/saveFailed/saveUnknown/conflict/pending；
+Width 为 320/520（URL `asWidth`）。Open settings 重开同一 App 内窗口，Complete pending 仅模拟后台完成。
+持久值/在途操作存于页面 App 模型，窗口草稿可丢弃；刷新页面重置合成数据，不写真实设置。
+查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 为未匹配覆盖。
+设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
+检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行，覆盖保存/恢复和默认范围联动。
