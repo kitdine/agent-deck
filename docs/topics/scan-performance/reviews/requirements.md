@@ -438,3 +438,91 @@ Task checkpoint：ad-scan-performance-doc-req；content_state `6cc93d7f9a83a11a2
 推送建议：实际提交范围、贡献归属、trailer 与 SSH 签名核验后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
 
 评审：scan-performance / performance-evaluation.md
+
+## Round 11 — 2026-10-27
+
+## 📋 取消性能数值门槛的需求增量评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无本文件开放发现。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+数值性能目标与正确性要求分离：保留真实数据帧、no-op 零 decode、幂等、生命周期、隐私和独立评审要求；最终报告明确 S0、P09 另对 B0、P05 无基线，以及用户判断整体收益的边界。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话；Method：独立增量文档评审、场景推演和跨文档核对；非本轮设计作者，无委派。
+- Scope：四文档联合评审中的需求变更；核对首次/已有库/缓存恢复、OTel 新路径、性能变差与用户拒绝接受场景。未改的行为契约沿用 Round 10 及历史已关闭发现；SP-REQ-R10-X1 已由 performance-evaluation Round 14 关闭，本轮环境规则未回归。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；blob `7c49baa5bed3aef87c09b75db56045f42079a2f5`；digest `b66697357f50215122bc11415f7ba69d4083ec767b4b0e0cfe6fb21d992433c0`，配方 SHA256(`head=<HEAD>;document=<blob>`)。
+- Dependencies：performance-evaluation、architecture、tasks 的本轮候选；各自缺陷归其本轮记录，不作为需求已完成产品验收的依据。UX 无布局、文案、状态或标本变化，沿用既有评审；不重新认证 native 性能。
+- Evidence：`python3 scripts/check-docs.py` exit 0；独立核对需求 9–12、53–56、157–165、196–245 行的报告与行为边界。没有运行产品测试或性能批次。
+- CEv1：WorkUnit `scan-performance:requirements.md`；目标 `scan-perf-docbatch-20261027-req-state`。最终门禁见本轮单一完成门禁字段。
+- 结论：需求 PASS；其他三份文档的开放问题仍阻止整批进入实现。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+
+Task checkpoint：ad-scan-performance-doc-req；上述 HEAD/blob 内容；精确目标门禁 VERIFIED，两项 required criteria 通过，missing/invalidated/unresolved 均为空。
+提交建议：另行授权提交需求、此记录及对应 Review 勾选；可等整批修复后一起交付。
+推送建议：目标 origin/feature/scan-performance；需另行授权并先核验提交范围、贡献署名、签名和远端状态。
+
+## Repair candidate — 2026-10-27（Round 11 后，承接 SP-PE-R17-F1）
+
+Repairer：Claude Code 主会话。Round 11 的 PASS 绑定的是之前的内容；本次为承接 performance-evaluation 的 SP-PE-R17-F1，
+“性能衡量与报告”中“对比方法”一句由“全部按 ABBA 比值与 bootstrap 区间报告”改为“按性能评估‘对比报告’预先固定的
+方法分类报告”：ABBA 比值与区间、P06 配对差值、P07 与 P11 完整历史两臂并列、P08 确定性计数并列、P05 只报绝对值。
+需求的其他内容未改。内容已变，Round 11 的 PASS 不覆盖新内容；tasks.md 中 requirements 的 Review 勾选已清除，待独立复评。未委派。
+
+修复目标：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；requirements blob `ca2fafe1a7eb816266650c60c723bb65355621f5`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / requirements.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 12 — 2026-10-27
+
+## 📋 分类对比方法联动复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无本文件开放发现。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+205–207 行逐类指定 ABBA、P06 差值、P07/P11 完整历史并列、P08 计数、P05 单臂，正确保留无性能门与用户判断边界；不再要求奇数样本组成完整 ABBA。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，非修复作者；Method：独立定向复评、统计类别与上下游合同核对，无委派。
+- 处置：Round 11 无本文件开放发现；本次联动改动重新核验通过。SP-REQ-R9-F1 与 SP-REQ-R10-X1 的既有关闭处置无回归。performance-evaluation 的 P07 数量冲突归其 Round 18，不以需求 PASS 代替该文件通过。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；blob `ca2fafe1a7eb816266650c60c723bb65355621f5`；SHA256(`head=<HEAD>;document=<blob>`) = `1cb3bfd29a058276580f7f89a1256099161d45c0876e9e48b0d9e6ba3675c768`。
+- Scope：本次修复影响；其余需求与 UX 沿用上一轮检查，不重复认证运行时性能。依赖性能评估分类表；其内部采样缺陷不改变本需求选择的方法。
+- CEv1：WorkUnit `scan-performance:requirements.md`；target `scan-perf-docrecheck-20261027-req-state`；精确 gate VERIFIED，2/2 required criteria 通过，missing/invalidated/unresolved 为空。`python3 scripts/check-docs.py` 与 `git diff --check` exit 0；新证据为该前缀的 `req-review`、`req-integrity`。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`；correlation `QtgKmOTPe89-k69i`。整批尚有其他文档开放发现，未跨 Topic 完成边界。
+
+Task checkpoint：ad-scan-performance-doc-req；content_state `1cb3bfd29a058276580f7f89a1256099161d45c0876e9e48b0d9e6ba3675c768`；gate VERIFIED。
+提交建议：另行授权提交需求、对应评审记录及 Review 勾选，可等待整批修复完成后统一交付。
+推送建议：提交范围、署名、签名及远端核验后，另行授权推送 origin/feature/scan-performance；远端未核验。
