@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScanStatus, ScanEmptyPopover } from "./ScanProgress.jsx";
+import { AuxiliarySessions } from "./AuxiliarySessions.jsx";
 import {
   ArrowClockwise,
   ArrowsClockwise,
@@ -1393,7 +1394,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, onClientChange }) {
+export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, onClientChange, auxScenario = null }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -1403,6 +1404,15 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
   const [period, setPeriod] = useState("today");
   // ?tab= 与 ?signal= 让每个面板都能直接链接过去，评审时不必一路点过来
   const params = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
+  const [auxSelection, setAuxSelection] = useState(() => ({
+    scope: ['loading','failed'].includes(auxScenario) ? 'work' : ['work','auxiliary','all'].includes(params?.get('auxDefault')) ? params.get('auxDefault') : 'work',
+    scenario: auxScenario,
+  }));
+  const auxScope = auxSelection.scope;
+  const setAuxScope = scope => setAuxSelection(current => ({...current, scope}));
+  useEffect(() => {
+    setAuxSelection(current => ({scope: ['loading','failed'].includes(auxScenario) ? 'work' : current.scope, scenario: auxScenario}));
+  }, [auxScenario]);
   const [tab, setTab] = useState(() => {
     const value = params?.get("tab");
     return TABS.some((item) => item.key === value) ? value : TABS[0].key;
@@ -1730,6 +1740,8 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
         </div>
       </div>
 
+      {auxScenario && <p className="asc-note" style={{padding:'0 14px'}}>{lang === 'zh' ? '用量总览：全部会话 · 不受下方会话范围影响' : 'Usage overview: all sessions · unaffected by session scope'}</p>}
+
       <div className="segmented periods" role="tablist" aria-label={dict.periods.today}>
         {["today", "7d", "30d"].map((key) => (
           <button
@@ -1804,7 +1816,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
               />
             )}
             {presentedTab === "sessions" && (
-              <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
+              auxScenario ? <AuxiliarySessions lang={lang} client={client} period={period} scope={auxScope} onScope={setAuxScope} scenario={auxSelection.scenario} onRetry={() => setAuxSelection({scope:'auxiliary',scenario:'normal'})} /> : <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
             )}
             <RhythmBlock lang={lang} state={state} />
           </>

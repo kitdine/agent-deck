@@ -301,3 +301,14 @@ Scenario 控件包含三范围、空态、unknown、详情、覆盖/撤销、par
 列数低于 48 或行数低于 10 自动显示尺寸拒绝；有效全屏固定行预算并保持选中行和退出帮助可见。
 usage 扫描标本保留 stderr progress、signals scan_incomplete 和 stats --no-scan 的区别。
 设计见 [ux/cli.md](../docs/topics/auxiliary-session-classification/ux/cli.md)。
+
+## 辅助会话菜单栏框架标本（auxiliary-session-classification）
+
+共享 Popover 会话页入口 `?tab=sessions&auxMenu=normal`，舞台选择 normal、empty、unknown、
+partial、stale、loading、failed、unavailable、override；沿用中英、深浅、420/280、client/period。
+`auxDefault=work|auxiliary|all` 模拟已保存默认；窗口内三范围为临时选择，重开恢复默认。
+来源详情只读，复制查询命令不执行命令。failed 的重试仅模拟成功发布；全部数据为合成。
+设计和标本证据见 [ux/menubar.md](../docs/topics/auxiliary-session-classification/ux/menubar.md)。
+构建/preview 后，独立 agent-browser 会话可使用
+`agent-browser eval "$(cat prototype/tools/check-auxiliary-menubar.js)"` 检查范围与交互；
+该脚本在初始 work、all clients、today、会话 tab 上运行，不证明真实查询/原生辅助功能。

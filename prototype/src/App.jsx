@@ -6,6 +6,7 @@ import { scope } from "./data.js";
 import { catalogs, formatCost, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { ScanStageControls, useScanScenario } from "./ScanProgress.jsx";
+import { AUX_MENUBAR_STATES } from "./AuxiliarySessions.jsx";
 
 // 菜单栏图标：左键开关 popover，右键或双击弹出原生风格菜单。
 // 设置 / 检查更新 / 关于 / 退出 都在这个菜单里，所以 popover 底部不必再堆入口。
@@ -90,6 +91,8 @@ export function App() {
   const [settings, setSettings] = useState(params.get("settings") === "1");
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
   const [client, setClient] = useState("all");
+  const [auxScenario, setAuxScenario] = useState(params.get("auxMenu") || "normal");
+  const auxEnabled = params.has("auxMenu");
 
   useEffect(() => {
     const onKey = (event) => {
@@ -120,6 +123,7 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} showAnchor showRefresh showHealth />
+      {auxEnabled && <label style={{padding:'8px 20px'}}> {lang === 'zh' ? '辅助会话标本状态（舞台）' : 'Auxiliary session scenario (stage)'} <select value={auxScenario} onChange={e=>setAuxScenario(e.target.value)}>{AUX_MENUBAR_STATES.map(value=><option key={value}>{value}</option>)}</select></label>}
       {scan.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
       <div className="stage-body" data-anchor={anchor}>
         <div className="menubar-strip">
@@ -155,7 +159,7 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} auxScenario={auxEnabled ? auxScenario : null} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>

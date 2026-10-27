@@ -1,0 +1,137 @@
+{
+  "stage": "framework-repair-r1",
+  "date": "2026-10-27",
+  "retention": "Repository-owned design artifacts retained with topic review history.",
+  "entry": "?tab=sessions&auxMenu=normal",
+  "states": [
+    "normal",
+    "empty",
+    "unknown",
+    "partial",
+    "stale",
+    "loading",
+    "failed",
+    "unavailable",
+    "override"
+  ],
+  "matrix": {
+    "languages": [
+      "zh",
+      "en"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "widths": [
+      280,
+      420
+    ]
+  },
+  "checks": {
+    "build": "passed",
+    "browser": {
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "widths": [
+        280,
+        420
+      ],
+      "theme": "dark",
+      "checks_per_combination": 149,
+      "assertions": 596,
+      "failures": 0
+    },
+    "regression": "failed -> retry -> Usage -> Sessions retains normal/auxiliary/1; all nine client/period combinations retain recovered status; close/reopen consistent",
+    "reuse": "Unchanged geometry/colors and semantic accessibility markup retain prior design checks; no fresh axe or native claim.",
+    "limitations": "Synthetic browser state transition only; no native implementation, real request race or CEv1 VERIFIED claim."
+  },
+  "files": [
+    {
+      "path": "prototype/src/AuxiliarySessions.jsx",
+      "sha256": "f792c8421edd0d69211c29eb48ed5783b27f4cbd4704cb795f6b53e15e6dc36d"
+    },
+    {
+      "path": "prototype/src/auxiliarySessions.css",
+      "sha256": "a4812b544e10b1b5b07a4881cffa6baa29380942d52373acf8d7e6e2208be24d"
+    },
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "0f2c197e2728fad3cbdea975ee0df49867532b028e00368ea9d58fff80cdaa3f"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "be46d0824a630f9689269b328e9cfecd340ec770f8e21b552fe34f0105f35ace"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-menubar.js",
+      "sha256": "8039db67824814c919775a6c6e82b4095fcb6d6ae3e922f8464174aec6f1d59f"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/work-zh-dark-280.png",
+      "sha256": "bdc7babe2e1f530bd0d3e403b751968507fc1ab905462508bab0bd755babebe6"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/auxiliary-en-light-420.png",
+      "sha256": "ce8dd5395b8c0fc04703608cb59cec9c35eb073615a2b06c8b3ecd9dca40ed86"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/origin-zh-dark-280.png",
+      "sha256": "1507cfedb8c858e214d078b27b9fc24b119af2c0488a0c802a5f4a096f908717"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/failed-en-light-280.png",
+      "sha256": "5b1a30b4f4642516f8619c26b8ff727d234faecebbc2e44c40aff40d979e7d59"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/unavailable-zh-dark-420.png",
+      "sha256": "30bdc8d3d7be00bb073f0e972ffb1f8b9b71a28eac50926b68171c1c181f1384"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/r1fix-retry-tab-en-280.png",
+      "sha256": "848a10d1c00337290c5617b6d269882e3509cb04b07f47b99ccfac8e23d8fb86"
+    }
+  ],
+  "previous_design_checks": {
+    "browser": {
+      "combinations": 8,
+      "assertions": 920,
+      "failures": 0
+    },
+    "final_scoped_followup": {
+      "checks": 5,
+      "failures": 0,
+      "reason": "Only failed-state disabling and snapshot date changed after matrix; unaffected collection/focus/layout evidence reused."
+    },
+    "nondefault_reopen": "auxiliary restored",
+    "axe": {
+      "version": "4.12.1",
+      "scopes": [
+        "light auxiliary panel",
+        "dark origin detail"
+      ],
+      "violations": 0,
+      "incomplete": 0
+    },
+    "build": "passed",
+    "limitations": "Synthetic browser specimen; no native AX, Dynamic Type, product scan, race, persistence, or performance acceptance."
+  }
+}
