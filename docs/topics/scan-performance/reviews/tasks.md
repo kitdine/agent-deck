@@ -696,3 +696,225 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 Task checkpoint：ad-scan-performance-doc-tasks；content_state `c8c5908529e14f4cc3c9db77e6f972dcc836d0576b27efb5556f9ca1832b9ad5`；gate VERIFIED。
 提交建议：经用户授权后，提交 tasks.md 的启动争用对照／削减分解与 Review 勾选、reviews/tasks.md Round 13–14 及修复记录；不混入工作区的 Swift／`cmd/agentdeck-perf` 探测实现改动。
 推送建议：提交后，经提交范围、贡献归属、trailer、SSH 签名核验和独立授权，推送 origin/feature/scan-performance；远端当前状态未核验。
+
+## Round 15 — 2026-10-27
+
+## 📋 无数值门槛任务覆盖评审
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+- **SP-TASKS-R15-F1（高，OPEN）** — `tasks.md:98–104, 153–176, 257–269`：Task 1 仍要求 `stats`/`gate` 按 `k` 判定通过/不确定/失败，与本轮需求取消 `k` 的契约直接相反；Task 1 已标完成，剩余任务只安排删除探测工具代码，没有任何任务承接“无 k、仅输出两臂统计量/比值/区间”的报告工具迁移。
+  - 行为风险：按现有分解完成所有优化后，E7 要么仍须输入已失效的 k 并产生误导 verdict，要么临时扩大任务范围改工具；文档所说“测量契约不变”掩盖了真实接口变更。
+  - 证据：当前 `cmd/agentdeck-perf/gate.go:264–300` 的 `runGate` 强制解析正数 `--k`，缺省即报错，并只取 p95（P09 取 median）；`stats.go:447–685` 为单条件/单臂汇总，不提供文档 243–248 行要求的通用双臂 median/p95/p99 区间报告。任务 3 工具范围只列探测移除，任务 8 只列最终批次及文档收尾。
+  - 💡 有界修复：给既有适当任务明确报告工具/测试文件边界与验收（无 k 可报告、无性能 pass/fail、规定统计量/区间、无效 ABBA 拒绝）；把 Task 1 已完成的旧 gate 契约标为历史并说明迁移承接。不要直接重写历史 Task 1 验证事实或在本轮修改产品。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+保留调用方写入优化与 dirty/revision/短事务任务之间的边界；探测删除范围、暖启动正确性、正式对比与最终用户判断均有明确落点。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话；Method：独立分解增量评审、上游合同与现有 CLI 接口核对；无委派。
+- Scope：Documents 完整集合、Task 1–8 对无数值门报告的覆盖、探测删除、验证边界；SP-TASKS-R13-F1/F2 沿用 Round 14 关闭处置，无回归；上游统计单元与架构归因发现分别由其当前记录承接。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；输入 blob `12df8fa00c741d821026d9a789fba5b29e4be537`。本轮只勾选 requirements Review；最终 blob `8a8dfe3465fa82c6ee537d147fd60057cae98964`，SHA256(`head=<HEAD>;document=<blob>`) = `74d14f10884313a33c329b3fefab5494fc81c3563b3e8c53093895b3a1899c75`。
+- Dependencies：本轮 requirements、performance-evaluation、architecture 候选；UX 本轮未改变表面及标本要求，保留既有 Review。需求 PASS 不覆盖另两份上游文档的 FAIL。
+- Evidence：`python3 scripts/check-docs.py` exit 0（含文档集检查）；CodeGraph 返回 `runGate` 与 `runStats` 当前源码。未运行产品测试或测量，工具迁移仍属将来的实现任务。
+- CEv1：WorkUnit `scan-performance:tasks.md`；目标 `scan-perf-docbatch-20261027-tasks-state`。最终门禁见本轮单一完成门禁字段。
+- 结论：FAIL；自身及 performance/architecture Review 保持未勾选。工作区 `agent-deck.scan-performance` / `feature/scan-performance`；无 Git 交付。
+
+下一步指令：修复：scan-performance / reviews/tasks.md / SP-TASKS-R15-F1
+
+## Repair candidate — 2026-10-27（Round 15 后）
+
+Repairer：Claude Code 主会话；范围为 SP-TASKS-R15-F1。Round 15 的结论与 FAILED 门保留；本节不是 Review Round，不自行声明 PASS。未委派。
+
+- SP-TASKS-R15-F1 -> repaired in candidate：
+  - Task 1 中“按 `k` 判定通过、不确定或未通过”标为 2026-10-27 之前的历史契约，不改写其验证事实；并注明迁移由
+    `serving-open-path` 承接。
+  - Task 3 新增“对比报告工具迁移”，因为本任务的对比批次最先需要它，后续任务复用。文件边界：`cmd/agentdeck-perf` 的
+    `gate.go` 改为不带 `--k` 的 `compare` 子命令，`run.go` 的两臂交错覆盖各条件，`stats.go` 提供两臂汇总；定向测试为
+    `gate_test.go`（改名 `compare_test.go`）与 `stats_test.go`。现状已只读核对：`runGate` 强制 `--k`，`stats.go` 为单臂汇总。
+  - 验收：
+    - 不接受、也不需要 `k`；输出不含任何性能判定。
+    - ABBA 条件输出两臂 median、p95、p99、比值与固定种子的 bootstrap 区间；组不完整时拒绝出区间并报工具无效。
+    - P06 输出逐对差值；P07 与 P11 完整历史输出两臂并列；P08 输出计数并列；P05 只输出单臂统计。
+    - 以上与 performance-evaluation“对比报告”方法表一致。
+- 另按 SP-ARCH-R10-F1 同步第 3 项范围：重复打开先以分段与身份观察确认存在重复构建，再实施“未变时不重算、不重建”。
+
+修复目标：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；tasks blob `551b78a9dffbe247ce76dfa9f6d4ec71a4703c07`（含清除 requirements Review 勾选）。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / tasks.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 16 — 2026-10-27
+
+## 📋 报告工具迁移承接与最终验收复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+无高严重度发现。
+
+### 🟡 建议改进 — 推荐
+
+- **SP-TASKS-R16-F1（中，new，必须修复）** — `tasks.md:183–184, 267–270`：Task 3 仍将 P11 整项要求为 ABBA，Task 8 的明确目标仍是“P01–P11 全矩阵……ABBA 对比”，与本轮 163–168 行新增的五类工具验收冲突。
+  - 行为风险：按 Task 3 工具合同实现后，Task 8 仍会要求对只有 3/5 单元的条件及无基线的 P05 生成 ABBA 对比；最终验收与工具验收给出不同完成条件。
+  - 证据：上游 performance-evaluation:250–254、requirements:205–207 明确只在指定偶数条件使用 ABBA，P05 只报绝对值；Task 8 明确写全矩阵，并非单纯简称交错顺序。
+  - 💡 有界修复：Task 3 与 Task 8 的批次/目标直接引用分类方法，限定 ABBA 仅用于适用条件；P11 首批与完整历史分列，P05 保持单臂；保留全部测量项与原正式样本要求。
+
+### 🟢 优点
+
+SP-TASKS-R15-F1 closed：Task 1 标注旧 k 契约为历史，Task 3 承接 compare、run、stats 与定向测试，明确无 k、无性能 verdict 及各类输出；归因修复也已同步。报告工具迁移已有负责人任务及可验证边界。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，非修复作者；Method：独立定向复评、工具验收与最终任务目标一致性核对，无委派。
+- 处置：SP-TASKS-R15-F1 关闭；新增 SP-TASKS-R16-F1。SP-TASKS-R13-F1/F2 既有关闭处置不变。P07 样本总数问题归 performance-evaluation Round 18，不重复建发现。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；输入 blob `551b78a9dffbe247ce76dfa9f6d4ec71a4703c07`；仅同步 requirements/architecture Review 勾选后的最终 blob `cd812585326c93124f6711a4055276889bd7af93`；SHA256(`head=<HEAD>;document=<blob>`) = `69f83256d16bf00e6185e98da7bf5d9742b8d8a44e36a99e32c20431903d2a0c`。
+- CEv1：WorkUnit `scan-performance:tasks.md`；target `scan-perf-docrecheck-20261027-tasks-state`；精确 gate FAILED：`tasks-review` 为 fail，`tasks-integrity` 为 pass，均使用该前缀；无 unresolved impact。返回的四项旧 corpus evidence 已失效且不匹配本目标，不用于本轮通过声明。`python3 scripts/check-docs.py`（含文档集）与 `git diff --check` exit 0；不运行产品测试或性能批次。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`；correlation `QtgKmOTPe89-k69i`。仅需求/架构 Review 勾选，性能评估/任务 Review 保持未勾选；Topic 边界仍未到达。
+
+下一步指令：修复：scan-performance / reviews/tasks.md / SP-TASKS-R16-F1
+
+## Repair candidate — 2026-10-27（Round 16 后）
+
+Repairer：Claude Code 主会话；范围为 SP-TASKS-R16-F1。Round 16 的结论与 FAILED 门保留；本节不是 Review Round，不自行声明 PASS。未委派。
+
+- SP-TASKS-R16-F1 -> repaired in candidate：
+  - Task 3 对比批次限定为 P01 三层、P02、P03、P04、P11 首批，按运行单元配对交错，引用性能评估“对比报告”分类（这些均为
+    ABBA 比值与区间）；P11 完整历史不在本任务对比，只在 Task 8 按“两臂并列”报告。
+  - Task 8 目标改为按分类方法报告全部测量项：ABBA 比值与区间（P01 三层、P02、P03、P04、P09、P10、P11 首批）、P06 配对差值、
+    P07 与 P11 完整历史两臂并列、P08 计数并列、P05 只报单臂绝对值。
+  - 全部测量项与正式样本要求保留。
+
+修复目标：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；tasks blob `15cc4b49ed36bfdf39b3b0074dda0a1dec82915d`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / tasks.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 17 — 2026-10-27
+
+## 📋 分类报告承接与 P07 任务引用复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+- **SP-TASKS-R17-F1（中，new，必须修复）** — `tasks.md:207`：Task 4 `parallel-source-pipeline` 的对比批次写为“P07（3 次全量重建）”，未包含 100 次增量；而本任务目标（192 行）要报告 P07 的写事务对比，performance-evaluation 现行合同（blob `9411045…`，252、297 行）把 P07 正式样本定为“3 次全量重建 + 100 次增量（只在第 3 个运行单元重建之后）”，事务 p95/max 取该臂全部 `tx.*`。
+  - 行为风险：按任务文字只跑 3 次重建时，P07 事务统计缺失 100 次增量，事务权重与 p95 口径和 S0 基线（Task 2 按正式样本数）不同，E3 的写事务对比不可比；这正是 SP-PE-R18-F1 要排除的口径分歧，其有界修复明确要求“统一两表及任务引用”，本处任务引用未同步。
+  - 证据：207 行字面；performance-evaluation 252、297 行；`cmd/agentdeck-perf/run.go:971–978` 的 P07 formal 计划 `schedule{Units: 3, Inner: 100}`，增量在 `index == s.Units` 时执行。
+  - 💡 有界修复：207 行 P07 改为引用性能评估正式样本（3 次全量重建 + 100 次增量，事务取全部），或直接写“按契约样本数”；不改其他条件、样本数或任务范围。
+
+### 🟢 优点
+
+- SP-TASKS-R16-F1 closed：Task 3（183–185 行）对比批次限定为 P01 三层、P02、P03、P04、P11 首批，并明确均属 ABBA 比值与区间；P11 完整历史移交 Task 8。Task 8（268–270 行）按五类方法逐项列出：ABBA（P01 三层、P02、P03、P04、P09、P10、P11 首批）、P06 配对差值、P07 与 P11 完整历史两臂并列、P08 计数并列、P05 单臂绝对值，与 performance-evaluation 250–254 行分类完全一致；Task 3 工具验收（166–168 行）与之对应。
+- SP-TASKS-R13-F1/F2、R15-F1 的既有关闭处置无回归；Task 5 P10（100 次）、Task 6 P05/P07 RSS 引用与性能评估一致。
+
+### 📝 总结
+
+- Reviewer：Claude Code 主会话（Opus 5.5），本文档 Round 16 后 Repair candidate 的作者为同一客户端的另一会话；本轮为定向复评，未修改 tasks.md 正文。Method：逐项核对 Task 3/4/5/6/8 的批次与目标对性能评估分类表、正式样本表及 `run.go` 编排；无委派。
+- 处置：SP-TASKS-R16-F1 closed；新增 SP-TASKS-R17-F1（中）。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；tasks blob `b6718788f5535693b35e279213fed69a126d438e`（Repair candidate blob `15cc4b4…` 之后仅 Documents 表中 performance-evaluation.md Review 勾选因其 Round 19 PASS 而恢复）；SHA256(`head=<HEAD>;document=<blob>`) = `5f55ff99c18673464051f3b071c4159122d79c49dfd8a56df8f61de2e075f8eb`。
+- Evidence：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`git diff --check` exit 0；不运行产品测试或性能批次。
+- CEv1：WorkUnit `scan-performance:tasks.md`；ContentState `scan-perf-tasks-r17-20261027-state`；`scan-perf-tasks-r17-20261027-review` fail、`scan-perf-tasks-r17-20261027-integrity` pass；精确门禁 FAILED。
+- 结论：FAIL，tasks.md Review 保持未勾选。工作区 `agent-deck.scan-performance` / `feature/scan-performance`；未提交或推送。
+
+下一步指令：修复：scan-performance / reviews/tasks.md / SP-TASKS-R17-F1
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Repair candidate — 2026-10-27（Round 17 后）
+
+Repairer：Claude Code 主会话；范围为 SP-TASKS-R17-F1。Round 17 的结论与 FAILED 门保留；本节不是 Review Round，不自行声明 PASS。未委派。
+
+- SP-TASKS-R17-F1 -> repaired in candidate：Task 4 对比批次中的 P07 改为引用性能评估正式样本——3 次全量重建 + 100 次增量，
+  增量只在第 3 个运行单元的重建之后，事务取该臂全部 `tx.*`——与 performance-evaluation 现行合同及
+  `cmd/agentdeck-perf/run.go` P07 计划一致；其他条件、样本数与任务范围未改。
+
+修复目标：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；tasks blob `048d84ec38579e4103875e38920c2e15ac5f3202`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / tasks.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 18 — 2026-10-27
+
+## 📋 Task 4 P07 正式样本引用修复复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-TASKS-R17-F1 closed：`tasks.md:207` Task 4 对比批次的 P07 改为“按契约正式样本：3 次全量重建 + 100 次增量，增量只在第 3 个运行单元的重建之后，事务取该臂全部 `tx.*`”，与 performance-evaluation 252、297 行及 `cmd/agentdeck-perf/run.go:971–978` 的 formal 计划一致；E3 写事务对比与 S0 基线口径相同。其他条件（P08、P09 20 对、P01 重建层复测）未变。
+- SP-TASKS-R16-F1 保持关闭：Task 3（183–185 行）与 Task 8（268–270 行）的五类分类引用未变；R13-F1/F2、R15-F1 无回归。其余 P07 引用（136、139、167、192、251、261 行）均与合同相容。
+
+### 📝 总结
+
+- Reviewer：Claude Code 主会话（Opus 5.5）；Method：定向复评，核对修复行与性能评估合同、工具编排及全文 P07 引用；无委派，未修改 tasks.md 正文。
+- 处置：SP-TASKS-R17-F1 closed；无仍开放、回归或新增发现。
+- Reviewed state：HEAD `c778fef45ed7490020c0fea710582ac1f17bab94`；评审 blob `048d84ec38579e4103875e38920c2e15ac5f3202`（与 Repair candidate 目标一致）；本轮恢复 Documents 表中 tasks.md 的 Review 勾选后最终 blob `aeb7c0d0d3e18325cb93929d4c105de7cbfaae4c`；SHA256(`head=<HEAD>;document=<最终 blob>`) = `d869c465bb29195a561d968256188fe5468c2f5e024272b263213018f2a756a2`。
+- Evidence：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`git diff --check` exit 0；不运行产品测试或性能批次。
+- CEv1：WorkUnit `scan-performance:tasks.md`；ContentState `scan-perf-tasks-r18-20261027-state`；`scan-perf-tasks-r18-20261027-review` 与 `-integrity` 两项 pass，关系 4/4；精确门禁 VERIFIED。Round 17 fail 仍绑定旧内容。
+- 结论：PASS。dispatch `ad-scan-performance-doc-tasks`。四份重设计文档均已通过；实现任务 `serving-open-path` 已由 claude-code 认领。工作区 `agent-deck.scan-performance` / `feature/scan-performance`；未提交或推送。
+- 跨记录与简写引用的处置（本记录内无其他未闭环发现）：
+  - SP-ARCH-R10-F1 closed（architecture 记录 Round 11，复核于本轮）
+  - SP-PE-R18-F1 closed（performance-evaluation 记录 Round 19）
+  - R13-F1 closed（即 SP-TASKS-R13-F1 的简写）
+  - R15-F1 closed（即 SP-TASKS-R15-F1 的简写）
+
+Task checkpoint：ad-scan-performance-doc-tasks；content_state `d869c465bb29195a561d968256188fe5468c2f5e024272b263213018f2a756a2`；gate VERIFIED。
+提交建议：另行授权提交 tasks.md 的无数值门槛重设计与 R15–R17 修复、Round 15–18 及修复记录、Documents 勾选。
+推送建议：核验实际提交范围、签名与远端状态后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
+
+下一步指令：开发：scan-performance / serving-open-path
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
