@@ -738,3 +738,118 @@ Task checkpoint：ad-scan-performance-doc-perf；content_state `025c4a39fa581586
 推送建议：实际提交范围、贡献归属、trailer 与 SSH 签名核验后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
 
 开发：scan-performance / serving-open-path
+
+## Round 15 — 2026-10-27
+
+## 📋 启动争用对照决策契约评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+[performance-evaluation.md:426–432] SP-PE-R15-F1（中）：新增 quiet 对照出口没有完整保留工具无效、候选不可行与有效可行的区分。
+
+- 处置：new，open。本轮新增决策表的缺陷；Round 12 对旧表的修复和历史 PASS 保留，不改写旧结论。
+- 行为风险：在缺少可判定的面板测量时提出放宽 P01 首击目标，或由实现者临时决定未覆盖组合的处理，违反冻结决策口径。
+- 证据与场景：
+  - quiet warm 有效可行且 p95 160 ms，panel quiet 因打点缺失、修复后仍无有效结果：430 行“有效可行且 ≤150 ms……否则……提出目标变更”会命中目标变更；432 行只覆盖 quiet warm 自身无有效结果，不能拦截 panel quiet 无效。431 行继承同一出口。
+  - quiet warm 有效可行且 p95 140 ms，而交错普通 warm 无有效结果或违反暖启动约束：428–429 行都要求普通 warm 有效可行，430–432 行又要求 quiet warm 超阈值、不可行或无效，没有一行定义该组合。
+  - 379–397 行已明确工具无效与候选不可行不同；需要的探测无有效结果必须报告阻塞，缺失 p95 不按大于 150 ms 处理。新增表与这项既有约束不一致。
+- 💡 有界修复：补全 quiet warm × 普通 warm 与后续 panel quiet 的结果分类及出口；需要的探测无有效结果时明确停止报告阻塞，只有得到有效且不可采用的结论才允许提出目标变更。为 quiet warm 达标但普通 warm 无效／不可行规定明确处理，消除兜底“否则”的歧义；保留目标、样本数与正式 P01 口径。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 明确原有两组探测没有争用对照，不把 200 次恒定 helper 数当作因果归因；要求新批次 ABBA 交错。
+- quiet 探测与正式 P01 分开，保留真实数据帧及原定点击时机的验收口径。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，非本次增补作者。Method：独立文档契约评审、决策表场景推演及 CEv1 记录核对；无委派。
+- Scope：2026-10-27 启动争用对照增补及其上游测量规则、相关任务范围。确认上述阻断问题后停止扩大验证；不重新认证历史测量、产品实现或整个设计集。
+- Reviewed state：HEAD `2a1369b23308c8fcfda16c296bad14348b965806`；document blob `ebf6686c4c27df0ddec5c87f96eb5c679fb3437e`；SHA256(`head=<HEAD>;document=<blob>`) = `04a9815b2b10b3c94db137006523cfd24dd16f78e742ac09d36ef808c710fa8f`。
+- Dependencies：requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`；architecture blob `6d3d0f16a3013abca3b306899916fe23674746f5`；tasks.md 第 3 项将 quiet 探测纳入 serving-open-path。工作区 `agent-deck.scan-performance` / `feature/scan-performance`。
+- Evidence：CEv1 原始观察 `scan-perf-sop-probes-20261027-popover-floor` 确认两批各 100 次、p95 176.52/165.97 ms、约束违反与工具无效为 0、每次点击 helper 数为 2；本轮没有重新运行性能批次。`python3 scripts/check-docs.py` exit 0，覆盖空白、diff、受影响文档集、链接与评审结构。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-pe-r15-20261027-state`。入口查询 NOT_VERIFIED：当前新内容尚无两项 required criteria 的证据，历史观察均不匹配当前目标。新增 `scan-perf-pe-r15-20261027-review`（fail）与 `scan-perf-pe-r15-20261027-integrity`（pass），关系预检 4/4 ok；写入后精确目标查询 FAILED，语义失败与结构通过均适用，无 invalidated 或 unresolved evidence。
+- 结论：FAIL；Documents 中 performance-evaluation Review 已是未勾选，保持该状态。同一文档 dispatch 退回修复，其他文档与实现任务由各自评审闭环。
+
+修复：scan-performance / reviews/performance-evaluation.md / SP-PE-R15-F1
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Repair candidate — 2026-10-27（Round 15 后）
+
+Repairer：Claude Code 主会话；范围为 SP-PE-R15-F1。Round 15 的评分、结论与 FAILED 门保留；本节不是 Review Round，
+不自行声明 PASS，待独立复评确认。未委派。
+
+- SP-PE-R15-F1 -> repaired in candidate：
+  - 先把每个条件的正式批次明确分为四类：无有效结果、候选不可行、有效且可行 p95 ≤150 ms、有效且可行 p95 >150 ms。
+  - 原单表拆为“第一步：暖启动对照”（quiet warm × 交错普通 warm，按行序首个匹配）、“争用削减”与“第二步：面板对照”
+    （`P01-floor-panel-quiet` 单条件），删除兜底“否则”。
+  - 评审场景一：quiet warm 有效可行 160 ms、panel quiet 无有效结果，进入第二步后命中“无有效结果 → 停止并报告阻塞”，
+    不再命中目标变更。
+  - 评审场景二：quiet warm 有效可行 140 ms 而普通 warm 无有效结果，命中第一步第 2 行（阻塞）；普通 warm 候选不可行，
+    命中第 4 行（暖启动不可采用，进入第二步）。
+  - quiet warm 有效可行 >150 ms 而普通 warm 有效可行 ≤150 ms 归入第 5 行：按正式口径采用暖启动，quiet 只作归因记录。
+  - 争用削减中候选批次无有效结果或候选不可行时停止并报告阻塞；候选用尽仍 >150 ms 时交用户决定，不自动进入 UX 或目标变更。
+  - 目标变更只在暖启动与面板两种形态都得到有效且不可采用的结论时提出；缺失 p95 不按 >150 ms 处理。
+    目标、样本数与正式 P01 口径未改。
+
+修复目标：HEAD `2a1369b23308c8fcfda16c296bad14348b965806`；performance-evaluation blob `7a17d7fa58017793a01c090145ec20051a70906a`。
+
+验证：`bash scripts/check-topic-docs.sh scan-performance` exit 0；`git diff --check` exit 0；`python3 scripts/check-docs.py` exit 0。
+
+#### 下一步指令
+
+复评：scan-performance / performance-evaluation.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## Round 16 — 2026-10-27
+
+## 📋 启动争用对照决策契约复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- SP-PE-R15-F1 closed：必需暖启动对照任一无有效结果时，前两行优先停止并报告阻塞；候选不可行单独进入面板对照；面板无有效结果也明确阻塞，不再落入目标变更。
+- 按行序推演四类结果的 16 种暖启动组合：7 种无有效结果组合报告阻塞，5 种有结果但至少一臂不可行的组合进入面板对照，2 种普通 warm 达标组合继续既定打开路径，1 种进入争用削减，1 种两臂超阈值进入面板对照。所有组合都有唯一的首匹配出口。
+- 面板四类结果分别进入阻塞、UX 变更建议、目标变更建议（超阈值或不可行）。争用削减阶段的无效／不可行及候选用尽也有停止出口；缺失 p95 不再被视为超阈值。
+
+### 📝 总结
+
+- Reviewer：OpenCode / GPT-6 Astra 主会话，Round 15 评审者；Method：独立核对 Claude Code 修复候选，对决策表作穷举场景推演并核验前后契约；无委派。
+- Scope：SP-PE-R15-F1 与修复涉及的暖启动、争用削减和面板出口。唯一开放发现关闭，无新增或回归发现；历史已关闭发现保持其原处置。未改的需求与架构 blob 和本会话前轮一致，复用其相关上下文；不重新认证性能批次或产品实现。
+- Reviewed state：HEAD `2a1369b23308c8fcfda16c296bad14348b965806`；document blob `7a17d7fa58017793a01c090145ec20051a70906a`；SHA256(`head=<HEAD>;document=<blob>`) = `db04a7e01d9fb0294e3036cef80c86d16c37cd2c93528a62904544ec872b34cb`。
+- Dependencies：requirements blob `33dee36077c29b565e7c4a7aa8ce3e7f3957207d`；architecture blob `6d3d0f16a3013abca3b306899916fe23674746f5`；工作区 `agent-deck.scan-performance` / `feature/scan-performance`。本轮只恢复 performance-evaluation 的 Documents Review 勾选。
+- Evidence：决策表的 16 种暖启动组合、4 种面板结果及争用削减出口完成静态核对；正式 P01 点击时机、数据帧、阈值与样本数保留。`python3 scripts/check-docs.py` exit 0，覆盖空白、diff、受影响文档集、链接与评审结构。
+- CEv1：WorkUnit `scan-performance:performance-evaluation.md`；ContentState `scan-perf-pe-r16-20261027-state`。入口查询 NOT_VERIFIED；新增 `scan-perf-pe-r16-20261027-review` 与 `scan-perf-pe-r16-20261027-integrity` 两项 pass，关系预检 4/4 ok、创建关系 4/4，最终精确目标查询 VERIFIED，missing／invalidated／unresolved 均为空。旧 Round 15 fail 仍绑定旧内容，不覆盖其观察。
+- 结论：复评 PASS。此文档属于 dispatch `ad-scan-performance-doc-perf`，不是无任务的文档。主题仍有 architecture.md、tasks.md 待评及后续实现任务，未到 topic 完成边界。
+
+Task checkpoint：ad-scan-performance-doc-perf；content_state `db04a7e01d9fb0294e3036cef80c86d16c37cd2c93528a62904544ec872b34cb`；gate VERIFIED。
+提交建议：另行授权提交性能评估增补与修复、Round 15/16 及修复记录、对应 Documents 勾选。
+推送建议：核验实际提交范围、贡献归属、签名及远端状态后，另行授权推送 origin/feature/scan-performance；远端当前状态未核验。
+
+评审：scan-performance / architecture.md
+
+WORKFLOW_WORKSPACE: agent-deck.scan-performance
