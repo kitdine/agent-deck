@@ -6,6 +6,27 @@ subject: requirements.md
 
 # requirements.md 评审
 
+## 2026-10-27 证据范围与协调勘误
+
+用户授权修正 Beads 状态后，确认先前将整个文档集缺稿归入本前置文档
+document-integrity 的阻塞理由过宽。依据 docs/documentation-workflow.md 的文档集规则，
+设计期间允许声明未编写文档；完整集合须在 tasks.md 文档集评审前补齐。
+本勘误不改变语义 PASS、不撤销原发现、不豁免文档集/CI 检查，也不新建语义评审轮次。
+下面各轮原 BLOCKED 及提交建议作为当时记录保留；当前协调以本勘误的交付对象及 CEv1 新观察为准。
+
+- 交付对象：`1d6ab3a12c06ace582d6ee21f4109bf82988561c`；正文 blob `3c14de201f3b0f87b16bdee4d4abde424b6b7136`，与已评审正文一致。
+- 新 ContentState：`auxiliary-session-classification:delivered-requirements.md-aaa32d98bdccd582`；指纹 `aaa32d98bdccd5821adc67643afcfc889605866063cf8560bb41442eff0c92d0`。
+- 交付目标查询结果：VERIFIED（2026-10-27）；missing criteria 与 unresolved impacts 均为空。
+  此结果仅绑定上述交付对象的需求文档，不宣称当前全主题或最终 UX 已完成。
+- 复用来源：`auxiliary-session-classification:req-r2-376128eaa35844f7:independent-review`。新观察绑定交付对象并通过 rolls_up 显式引用；
+  提交只固化已评审内容与记录，不引入新的正文决策。标本按各自交付 commit 核验，未用当前其他表面改动冒充旧 manifest。
+- 本文检查范围：格式、真实本地链接、评审记录、空白和已绑定标本完整性；不包含尚未设计的另一文档。
+  完整文档集缺稿仍由 tasks.md 承接。检查结果及门禁以新目标 CEv1 记录为准。
+- 协调边界：完成该需求文档的交付协调；不关闭整个主题。
+
+历史段落中的“尚未提交/不得提交”和旧 BLOCKED 不再用作当前待评审队列依据；
+所有已有历史事实和旧目标证据保持不变。
+
 ## Round 1 — 2026-10-26
 
 ## 📋 需求边界评审
