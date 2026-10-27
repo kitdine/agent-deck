@@ -149,3 +149,51 @@ Task checkpoint：ad-auxiliary-session-classification-doc-ux-cli；content_state
 推送建议：门禁 VERIFIED 后，经授权推送 feature/auxiliary-session-classification；前置同上，remote/upstream 尚未解析，提交内容和 SSH 签名留待交付核验。
 
 完成已声明的 ux/menubar.md、ux/settings.md、ux/widget.md、architecture.md，通过文档完整性检查后重算本 WorkUnit 门禁；保留本轮 framework PASS。
+
+## Round 3 — 2026-10-27
+
+## 📋 CLI 最终表面评审
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。原 ASC-CLI-R1-F1/F2 已关闭且无相关回归，未发现新增阻塞项。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- --clear 已与架构的 core 覆盖键合同一致；未匹配覆盖、tombstone/no_change、null 分类和独立读回不再被可见会话查询阻塞。
+- 写结果未知保留 request_id，引导读原回执而非换 ID 盲重试；历史回执与当前覆盖状态明确区分。
+- 桌面默认和来源管理命令补齐；配置路径不回传，配置成功不冒充 SDK 映射已验证；JSON 增量字段与旧集合形状分开。
+
+### 📝 总结
+
+- Reviewer: Codex，独立最终表面评审，未参与本轮设计修改。
+- Method: 单评审者比较当前 CLI 文档/标本与已通过 architecture §5/§7/§9；核对现有 Envelope/errorCode 来源；运行已有语义/帧检查并目视查看保留截图。未委派、未修改产品、测试、配置或标本。
+- Scope: CLI final-surface reconciliation，不是产品命令、CAS/SQLite、真实 PTY 或维护来源格式验收。
+- Reviewed state: HEAD `c57102bb5a641cf9bb6556941f63499d5c5217da`；CLI blob `e4651cca9dbdc40348a0624134778a327539eb3e`。
+- Architecture dependency: blob `5b5a3b5694827900a9380e3879058a6baca4919a`，已交付 commit `c57102bb5a641cf9bb6556941f63499d5c5217da`；CEv1 delivered state `auxiliary-session-classification:arch-delivered-d6957d95a336e240`。
+- Specimen identity: manifest SHA-256 `7c3aa502273a539c08cb50d5cb544829134753d8e88647940b74ef78e85c26d2`；8 项当前文件 SHA-256 全部 MATCH，历史 framework 文件不冒充当前内容。
+- Fingerprint: `238ada644f8b104c1a876e4d91c6005633d9cf84b9881aa576722f60c7ab64db`；SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence: `node prototype/tools/check-auxiliary-cli-final.mjs` 实测 14 semantic_checks、240 frame_cases、0 failures。检查含 clear revision5/no_change5/不存在0、回执重放、unknown request、unmatched 枚举、默认未确认和来源输出不泄漏路径；这是合成设计数据，不是产品运行。
+- Evidence: source set/disable 的 JSON 只含来源/配置/启用/coverage 和失效标记；没有 data-dir。清除回执的 automatic/effective=null，classification_available=false/not_queried；旧请求读回与原清除 data 一致。读请求 outcome=unknown 可为 exit0，但文档要求自动化核对 outcome，不当作写入成功。
+- Evidence: internal/output/output.go 的 schema_version=1、command/generated_at/data/warnings/partial/error 形状及 NewErrorWithDetails 与标本一致；main.go 的通用错误类别为 runtime_error。新增 session_selection 明确为拟实现的可加字段，不声称现有发布版已具有它。
+- Evidence reuse: auxiliaryFrame 通过逐字比较与已交付版本一致，帧样式未变，复用 Round 2 几何与原扫描合同证据。目视核对 final-clear-unmatched-40.png、final-request-unknown-80.png：身份、请求、版本、未查询分类和未知结果恢复命令可见。设计者 60 组浏览器与构建结果仍标为原作者检查，本轮不冒充复跑。
+- WorkUnit: `auxiliary-session-classification:ux/cli.md`；ContentState: `auxiliary-session-classification:ux-cli-final-r3-238ada644f8b104c`。
+- Completion gate: VERIFIED
+- Gate scope: 本最终表面的独立评审、文档完整性和架构对齐。新增 architecture-reconciliation 必需项用于最终表面边界；历史 framework 结果与其范围不被改写。
+- Evidence: 本轮评审与矩阵同步后 `python3 scripts/check-docs.py` 通过，涵盖空白、diff、本地链接、记录结构及文档集合结构；不替代 tasks 分解评审。
+- Hierarchy: 其余三份 UX 尚需最终核对，tasks.md 尚未分解/评审；不跨越 Topic 完成边界。
+- Residual uncertainty: 最终生产输出仍需兼容 golden、真实 PTY、CAS/回执、SQLite 和来源适配器隔离验收。设计样例不能替代这些测试。
+
+Task checkpoint：ad-auxiliary-session-classification-doc-ux-cli；content_state `238ada644f8b104c1a876e4d91c6005633d9cf84b9881aa576722f60c7ab64db`；gate VERIFIED（final-surface）。
+提交建议：经授权提交 CLI 最终文档、共享 CLI 标本、检查脚本、manifest/新增截图、对应评审记录和矩阵状态。
+推送建议：经授权提交并核验提交对象、Codex trailer 与 SSH 签名后推送 feature/auxiliary-session-classification；remote/upstream 尚未解析。
+
+设计：auxiliary-session-classification / ux/menubar.md（final-surface reconciliation）

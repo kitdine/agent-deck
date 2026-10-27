@@ -332,3 +332,8 @@ Published scope（`awScope`）与 Saved default（`awDefault`）独立，保存�
 设计见 [ux/widget.md](../docs/topics/auxiliary-session-classification/ux/widget.md)；
 `prototype/tools/check-auxiliary-widget.js` 校验三范围聚合、价格不变、尺寸边界及 7/20 桶结构。
 所有新增数据仅为聚合合成值，不模拟真实 WidgetKit 调度或 App Group IO。
+
+CLI auxiliary 的 final-surface 候选已按架构同步：新增 core 覆盖独立撤销、请求回执/冲突、
+持久默认与来源管理；JSON 面板按所选场景展示实际 envelope 示例，未配置场景明确展示兼容默认示例。
+clear 的分类为 not_queried，不伪造自动结果；saveUnknown 指向 --request 读回。
+`node prototype/tools/check-auxiliary-cli-final.mjs` 核对 JSON/回执与未变的全屏帧合同。

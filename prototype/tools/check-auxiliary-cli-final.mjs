@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {AUXILIARY_CLI as text,AUXILIARY_JSON_EXAMPLES as json,auxiliaryFrame} from '../src/auxiliaryCli.js';
+let checks=0;const check=(name,f)=>{f();checks++;};
+check('default JSON retains array/all',()=>{assert(Array.isArray(json.jsonDefault.data));assert.equal(json.jsonDefault.data.length,4);assert.equal(json.jsonDefault.session_selection.requested_scope,null);assert.equal(json.jsonDefault.session_selection.source_default,'json_compat');});
+check('explicit auxiliary and all',()=>{assert.equal(json.auxiliary.data.length,1);assert.equal(json.auxiliary.session_selection.unknown_count,0);assert.equal(json.all.session_selection.requested_scope,'all');});
+for(const key of ['cleared','noChange','clearMissing'])check(key+' no invented classification',()=>{assert.equal(json[key].data.automatic,null);assert.equal(json[key].data.effective,null);assert.equal(json[key].data.classification_available,false);assert.equal(json[key].data.classification_reason,'not_queried');});
+check('clear revisions',()=>{assert.equal(json.cleared.data.revision,5);assert.equal(json.noChange.data.revision,5);assert.equal(json.clearMissing.data.revision,0);assert.equal(json.noChange.data.outcome,'no_change');});
+check('replay is original receipt',()=>assert.deepEqual(json.receiptReplay.data,json.cleared.data));
+check('unknown write retains request id',()=>{assert.equal(json.saveUnknown.error.code,'origin_write_unknown');assert.equal(json.saveUnknown.error.details.request_id,'clear-A');assert.match(text.saveUnknown.text,/classify --request clear-A/);});
+check('unknown read not success',()=>assert.equal(json.requestUnknown.data.outcome,'unknown'));
+check('unmatched enumerable',()=>{assert.equal(json.overrideList.data[0].binding_status,'unmatched');assert.equal(json.overrideList.data[0].revision,4);});
+check('unconfirmed scope never Work',()=>{assert.equal(json.scopeUnconfirmed.error.details.default_scope.value,null);assert.equal(json.scopeUnconfirmed.error.details.default_scope.confirmed,false);});
+check('source output redacted and no coverage claim',()=>{assert(!text.sourceSet.text.includes('/example/'));assert.match(text.sourceSet.text,/not verified/);assert.match(text.sourceDisabled.text,/overrides and all usage are retained/);});
+check('new JSON parses',()=>Object.values(json).forEach(x=>assert.equal(JSON.parse(JSON.stringify(x)).schema_version,1)));
+const current=fs.readFileSync(new URL('../src/auxiliaryCli.js',import.meta.url),'utf8');
+const previous=execFileSync('git',['show','HEAD:prototype/src/auxiliaryCli.js'],{encoding:'utf8'});
+const frame=s=>{const a=s.indexOf('export function auxiliaryFrame');return s.slice(a,s.indexOf('\n}\n',a)+3);};
+check('frame rendering unchanged',()=>assert.equal(frame(current),frame(previous)));
+let frames=0;for(const state of ['browser','scopeFailed','scopeMenu','loading','tooSmall'])for(const cols of [40,48,80,120])for(const rows of [8,10,24,40])for(const selected of [1,8,12]){const f=auxiliaryFrame(state,cols,rows,selected);assert.equal(f.text.split('\n').length,rows);assert.match(f.text,/quit/);if(cols<48||rows<10||state==='tooSmall'){assert.equal(f.mode,'tooSmall');assert(!f.text.includes('enter open'));}frames++;}
+console.log(JSON.stringify({semantic_checks:checks,frame_cases:frames,failures:0}));

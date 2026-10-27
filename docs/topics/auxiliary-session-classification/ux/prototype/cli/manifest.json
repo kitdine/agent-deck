@@ -1,96 +1,11 @@
 {
-  "stage": "framework-repair-r1",
-  "date": "2026-10-26",
+  "stage": "final-surface-candidate",
+  "date": "2026-10-27",
+  "architecture_blob": "5b5a3b5694827900a9380e3879058a6baca4919a",
   "retention": "Repository-owned design artifacts; retain with topic review history.",
-  "entry": "?surface=cli&auxiliary=browser&auxCols=48&auxRows=10&auxSelected=8",
-  "scenarios": [
-    "work",
-    "auxiliary",
-    "all",
-    "empty",
-    "noIndex",
-    "unknown",
-    "detail",
-    "override",
-    "cleared",
-    "partial",
-    "stale",
-    "unavailable",
-    "invalid",
-    "ambiguous",
-    "writeFailed",
-    "saveUnknown",
-    "noChange",
-    "scopeFailed",
-    "notFound",
-    "nonTTY",
-    "browser",
-    "scopeMenu",
-    "loading",
-    "tooSmall",
-    "signals",
-    "signalsScanning",
-    "signalsScanIncomplete",
-    "statsScanning",
-    "statsStored"
-  ],
-  "columns": [
-    40,
-    48,
-    80,
-    120
-  ],
-  "rows": [
-    8,
-    10,
-    24,
-    40
-  ],
-  "selected_rows": [
-    1,
-    8,
-    12
-  ],
-  "checks": {
-    "fullscreen_geometry": {
-      "cases": 240,
-      "failures": 0,
-      "oracles": [
-        "physical columns and rows",
-        "exact frame line count",
-        "no overflow",
-        "small-terminal refusal",
-        "selected row visible",
-        "footer quit visible"
-      ]
-    },
-    "scan_states": {
-      "cases": 4,
-      "failures": 0,
-      "states": [
-        "signalsScanning",
-        "statsScanning",
-        "signalsScanIncomplete",
-        "statsStored"
-      ]
-    },
-    "limitation": "Browser specimens only; no product scan, PTY or persistence proof."
-  },
-  "historical_screenshots": [
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/work-80.png",
-      "sha256": "eedfe782d30fa6f3f43038bfda8fe4328220b674cb06198f94df3031a0ccb7f9"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/override-40.png",
-      "sha256": "e9c87d02a39e3fc5c46737ae0c8730a88b94984cf9f83ba74437b1b6f16e15ca"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/scope-failed-48.png",
-      "sha256": "a8e8ee4722bbcfa610e3c36e8e301c852fd5f17ae3ee7f245f6838a5fadcd495"
-    }
-  ],
-  "files": [
+  "entry": "?surface=cli&auxiliary=cleared",
+  "previous_manifest_sha256": "9e33688ab2d34901a5a82edc6c9fda92ffc83f4cda09f7d2cf209f6c69bb37f2",
+  "historical_files": [
     {
       "path": "prototype/src/auxiliaryCli.js",
       "sha256": "be02abdc92ed83c6fcce800056f7340b4bdf952b7ca519b7f138eaab14d880cb"
@@ -122,6 +37,75 @@
     {
       "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/r1fix-signals-incomplete.png",
       "sha256": "71601716a5a043b11871c593455e8050ff56ed95599e06e83702df8ed8f88674"
+    }
+  ],
+  "previous_checks": {
+    "fullscreen_geometry": {
+      "cases": 240,
+      "failures": 0,
+      "oracles": [
+        "physical columns and rows",
+        "exact frame line count",
+        "no overflow",
+        "small-terminal refusal",
+        "selected row visible",
+        "footer quit visible"
+      ]
+    },
+    "scan_states": {
+      "cases": 4,
+      "failures": 0,
+      "states": [
+        "signalsScanning",
+        "statsScanning",
+        "signalsScanIncomplete",
+        "statsStored"
+      ]
+    },
+    "limitation": "Browser specimens only; no product scan, PTY or persistence proof."
+  },
+  "checks": {
+    "build": "passed",
+    "semantic_checks": 14,
+    "frame_cases": 240,
+    "browser_render_cases": 60,
+    "source_json_cases": 2,
+    "failures": 0,
+    "reuse": "auxiliaryFrame byte-identical to delivered HEAD version; prior geometry evidence reused for that unchanged function and frame styling",
+    "limits": "Design examples only; no product command execution, CAS, SQLite, PTY or native acceptance."
+  },
+  "files": [
+    {
+      "path": "prototype/src/auxiliaryCli.js",
+      "sha256": "e89c8b51d5f154ece73781faba82a33caeb303db7fdacbd37ce3a87567538cb9"
+    },
+    {
+      "path": "prototype/src/AuxiliaryCli.jsx",
+      "sha256": "673f5f7e8a8d38a5923b7885c9b3fb13e92e77ecb9d9961de730c1ac0c150e82"
+    },
+    {
+      "path": "prototype/src/Cli.jsx",
+      "sha256": "6ac7a0110b62abdb96c7d79b60fd3814914c0dc5df4ee3768f82c33e3f2538a0"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-cli-final.mjs",
+      "sha256": "fe98c22a9354713763102285823f8a98d1235279978972dfd27371ac46a99b83"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/final-clear-unmatched-40.png",
+      "sha256": "955ff007c12c44b7d2507323e96a3f4e9476bc7b51a905114415c3ce76d92f83"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/final-request-unknown-80.png",
+      "sha256": "3ffb58935922426a1f5b788c2fa8ac240c0dac6594357e1cd07d50daecdd1649"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/cli/final-clear-json-80.png",
+      "sha256": "5d6b2ad2e25e8c49559d78720296d3de2086ea776ab931492e38b1a86e98aa10"
     }
   ]
 }

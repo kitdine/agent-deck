@@ -34,8 +34,8 @@ UX 按项目 prototype 权威提供标本，架构落实数据契约，再完成
 尚未分解；requirements → 各表面框架 → architecture → 各表面最终核对 → tasks。
 每个实际文档有单独 Beads 文档任务；不建立实现任务，不以规划源记录 closed 代替产品验收。
 requirements 已独立评审 PASS 并提交；本前置文档不再因后续文档缺稿停留在待评审队列。
-CLI、菜单栏与 Settings framework 均已评审 PASS 并提交，当前等待 architecture 后的 final-surface reconciliation。
-其 Review 勾选仅适用于已评审 framework，不代表最终表面完成；对应记录顶部包含证据范围勘误。
+CLI 最终表面已独立评审 PASS；菜单栏与 Settings framework 均已评审 PASS 并提交，仍待最终核对。
+CLI Review 勾选适用于最终表面；其余表面 Review 勾选仅适用于已评审 framework，历史结论保留。
 完整文档集检查归属本文件的分解/文档集评审；不会因本次状态修正而取消。
 Beads 按当前剩余工作建立阻塞边：已完成框架的 UX 等待 architecture，tasks 等待架构和最终 UX。
 架构与 UX 的框架输入用 related 关联并注明 framework 就绪条件，避免以整份 UX 最终关闭反向阻塞架构。
@@ -44,7 +44,8 @@ Widget 最终核对依赖 architecture，不建立双向 blocks。
 2026-10-27 范围勘误后，requirements 与三个 UX 的各自已交付对象门禁为 VERIFIED；
 requirements 协调已关闭，三个 UX 保持 in_progress、无受理人，标记待最终核对。
 Widget framework 已提交于 `2510975`，PASS 与门禁见 [reviews/ux-widget.md](reviews/ux-widget.md)。
-architecture 最新独立复评为 PASS，见 [reviews/architecture.md](reviews/architecture.md)；当前等待授权提交，随后按各表面范围进行最终核对。
-四份 UX 仍需架构后的最终核对，不将标本检查当作原生实现验收。
+architecture 已通过并提交于 `c57102b`，见 [reviews/architecture.md](reviews/architecture.md)。
+CLI 最终表面已独立评审 PASS，见 [reviews/ux-cli.md](reviews/ux-cli.md) Round 3，等待授权提交；其 Review 勾选适用于最终表面。
+其余三份 UX 仍需架构后的最终核对，不将标本检查当作原生实现验收。
 评审与修复交接见 [reviews/requirements.md](reviews/requirements.md)。
 未合并主题状态只在本文件及 Beads 维护，不更新 main 的 docs/status.md。
