@@ -337,3 +337,8 @@ CLI auxiliary 的 final-surface 候选已按架构同步：新增 core 覆盖独
 持久默认与来源管理；JSON 面板按所选场景展示实际 envelope 示例，未配置场景明确展示兼容默认示例。
 clear 的分类为 not_queried，不伪造自动结果；saveUnknown 指向 --request 读回。
 `node prototype/tools/check-auxiliary-cli-final.mjs` 核对 JSON/回执与未变的全屏帧合同。
+
+菜单栏 auxiliary final-surface 新增 legacy/defaultUnknown/sourceUnavailable/inputMismatch 舞台状态。
+前两态无分类数量；后两态保留 unknown 及有效用户覆盖。来源详情使用明确 --id 和逐参数引用的只读命令，
+规则缺失显示 unavailable，全部时长缺失显示 —。成功时间直接格式化呈现模型 generated_at。
+`prototype/tools/check-auxiliary-menubar.js` 包含最终状态和原框架生命周期检查；不代表真实请求竞态或 native 验收。

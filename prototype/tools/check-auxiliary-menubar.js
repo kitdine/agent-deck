@@ -25,7 +25,7 @@
   document.querySelectorAll('.segmented.clients button')[0].click();document.querySelectorAll('.segmented.periods button')[0].click();await tick();await scope(0);
   document.querySelector('[data-asc-id="old-01"]').click();await tick();test('detail focuses back',document.activeElement===document.querySelector('.asc-panel > button'));
   document.activeElement.click();await tick();test('back restores row focus',document.activeElement?.dataset.ascId==='old-01');
-  document.querySelector('[data-asc-id="child-1"]').click();await tick();test('task child is work',document.querySelector('.asc-detail').textContent.includes('origin-v1'));
+  document.querySelector('[data-asc-id="child-1"]').click();await tick();const childFields=document.querySelectorAll('.asc-detail dd');test('task child remains in Work',document.querySelector('.asc-panel').dataset.ascScope==='work');test('task child automatic and effective unknown',Array.from(childFields).slice(0,2).every(x=>/Unknown|未知/.test(x.textContent)));test('task child is not a user override',childFields[4].textContent==='0'&&!/user override|用户覆盖/.test(childFields[0].textContent));test('task child reason reachable',/Task-agent fixture|任务子代理样例/.test(childFields[2].textContent));
   document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();test('Escape returns',!!document.querySelector('[data-asc-count]'));
   await scope(1);document.querySelector('[data-tab="usage"]').click();await tick();document.querySelector('[data-tab="sessions"]').click();await tick();test('scope survives tab',val('[data-asc-count]')==='1');
   document.querySelector('.menubar-item').click();await tick();document.querySelector('.menubar-item').click();await tick();test('reopen restores default',document.querySelector('.asc-panel')?.dataset.ascScope==='work');
@@ -48,5 +48,20 @@
   await scene('normal');await scope(1);
   document.querySelector('.menubar-item').click();await tick();document.querySelector('.menubar-item').click();await tick();
   test('normal reopen restores default after recovery',document.querySelector('.asc-panel').dataset.ascState==='normal'&&document.querySelector('.asc-panel').dataset.ascScope==='work');
+  for(const state of ['legacy','defaultUnknown']){
+    await scene(state);test(state+' has no classified counts',!document.querySelector('[data-asc-count]'));test(state+' has no guessed scope controls',!document.querySelector('.asc-scope'));
+    document.querySelector('[data-tab="usage"]').click();await tick();document.querySelector('[data-tab="sessions"]').click();await tick();test(state+' survives tab',!document.querySelector('[data-asc-count]'));
+  }
+  for(const state of ['sourceUnavailable','inputMismatch']){
+    await scene(state);
+    for(let s=0;s<3;s++){await scope(s);test(state+'/'+s+' conservative membership',val('[data-asc-count]')===String([4,0,4][s]));test(state+'/'+s+' geometry',geometry());}
+    await scope(0);document.querySelector('[data-asc-id="maint-1"]').click();await tick();
+    const fields=document.querySelectorAll('.asc-detail dd');test(state+' automatic remains unknown',/Unknown|未知/.test(fields[1].textContent));
+    if(state==='sourceUnavailable')test('missing rule unavailable',/Unavailable|不可用/.test(fields[3].textContent));
+    let copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{copied=value;}}});
+    document.querySelector('.asc-detail button').click();await tick();test('copy explicit ID and quoted arguments',copied==="agentdeck session classify --id 'maint-1' --client 'claude'");
+  }
+  await scene('normal');document.querySelectorAll('.segmented.clients button')[2].click();await tick();await scope(0);test('all missing durations not zero',val('[data-asc-minutes]')==='—');
+  document.querySelectorAll('.segmented.clients button')[0].click();await tick();
   return {checks,failures:fail,lang:document.querySelector('main').dataset.theme};
 })()

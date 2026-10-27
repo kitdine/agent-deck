@@ -150,3 +150,143 @@ Task checkpoint：ad-auxiliary-session-classification-doc-ux-menubar；content_s
 推送建议：门禁 VERIFIED 后，经授权推送 feature/auxiliary-session-classification；前置同上，remote/upstream 尚未解析，提交对象和 SSH 签名留待交付核验。
 
 完成已声明的 ux/settings.md、ux/widget.md 和 architecture.md，通过文档完整性检查并重算门禁；保留本轮 framework PASS。
+
+## Round 3 — 2026-10-27
+
+## 📋 菜单栏最终表面评审
+
+📊 总体评分: 7/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+**ASC-MENU-R3-F1 — P2 — stale/loading/failed 快照时间丢弃 UTC 约定，在西半球显示为数据日之前（OPEN）**
+
+位置：prototype/src/AuxiliarySessions.jsx:25（`generated_at:new Date(meta.today).toISOString()`）与 :67
+（`new Intl.DateTimeFormat(zh?'zh-CN':'en-US',{dateStyle:'short',timeStyle:'short'})`，未传 timeZone）；
+关联 ux/menubar.md:103–106 与 :212–213 的“成功时间直接格式化 generated_at、时间同源”声明。
+
+- 行为风险：stale/failed 状态声称“显示上次成功数据”，但所示成功时间早于其列表里 today 会话的日期；
+  快照时间随查看者时区漂移，标本截图与评审复现不可重复。这正是 framework 已修过的“快照日期对齐”的回归。
+- 证据：data.js:14 `TODAY = new Date(Date.UTC(2026, 7, 18))`，故 generated_at=`2026-08-18T00:00:00.000Z`；
+  i18n.js:848–849 的共享 `formatDate` 统一使用 `timeZone: "UTC"`，新代码未沿用。按同一格式化参数在
+  `TZ=America/New_York` 下复算 UTC 午夜得到 en `7/23/26, 8:00 PM`、zh `2026/7/23 20:00`（输入为前一日 UTC 午夜），
+  即 08-18 数据会显示为 `8/17/26, 8:00 PM`；评审机器时区为 EDT。列表中 task-01/child-1/old-01/maint-1
+  均为 days:0（08-18）。修复者 12 个定向用例只核对 `data-asc-generated-at` 与显示同源及横向边界，未核对日期语义。
+- 💡 修复建议：格式化 generated_at 时沿用共享 UTC 约定（或使合成 generated_at 为数据日内明确时刻并以 UTC 呈现），
+  使显示日期不早于快照内会话日期且与时区无关；在检查脚本中加入非 UTC 时区下的日期断言，并更新 manifest。
+
+**ASC-MENU-R3-F2 — P3 — 标本把全部 work fixture 设为用户覆盖，与文档描述的 fixture 不一致，任务子代理案例不再可见（OPEN）**
+
+位置：prototype/src/AuxiliarySessions.jsx:15（`x.kind==='work'?{...x,override:true,automatic:'unknown',reason:'origin_missing',revision:2}`）；
+ux/menubar.md:62–63、67。
+
+- 行为风险：文档声明 today 工作集合为“用户覆盖为 work 的 task-01、任务子代理 child-1、来源未知 old-01”，
+  并称“WORK 示例以用户覆盖建立”。实际 child-1 与 task-02 也被标为 `（覆盖）/(override)`、revision 2，原因改写为
+  “来源信息缺失”；`task_child`/`user_task` 原因文案成为不可达代码。来源详情因此无法展示 requirements 要求保留在 Work
+  的任务子代理（ux/menubar.md:45），评审者或实现者按文档读标本会得到相反的 fixture 事实。
+- 证据：fixtures 中 kind==='work' 的有 task-01、child-1、task-02 三条，映射对三者一律生效；`reasonText.task_child`
+  与 `reasonText.user_task` 无任何数据路径可达；`extraReason.manual_work` 亦未被任何 fixture 引用。
+- 💡 修复建议：只把文档声明的覆盖样例（task-01）设为用户覆盖；child-1 按架构 §3.3 以 automatic 结果（unknown 或明确
+  task_child 依据）进入 Work 并保留其原因；或修改文档如实描述 fixture。二者须一致，补充对 child-1 详情的断言并更新 manifest/截图。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- DTO 表与架构 §7 的 `session_scope_view` 字段逐项对应；legacy 不以旧 total 冒充 Work，defaultUnknown 不回退 Work。
+- sourceUnavailable/inputMismatch 把非覆盖会话保守降为 unknown、保留有效覆盖，Work/Auxiliary/All 为 4/0/4，
+  与架构“缺映射不证明 work、代次不匹配只能 unknown”一致；截图核对显示 unknown 数 2、已知时长 55 min、缺失 1。
+- 复制命令改用 `--id` 与逐参数单引号转义，与架构 §7 保留子命令冲突规则一致，展示与复制共用同一函数。
+- 用量总览说明与会话 scope 解耦，ASC-MENU-R1-F1 的生命周期修复在最终候选中保留。
+
+### 📝 总结
+
+- Reviewer: Claude Code，独立评审会话，未参与菜单栏设计或 final-surface 候选编写。
+- Method: 单评审者；只读核对 ux/menubar.md、architecture.md §3.3/§4/§5/§7、共享原型 diff、检查脚本与 manifest；
+  以 node 在指定时区复算格式化结果；目视查看 final-source-unavailable-en-280.png。发现决定性问题后未重跑 1,384 项浏览器自检或 axe。
+- Scope: ux/menubar.md final-surface 候选及其共享标本；不重判 requirements/CLI/architecture，不含原生或产品实现验收。
+- Reviewed state: HEAD `df75ce1e75c042bcfc668f4a52adda5282d09227`；document blob `1f2e0a7334ff35622584440ab0846e02bfc5f504`。
+- Specimen identity: manifest SHA-256 `82e189a191b8bfb51a89f472135af51e4d7c5cc3dd2dfd250a5b2009e39f0cbb`；`files` 13 项源文件/脚本/截图 `shasum -c` 全部 OK。
+- Fingerprint: `af3fef0a26fea4537a5baf1598a3b0803e38ef996c51f9c7cde894940022ce26`，SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence: `python3 scripts/check-docs.py` 退出 0（结构检查通过，不认证语义或门禁）。
+- WorkUnit: `auxiliary-session-classification:ux/menubar.md`；ContentState: `auxiliary-session-classification:ux-menubar-r3-af3fef0a26fea453`。
+- Completion gate: FAILED
+- Gate scope: independent-review 因 ASC-MENU-R3-F1、ASC-MENU-R3-F2 为 fail；Review 保持未勾选，Beads 返回修复。
+- Disposition: ASC-MENU-R1-F1 仍为 CLOSED（无回归）；ASC-MENU-R3-F1、ASC-MENU-R3-F2 OPEN。
+- Residual uncertainty: 真实 DTO 解码、异步乱序、native AX/Dynamic Type 仍属实现验收。
+
+修复：auxiliary-session-classification / ux/menubar.md / ASC-MENU-R3-F1, ASC-MENU-R3-F2
+
+## Repair candidate — 2026-10-27（Round 3 后）
+
+- Repairer：Codex 原设计会话；仅处理 ASC-MENU-R3-F1/F2，未委派，产品代码保持只读。
+- ASC-MENU-R3-F1 → repaired in candidate：合成 generated_at 固定为数据日内 14:30 UTC，
+  经共享 formatDate（timeZone=UTC）格式化并显式显示 UTC，不再按浏览器本地时区格式化午夜。
+  新增 auxiliaryMenuTime.js 统一产生/格式化标本时间，实际生产时间仍由 DTO 提供。
+- ASC-MENU-R3-F2 → repaired in candidate：仅 task-01 默认带用户覆盖/revision2；child-1 自动/有效均为
+  unknown、无覆盖/revision0，保留 task_child_unconfirmed 原因且仍进入 Work；task-02 也为无覆盖 unknown。
+  删除不可达的 user_task/task_child/manual_work 文案。同步文档的 fixture 及 unknown 数量，保留独立 override 舞台。
+- 验证：`node prototype/tools/check-auxiliary-menu-time.mjs` 在 UTC、America/New_York、
+  America/Los_Angeles、Asia/Tokyo 四时区调用实际共享格式化函数，结果逐字相同：
+  generated_at=`2026-08-18T14:30:00.000Z`；en=`8/18/26, 2:30 PM UTC`；zh=`2026/8/18 14:30 UTC`。
+  实际浏览器 viewerTimezone=America/New_York，DOM 同样显示 08-18 的 14:30 UTC，没有退到 08-17。
+- 原型构建通过；中英 × 280/420 深色四组各 176 项、共 704 项浏览器断言无失败。
+  新 child-1 断言检查仍在 Work、automatic/effective unknown、无用户覆盖/revision0、子代理原因实际可达。
+  独立详情读回为“未知 / 未知 / 任务子代理样例：用途未确认，以未知保留在工作视图 / origin-v1 / 0”。
+- 新增时间、child-1、来源不可用 unknown3 三张 r3fix 截图；时间与 child 详情已目视核对。
+  原 final-surface manifest 与截图作为 historical_manifest 保留，不改写 Round 3 的原目标和结论。
+- Candidate identity：HEAD `df75ce1e75c042bcfc668f4a52adda5282d09227`；document blob
+  `770cb769987da4232789f629e079eec8a4aa8c98`；manifest SHA-256
+  `4343928df2a26b1b6f4f28d57caf83fb4154ac578e5574124713169e484a0870`。
+- `python3 scripts/check-docs.py` 通过。颜色/辅助功能角色未变，复用原相关检查，不声称新 axe 或 native 验收。
+  原 Round 3 FAIL/OPEN 与旧目标 FAILED 保留，两条 finding 由独立复评确认关闭；本修复不自发声明 PASS/VERIFIED。
+
+## Round 4 — 2026-10-27
+
+## 📋 菜单栏最终表面修复复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。无仍开放、回归或新增阻塞发现。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+**ASC-MENU-R3-F1 — CLOSED**：新增 prototype/src/auxiliaryMenuTime.js，`syntheticSnapshotTime` 将合成 generated_at
+固定为数据日 14:30 UTC，`formatSnapshotTime` 经共享 `formatDate`（i18n.js:848–849，`timeZone:"UTC"`）格式化并显式标注 UTC；
+AuxiliarySessions.jsx 改为引用二者。独立运行 `node prototype/tools/check-auxiliary-menu-time.mjs`，UTC、America/New_York、
+America/Los_Angeles、Asia/Tokyo 四时区结果逐字相同：`2026-08-18T14:30:00.000Z`、en `8/18/26, 2:30 PM UTC`、
+zh `2026/8/18 14:30 UTC`，failures 0；显示日期与 today 会话同日，不再随查看者时区退到 08-17。ux/menubar.md:118–119 同步说明。
+
+**ASC-MENU-R3-F2 — CLOSED**：fixture 改为只有 task-01 带 `override:true`、automatic unknown、revision 2；child-1 与 task-02
+为无覆盖 unknown、revision 0，child-1 原因 `task_child_unconfirmed` 可达；`reasonText` 只剩被数据引用的三项，
+user_task/task_child/manual_work 不可达文案已删除。按源码复算：today Work/Auxiliary/All 为 3/1/4，Work unknown 2；
+7d/30d 的 Work unknown 3；sourceUnavailable today Work/Auxiliary/All 为 4/0/4、unknown 3、仅保留 task-01 覆盖；
+已知时长 45/10/55——均与 ux/menubar.md:62–73 的新 fixture 描述一致。目视 r3fix-child-zh-280.png：child-1 详情为
+有效/自动“未知”、原因“任务子代理样例：用途未确认，以未知保留在工作视图”、origin-v1、覆盖版本 0、`--id` 引用命令。
+
+### 📝 总结
+
+- Reviewer: Claude Code，原 Round 3 独立评审会话，未参与修复。
+- Method: 单评审者；核对修复 diff、文档 fixture 段与时间说明、按源码复算计数，独立执行时间检查脚本，目视 1 张修复截图。
+  修复者 704 项浏览器断言与构建保留在 Repair 段，本轮未独立重跑；颜色/辅助功能结构未变，不作新 axe/native 声明。
+- Scope: ASC-MENU-R3-F1/F2 及其对 ux/menubar.md final-surface 与共享标本的影响；ASC-MENU-R1-F1 生命周期路径未被修改，保持 CLOSED。
+- Reviewed state: HEAD `df75ce1e75c042bcfc668f4a52adda5282d09227`；document blob `770cb769987da4232789f629e079eec8a4aa8c98`。
+- Specimen identity: manifest SHA-256 `4343928df2a26b1b6f4f28d57caf83fb4154ac578e5574124713169e484a0870`；`files` 14 项 `shasum -c` 全部 OK。
+- Fingerprint: `a42ef97f4c245ad598e9dd7e73868348db678ae8a31da679209b0b07354247e1`，SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence: `python3 scripts/check-docs.py` 退出 0；`git diff --check` 退出 0；评审记录经 `scripts/check-review-records.py` 校验。
+- WorkUnit: `auxiliary-session-classification:ux/menubar.md`；ContentState: `auxiliary-session-classification:ux-menubar-r4-a42ef97f4c245ad5`。
+- Completion gate: VERIFIED
+- Disposition: ASC-MENU-R1-F1 CLOSED；ASC-MENU-R3-F1 CLOSED；ASC-MENU-R3-F2 CLOSED。
+- Residual uncertainty: 真实 DTO 解码、异步乱序、native AX/Dynamic Type 与性能仍属实现验收。

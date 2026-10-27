@@ -1409,7 +1409,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
     scenario: auxScenario,
   }));
   const auxScope = auxSelection.scope;
-  const auxDefaultUnavailable = auxDefaultPreference !== null && !auxDefaultPreference.confirmed;
+  const auxDefaultUnavailable = auxScenario === 'defaultUnknown' || (auxDefaultPreference !== null && !auxDefaultPreference.confirmed);
   useEffect(() => {
     if (auxDefaultPreference !== null) setAuxSelection(current => ({...current,
       scope: !auxDefaultPreference.confirmed ? null : current.scope ?? auxDefaultPreference.value,
