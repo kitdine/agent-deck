@@ -138,10 +138,16 @@ func TestIngestionCountersMeasureActualRereads(t *testing.T) {
 	if updated.Usage.Changes["imported"] != 1 || counts["usage_imported"] != 1 {
 		t.Fatalf("append did not import exactly one usage event: %#v %v", updated.Usage.Changes, counts)
 	}
-	for _, stage := range []perftrace.Stage{perftrace.UsageSource, perftrace.UsagePublication, perftrace.UsagePublicationWait, perftrace.UsageSessionRebuild, perftrace.UsageCommit, perftrace.JobStart, perftrace.IngestRead,
+	for _, stage := range []perftrace.Stage{perftrace.UsagePrepare, perftrace.UsagePublication, perftrace.UsagePublicationWait, perftrace.UsageSessionRebuild, perftrace.UsageCommit, perftrace.JobStart, perftrace.IngestRead,
 		perftrace.ScanUsage, perftrace.ScanSession, perftrace.ScanDerive, perftrace.PublicationCommit} {
 		if got := len(stageRecords(records, string(stage))); got != 1 {
 			t.Fatalf("%s markers = %d, want 1 for a single-source append", stage, got)
+		}
+	}
+	// One reduce and one write transaction per domain.
+	for _, stage := range []perftrace.Stage{perftrace.IngestReduce, perftrace.IngestWrite} {
+		if got := len(stageRecords(records, string(stage))); got != 2 {
+			t.Fatalf("%s markers = %d, want one per domain", stage, got)
 		}
 	}
 	if got := len(stageRecords(records, string(perftrace.UsageOrphanScan))); got != 2 {
@@ -156,8 +162,13 @@ func TestIngestionCountersMeasureActualRereads(t *testing.T) {
 	}
 	publication := stageRecords(records, string(perftrace.UsagePublication))[0]
 	commit := stageRecords(records, string(perftrace.UsageCommit))[0]
-	if publication.Dur < commit.Dur {
-		t.Fatal("publication duration excluded commit")
+	enclosed := false
+	for _, write := range stageRecords(records, string(perftrace.IngestWrite)) {
+		end := write.T + write.Dur
+		enclosed = enclosed || (write.T <= publication.T && publication.T+publication.Dur <= end && write.T <= commit.T && commit.T+commit.Dur <= end)
+	}
+	if !enclosed {
+		t.Fatal("no ingest.write transaction encloses the usage publication and its commit")
 	}
 	if len(txStages(records)) == 0 {
 		t.Fatal("no write transaction was recorded")

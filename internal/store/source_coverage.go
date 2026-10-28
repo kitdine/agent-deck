@@ -30,6 +30,12 @@ const inventoryInsertBatch = 128 // 512 parameters, below SQLite's legacy 999 li
 
 // AcceptInventory freezes all discovered sources, including low-priority
 // history. Acceptance is durable before the first body is read.
+//
+// The inventory is staged in short transactions of inventoryInsertBatch rows
+// and becomes visible only through the final transaction, which moves the
+// coverage head. Staged rows are reached through no head: a failure removes
+// them, and rows a crash leaves behind stay unreachable like every superseded
+// inventory.
 func (s *Store) AcceptInventory(ctx context.Context, id string, epoch int64, sources []InventorySource, capturedAt time.Time) error {
 	if s.readOnly || id == "" || epoch <= 0 {
 		return errors.New("invalid inventory acceptance")
@@ -39,51 +45,56 @@ func (s *Store) AcceptInventory(ctx context.Context, id string, epoch int64, sou
 			return errors.New("invalid inventory source")
 		}
 	}
-	// Build the bounded statement shapes before taking the write transaction.
-	// Every batch, the inventory and its head still commit or roll back together.
+	if err := s.stageInventory(ctx, id, epoch, sources, capturedAt); err != nil {
+		return errors.Join(err, s.discardInventory(ctx, id))
+	}
+	if err := s.switchCoverageHead(ctx, id); err != nil {
+		return errors.Join(err, s.discardInventory(ctx, id))
+	}
+	return nil
+}
+
+func (s *Store) stageInventory(ctx context.Context, id string, epoch int64, sources []InventorySource, capturedAt time.Time) error {
 	insertSQL := func(rows int) string {
 		return `INSERT INTO source_domain_checkpoints(inventory_id,source_path,identity,captured_end) VALUES ` + strings.Repeat("(?,?,?,?),", rows-1) + "(?,?,?,?)"
 	}
-	batchSize := min(inventoryInsertBatch, len(sources))
-	var batchSQL, tailSQL string
-	if batchSize > 0 {
-		batchSQL = insertSQL(batchSize)
-		if tail := len(sources) % batchSize; tail != 0 {
-			tailSQL = insertSQL(tail)
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO inventory_runs(inventory_id,epoch,captured_at,source_count,state) VALUES (?,?,?,?,'pending')`, id, epoch, capturedAt.UTC().Format(time.RFC3339Nano), len(sources)); err != nil {
+		return err
+	}
+	args := make([]any, 0, inventoryInsertBatch*4)
+	for start := 0; start < len(sources); start += inventoryInsertBatch {
+		end := min(start+inventoryInsertBatch, len(sources))
+		args = args[:0]
+		for _, source := range sources[start:end] {
+			args = append(args, id, source.Path, source.Identity, source.End)
+		}
+		if _, err := s.DB.ExecContext(ctx, insertSQL(end-start), args...); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (s *Store) switchCoverageHead(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO domain_coverage_heads(singleton,inventory_id) VALUES (1,?) ON CONFLICT(singleton) DO UPDATE SET inventory_id=excluded.inventory_id`, id)
+	return err
+}
+
+// discardInventory removes one staged inventory that never became the head.
+func (s *Store) discardInventory(ctx context.Context, id string) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_runs(inventory_id,epoch,captured_at,source_count,state) VALUES (?,?,?,?,'pending')`, id, epoch, capturedAt.UTC().Format(time.RFC3339Nano), len(sources)); err != nil {
+	var head int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM domain_coverage_heads WHERE inventory_id=?`, id).Scan(&head); err != nil || head != 0 {
 		return err
 	}
-	if batchSize > 0 {
-		insert, err := tx.PrepareContext(ctx, batchSQL)
-		if err != nil {
-			return err
-		}
-		defer insert.Close()
-		args := make([]any, 0, batchSize*4)
-		for start := 0; start < len(sources); start += batchSize {
-			end := min(start+batchSize, len(sources))
-			args = args[:0]
-			for _, source := range sources[start:end] {
-				args = append(args, id, source.Path, source.Identity, source.End)
-			}
-			if end-start == batchSize {
-				_, err = insert.ExecContext(ctx, args...)
-			} else {
-				_, err = tx.ExecContext(ctx, tailSQL, args...)
-			}
-			if err != nil {
-				return err
-			}
-		}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM source_domain_checkpoints WHERE inventory_id=?`, id); err != nil {
+		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO domain_coverage_heads(singleton,inventory_id) VALUES (1,?) ON CONFLICT(singleton) DO UPDATE SET inventory_id=excluded.inventory_id`, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_runs WHERE inventory_id=?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

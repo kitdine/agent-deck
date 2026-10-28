@@ -324,6 +324,8 @@ type Coordinator struct {
 	sealed    map[string]bool
 	planReady chan struct{}
 	planOnce  sync.Once
+	// released is closed and replaced whenever budget is returned.
+	released chan struct{}
 }
 
 func NewCoordinator(sources []Source, options Options) *Coordinator {
@@ -355,7 +357,7 @@ func NewCoordinator(sources []Source, options Options) *Coordinator {
 			skipped:  map[string]bool{}, planned: map[string]ReadRange{}, planningComplete: map[string]bool{}, allSkipped: make(chan struct{}), finished: make(chan struct{}),
 		}
 	}
-	return &Coordinator{metrics: options.Metrics, sources: ordered, entries: entries, active: map[string]bool{ConsumerUsage: true, ConsumerSession: true}, doneCh: map[string]chan struct{}{ConsumerUsage: make(chan struct{}), ConsumerSession: make(chan struct{})}, budget: budget, workers: workers, open: open, wake: make(chan struct{}, 1), done: make(chan struct{}), planning: options.RequirePlans, sealed: map[string]bool{}, planReady: make(chan struct{})}
+	return &Coordinator{metrics: options.Metrics, sources: ordered, entries: entries, active: map[string]bool{ConsumerUsage: true, ConsumerSession: true}, doneCh: map[string]chan struct{}{ConsumerUsage: make(chan struct{}), ConsumerSession: make(chan struct{})}, budget: budget, workers: workers, open: open, wake: make(chan struct{}, 1), done: make(chan struct{}), planning: options.RequirePlans, sealed: map[string]bool{}, planReady: make(chan struct{}), released: make(chan struct{})}
 }
 
 func (c *Coordinator) Start(parent context.Context) {
@@ -889,6 +891,7 @@ func (c *Coordinator) finish(path string, tail []byte, err error) {
 			close(entry.finished)
 			c.used -= entry.weight
 			entry.weight = 0
+			c.broadcastLocked()
 		}
 	}
 	c.mu.Unlock()

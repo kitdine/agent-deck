@@ -67,7 +67,7 @@ func TestInventoryBatchesPreserveEverySourceAndRevision(t *testing.T) {
 	}
 }
 
-func TestInventoryLaterBatchFailureRollsBackAcceptanceAndHead(t *testing.T) {
+func TestInventoryLaterBatchFailureDiscardsStagingAndKeepsHead(t *testing.T) {
 	ctx := context.Background()
 	_, core, sessions := servingTestStores(t)
 	for _, s := range []*Store{core, sessions} {
@@ -106,17 +106,46 @@ func TestInventoryLaterBatchFailureRollsBackAcceptanceAndHead(t *testing.T) {
 					t.Fatalf("%s leaked %s rows=%d error=%v", failure, table, count, err)
 				}
 			}
+			// Staging commits in short transactions, so the revision counter
+			// may move; the failed inventory is removed and never reachable.
 			var head string
-			var after int64
 			if err := s.DB.QueryRow(`SELECT inventory_id FROM domain_coverage_heads`).Scan(&head); err != nil || head != "previous" {
 				t.Fatalf("failed acceptance moved head to %s: %v", head, err)
-			}
-			if err := s.DB.QueryRow(`SELECT revision FROM serving_generation`).Scan(&after); err != nil || after != before {
-				t.Fatalf("rollback advanced revision %d -> %d: %v", before, after, err)
 			}
 			if _, err := s.DB.Exec(`DROP TRIGGER IF EXISTS reject_checkpoint; DROP TRIGGER IF EXISTS reject_head`); err != nil {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+// A staged inventory is reachable only after the head switch: coverage reads
+// between staging and the switch still report the previous inventory.
+func TestStagedInventoryIsInvisibleUntilHeadSwitch(t *testing.T) {
+	ctx := context.Background()
+	_, core, _ := servingTestStores(t)
+	generation, err := core.DerivedSnapshotGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = core.AcceptInventory(ctx, "previous", generation.Epoch, []InventorySource{{Path: "a", Identity: "i", End: 1}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	sources := make([]InventorySource, 3*inventoryInsertBatch+1)
+	for i := range sources {
+		sources[i] = InventorySource{Path: fmt.Sprintf("source-%05d", i), Identity: "identity", End: int64(i)}
+	}
+	if err = core.stageInventory(ctx, "staged", generation.Epoch, sources, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	coverage, err := core.ReadSourceCoverage(ctx)
+	if err != nil || coverage.InventoryID != "previous" || coverage.Sources != 1 {
+		t.Fatalf("staged inventory visible before the switch: %+v %v", coverage, err)
+	}
+	if err = core.switchCoverageHead(ctx, "staged"); err != nil {
+		t.Fatal(err)
+	}
+	if coverage, err = core.ReadSourceCoverage(ctx); err != nil || coverage.InventoryID != "staged" || coverage.Sources != len(sources) {
+		t.Fatalf("switched coverage = %+v %v", coverage, err)
 	}
 }
