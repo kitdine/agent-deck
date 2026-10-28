@@ -283,6 +283,39 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertEqual(model.selectedPanel, .quota)
 	}
 
+	func testWindowWarmUpRunsOnceWithoutShowingAWindowOrMovingFocus() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		let controller = MenuBarItemController(model: model, openSettings: {})
+		controller.warmsWindowAfterPreparation = true
+		let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 120, height: 40),
+			styleMask: [.titled], backing: .buffered, defer: false)
+		let sentinel = NSButton(title: "Keep focus", target: nil, action: nil)
+		window.contentView = sentinel
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+		XCTAssertTrue(window.makeFirstResponder(sentinel))
+		let visibleWindowNumbers = Self.visibleContentWindowNumbers()
+		let keyBefore = NSApp.keyWindow
+		await model.coordinator.refresh()
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(5))
+		while !controller.isWindowWarmed, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertTrue(controller.isWindowWarmed)
+		XCTAssertFalse(controller.popoverIsShown)
+		XCTAssertTrue(NSApp.keyWindow === keyBefore, "the warm-up must give the key window back")
+		XCTAssertTrue(window.firstResponder === sentinel)
+		XCTAssertEqual(Self.visibleContentWindowNumbers(), visibleWindowNumbers)
+		XCTAssertEqual(controller.presentationPreparationCount, 1)
+	}
+
+	// The status item adds its own bar window on each extra display once it has
+	// content; only content windows tell whether the warm-up showed something.
+	private static func visibleContentWindowNumbers() -> Set<Int> {
+		Set(NSApp.windows.filter { $0.isVisible && String(describing: type(of: $0)) != "NSStatusBarWindow" }.map(\.windowNumber))
+	}
+
 	func testInitialPopoverPreparationUsesAlreadyReadyMemoryWithoutRefresh() async throws {
 		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
 		let model = await makeModel(host: host)

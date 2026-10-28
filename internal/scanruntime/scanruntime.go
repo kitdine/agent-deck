@@ -190,7 +190,14 @@ type Client struct {
 	// durably accepted the same round. Ordinary requests remain subscriber-only.
 	AppOwned      bool
 	OnPublication func(desktop.ServingSnapshot)
+	// Background launches a missing worker at lowered scheduling priority, for
+	// an App startup that already shows valid data: its scan must not compete
+	// with the menu-bar surface (architecture, startup contention).
+	Background bool
 }
+
+// workerBackgroundEnv asks a launched worker to lower its own priority.
+const workerBackgroundEnv = "AGENTDECK_SCAN_WORKER_BACKGROUND"
 
 type wireRequest struct {
 	Protocol int    `json:"protocol"`
@@ -322,7 +329,7 @@ func (c Client) connectOrLaunch(ctx context.Context, endpoint, stateRoot string)
 		if err := c.Launch(ctx, stateRoot); err != nil {
 			return nil, err
 		}
-	} else if err := launchWorker(ctx, c.Executable, stateRoot); err != nil {
+	} else if err := launchWorker(ctx, c.Executable, stateRoot, c.Background); err != nil {
 		return nil, err
 	}
 	startupCtx, cancel := context.WithTimeout(ctx, defaultStartupTimeout)
@@ -350,7 +357,17 @@ func dial(endpoint string) (net.Conn, error) {
 	return net.DialTimeout("unix", endpoint, 150*time.Millisecond)
 }
 
-func launchWorker(ctx context.Context, executable, stateRoot string) error {
+// workerCommand is the detached worker's command; a background worker gets
+// the environment flag that makes it lower its own priority.
+func workerCommand(executable, stateRoot string, background bool) *exec.Cmd {
+	cmd := exec.CommandContext(context.Background(), executable, "--state-dir", stateRoot, "scan-worker")
+	if background {
+		cmd.Env = append(os.Environ(), workerBackgroundEnv+"=1")
+	}
+	return cmd
+}
+
+func launchWorker(ctx context.Context, executable, stateRoot string, background bool) error {
 	if executable == "" {
 		var err error
 		executable, err = os.Executable()
@@ -362,7 +379,7 @@ func launchWorker(ctx context.Context, executable, stateRoot string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(context.Background(), executable, "--state-dir", stateRoot, "scan-worker")
+	cmd := workerCommand(executable, stateRoot, background)
 	cmd.Stdin = devNull
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
@@ -442,6 +459,9 @@ func decodeServingResponse(ctx context.Context, conn net.Conn, reader *bufio.Rea
 // Serve runs the hidden detached worker.  It holds the scan lock for its whole
 // lifetime, which makes socket cleanup and election authority inseparable.
 func Serve(ctx context.Context, stateRoot string) error {
+	if os.Getenv(workerBackgroundEnv) == "1" {
+		lowerProcessPriority()
+	}
 	stateRoot, stateID, err := prepareStateRoot(stateRoot)
 	if err != nil {
 		return err

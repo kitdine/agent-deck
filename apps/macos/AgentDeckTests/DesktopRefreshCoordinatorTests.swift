@@ -26,6 +26,112 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.servingHeader?.publicationID, "final-full")
 	}
 
+	// Observation invalidates readers on every assignment; installing the same
+	// publication again must not, or the open popover lays out again for nothing.
+	func testReinstallingTheSamePublicationDoesNotInvalidateReaders() async throws {
+		let published = try servingCoordinatorFixture(id: "same-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: published, final: published)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "same-full")
+		final class Flag: @unchecked Sendable { var changed = false }
+		let flag = Flag()
+		withObservationTracking {
+			_ = coordinator.latestSnapshot
+			_ = coordinator.servingHeader
+		} onChange: { flag.changed = true }
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.latestSnapshot, published.payload)
+		XCTAssertFalse(flag.changed, "an equal publication must not invalidate its readers")
+	}
+
+	// While the surface draws its first frame after opening, a publication of
+	// the same identity waits and is installed on release, not dropped.
+	func testHeldPublicationIsInstalledOnRelease() async throws {
+		let first = try servingCoordinatorFixture(id: "first-partial", full: false)
+		let final = try servingCoordinatorFixture(id: "final-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: final)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial")
+		coordinator.holdPublications()
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial", "a held publication is not shown yet")
+		coordinator.holdPublications()
+		coordinator.releasePublications()
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial", "another hold is still open")
+		coordinator.releasePublications()
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "final-full")
+		XCTAssertEqual(coordinator.latestSnapshot, final.payload)
+		if case .ready(let shown) = coordinator.state { XCTAssertEqual(shown, final.payload) } else { XCTFail("released publication not ready") }
+	}
+
+	// An identity change is never held: the old identity must not stay visible.
+	func testIdentityChangeIsNotHeld() async throws {
+		let first = try servingCoordinatorFixture(id: "first-full", full: true)
+		let other = try servingCoordinatorFixture(id: "other-epoch", full: true, generationChanges: ["core_epoch": 99])
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: other)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		coordinator.holdPublications()
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "other-epoch")
+		coordinator.releasePublications()
+	}
+
+	// SP-SOP-R1-F1: a same-identity publication held before an identity change
+	// must not come back on release.
+	func testHeldPublicationIsDiscardedByAnIdentityChange() async throws {
+		try await assertHeldPublicationDiscarded(generationChanges: ["core_epoch": 99], expected: "replacement")
+	}
+
+	func testHeldPublicationIsDiscardedByACoreSchemaChangeUnderNestedHolds() async throws {
+		try await assertHeldPublicationDiscarded(generationChanges: ["core_schema": 30], nestedHolds: 2, expected: "replacement")
+	}
+
+	func testHeldPublicationIsDiscardedByAnUnusableIdentityChange() async throws {
+		try await assertHeldPublicationDiscarded(generationChanges: ["state_identity": "other-state"],
+			replacementDay: ("2026-08-12", "2026-08-13"), expected: nil)
+	}
+
+	private func assertHeldPublicationDiscarded(generationChanges: [String: Any], nestedHolds: Int = 1,
+		replacementDay: (String, String) = ("2026-08-13", "2026-08-14"), expected: String?) async throws {
+		let first = try servingCoordinatorFixture(id: "first-full", full: true)
+		let held = try servingCoordinatorFixture(id: "held-full", full: true, generationChanges: ["usage_revision": 5])
+		let replacement = try servingCoordinatorFixture(id: "replacement", full: true, generationChanges: generationChanges,
+			day: replacementDay.0, nextDay: replacementDay.1)
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: replacement, publishesFinal: false)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-full")
+		for _ in 0 ..< nestedHolds { coordinator.holdPublications() }
+		host.publish(held)
+		for _ in 0 ..< 40 { await Task.yield() }
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-full", "same identity is held")
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, expected)
+		for _ in 0 ..< nestedHolds { coordinator.releasePublications() }
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, expected, "release must not restore the old identity")
+		if expected == nil { XCTAssertNil(coordinator.latestSnapshot) }
+		else { XCTAssertEqual(coordinator.latestSnapshot, replacement.payload) }
+	}
+
 	func testServingRestoreSurvivesNarrowPartialAndFailedUpdate() async throws {
 		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
 		let partial = try servingCoordinatorFixture(id: "first-partial", full: false,
@@ -1013,4 +1119,58 @@ private final class ScriptedSnapshotRefresher: DesktopSnapshotRefreshing {
 			throw error
 		}
 	}
+}
+
+// Startup order (architecture): the startup refresh, and with it bootstrap and
+// quota, waits for the restore, but never longer than the fallback.
+extension DesktopRefreshCoordinatorTests {
+	func testStartupRefreshWaitsForTheRestore() async throws {
+		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
+		let host = HeldRestoreRefresher(restore: saved)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now },
+			restoreFirstFallback: .seconds(60))
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilRestoreHeld()
+		for _ in 0 ..< 100 { await Task.yield() }
+		XCTAssertEqual(host.events, ["restore"], "the startup refresh started before the restore finished")
+		host.releaseRestore()
+		await initial.value
+		XCTAssertEqual(host.events, ["restore", "restored", "bootstrap"])
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "saved-full")
+	}
+
+	func testStartupRefreshStartsAfterTheFallbackWhenTheRestoreHangs() async throws {
+		let saved = try servingCoordinatorFixture(id: "saved-full", full: true)
+		let host = HeldRestoreRefresher(restore: saved)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now },
+			restoreFirstFallback: .milliseconds(50))
+		await coordinator.startInitialRefresh().value
+		XCTAssertEqual(host.events, ["restore", "bootstrap"], "a hung restore must not postpone the refresh indefinitely")
+		host.releaseRestore()
+	}
+}
+
+@MainActor
+private final class HeldRestoreRefresher: DesktopSnapshotRefreshing, DesktopSnapshotBootstrapping {
+	private let restore: DesktopServingSnapshotV2
+	private var held: CheckedContinuation<Void, Never>?
+	private var released = false
+	private(set) var events = [String]()
+	init(restore: DesktopServingSnapshotV2) { self.restore = restore }
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 { throw HelperExecutionError.malformedOutput }
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		events.append("restore")
+		if !released { await withCheckedContinuation { held = $0 } }
+		events.append("restored")
+		return restore
+	}
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		events.append("bootstrap")
+		throw HelperExecutionError.nonZeroExit(1)
+	}
+	func waitUntilRestoreHeld() async { while held == nil { await Task.yield() } }
+	func releaseRestore() { released = true; held?.resume(); held = nil }
 }

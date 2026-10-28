@@ -565,11 +565,19 @@ func t(_ key: String, _ arguments: any CVarArg...) -> String {
 enum DesktopFormat {
 	private static let calendarDayParser = CalendarDayParser()
 
-	// Keep the existing DateFormatter parsing behavior without rebuilding its
-	// ICU state for every calendar bucket. Serialize timezone updates and reads;
-	// the system/default timezone can change while the application is running.
+	// Local midnight of a "yyyy-MM-dd" day in the default timezone, as the
+	// strict en_US_POSIX DateFormatter returned, without its ICU parse (which
+	// clones its formatter on every call and dominated surface rebuilds).
+	// Out-of-range fields are rejected rather than rolled over; other widths
+	// (such as "2026-2-9") keep the DateFormatter. Serialize timezone updates
+	// and reads; the default timezone can change at run time.
 	private final class CalendarDayParser: @unchecked Sendable {
 		private let lock = NSLock()
+		private var calendar: Calendar = {
+			var calendar = Calendar(identifier: .gregorian)
+			calendar.timeZone = NSTimeZone.default
+			return calendar
+		}()
 		private let formatter: DateFormatter = {
 			let formatter = DateFormatter()
 			formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -579,11 +587,33 @@ enum DesktopFormat {
 		}()
 
 		func date(from value: String) -> Date? {
+			let digits = Array(value.utf8)
+			guard digits.count == 10, digits[4] == 45, digits[7] == 45 else {
+				lock.lock()
+				defer { lock.unlock() }
+				let timezone = NSTimeZone.default
+				if formatter.timeZone != timezone { formatter.timeZone = timezone }
+				return formatter.date(from: value)
+			}
+			func number(_ range: Range<Int>) -> Int? {
+				var result = 0
+				for index in range {
+					guard (48 ... 57).contains(digits[index]) else { return nil }
+					result = result * 10 + Int(digits[index] - 48)
+				}
+				return result
+			}
+			guard let year = number(0 ..< 4), let month = number(5 ..< 7), let day = number(8 ..< 10),
+				(1 ... 12).contains(month), (1 ... 31).contains(day)
+			else { return nil }
 			lock.lock()
 			defer { lock.unlock() }
 			let timezone = NSTimeZone.default
-			if formatter.timeZone != timezone { formatter.timeZone = timezone }
-			return formatter.date(from: value)
+			if calendar.timeZone != timezone { calendar.timeZone = timezone }
+			guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+			let parsed = calendar.dateComponents([.year, .month, .day], from: date)
+			guard parsed.year == year, parsed.month == month, parsed.day == day else { return nil }
+			return date
 		}
 	}
 

@@ -311,6 +311,23 @@ struct HealthDetailModel: Equatable, Sendable {
 	let source: String
 }
 
+/// One hold on the coordinator's publications, released exactly once by
+/// whichever signal comes first.
+@MainActor
+final class PublicationHold {
+	private var coordinator: DesktopRefreshCoordinator?
+
+	init(_ coordinator: DesktopRefreshCoordinator) {
+		coordinator.holdPublications()
+		self.coordinator = coordinator
+	}
+
+	func release() {
+		coordinator?.releasePublications()
+		coordinator = nil
+	}
+}
+
 /// The only place coordinator state becomes presentation values. It owns no
 /// refresh state machine, executes no process, decodes no wire, and never
 /// touches the App Group cache; views read this and compute nothing themselves.
@@ -349,8 +366,27 @@ final class MenuBarViewModel {
 	}
 
 	private func markSelectionPending() {
+		holdPublicationsUntilSelectionShown()
 		guard PerfTrace.isEnabled else { return }
 		PerfFrameProbe.shared.beginSelection()
+	}
+
+	/// A publication installed between a selection and its frame would replace
+	/// that frame with a full rebuild of the surface. Hold it until the frame
+	/// that shows the selection has reached the display (at most 300 ms).
+	private func holdPublicationsUntilSelectionShown() {
+		let hold = PublicationHold(coordinator)
+		CATransaction.setCompletionBlock {
+			DispatchQueue.main.async {
+				MainActor.assumeIsolated {
+					guard let screen = NSScreen.main else { return hold.release() }
+					// The display link retains its target until it is invalidated.
+					let target = FirstRefreshTarget { DispatchQueue.main.async { MainActor.assumeIsolated { hold.release() } } }
+					screen.displayLink(target: target, selector: #selector(FirstRefreshTarget.tick(_:))).add(to: .main, forMode: .common)
+				}
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { MainActor.assumeIsolated { hold.release() } }
 	}
 
 	/// The identity and hero totals of the data frame this selection renders.
@@ -1326,7 +1362,21 @@ final class MenuBarViewModel {
 
 	/// Neither filter reaches this block, so it always reads the all-client
 	/// scope and says so in its own heading.
+	/// The rhythm block depends only on the publication and the language, not
+	/// on the selection; every switch re-evaluates the surface, so it is built
+	/// once per publication and language and then reused.
+	@ObservationIgnored private var rhythmCache: (key: String, value: RhythmBlockModel)?
+
 	var rhythmBlock: RhythmBlockModel {
+		let key = [coordinator.servingHeader?.publicationID ?? "", snapshot?.generatedAt ?? "",
+			DesktopLocale.current.identifier].joined(separator: "\u{0}")
+		if let rhythmCache, rhythmCache.key == key { return rhythmCache.value }
+		let value = buildRhythmBlock()
+		rhythmCache = (key, value)
+		return value
+	}
+
+	private func buildRhythmBlock() -> RhythmBlockModel {
 		guard let snapshot,
 			let scope = snapshot.usage.presentation.scopes.first(where: { $0.client == "all" })
 		else {

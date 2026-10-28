@@ -394,6 +394,33 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertEqual(controller.state, .idle)
 	}
 
+	// An empty state root has nothing to restore or fall back to: the restore
+	// fails without launching the helper, so a first import is not delayed.
+	// Committed facts without a serving file still go to the helper.
+	func testRestoreOfAnEmptyStateRootLaunchesNoHelper() async throws {
+		let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+		addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+		let bundleURL = try makeEmbeddedHelperBundle(in: home.appendingPathComponent("bundle"))
+		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 1, stdout: Data()))])
+		let runner = EmbeddedHelperRunner(appBundleURL: bundleURL, process: process,
+			environment: ["HOME": home.path], timeout: .milliseconds(50))
+		do {
+			_ = try await runner.readServingSnapshot()
+			XCTFail("an empty state root restored a snapshot")
+		} catch {
+			XCTAssertEqual(error as? HelperExecutionError, .nonZeroExit(1))
+		}
+		let none = await process.recordedInvocations()
+		XCTAssertTrue(none.isEmpty)
+		let stateRoot = home.appendingPathComponent(".agentdeck")
+		try FileManager.default.createDirectory(at: stateRoot, withIntermediateDirectories: true)
+		XCTAssertTrue(FileManager.default.createFile(atPath: stateRoot.appendingPathComponent("agentdeck.sqlite3").path, contents: Data()))
+		_ = try? await runner.readServingSnapshot()
+		let launched = await process.recordedInvocations()
+		XCTAssertEqual(launched.count, 1, "committed facts without a serving file still reach the helper")
+	}
+
 	private func makeRunner(
 		behavior: TestHelperBehavior? = nil,
 		process: (any EmbeddedHelperProcess)? = nil

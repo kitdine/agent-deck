@@ -266,11 +266,14 @@ struct MenuBarSurfaceView: View {
 		}
 	}
 
+	/// Loaded once: a new NSImage on every evaluation made each frame read and
+	/// decode the PNG again.
+	private static let brandImage: NSImage? = Bundle.main.url(forResource: "AgentDeckAppIcon", withExtension: "png")
+		.flatMap { NSImage(contentsOf: $0) }
+
 	@ViewBuilder
 	private var brandIcon: some View {
-		if let url = Bundle.main.url(forResource: "AgentDeckAppIcon", withExtension: "png"),
-			let image = NSImage(contentsOf: url)
-		{
+		if let image = Self.brandImage {
 			Image(nsImage: image)
 				.resizable()
 				.interpolation(.high)

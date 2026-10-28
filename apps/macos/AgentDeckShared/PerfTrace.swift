@@ -47,6 +47,10 @@ public enum PerfStage: String, Sendable, CaseIterable {
 	/// A laid-out data frame the endpoint could not commit yet, with integer
 	/// window-state flags; recorded once per pending frame (diagnostic only).
 	case frameBlocked = "frame.blocked"
+	/// The one-time invisible warm-up show of the popover window after the
+	/// surface is prepared, with integer flags for its constraints: a visible
+	/// frame, a key-window or front-app change (all must stay 0).
+	case popoverWarm = "popover.warm"
 	/// A bound-publication candidate the App did not install, with a reason code
 	/// (1 = other day, 2 = would replace a session-prepared publication).
 	case servingSkip = "app.serving_skip"

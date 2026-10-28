@@ -9,6 +9,22 @@ private final class PopoverPreparationDisplayLinkTarget: NSObject {
 	@objc func tick(_ link: CADisplayLink) {}
 }
 
+/// Runs its action on the first display refresh, then stops.
+final class FirstRefreshTarget: NSObject {
+	private var action: (() -> Void)?
+
+	init(_ action: @escaping () -> Void) {
+		self.action = action
+	}
+
+	@objc func tick(_ link: CADisplayLink) {
+		link.invalidate()
+		let action = self.action
+		self.action = nil
+		action?()
+	}
+}
+
 /// The status item, its popover, and its own menu. `MenuBarExtra` cannot carry
 /// a right-click menu, and the contract puts the application's exits there
 /// rather than in the popover, so the item is managed directly.
@@ -25,6 +41,17 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	private(set) var isInitialPresentationPrepared = false
 	private(set) var presentationPreparationCount = 0
 	var popoverIsShown: Bool { popover.isShown }
+	/// Show the popover once, invisibly, after the first preparation so its own
+	/// window and backing store exist before the first click (architecture,
+	/// open path step 2). The App enables it; it never runs otherwise.
+	var warmsWindowAfterPreparation = false {
+		didSet { if warmsWindowAfterPreparation, isInitialPresentationPrepared { scheduleWindowWarmUp() } }
+	}
+	private(set) var isWindowWarmed = false
+	/// Ends an in-progress warm-up; a click during it finishes it first.
+	private var finishWarm: (() -> Void)?
+	/// The publication hold of the current open, released by its first frame.
+	private var openHold: PublicationHold?
 	private(set) var dateInvalidationTimer: Timer?
 	private let dateNotificationCenter: NotificationCenter
 	private let wakeNotificationCenter: NotificationCenter
@@ -51,7 +78,12 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 
 		popover.behavior = .transient
 		popover.animates = false
-		popover.contentViewController = NSHostingController(rootView: MenuBarSurfaceView(model: model))
+		let hosting = NSHostingController(rootView: MenuBarSurfaceView(model: model))
+		// The popover's size is set explicitly (configurePopoverGeometry). Without
+		// sizing options the controller no longer re-measures the whole surface
+		// for its constraints and preferred size on every update.
+		hosting.sizingOptions = []
+		popover.contentViewController = hosting
 
 		if let button = statusItem.button {
 			button.target = self
@@ -185,6 +217,7 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	}
 
 	private func togglePopover(_ sender: NSStatusBarButton) {
+		finishWarm?()
 		if popover.isShown {
 			closePopover()
 		} else {
@@ -192,20 +225,114 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			PerfTrace.mark(.popoverShowBegin)
 			if PerfTrace.isEnabled { PerfFrameProbe.shared.rearm() }
 			configurePopoverGeometry(for: sender)
+			holdPublicationsUntilFirstFrame()
 			popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-			// The popover has adopted the same hosting view. Its preparation
-			// window was never ordered onscreen and no longer owns the content.
-			let preparationWindow = presentationPreparationWindow
-			presentationPreparationWindow = nil
-			if let preparationWindow {
-				// Retiring an unshown window is not needed to display the popover.
-				// Keep AppKit teardown out of this synchronous input action.
-				Task { @MainActor in preparationWindow.close() }
-			}
+			retirePreparationWindow()
 			MenuBarItemController.activatePopoverWindow(popover.contentViewController?.view.window)
 			// Show/activation only; the open ends at the data frame's frame.vsync.
 			PerfTrace.mark(.popoverShowEnd)
 		}
+	}
+
+	/// A publication arriving while the popover opens would lay the whole
+	/// surface out again before its first frame; let that frame commit and reach
+	/// the display with the data already shown, then install it (at most 300 ms
+	/// later).
+	private func holdPublicationsUntilFirstFrame() {
+		openHold?.release()
+		let hold = PublicationHold(model.coordinator)
+		openHold = hold
+		CATransaction.setCompletionBlock {
+			// After the first frame's commit, wait for the refresh that shows it;
+			// release on a later main-queue turn so other work of that refresh
+			// runs before the new data's layout.
+			DispatchQueue.main.async {
+				MainActor.assumeIsolated { [weak self] in
+					guard let view = self?.popover.contentViewController?.view else { return hold.release() }
+					// The display link retains its target until it is invalidated.
+					let target = FirstRefreshTarget { DispatchQueue.main.async { MainActor.assumeIsolated { hold.release() } } }
+					view.displayLink(target: target, selector: #selector(FirstRefreshTarget.tick(_:))).add(to: .main, forMode: .common)
+				}
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { MainActor.assumeIsolated { hold.release() } }
+	}
+
+	/// The popover has adopted the same hosting view. Its preparation window was
+	/// never ordered onscreen and no longer owns the content.
+	private func retirePreparationWindow() {
+		let preparationWindow = presentationPreparationWindow
+		presentationPreparationWindow = nil
+		if let preparationWindow {
+			// Retiring an unshown window is not needed to display the popover.
+			// Keep AppKit teardown out of this synchronous input action.
+			Task { @MainActor in preparationWindow.close() }
+		}
+	}
+
+	/// Shows the same popover once, transparent and ignoring the mouse, without
+	/// activation or key, keeps it for one Core Animation commit so AppKit and
+	/// the window server create its window, then closes it. It must never draw
+	/// a visible frame, change the front app, or leave the key window changed;
+	/// popover.warm records them, and whether the popover was key meanwhile.
+	private func warmPopoverWindow() {
+		guard warmsWindowAfterPreparation, !isWindowWarmed, finishWarm == nil, !hasPresentedPopover, !popover.isShown,
+			let button = statusItem.button else { return }
+		let keyBefore = NSApp.keyWindow
+		let frontBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
+		let began = PerfTrace.now()
+		configurePopoverGeometry(for: button)
+		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		retirePreparationWindow()
+		guard let window = popover.contentViewController?.view.window else {
+			popover.performClose(nil)
+			return
+		}
+		// Before this pass's commit: no frame of it is ever drawn opaque.
+		window.alphaValue = 0
+		window.ignoresMouseEvents = true
+		var visible: Int64 = 0
+		var keyDuring: Int64 = 0
+		var keyChanged: Int64 = 0
+		var frontChanged: Int64 = 0
+		let checkFront = {
+			if NSWorkspace.shared.frontmostApplication?.processIdentifier != frontBefore { frontChanged = 1 }
+		}
+		var observer: CFRunLoopObserver?
+		finishWarm = { [weak self] in
+			guard let self else { return }
+			if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+			observer = nil
+			self.finishWarm = nil
+			// Visibility only while ordered in, before alpha is restored.
+			if window.isVisible, window.alphaValue > 0 { visible = 1 }
+			// AppKit may make the shown popover the App's key window; give the
+			// key back so a window the user was typing in keeps it.
+			if NSApp.keyWindow !== keyBefore { keyDuring = 1 }
+			checkFront()
+			self.popover.performClose(nil)
+			window.alphaValue = 1
+			window.ignoresMouseEvents = false
+			// AppKit settles the key window after the close returns; restore and
+			// check it on the next main-queue turn.
+			DispatchQueue.main.async { [weak self] in
+				MainActor.assumeIsolated {
+					if let keyBefore, NSApp.keyWindow !== keyBefore, keyBefore.isVisible { keyBefore.makeKey() }
+					if NSApp.keyWindow !== keyBefore { keyChanged = 1 }
+					checkFront()
+					self?.isWindowWarmed = true
+					PerfTrace.mark(.popoverWarm, PerfCount("visible", visible), PerfCount("key_during", keyDuring),
+						PerfCount("key_changed", keyChanged), PerfCount("front_changed", frontChanged),
+						PerfCount("dur_ns", Int64(PerfTrace.now() - began)))
+				}
+			}
+		}
+		// Core Animation commits in a beforeWaiting observer at order 2,000,000;
+		// this one runs after the commit that ordered the window in.
+		observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 2_000_001) {
+			_, _ in MainActor.assumeIsolated { [weak self] in self?.finishWarm?() }
+		}
+		CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
 	}
 
 	private func configurePopoverGeometry(for button: NSStatusBarButton) {
@@ -247,6 +374,14 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 		isInitialPresentationPrepared = true
 		presentationPreparationCount += 1
 		// Never show a window, request focus, or start a helper here.
+		if warmsWindowAfterPreparation { scheduleWindowWarmUp() }
+	}
+
+	/// After preparation, on a later idle pass of the main run loop.
+	private func scheduleWindowWarmUp() {
+		RunLoop.main.perform(inModes: [.default]) { [weak self] in
+			MainActor.assumeIsolated { self?.warmPopoverWindow() }
+		}
 	}
 
 	static func activatePopoverWindow(_ window: NSWindow?) {
@@ -255,6 +390,8 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	}
 
 	func closePopover() {
+		openHold?.release()
+		openHold = nil
 		popover.performClose(nil)
 	}
 

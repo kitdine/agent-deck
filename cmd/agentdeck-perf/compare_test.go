@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -29,19 +30,18 @@ func p03Arm(t *testing.T, root, mode string, units, inner int, latency [3]int64)
 	}
 }
 
-// A regression in one dimension fails P03 even when the others improve.
-func TestP03GateJudgesEachDimension(t *testing.T) {
+// P03 is compared per dimension; a slower dimension is reported, not judged.
+func TestP03ComparesEachDimension(t *testing.T) {
 	root := t.TempDir()
 	p03Arm(t, filepath.Join(root, "baseline"), "formal", 4, 25, [3]int64{1000, 1000, 100})
 	p03Arm(t, filepath.Join(root, "candidate"), "formal", 4, 25, [3]int64{100, 100, 200})
-	groups, err := abbaGroups(root, "P03")
+	result, err := compareABBA(root, "P03")
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := dimensionGate(groups, 0.95, 1)
-	if err != nil || result.Verdict != "fail" || result.Dimensions["panel"].Verdict != "fail" ||
-		result.Dimensions["client"].Verdict != "pass" || result.Dimensions["panel"].Ratio != 2 {
-		t.Fatalf("P03 gate = %+v %v", result, err)
+	panel, client := result.Dimensions["panel"], result.Dimensions["client"]
+	if len(panel) != 3 || panel[1].Statistic != "p95" || panel[1].Ratio != 2 || client[1].Ratio != 0.1 {
+		t.Fatalf("P03 comparison = %+v", result)
 	}
 }
 
@@ -62,12 +62,16 @@ func TestP09GateUsesThePairedCLIRuns(t *testing.T) {
 		sampleDir(t, root, unit, map[string]string{"cli-runs.json": string(raw)})
 	}
 	var out, stderr bytes.Buffer
-	if code := runGate([]string{"--batch-out", root, "--condition", "P09", "--k", "0.7"}, &out, &stderr); code != 0 {
-		t.Fatalf("gate exit %d: %s", code, stderr.String())
+	if code := runCompare([]string{"--batch-out", root, "--condition", "P09"}, &out, &stderr); code != 0 {
+		t.Fatalf("compare exit %d: %s", code, stderr.String())
 	}
-	var verdict gateVerdict
-	if err := json.Unmarshal(out.Bytes(), &verdict); err != nil || verdict.Verdict != "pass" || verdict.Statistic != "p50" || verdict.Groups != 10 {
-		t.Fatalf("P09 gate = %s %v", out.String(), err)
+	var result abbaComparison
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || len(result.Ratios) != 1 ||
+		result.Ratios[0].Statistic != "median" || result.Ratios[0].Groups != 10 || result.Ratios[0].Ratio >= 0.7 {
+		t.Fatalf("P09 comparison = %s %v", out.String(), err)
+	}
+	if bytes.Contains(out.Bytes(), []byte("verdict")) || bytes.Contains(out.Bytes(), []byte(`"k"`)) {
+		t.Fatalf("a comparison carries no k and no verdict: %s", out.String())
 	}
 	// Swapped order inside a pair is not an ABBA unit.
 	raw, _ := json.Marshal([]cliRun{{Label: "S0", WallNS: 1}, {Label: "B0", WallNS: 1}})
@@ -95,48 +99,65 @@ func groupsOf(n int, baseMS, candMS float64, seed uint64) []group {
 	return groups
 }
 
-func TestRelativeGateVerdicts(t *testing.T) {
-	pass, err := relativeGate(groupsOf(20, 500, 250, 1), 0.95, 0.7)
-	if err != nil || pass.Verdict != "pass" || pass.High > 0.7 {
-		t.Fatalf("50%% faster under k=0.7: %+v %v", pass, err)
+func TestRatioIntervalIsDeterministicAndBracketsTheRatio(t *testing.T) {
+	faster, err := ratioInterval(groupsOf(20, 500, 250, 1), 0.95)
+	if err != nil || faster.Ratio > 0.6 || faster.Low > faster.Ratio || faster.High < faster.Ratio || faster.Statistic != "p95" {
+		t.Fatalf("50%% faster: %+v %v", faster, err)
 	}
-	fail, _ := relativeGate(groupsOf(20, 500, 500, 1), 0.95, 0.5)
-	if fail.Verdict != "fail" {
-		t.Fatalf("unchanged candidate under k=0.5: %+v", fail)
+	again, _ := ratioInterval(groupsOf(20, 500, 250, 1), 0.95)
+	if again != faster {
+		t.Fatalf("bootstrap is not deterministic: %+v vs %+v", again, faster)
 	}
-	edge, _ := relativeGate(groupsOf(4, 500, 495, 3), 0.95, 1)
-	if edge.Verdict == "fail" && edge.Ratio <= 1 {
-		t.Fatalf("point estimate below k must not be a fail: %+v", edge)
-	}
-	again, _ := relativeGate(groupsOf(20, 500, 250, 1), 0.95, 0.7)
-	if again != pass {
-		t.Fatalf("bootstrap is not deterministic: %+v vs %+v", again, pass)
+	if _, err := ratioInterval(nil, 0.5); err == nil {
+		t.Fatal("no groups must not produce a comparison")
 	}
 }
 
-func TestRelativeGateCountsProductFailuresAsInfinite(t *testing.T) {
+func TestRatioIntervalCountsProductFailuresAsInfinite(t *testing.T) {
 	groups := groupsOf(10, 500, 100, 4)
 	for i := range groups {
 		for j := 0; j < 5; j++ { // half the candidate's samples never reached the frame
 			groups[i].candidate[j] = interval{Failed: true}
 		}
 	}
-	verdict, _ := relativeGate(groups, 0.95, 0.7)
-	if verdict.Verdict != "fail" {
-		t.Fatalf("failures in the tail must fail the gate: %+v", verdict)
+	result, _ := ratioInterval(groups, 0.95)
+	if !math.IsInf(float64(result.Ratio), 1) {
+		t.Fatalf("failures in the tail must make the p95 infinite: %+v", result)
+	}
+	raw, err := json.Marshal(result)
+	if err != nil || !bytes.Contains(raw, []byte(`"ratio":"+Inf"`)) {
+		t.Fatalf("an infinite statistic must still encode: %s %v", raw, err)
+	}
+}
+
+// P06's three paired windows are reported as per-unit differences.
+func TestPairedDifferencesSubtractTheBaselineWindow(t *testing.T) {
+	baseline := map[string]any{"sample-0001": map[string]any{"cpu": 0.004, "label": "x"}, "schedule": "s"}
+	candidate := map[string]any{"sample-0001": map[string]any{"cpu": 0.003, "label": "x"}, "sample-0002": map[string]any{"cpu": 1.0}}
+	got := pairedDifferences(baseline, candidate)
+	if len(got) != 1 || math.Abs(got["sample-0001"]["cpu"]+0.001) > 1e-12 {
+		t.Fatalf("differences = %v", got)
+	}
+}
+
+// P05 has no baseline arm, so compare refuses it.
+func TestCompareRefusesP05(t *testing.T) {
+	var out, stderr bytes.Buffer
+	if code := runCompare([]string{"--batch-out", t.TempDir(), "--condition", "P05"}, &out, &stderr); code == 0 {
+		t.Fatalf("P05 produced a comparison: %s", out.String())
 	}
 }
 
 // A tool pilot, arms run with different schedules, or a schedule other than
-// the approved formal one produce no gate result (review Round 2 F2: a
+// the approved formal one produce no comparison (review Round 2 F2: a
 // one-unit pilot per arm used to pass with a point interval).
-func TestGateAdmitsOnlyTheApprovedFormalSchedule(t *testing.T) {
+func TestCompareAdmitsOnlyTheApprovedFormalSchedule(t *testing.T) {
 	pilot := t.TempDir()
 	p03Arm(t, filepath.Join(pilot, "baseline"), "pilot", 1, 20, [3]int64{100, 100, 100})
 	p03Arm(t, filepath.Join(pilot, "candidate"), "pilot", 1, 20, [3]int64{50, 50, 50})
 	var out, stderr bytes.Buffer
-	if code := runGate([]string{"--batch-out", pilot, "--condition", "P03", "--k", "1"}, &out, &stderr); code == 0 {
-		t.Fatalf("a pilot produced a gate result: %s", out.String())
+	if code := runCompare([]string{"--batch-out", pilot, "--condition", "P03"}, &out, &stderr); code == 0 {
+		t.Fatalf("a pilot produced a comparison: %s", out.String())
 	}
 	mismatch := t.TempDir()
 	p03Arm(t, filepath.Join(mismatch, "baseline"), "formal", 4, 25, [3]int64{100, 100, 100})
@@ -151,11 +172,11 @@ func TestGateAdmitsOnlyTheApprovedFormalSchedule(t *testing.T) {
 		t.Fatal("a schedule other than the approved formal one must be rejected")
 	}
 	// A formal schedule whose units cannot form complete A B B A groups.
-	if _, err := gateSchedule("P06", schedule{Mode: "formal", Units: 3, Window: 1800}); err == nil {
-		t.Fatal("an odd number of run units must not reach a gate result")
+	if _, err := compareSchedule("P06", schedule{Mode: "formal", Units: 3, Window: 1800}); err == nil {
+		t.Fatal("an odd number of run units must not reach an ABBA comparison")
 	}
-	// P11-full's 5 completion runs are reported, not gated, so the gate
-	// refusing them is correct; every gated latency condition must form groups.
+	// P11-full's 5 completion runs are compared side by side, so the ABBA
+	// path refusing them is correct; every ABBA latency condition must form groups.
 	for condition, plan := range conditionPlans() {
 		if _, ok := conditionIntervals[condition]; ok && condition != "P11-full" && plan.formal.Units%2 != 0 {
 			t.Fatalf("%s formal schedule has %d units, not complete A B B A groups", condition, plan.formal.Units)

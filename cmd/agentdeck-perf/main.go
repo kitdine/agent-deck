@@ -14,7 +14,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: agentdeck-perf <corpus|batch|fixture|append|template|run|stats|gate> [flags]")
+		fmt.Fprintln(stderr, "usage: agentdeck-perf <corpus|batch|fixture|append|template|run|stats|compare> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -34,8 +34,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runBatchPrepare(args[2:], stdout, stderr)
 	case "run":
 		return runBatchCommand(args[1:], stdout, stderr)
-	case "gate":
-		return runGate(args[1:], stdout, stderr)
+	case "compare":
+		return runCompare(args[1:], stdout, stderr)
 	case "stats":
 		return runStatsCommand(args[1:], stdout, stderr)
 	default:

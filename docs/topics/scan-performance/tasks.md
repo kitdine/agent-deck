@@ -57,7 +57,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | --- | --- | --- |
 | 1. `measurement-harness` | [x] | [x] |
 | 2. `baseline-remeasure` | [x] | [x] |
-| 3. `serving-open-path` | [ ] | [ ] |
+| 3. `serving-open-path` | [x] | [x] |
 | 4. `parallel-source-pipeline` | [ ] | [ ] |
 | 5. `incremental-update` | [ ] | [ ] |
 | 6. `event-updates-and-cli` | [ ] | [ ] |
@@ -66,6 +66,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 
 `measurement-harness` 的当前评审与修复交接见 [评审记录](reviews/measurement-harness.md)。
 `baseline-remeasure` 的当前评审与修复交接见 [评审记录](reviews/baseline-remeasure.md)。
+`serving-open-path` 的当前评审与修复交接见 [评审记录](reviews/serving-open-path.md)；Round 2 PASS，精确状态门禁 VERIFIED；交付状态由对应 Beads 任务记录。
 
 依赖：1 → 2 → 3、4；4 的前台准则在 3 通过后验证；3、4 → 5 → 6 → 7 → 8。
 额外常驻 Go 引擎与多进程 parser 不是预建任务，只在性能评估的候选采用规则满足后经设计增补选入。

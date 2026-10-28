@@ -474,6 +474,19 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.sessionsPanel.stats.first?.value, DesktopFormat.count(0))
 	}
 
+	// The rhythm block is reused across selections but follows a new publication.
+	func testRhythmBlockFollowsANewPublication() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host, preferences: nil, snapshotStore: healthySnapshotStore())
+		await model.coordinator.refresh()
+		XCTAssertTrue(model.rhythmBlock.available)
+		host.behavior = .envelope(WireFixture.envelope(
+			scopes: [WireFixture.scope(client: "all", rhythmAvailable: false), WireFixture.scope(client: "codex"), WireFixture.scope(client: "claude")],
+			generatedAt: "2026-08-13T10:05:00Z"))
+		await model.coordinator.refresh()
+		XCTAssertFalse(model.rhythmBlock.available, "a new publication must not show the previous rhythm")
+	}
+
 	func testRhythmBlockIgnoresBothFilters() async {
 		let model = await readyModel()
 		model.selectedClient = "all"

@@ -1071,3 +1071,22 @@ func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 		t.Fatalf("worker exit: %v", err)
 	}
 }
+
+// Only a background launch asks the worker to lower its priority; a first
+// import or a CLI launch keeps the inherited environment.
+func TestWorkerCommandMarksOnlyBackgroundLaunches(t *testing.T) {
+	marked := func(cmd *exec.Cmd) bool {
+		for _, entry := range cmd.Env {
+			if entry == workerBackgroundEnv+"=1" {
+				return true
+			}
+		}
+		return false
+	}
+	if cmd := workerCommand("/bin/agentdeck", "/state", true); !marked(cmd) || len(cmd.Env) <= 1 {
+		t.Fatalf("background worker env = %v", cmd.Env)
+	}
+	if cmd := workerCommand("/bin/agentdeck", "/state", false); cmd.Env != nil {
+		t.Fatalf("a foreground worker must inherit the environment unchanged: %v", cmd.Env)
+	}
+}

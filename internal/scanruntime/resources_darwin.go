@@ -10,6 +10,9 @@ import (
 
 func detachWorkerProcess(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
 
+// lowerProcessPriority is best effort: a worker that cannot renice still runs.
+func lowerProcessPriority() { _ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10) }
+
 func currentProcessResources() processResources {
 	var usage syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err != nil {

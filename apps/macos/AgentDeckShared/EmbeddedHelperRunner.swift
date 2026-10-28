@@ -632,6 +632,14 @@ public struct EmbeddedHelperRunner: Sendable {
 	}
 
 	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		// An empty state root has neither a serving file nor committed facts to
+		// fall back to; the helper could only fail. Fail without launching it, so
+		// a first import's bootstrap does not wait behind it.
+		let root = URL(fileURLWithPath: stateRoot, isDirectory: true)
+		let files = FileManager.default
+		guard files.fileExists(atPath: root.appendingPathComponent("desktop-serving-snapshot.json").path)
+			|| files.fileExists(atPath: root.appendingPathComponent("agentdeck.sqlite3").path)
+		else { throw HelperExecutionError.nonZeroExit(1) }
 		// The helper verifies the cache identity before it prints the snapshot.
 		let identityStarted = PerfTrace.begin()
 		let output = try await process.runLines(
@@ -1900,8 +1908,16 @@ public final class DesktopRefreshCoordinator {
 	@ObservationIgnored private let wallNow: @MainActor @Sendable () -> Date
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var activeRestore: Task<Void, Never>?
+	@ObservationIgnored private var startupSettled = false
+	@ObservationIgnored private var startupWaiters: [CheckedContinuation<Void, Never>] = []
+	@ObservationIgnored private let restoreFirstFallback: Duration
 	@ObservationIgnored private var modelUsableMarked = false
 	@ObservationIgnored private var coverageCompleteMarked = false
+	/// While the menu-bar surface draws its first frame after opening, a new
+	/// publication of the same identity waits; swapping data under that frame
+	/// would lay the whole surface out again before anything is shown.
+	@ObservationIgnored private var publicationHolds = 0
+	@ObservationIgnored private var heldPublication: DesktopServingSnapshotV2?
 	@ObservationIgnored private var activeQuotaOperation: Task<QuotaOperationResult, Never>?
 	@ObservationIgnored private var activeQuotaID: QuotaOperationID?
 	@ObservationIgnored private var pendingFullTrigger: DesktopFullRefreshTrigger?
@@ -1919,9 +1935,11 @@ public final class DesktopRefreshCoordinator {
 		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
 		alertDeliverer: (any QuotaAlertDelivering)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore(),
-		wallNow: @escaping @MainActor @Sendable () -> Date = Date.init
+		wallNow: @escaping @MainActor @Sendable () -> Date = Date.init,
+		restoreFirstFallback: Duration = .milliseconds(750)
 	) {
 		self.host = host
+		self.restoreFirstFallback = restoreFirstFallback
 		self.quotaRefresher = quotaRefresher
 		self.alertDeliverer = alertDeliverer
 		self.wallNow = wallNow
@@ -1934,6 +1952,10 @@ public final class DesktopRefreshCoordinator {
 
 	// Starts startup work without making the application launch wait for the
 	// embedded helper. Later views use refresh() for an awaitable manual retry.
+	//
+	// Startup order (architecture): the restore runs first; the full refresh
+	// (bootstrap and quota) and the App's watcher and periodic work start once
+	// it has finished, or after the fallback, never later.
 	@discardableResult
 	public func startInitialRefresh() -> Task<Void, Never> {
 		if let bootstrap = host as? any DesktopSnapshotBootstrapping {
@@ -1949,9 +1971,43 @@ public final class DesktopRefreshCoordinator {
 				}
 			}
 		}
+		// Whichever comes first settles startup. A task group would also wait for
+		// a restore that never returns, so each side settles independently.
+		let restore = activeRestore
+		let fallback = restoreFirstFallback
+		Task { [weak self] in
+			await restore?.value
+			self?.settleStartup()
+		}
+		Task { [weak self] in
+			try? await Task.sleep(for: fallback)
+			self?.settleStartup()
+		}
 		return Task { [weak self] in
+			await self?.waitForStartupSettled()
 			await self?.requestFullRefresh(trigger: .startup)
 		}
+	}
+
+	/// Returns once the startup restore has finished or its fallback elapsed.
+	/// Observation invalidates every reader on each assignment, equal or not.
+	/// An unchanged value must not re-render the menu-bar surface, which costs
+	/// a full layout of the open popover.
+	private func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<DesktopRefreshCoordinator, Value>, _ value: Value) {
+		if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+	}
+
+	public func waitForStartupSettled() async {
+		guard !startupSettled else { return }
+		await withCheckedContinuation { startupWaiters.append($0) }
+	}
+
+	private func settleStartup() {
+		guard !startupSettled else { return }
+		startupSettled = true
+		let waiters = startupWaiters
+		startupWaiters = []
+		for waiter in waiters { waiter.resume() }
 	}
 
 	public func stopAppWork() {
@@ -1971,7 +2027,38 @@ public final class DesktopRefreshCoordinator {
 		}
 	}
 
+	/// Defers same-identity publications until every hold is released. An
+	/// identity change is never held: old data must not stay visible. Each
+	/// holdPublications() must be balanced by one releasePublications().
+	public func holdPublications() {
+		publicationHolds += 1
+	}
+
+	public func releasePublications() {
+		publicationHolds = max(0, publicationHolds - 1)
+		guard publicationHolds == 0, let prepared = heldPublication else { return }
+		heldPublication = nil
+		installServingPublication(prepared)
+		// A refresh that finished while held published its success and widget
+		// snapshot with the previous data; bring the widget up to date.
+		if case .succeeded = fullAttempt, let latestSnapshot {
+			Task { await publishWidgetSnapshot(latestSnapshot) }
+		}
+	}
+
 	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+		if publicationHolds > 0, let current = servingHeader?.generation {
+			let new = prepared.header.generation
+			if current.stateIdentity == new.stateIdentity, current.coreEpoch == new.coreEpoch,
+				current.sessionEpoch == new.sessionEpoch, current.coreSchema == new.coreSchema,
+				current.sessionSchema == new.sessionSchema {
+				heldPublication = prepared
+				return
+			}
+		}
+		// Anything that reaches install arrived after a held publication and
+		// supersedes it; releasing must never bring back an older identity.
+		heldPublication = nil
 		let installStarted = PerfTrace.begin()
 		if let previous = servingHeader {
 			let old = previous.generation
@@ -1981,12 +2068,12 @@ public final class DesktopRefreshCoordinator {
 				|| old.sessionSchema != new.sessionSchema {
 				// Identity invalidation precedes date/fullness checks: even an
 				// unusable replacement must not leave the old identity visible.
-				servingHeader = nil
-				latestSnapshot = nil
+				update(\.servingHeader, nil)
+				update(\.latestSnapshot, nil)
 				if case .running = fullAttempt {
-					state = .refreshing(previous: nil)
+					update(\.state, .refreshing(previous: nil))
 				} else {
-					state = .uninitialized
+					update(\.state, .uninitialized)
 				}
 			}
 		}
@@ -1999,12 +2086,12 @@ public final class DesktopRefreshCoordinator {
 			PerfTrace.mark(.servingSkip, PerfCount("reason", 2))
 			return
 		}
-		servingHeader = prepared.header
-		latestSnapshot = prepared.payload
+		update(\.servingHeader, prepared.header)
+		update(\.latestSnapshot, prepared.payload)
 		if case .running = fullAttempt {
-			state = .refreshing(previous: prepared.payload)
+			update(\.state, .refreshing(previous: prepared.payload))
 		} else {
-			state = .ready(prepared.payload)
+			update(\.state, .ready(prepared.payload))
 		}
 		PerfTrace.end(.servingInstall, since: installStarted)
 		markPublicationBound()
@@ -2102,9 +2189,9 @@ public final class DesktopRefreshCoordinator {
 		activeFullGeneration = currentGeneration
 		fullQuotaPhaseCompleted = false
 		successResetToken &+= 1
-		fullAttempt = .running(generation: currentGeneration)
-		state = .refreshing(previous: latestSnapshot)
-		scanProgress = .waiting
+		update(\.fullAttempt, .running(generation: currentGeneration))
+		update(\.state, .refreshing(previous: latestSnapshot))
+		update(\.scanProgress, .waiting)
 
 		let defaultPriority: QuotaRequestPriority = trigger.quotaIsManual ? .manual : .periodic
 		let priority = QuotaRequestPriority.merged(pendingQuotaPriority, defaultPriority)
@@ -2127,7 +2214,7 @@ public final class DesktopRefreshCoordinator {
 					if let envelope = latestSnapshot {
 						await publishSuccess(envelope, generation: currentGeneration)
 					} else {
-						scanProgress = nil
+						update(\.scanProgress, nil)
 						publishFailure(.unavailable, generation: currentGeneration)
 					}
 			} catch {
@@ -2139,11 +2226,11 @@ public final class DesktopRefreshCoordinator {
 			if let result = await quotaTask.value, let subscription = result.subscription,
 				currentGeneration == generation, !Task.isCancelled, let baseline = latestSnapshot {
 				let updated = baseline.replacingSubscription(subscription)
-				latestSnapshot = updated
+				update(\.latestSnapshot, updated)
 				switch state {
-				case .ready: state = .ready(updated)
-				case let .degraded(_, issue): state = .degraded(previous: updated, issue: issue)
-				case .refreshing: state = .refreshing(previous: updated)
+				case .ready: update(\.state, .ready(updated))
+				case let .degraded(_, issue): update(\.state, .degraded(previous: updated, issue: issue))
+				case .refreshing: update(\.state, .refreshing(previous: updated))
 				case .uninitialized: break
 				}
 			}
@@ -2231,14 +2318,14 @@ public final class DesktopRefreshCoordinator {
 			latestSnapshot == baseline
 		else { return }
 		let updated = baseline.replacingSubscription(subscription)
-		latestSnapshot = updated
+		update(\.latestSnapshot, updated)
 		switch state {
 		case .ready:
-			state = .ready(updated)
+			update(\.state, .ready(updated))
 		case let .degraded(_, issue):
-			state = .degraded(previous: updated, issue: issue)
+			update(\.state, .degraded(previous: updated, issue: issue))
 		case .refreshing:
-			state = .refreshing(previous: updated)
+			update(\.state, .refreshing(previous: updated))
 		case .uninitialized:
 			return
 		}
@@ -2277,7 +2364,7 @@ public final class DesktopRefreshCoordinator {
 		if let current = scanProgress, progress.sequence < current.sequence {
 			return
 		}
-		scanProgress = progress
+		update(\.scanProgress, progress)
 	}
 
 	private func publishSuccess(_ envelope: DesktopWireEnvelopeV1, generation: Int) async {
@@ -2285,11 +2372,11 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 
-		latestSnapshot = envelope
-		scanProgress = nil
-		state = .ready(envelope)
+		update(\.latestSnapshot, envelope)
+		update(\.scanProgress, nil)
+		update(\.state, .ready(envelope))
 		markPublicationBound()
-		fullAttempt = .succeeded(generation: generation, completedAt: wallNow())
+		update(\.fullAttempt, .succeeded(generation: generation, completedAt: wallNow()))
 		await publishWidgetSnapshot(envelope)
 		scheduleSuccessReset(generation: generation)
 	}
@@ -2346,14 +2433,14 @@ public final class DesktopRefreshCoordinator {
 			PerfTrace.mark(.refreshFailed, PerfCount("issue", code), PerfCount("helper_kind", helperKind),
 				PerfCount("exit_status", exitStatus))
 		}
-		fullAttempt = .failed(generation: generation, issue: issue, completedAt: wallNow())
-		state = .degraded(previous: latestSnapshot, issue: issue)
+		update(\.fullAttempt, .failed(generation: generation, issue: issue, completedAt: wallNow()))
+		update(\.state, .degraded(previous: latestSnapshot, issue: issue))
 		// A retained terminal progress report (e.g. completed with a domain
 		// marked failed) is meaningful and the menu bar displays it alongside
 		// the failure. Only the synthetic seed set at refresh start — meaning
 		// the helper never reported real progress before failing — is stale.
 		if scanProgress == .waiting {
-			scanProgress = nil
+			update(\.scanProgress, nil)
 		}
 	}
 
@@ -2365,7 +2452,7 @@ public final class DesktopRefreshCoordinator {
 			if case let .succeeded(currentGeneration, _) = self.fullAttempt,
 				currentGeneration == generation
 			{
-				self.fullAttempt = .idle
+				self.update(\.fullAttempt, .idle)
 			}
 		}
 	}

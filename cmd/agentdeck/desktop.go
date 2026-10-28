@@ -183,8 +183,11 @@ func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
 				cancel()
 			}
 		}
+		// The App already shows a valid publication: this startup scan runs in
+		// the background. Without one (first import, no cache) it keeps full priority.
+		_, restoreErr := (desktop.Service{StateRoot: root, Home: home, Now: desktopNow}).ReadServingSnapshot(ctx)
 		client := scanruntime.Client{StateRoot: root, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow, AppOwned: true,
-			OnPublication: func(value desktop.ServingSnapshot) { emit("publication", value) }}
+			Background: restoreErr == nil, OnPublication: func(value desktop.ServingSnapshot) { emit("publication", value) }}
 		result, err := client.RequestWithProgress(ctx, scanruntime.ScopeBoth, func(value scanruntime.Progress) { emit("progress", value) })
 		if outputErr != nil {
 			return outputErr

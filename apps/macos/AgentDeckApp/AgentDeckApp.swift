@@ -254,13 +254,20 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		itemController = MenuBarItemController(model: model) { [weak self] in
 			self?.settingsController.show()
 		}
+		itemController?.warmsWindowAfterPreparation = true
 		if automaticRefreshEnabled {
 			sourceMonitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
 				Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: .sourceChange) }
 			}
-			sourceMonitor?.start()
 			refreshCoordinator.startInitialRefresh()
-			startPeriodicRefresh()
+			// Restore first: the watcher's first pass and periodic quota work start
+			// after it, like the startup refresh (architecture, startup order).
+			Task { @MainActor [weak self] in
+				await self?.refreshCoordinator.waitForStartupSettled()
+				guard let self else { return }
+				self.sourceMonitor?.start()
+				self.startPeriodicRefresh()
+			}
 		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
