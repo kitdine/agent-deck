@@ -173,6 +173,131 @@ func TestServingMetadataOnlyNoopProvesTodayZeroBeforeGlobalDerivation(t *testing
 	}
 }
 
+func appendServingRecord(t *testing.T, path string, at time.Time, tokens int) {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fmt.Fprintf(file, `{"timestamp":%q,"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":%d,"output_tokens":1,"total_tokens":%d}}}}`+"\n", at.UTC().Format(time.RFC3339Nano), tokens, tokens+1)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A settled state (today's full publication readable) updates through one
+// plan and one full publication, and every change kind equals a fresh oracle.
+func TestServingSettledUpdatePlansOncePublishesFullAndMatchesFreshOracle(t *testing.T) {
+	for _, change := range []struct {
+		name  string
+		apply func(t *testing.T, home string, now time.Time, today, history string)
+		hero  int64
+	}{
+		{"append", func(t *testing.T, _ string, now time.Time, today, _ string) {
+			appendServingRecord(t, today, now.Add(-time.Minute), 40)
+		}, 69},
+		{"late-previous-day", func(t *testing.T, _ string, now time.Time, today, _ string) {
+			appendServingRecord(t, today, now.AddDate(0, 0, -1), 40)
+		}, 28},
+		{"rewrite", func(t *testing.T, home string, now time.Time, _, _ string) {
+			writeServingSource(t, home, now.UTC().Format("2006/01/02"), now.Add(-time.Minute), 5)
+		}, 6},
+		{"remove", func(t *testing.T, _ string, _ time.Time, _, history string) {
+			if err := os.Remove(history); err != nil {
+				t.Fatal(err)
+			}
+		}, 28},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			home := t.TempDir()
+			// A fixed local midday keeps the seed (two minutes earlier) and every
+			// change on the day the hero expectations name, whatever the wall clock.
+			now := time.Date(2026, time.October, 20, 12, 0, 0, 0, time.Local)
+			today := writeServingSource(t, home, now.UTC().Format("2006/01/02"), now.Add(-2*time.Minute), 27)
+			history := writeServingSource(t, home, "2000/01/01", now.AddDate(0, 0, -20), 99)
+			old := now.AddDate(-1, 0, 0)
+			if err := os.Chtimes(history, old, old); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			clock := func() time.Time { return now }
+			// The worker runs on the canonical root, which the state identity names.
+			root, _, err := prepareStateRoot(filepath.Join(home, ".agentdeck"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := Client{StateRoot: root, Home: home, ForceLocal: true, Now: clock}
+			if result, err := client.Request(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+				t.Fatalf("seed failed: %+v %v", result, err)
+			}
+			if !servingSettled(ctx, root, home, clock) {
+				t.Fatal("seeded full publication is not settled")
+			}
+			previous, err := (desktop.Service{StateRoot: root, Home: home, Now: clock}).ReadServingSnapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			change.apply(t, home, now, today, history)
+
+			r := newRound(home)
+			r.serving = true
+			r.cacheNow = clock
+			batches := 0
+			r.beforeServingBatch = func(int) { batches++ }
+			r.execute(ctx, root, false)
+			result, err := r.wait(ctx, ScopeBoth)
+			if err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+				t.Fatalf("settled update failed: %+v %v", result, err)
+			}
+			if batches != 0 {
+				t.Fatalf("settled update split into %d priority/history batches", batches)
+			}
+			prepared, err := (desktop.Service{StateRoot: root, Home: home, Now: clock}).ReadServingSnapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared.Header.PublicationID == previous.Header.PublicationID || r.publication == nil || r.publication.Header.PublicationID != prepared.Header.PublicationID {
+				t.Fatalf("round did not deliver a new persisted publication: %+v", r.publication)
+			}
+			if !prepared.Header.SessionPrepared || prepared.Header.Freshness != "current" || prepared.Header.UsageCoverage.State != "complete" || prepared.Header.SessionCoverage.State != "complete" {
+				t.Fatalf("settled update did not publish a complete full snapshot: %+v", prepared.Header)
+			}
+
+			// A fresh state built from the same sources is the full oracle.
+			oracleRoot, _, err := prepareStateRoot(filepath.Join(t.TempDir(), ".agentdeck"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			oracle := Client{StateRoot: oracleRoot, Home: home, ForceLocal: true, Now: clock}
+			if result, err := oracle.Request(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+				t.Fatalf("oracle failed: %+v %v", result, err)
+			}
+			expected, err := (desktop.Service{StateRoot: oracleRoot, Home: home, Now: clock}).ReadServingSnapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, pair := range map[string][2]any{
+				"usage":    {prepared.Payload.Data.Usage, expected.Payload.Data.Usage},
+				"sessions": {prepared.Payload.Data.Sessions, expected.Payload.Data.Sessions},
+				"coverage": {[2]int{prepared.Header.UsageCoverage.Sources, prepared.Header.UsageCoverage.Committed}, [2]int{expected.Header.UsageCoverage.Sources, expected.Header.UsageCoverage.Committed}},
+			} {
+				got, _ := json.Marshal(pair[0])
+				want, _ := json.Marshal(pair[1])
+				if !bytes.Equal(got, want) {
+					t.Fatalf("%s differs from fresh oracle:\n got %s\nwant %s", name, got, want)
+				}
+			}
+			if tokens := prepared.Payload.Data.Usage.Presentation.Scopes[0].Periods.Items[0].Totals.Tokens; tokens != change.hero {
+				t.Fatalf("today hero = %d, want %d", tokens, change.hero)
+			}
+		})
+	}
+}
+
 func TestServingOwnerConnectionCountsAndCLIObligation(t *testing.T) {
 	for _, cli := range []bool{false, true} {
 		ctx, cancel := context.WithCancel(context.Background())

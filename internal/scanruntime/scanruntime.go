@@ -1018,7 +1018,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if r.afterDiscovery != nil {
 		r.afterDiscovery(sources)
 	}
-	if serving {
+	if serving && !servingSettled(ctx, stateRoot, r.home, r.cacheNow) {
 		r.executeServingDiscovered(ctx, stateRoot, started, sources)
 		return
 	}

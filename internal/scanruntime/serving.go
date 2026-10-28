@@ -55,6 +55,14 @@ func finishAcceptedInventory(ctx context.Context, db *store.Store, id string) er
 	return err
 }
 
+// servingSettled reports whether today's full publication is already readable.
+// Priority batches then buy nothing: their today-only publications neither
+// replace that file nor bind in the App, so the round plans and publishes once.
+func servingSettled(ctx context.Context, stateRoot, home string, now func() time.Time) bool {
+	snapshot, err := (desktop.Service{StateRoot: stateRoot, Home: home, Now: now}).ReadServingSnapshot(ctx)
+	return err == nil && snapshot.Header.SessionPrepared
+}
+
 // Date and mtime are priority hints, not filters or event-time coverage proof.
 func servingSourceBatches(sources []ingest.Source, now time.Time) [][]ingest.Source {
 	local := now.In(time.Local)
