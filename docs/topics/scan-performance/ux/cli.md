@@ -184,6 +184,8 @@ $ agentdeck telemetry enable --write-codex-config
 codex_otel_conflict: ~/.codex/config.toml already has an [otel] section.
 Nothing was changed. Run agentdeck telemetry config-preview and merge it yourself.
 # exit 1（不可写为 codex_config_write_failed，同样不做任何修改）
+# 受管段已写入但后续步骤失败时先撤回；撤回不了（受管段已被改动）才保留受管段与摘要记录，
+# 仍为 codex_config_write_failed，文案改为说明已改动且 receiver 未启用，并提示 telemetry disable
 
 $ agentdeck telemetry disable
 Receiver disabled. Stored observations and the journal are kept.

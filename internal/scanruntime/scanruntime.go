@@ -33,6 +33,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
@@ -1138,6 +1139,11 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		defer perftrace.Span(perftrace.ScanDerive)()
 		started := time.Now()
 		r.setProgressStage("statistics")
+		// The inventory this round accepted can settle OTel ownership; settle
+		// first so the publication below already counts background usage.
+		if sessionsErr == nil {
+			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
+		}
 		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 		if publication, err := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false); err == nil {
 			r.setServingPublication(publication)

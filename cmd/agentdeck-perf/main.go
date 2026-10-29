@@ -14,7 +14,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: agentdeck-perf <corpus|batch|fixture|append|template|run|stats|compare> [flags]")
+		fmt.Fprintln(stderr, "usage: agentdeck-perf <corpus|batch|fixture|append|otel|template|run|stats|compare> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -24,6 +24,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runCorpus(args[1:], stdout, stderr)
 	case "append":
 		return runAppend(args[1:], stdout, stderr)
+	case "otel":
+		return runOTel(args[1:], stdout, stderr)
 	case "template":
 		return runTemplate(args[1:], stdout, stderr)
 	case "batch":

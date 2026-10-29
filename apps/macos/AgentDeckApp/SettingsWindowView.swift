@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsWindowView: View {
 	@Bindable var preferences: DesktopPreferences
 	var quotaSettings: QuotaSettingsController
+	var telemetrySettings: TelemetrySettingsController
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 18) {
@@ -38,6 +39,29 @@ struct SettingsWindowView: View {
 						.accessibilityLabel(t(DesktopCopy.settingsAutomaticUpdate))
 						.accessibilityHint(t(DesktopCopy.settingsAutomaticUpdateNote))
 				}
+			}
+
+			group(t(DesktopCopy.settingsGroupLiveUsage)) {
+				SettingsRow(
+					label: t(DesktopCopy.settingsOTel),
+					note: t(DesktopCopy.settingsOTelHint),
+					status: telemetrySettings.failureRow
+				) {
+					Toggle(
+						t(DesktopCopy.settingsOTel),
+						isOn: Binding(
+							get: { telemetrySettings.isOn },
+							set: { newValue in Task { await telemetrySettings.toggle(newValue) } }
+						)
+					)
+					.toggleStyle(.switch)
+					.tint(DesktopVisualTheme.accent)
+					.labelsHidden()
+					.disabled(!telemetrySettings.switchEnabled)
+					.accessibilityLabel(t(DesktopCopy.settingsOTel))
+					.accessibilityHint(t(DesktopCopy.settingsOTelPrivacy))
+				}
+				TelemetryDetailsView(controller: telemetrySettings)
 			}
 
 			group(t(DesktopCopy.settingsGroupMenuBar)) {
@@ -238,6 +262,7 @@ struct SettingsWindowView: View {
 		.foregroundStyle(DesktopVisualTheme.text)
 		.background(DesktopVisualTheme.background)
 		.task { await quotaSettings.load() }
+		.task { await telemetrySettings.load() }
 	}
 
 	/// `settings.quotaStatuslineHint` plus whichever of `quotaStatuslineChained`
@@ -368,5 +393,99 @@ struct SettingsRow<Control: View>: View {
 			control()
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+	}
+}
+
+/// The status, consent and preview area under the OTel switch
+/// (ux/settings.md). The consent area is inline, never a modal, so the
+/// switch and status stay reachable.
+private struct TelemetryDetailsView: View {
+	@Bindable var controller: TelemetrySettingsController
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+			if let stateText = controller.stateText {
+				// Polite and atomic: a state change is announced without
+				// moving focus.
+				Text(stateText)
+					.font(.caption.weight(.semibold))
+					.fixedSize(horizontal: false, vertical: true)
+					.accessibilityAddTraits(.updatesFrequently)
+			}
+			if let hint = controller.stateHint {
+				caption(hint)
+			}
+			if controller.showsNotCounted {
+				Label {
+					Text("\(t(DesktopCopy.settingsOTelNotCounted))\n\(t(DesktopCopy.settingsOTelNotCountedHint))")
+				} icon: {
+					Image(systemName: NoticeSeverity.warning.symbol)
+				}
+				.font(.caption)
+				.foregroundStyle(DesktopVisualTheme.warning)
+				.fixedSize(horizontal: false, vertical: true)
+			}
+			if let consent = controller.consent {
+				consentView(consent)
+			}
+			if let result = controller.resultText {
+				caption(result)
+			}
+			caption(t(DesktopCopy.settingsOTelPrivacy))
+			Button(t(controller.showsPreview ? DesktopCopy.settingsOTelHideConfiguration : DesktopCopy.settingsOTelViewConfiguration)) {
+				controller.showsPreview.toggle()
+				if controller.showsPreview { Task { await controller.loadPreview() } }
+			}
+			.font(.caption)
+			if controller.showsPreview {
+				caption(t(DesktopCopy.settingsOTelPreviewNote))
+				if let snippet = controller.preview?.snippet {
+					Text(snippet)
+						.font(.caption.monospaced())
+						.textSelection(.enabled)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+			}
+		}
+	}
+
+	@ViewBuilder
+	private func consentView(_ consent: TelemetryConsent) -> some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+			switch consent {
+			case .write:
+				Text(t(DesktopCopy.settingsOTelConsentTitle)).font(.caption.weight(.semibold))
+				caption(t(DesktopCopy.settingsOTelConsentFile))
+				Text("# BEGIN AgentDeck OTel (managed)\n[otel]\nlog_user_prompt = false\nexporter = { otlp-http = { endpoint = \"http://127.0.0.1:\(controller.status?.port ?? 4318)/v1/logs\", protocol = \"json\", headers = { \"X-AgentDeck-Token\" = \"<local-token>\" } } }\n# END AgentDeck OTel (managed)")
+					.font(.caption.monospaced())
+					.fixedSize(horizontal: false, vertical: true)
+				caption(t(DesktopCopy.settingsOTelConsentBody))
+				HStack {
+					Button(t(DesktopCopy.settingsOTelWriteAndOn)) { Task { await controller.writeAndEnable() } }
+						.buttonStyle(.borderedProminent)
+					Button(t(DesktopCopy.settingsOTelSelfConfigure)) { Task { await controller.configureMyself() } }
+					Button(t(DesktopCopy.switchCancel)) { controller.cancelConsent() }
+				}
+			case .conflict:
+				caption(t(DesktopCopy.settingsOTelConflict))
+				HStack {
+					Button(t(DesktopCopy.settingsOTelReceiverOnly)) { Task { await controller.enableReceiverOnly() } }
+						.buttonStyle(.borderedProminent)
+					Button(t(DesktopCopy.switchCancel)) { controller.cancelConsent() }
+				}
+			}
+		}
+		.font(.caption)
+		.padding(8)
+		.overlay(RoundedRectangle(cornerRadius: 6).stroke(DesktopVisualTheme.dim.opacity(0.4)))
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel(t(consent == .write ? DesktopCopy.settingsOTelConsentTitle : DesktopCopy.settingsOTelConflict))
+	}
+
+	private func caption(_ text: String) -> some View {
+		Text(text)
+			.font(.caption)
+			.foregroundStyle(DesktopVisualTheme.dim)
+			.fixedSize(horizontal: false, vertical: true)
 	}
 }

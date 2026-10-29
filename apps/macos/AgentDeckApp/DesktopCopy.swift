@@ -203,6 +203,7 @@ enum DesktopCopy {
 		"prices": "Price catalog",
 		"price_provenance": "Price provenance",
 		"unpriced_models": "Unpriced models",
+		"telemetry": "Some usage is not recorded",
 	]
 	static let healthNoticeStateLive = "AgentDeck state is busy"
 	static let healthNoticeScanLive = "AgentDeck scan is running"
@@ -321,7 +322,42 @@ enum DesktopCopy {
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
 	static let settingsAutomaticUpdate = "Automatically update local data"
 	static let settingsAutomaticUpdateNote =
-		"Update when logs change, without an interval. Manual updates remain available when off."
+		"Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately."
+	static let settingsGroupLiveUsage = "Live usage"
+	static let settingsOTel = "Enable OTel usage collection"
+	static let settingsOTelHint = "Off by default. Receive live Codex usage without a refresh interval. Collected data is kept when disabled."
+	static let settingsOTelPrivacy = "Only usage, model and required identity fields are retained. Prompts, response text and tool output are not stored."
+	static let settingsOTelViewConfiguration = "View connection configuration"
+	static let settingsOTelHideConfiguration = "Hide configuration"
+	static let settingsOTelPreviewNote = "Not applied to Codex. Token is redacted. Review and merge with existing configuration."
+	static let settingsOTelOff = "Collection is off"
+	static let settingsOTelUnknown = "Receiver ready · Waiting for first event; connection unknown"
+	static let settingsOTelUnknownHint = "No verified configuration or reception observation yet. Silence does not mean unconfigured or disconnected."
+	static let settingsOTelUnconfigured = "Receiver enabled · Configuration check found no valid exporter"
+	static let settingsOTelSetup = "First-time setup requires checking Codex telemetry configuration. The switch changes Codex configuration only after you agree."
+	static let settingsOTelReady = "Receiving · Usage can be counted"
+	static let settingsOTelCaptureOnly = "Receiving · Usage is not counted yet"
+	static let settingsOTelCaptureHint = "Request identity is not verified. Observations are saved without adding them to totals."
+	static let settingsOTelDisconnected = "Confirmed reception failure · Previous data is retained"
+	static let settingsOTelMemoriesOff = "Codex Memories is off · Collection is not needed"
+	static let settingsOTelMemoriesOffHint = "Other Codex usage is already counted from local logs. Turn on Codex Memories to enable collection here."
+	static let settingsOTelMemoriesStopped = "Codex Memories turned off · Receiver stopped"
+	static let settingsOTelMemoriesStoppedHint = "Turn off collection to remove AgentDeck's block from the Codex configuration. If you leave it on, receiving resumes when Codex Memories is turned back on."
+	static let settingsOTelNotCounted = "Codex Memories background usage is not counted"
+	static let settingsOTelNotCountedHint = "Turn on collection and allow the Codex configuration change to count it."
+	static let settingsOTelConsentTitle = "Collection needs a Codex configuration change"
+	static let settingsOTelConsentFile = "File: ~/.codex/config.toml"
+	static let settingsOTelConsentBody = "Only this block is appended; nothing else changes. It is removed when collection is turned off. Takes effect after Codex restarts."
+	static let settingsOTelWriteAndOn = "Write and turn on"
+	static let settingsOTelSelfConfigure = "I'll configure it"
+	static let settingsOTelConflict = "Codex already has another OTel configuration. AgentDeck will not overwrite it. Merge the connection configuration yourself."
+	static let settingsOTelReceiverOnly = "Turn on receiver only"
+	static let settingsOTelWritten = "Codex configuration updated · Takes effect after Codex restarts"
+	static let settingsOTelRefused = "Could not update the Codex configuration; nothing was changed. Retry or configure it yourself."
+	static let settingsOTelSelfConfigured = "Connection configuration is shown below; merge it into your Codex configuration"
+	static let settingsOTelRemoved = "Removed AgentDeck's block from the Codex configuration · Codex stops exporting after restart"
+	static let settingsOTelRestoreIncomplete = "The Codex configuration was changed elsewhere; AgentDeck left it untouched. Check the [otel] section of ~/.codex/config.toml."
+	static let settingsOTelUserConfigKept = "Receiver turned off · Your own Codex OTel configuration was not changed"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -491,7 +527,8 @@ enum DesktopCopy {
 		settingsTitle, settingsGroupGeneral, settingsGroupMenuBar,
 		settingsLoginItem, settingsLoginItemNote, settingsLoginItemRefused,
 		settingsLoginItemApproval, settingsAutomaticUpdate,
-		settingsAutomaticUpdateNote, settingsMenuBarValue,
+		settingsAutomaticUpdateNote, settingsGroupLiveUsage, settingsOTel, settingsOTelHint, settingsOTelPrivacy, settingsOTelViewConfiguration, settingsOTelHideConfiguration, settingsOTelPreviewNote, settingsOTelOff, settingsOTelUnknown, settingsOTelUnknownHint, settingsOTelUnconfigured, settingsOTelSetup, settingsOTelReady, settingsOTelCaptureOnly, settingsOTelCaptureHint, settingsOTelDisconnected, settingsOTelMemoriesOff, settingsOTelMemoriesOffHint, settingsOTelMemoriesStopped, settingsOTelMemoriesStoppedHint, settingsOTelNotCounted, settingsOTelNotCountedHint, settingsOTelConsentTitle, settingsOTelConsentFile, settingsOTelConsentBody, settingsOTelWriteAndOn, settingsOTelSelfConfigure, settingsOTelConflict, settingsOTelReceiverOnly, settingsOTelWritten, settingsOTelRefused, settingsOTelSelfConfigured, settingsOTelRemoved, settingsOTelRestoreIncomplete, settingsOTelUserConfigKept,
+		settingsMenuBarValue,
 		settingsMenuBarValueNote, settingsMenuBarValueCost,
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,

@@ -176,7 +176,8 @@ func TestUsagePartitionMigrationPreservesFactsAndRollsBackAtomically(t *testing.
 		t.Fatal(err)
 	}
 	defer db.Close()
-	old := migrations[:len(migrations)-1]
+	// Versions 1-31: the schema immediately before migration 32.
+	old := migrations[:31]
 	if err := migrate(ctx, db, old); err != nil {
 		t.Fatal(err)
 	}

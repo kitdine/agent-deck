@@ -1555,7 +1555,7 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 		await runQuotaCommand(["desktop", "quota-statusline", enabled ? "enable" : "disable"])
 	}
 
-	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(
+	func runQuotaCommand<Value: Codable & Equatable & Sendable>(
 		_ subcommand: [String],
 		requestTimeout: Duration? = nil
 	) async -> DesktopQuotaTransportOutcome<Value> {
@@ -1582,6 +1582,120 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 			return .undecodable
 		}
 		return .decoded(envelope.data)
+	}
+}
+
+/// telemetry.status as the App reads it (cmd/agentdeck telemetry status,
+/// field names from the reviewed CLI specimen). Preference, listener fact,
+/// last observation, metering capability and Codex configuration facts are
+/// separate fields; nil stays unknown and is never inferred from another.
+public struct DesktopTelemetryStatusV1: Codable, Equatable, Sendable {
+	public let receiver: String
+	public let listener: String
+	public let listenerReason: String?
+	public let port: Int
+	public let producerConfigured: String
+	public let lastReceivedAt: String?
+	public let lastRefusedAt: String?
+	public let metering: String
+	public let pendingObservations: Int
+	public let codexMemories: String
+	public let codexExporter: String
+
+	public init(
+		receiver: String, listener: String, listenerReason: String? = nil, port: Int = 4318, producerConfigured: String = "unknown",
+		lastReceivedAt: String? = nil, lastRefusedAt: String? = nil, metering: String, pendingObservations: Int = 0,
+		codexMemories: String = "unknown", codexExporter: String = "unknown"
+	) {
+		self.receiver = receiver
+		self.listener = listener
+		self.listenerReason = listenerReason
+		self.port = port
+		self.producerConfigured = producerConfigured
+		self.lastReceivedAt = lastReceivedAt
+		self.lastRefusedAt = lastRefusedAt
+		self.metering = metering
+		self.pendingObservations = pendingObservations
+		self.codexMemories = codexMemories
+		self.codexExporter = codexExporter
+	}
+
+	public var receiverEnabled: Bool { receiver == "enabled" }
+
+	enum CodingKeys: String, CodingKey {
+		case receiver, listener, metering, port
+		case listenerReason = "listener_reason"
+		case producerConfigured = "producer_configured"
+		case lastReceivedAt = "last_received_at"
+		case lastRefusedAt = "last_refused_at"
+		case pendingObservations = "pending_observations"
+		case codexMemories = "codex_memories"
+		case codexExporter = "codex_exporter"
+	}
+}
+
+/// telemetry.enable / telemetry.disable. codexConfig is written, removed,
+/// restore_incomplete or unchanged.
+public struct DesktopTelemetryReceiverResultV1: Codable, Equatable, Sendable {
+	public let receiver: String
+	public let codexConfig: String
+	public let codexExporter: String
+
+	public init(receiver: String, codexConfig: String = "unchanged", codexExporter: String = "unknown") {
+		self.receiver = receiver
+		self.codexConfig = codexConfig
+		self.codexExporter = codexExporter
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case receiver
+		case codexConfig = "codex_config"
+		case codexExporter = "codex_exporter"
+	}
+}
+
+/// telemetry.config-preview with the local token redacted. The App never
+/// asks for the token.
+public struct DesktopTelemetryPreviewV1: Codable, Equatable, Sendable {
+	public let snippet: String
+	public let applied: Bool
+
+	public init(snippet: String, applied: Bool = false) {
+		self.snippet = snippet
+		self.applied = applied
+	}
+}
+
+public protocol TelemetryTransport: Sendable {
+	func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1>
+	/// writeCodexConfig is the user's consent to append the managed Codex
+	/// block; a refused write changes nothing and is undecodable here.
+	func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1>
+	func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1>
+	func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1>
+}
+
+extension EmbeddedHelperRunner: TelemetryTransport {
+	public func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1> {
+		await runQuotaCommand(["telemetry", "status"])
+	}
+
+	public func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		await runQuotaCommand(["telemetry", "enable"] + (writeCodexConfig ? ["--write-codex-config"] : []))
+	}
+
+	public func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		await runQuotaCommand(["telemetry", "disable"])
+	}
+
+	public func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1> {
+		await runQuotaCommand(["telemetry", "config-preview"])
+	}
+
+	/// The App-attached listener: `telemetry serve --owner app` exits when the
+	/// App closes its stdin, so it never outlives the App.
+	public func telemetryListenerCommand() throws -> (executableURL: URL, arguments: [String], environment: [String: String]) {
+		(try embeddedHelperURL(), ["telemetry", "serve", "--owner", "app"], environment)
 	}
 }
 

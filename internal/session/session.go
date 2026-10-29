@@ -318,6 +318,10 @@ func scanMode(ctx context.Context, executor sessionExecutor, paths []source, pro
 			return ScanResult{}, err
 		}
 		registered[path] = true
+		if IsTelemetrySource(path) {
+			// Projected from OTel, never a file: inventory cannot remove it.
+			continue
+		}
 		registeredIdentities[identity] = append(registeredIdentities[identity], path)
 		p, found := observed[path]
 		if (!found && fullSet) || (found && (!p.stable || p.identity != identity || p.size != size || p.modifiedAt != modified || p.changedAt != changed || int64(p.priority) != priority || parser != ParserVersion)) {
@@ -966,7 +970,7 @@ func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool)
 }
 
 func removeMissingSourcesExec(ctx context.Context, executor sessionExecutor, seen map[string]bool) error {
-	rows, err := executor.QueryContext(ctx, "SELECT source_path FROM session_sources WHERE identity != ?", replaceDocumentsSourceIdentity)
+	rows, err := executor.QueryContext(ctx, "SELECT source_path FROM session_sources WHERE identity != ? AND substr(source_path,1,5) != 'otel:'", replaceDocumentsSourceIdentity)
 	if err != nil {
 		return err
 	}
@@ -1727,7 +1731,8 @@ func ShowWithActivity(ctx context.Context, db *sql.DB, client, id string, includ
 	if err = docs.Err(); err != nil {
 		return r, err
 	}
-	if includeActivity {
+	// A projected OTel source has no file, so it has no activity details.
+	if includeActivity && !IsTelemetrySource(r.SourcePath) {
 		r.Activity, err = activity.ReadDetails(r.SourcePath, client, id)
 		if err == nil {
 			r.ActivitySummary = SummarizeActivity(r.Activity)

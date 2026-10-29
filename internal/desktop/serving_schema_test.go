@@ -14,21 +14,24 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Schema 31's published format and canonical fact layout are unchanged by
-	// migration 32. Exercise the old header against the upgraded state reader.
-	full.Header.Generation.CoreSchema = 31
-	bytes, err := encodeServingSnapshot(full)
-	if err != nil {
-		t.Fatal(err)
+	// Schema 31's and 32's published format and canonical fact layout are
+	// unchanged by migrations 32 and 33. Exercise each old header against the
+	// upgraded state reader.
+	for _, schema := range []int{31, 32} {
+		full.Header.Generation.CoreSchema = schema
+		bytes, err := encodeServingSnapshot(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
+			t.Fatal(err)
+		}
+		old, err := s.ReadServingSnapshot(ctx)
+		if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
+			t.Fatalf("compatible schema %d publication lost or redated: %v", schema, err)
+		}
 	}
-	if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
-		t.Fatal(err)
-	}
-	old, err := s.ReadServingSnapshot(ctx)
-	if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
-		t.Fatalf("compatible publication lost or redated: %v", err)
-	}
-	for _, schema := range []int{30, 33} {
+	for _, schema := range []int{30, 34} {
 		full.Header.Generation.CoreSchema = schema
 		bytes, err := encodeServingSnapshot(full)
 		if err != nil {
@@ -41,7 +44,7 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 			t.Fatalf("unknown schema %d accepted: %v", schema, err)
 		}
 	}
-	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(31, 33) {
+	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(33, 32) || compatibleServingCoreSchema(31, 34) || compatibleServingCoreSchema(32, 34) {
 		t.Fatal("schema exception widened to downgrade or future migration")
 	}
 }

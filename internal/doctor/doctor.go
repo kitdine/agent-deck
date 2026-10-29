@@ -19,6 +19,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
@@ -160,6 +161,11 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 		report.add(Check{Name: "database", Status: "error", Code: "schema_incompatible"})
 	} else if err = s.checkUsage(ctx, database, &report, hasToolCalls); err != nil {
 		report.add(Check{Name: "usage", Status: "error", Code: "schema_incompatible"})
+	}
+	// Known capture gap: Codex Memories runs background requests that only
+	// OTel records, and collection is off. Reported only when it applies.
+	if config, err := telemetry.LoadConfig(s.StateRoot); err == nil && !config.Enabled && telemetry.ReadCodexFacts(s.Home, config.Port).NeedsCollection() {
+		report.add(Check{Name: "telemetry", Status: "warning", Code: telemetry.WarningMemoriesNotCounted, Reason: telemetry.WarningMemoriesNotCounted, Recovery: "agentdeck telemetry enable --write-codex-config"})
 	}
 	sessionHealth, err := session.CheckHealth(ctx, s.StateRoot, full)
 	if err != nil {

@@ -52,6 +52,9 @@ const (
 	ScanBegin         Stage = "scan.begin"
 	ScanEnd           Stage = "scan.end"
 	ResourceLifetime  Stage = "resource.lifetime"
+	OTelAck           Stage = "otel.ack"
+	OTelNormalized    Stage = "otel.normalized"
+	OTelSend          Stage = "otel.send"
 
 	// Usage sub-stages locate the P09 critical path; nested spans overlap.
 	UsageSource          Stage = "usage.source"
@@ -75,7 +78,7 @@ const (
 var goStages = map[Stage]bool{
 	JobStart: true, IngestRead: true, IngestReduce: true, IngestWrite: true,
 	ProjectionDone: true, PublicationCommit: true, SourceWritten: true,
-	ScanBegin: true, ScanEnd: true, ResourceLifetime: true,
+	ScanBegin: true, ScanEnd: true, ResourceLifetime: true, OTelAck: true, OTelNormalized: true, OTelSend: true,
 	UsageSource: true, UsagePrepare: true, UsagePublicationWait: true, UsagePublication: true,
 	UsageSessionRebuild: true, UsageCommit: true, UsageOrphanScan: true, UsageOrphanCleanup: true,
 	UsagePriceResolver: true, UsageEventsRange: true, UsageProjectedInputs: true, UsagePresentation: true,

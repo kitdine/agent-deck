@@ -763,7 +763,7 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let popover = MenuBarSurfaceView(model: model, height: MenuBarGeometry.maximumHeight)
 			.environment(\.colorScheme, .dark)
-		let settings = SettingsWindowView(preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences))
+		let settings = SettingsWindowView(preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences), telemetrySettings: makeTelemetrySettingsController())
 			.environment(\.colorScheme, .dark)
 		let providers = ProviderMenuView(model: multiTargetModel, dismiss: {})
 			.environment(\.colorScheme, .dark)

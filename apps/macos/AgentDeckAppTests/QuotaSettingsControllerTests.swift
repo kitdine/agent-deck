@@ -863,7 +863,7 @@ final class SettingsWindowLayoutTests: XCTestCase {
 			alerts: false, thresholds: [75, 90], resetNotice: true, statusline: false
 		))
 		let quotaSettings = makeQuotaSettingsController(preferences: preferences, transport: transport)
-		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
 		controller.show()
 		let window = try XCTUnwrap(controller.window)
 		defer { window.close() }
@@ -913,7 +913,7 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		let quotaSettings = makeQuotaSettingsController(
 			preferences: preferences, transport: transport, notifications: StubNotificationPermission(granted: false)
 		)
-		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
 		controller.show()
 		let window = try XCTUnwrap(controller.window)
 		defer { window.close() }

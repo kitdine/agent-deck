@@ -12,6 +12,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
@@ -262,6 +263,9 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	if err == nil && !metadataOnly {
 		err = finishAcceptedInventory(ctx, sessions, r.id)
+	}
+	if err == nil && !metadataOnly {
+		_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
 	}
 	if err != nil {
 		finishDomainInventory(core, r.id, err)

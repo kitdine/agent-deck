@@ -124,11 +124,11 @@ final class DesktopCopyTests: XCTestCase {
 		let expected: [String: [String: String]] = [
 			"en": [
 				DesktopCopy.settingsAutomaticUpdate: "Automatically update local data",
-				DesktopCopy.settingsAutomaticUpdateNote: "Update when logs change, without an interval. Manual updates remain available when off.",
+				DesktopCopy.settingsAutomaticUpdateNote: "Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately.",
 			],
 			"zh-Hans": [
 				DesktopCopy.settingsAutomaticUpdate: "自动更新本地数据",
-				DesktopCopy.settingsAutomaticUpdateNote: "日志变化时更新，无需设置周期。关闭后仍可手动更新。",
+				DesktopCopy.settingsAutomaticUpdateNote: "日志变化时更新，无需设置周期。关闭后仍可手动更新；OTel 采集单独控制。",
 			],
 		]
 		for (language, values) in expected {

@@ -468,16 +468,18 @@ final class SettingsWindowController {
 	private(set) var window: SettingsWindow?
 	private let preferences: DesktopPreferences
 	private let quotaSettings: QuotaSettingsController
+	private let telemetrySettings: TelemetrySettingsController
 
-	init(preferences: DesktopPreferences, quotaSettings: QuotaSettingsController) {
+	init(preferences: DesktopPreferences, quotaSettings: QuotaSettingsController, telemetrySettings: TelemetrySettingsController) {
 		self.preferences = preferences
 		self.quotaSettings = quotaSettings
+		self.telemetrySettings = telemetrySettings
 	}
 
 	func show() {
 		if window == nil {
 			let hosting = FittingSizeHostingController(
-				rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings)
+				rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
 			)
 			let created = SettingsWindow(contentViewController: hosting)
 			created.title = t(DesktopCopy.settingsTitle)

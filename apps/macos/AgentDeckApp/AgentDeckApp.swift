@@ -93,6 +93,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let switchController: SwitchController
 	private let model: MenuBarViewModel
 	private let quotaSettings: QuotaSettingsController
+	private let telemetrySettings: TelemetrySettingsController
 	private let settingsController: SettingsWindowController
 	private let periodicDriver: DesktopRefreshPeriodicDriver
 	private let automaticRefreshEnabled: Bool
@@ -198,12 +199,24 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		self.quotaSettings = quotaSettings
+		let telemetrySettings = TelemetrySettingsController(
+			transport: runner,
+			supervisor: TelemetryListenerSupervisor(
+				command: { [runner] in try runner.telemetryListenerCommand() },
+				// Counted background usage changed: a finite round settles and
+				// publishes it like any other source change.
+				publicationNeeded: { [weak coordinator] in
+					Task { @MainActor in await coordinator?.requestFullRefresh(trigger: .sourceChange) }
+				}
+			)
+		)
+		self.telemetrySettings = telemetrySettings
 		model = MenuBarViewModel(
 			coordinator: coordinator,
 			switchController: switchController,
 			preferences: preferences
 		)
-		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
 		super.init()
 	}
 
@@ -268,6 +281,9 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 				guard let self else { return }
 				self.automaticUpdates?.start()
 				self.startBackgroundSchedules()
+				// An enabled receiver listens while the App runs; restore
+				// never waits for it (ux/settings.md).
+				await self.telemetrySettings.load()
 			}
 		}
 		#if DEBUG
@@ -285,6 +301,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			preferences.automaticUpdateDidChange = nil
 			automaticUpdates?.stop()
 			refreshCoordinator.stopAppWork()
+			telemetrySettings.stop()
 			PerfTrace.flush()
 		quotaSchedule?.cancel()
 		periodicDriver.cancel()

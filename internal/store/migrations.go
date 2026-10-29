@@ -320,6 +320,9 @@ var migrations = []migration{
 	}},
 	{version: 31, apply: initializeServingStorage},
 	{version: 32, apply: initializeUsagePartitions},
+	// Migration 33 adds sanitized OTel observations, the journal cursor and
+	// receiver coverage. It changes no canonical usage fact.
+	{version: 33, apply: initializeTelemetryStorage},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (
