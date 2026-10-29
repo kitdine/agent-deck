@@ -1010,3 +1010,42 @@ Task checkpoint：ad-scan-performance-doc-perf；content_state `3a3f141f9ebaedd5
 下一步指令：复评：scan-performance / tasks.md
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+
+## Round 20 — 2026-10-29
+
+## 📋 OTel 设计变更批量独立评审 — performance-evaluation.md
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+P05 从正式样本、pilot、超时与统计分类表移出；E6 明确为正确性验收，OTel 打点保留为诊断，其余十项方法不变。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档差分、状态转换推演、现有源码/SQL 与标本核对；未参与本轮设计，未委派。
+- Scope：P05/E6 移出及需求、Task 7/8、测量方法的交叉核对。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；document blob `913a03fa724daca96e2e628ef6b4f9e35269fc08`；digest `9f4e5606b388544944cfa15562a690a7d3c0b5133d529d3c94d553e13487df8e`。
+- ContentState：`scan-perf-otel-docreview-20261029-perf-0SDA62-state`；WorkUnit `scan-performance:performance-evaluation.md`；dispatch `ad-scan-performance-doc-perf`。
+- Evidence：本轮 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 均通过。结构检查不替代语义评审。CEv1 入口查询两项 required criteria 均缺本目标证据，旧观察不重标；最终结果以本轮完成门禁字段为准。
+- 变更未改变 P01–P04/P06–P11 的采样、ABBA/配对/两臂并列分类。既有 Round 19 的 SP-PE-R18-F1 关闭处置保留；未变方法复用既有语义评审，不重跑性能批次。tasks.md:194 残留的 P05 单臂统计义务属于任务分解，已由其本轮 SP-TASKS-R19-F2 承接，不是本文件缺陷。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`。只更新评审、矩阵与协调/证据，保留现有产品改动；未提交、推送或运行真实配置变更。
+
+Task checkpoint：ad-scan-performance-doc-perf；content_state `scan-perf-otel-docreview-20261029-perf-0SDA62-state`；gate VERIFIED。
+提交建议：门禁已 VERIFIED；在独立授权下提交 performance-evaluation.md、本轮评审记录及对应矩阵状态；可与修复完成后的设计批次统一交付。
+推送建议：门禁已 VERIFIED；核验提交范围、署名/SSH 签名与远端，再另行授权推送 origin/feature/scan-performance；当前远端未核验。
+
+CEv1 收口：标准 gate-status 查询返回 VERIFIED；两项 required criteria 的结构证据通过，独立评审证据为 pass，无 unresolved candidate impact。6 个状态、12 个观察及 24 条关系已读回核验；关系批次预检 24/24 ok。未查询 Topic 门禁，因为仍有未完成设计与实现。

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-27
+updated: 2026-10-29
 ---
 
 # 性能评估与测量契约
@@ -9,7 +9,8 @@ updated: 2026-10-27
 依赖 [需求](requirements.md) 和 [架构](architecture.md)。本文规定 P01–P11 的唯一测量方法、
 设计阶段的可测性判定、候选采用规则、阶段划分与最终对比报告的方法。2026-10-27 用户决定本 topic 不设任何
 具体性能指标、只做优化：本文不含数值门，测量结果只用于候选取舍与优化前后的对比报告。结果只记录在
-Neo4j CEv1 与各任务评审记录中。
+Neo4j CEv1 与各任务评审记录中。2026-10-29 起 P05 移出本契约：OTel 在本 topic 中是所修 Bug 的计量来源，
+不是性能目标（见[需求·OTel](requirements.md#otel)）；P05 的编号保留不复用，下文不再测量或报告它。
 
 2026-10-22 全 topic 重新设计后，本文取代此前所有测量口径、停止决定、撤销与有界接受。
 历史实验、私有 A/B 与撤回口径保留在 Git 历史（`c376984`、`c6ea1ca` 中的本文件及 `tasks.md`）
@@ -67,7 +68,7 @@ Neo4j CEv1 与各任务评审记录中。
 | 选择 | `select.intent`、`select.layout.data` | view model 切换意图入口；新选择的数据视图布局 |
 | 启动 | `process.start`（内核记录的进程启动时间）、`app.ready`、`restore.identity`、`restore.decode`、`model.usable` | App 在 `applicationDidFinishLaunching` 中读 `proc_pid_rusage(getpid(), RUSAGE_INFO_V4)` 的 `ri_proc_start_abstime`（mach absolute time，不用 `sysctl KERN_PROC_PID` 的墙钟 `p_starttime`）；`applicationDidFinishLaunching`；恢复各段；model 首次可用 |
 | 更新 | `source.fsevent`、`job.enqueue`、`job.start`、`ingest.read/reduce/write`、`projection.done`、`publication.commit`、`publication.bound` | watcher 回调；scheduler；helper 各阶段；serving 写入；App 绑定 |
-| OTel | `otel.ack`（journal fsync 后）、`otel.normalized` | receiver；reconciler |
+| OTel（诊断，不属于报告项） | `otel.ack`（journal fsync 后）、`otel.normalized`、mock producer 的 `otel.send` | receiver；reconciler；`cmd/agentdeck-perf otel` |
 | 事务 | `tx.<domain>.<label>` 的 begin→commit/rollback 返回耗时 | store 写事务封装 |
 | 资源（终生） | Go helper/collector 退出前：`ru_maxrss`（字节）、user/sys CPU；App 另报 `ri_lifetime_max_phys_footprint`、`ri_pkg_idle_wkups`、`ri_interrupt_wkups` | Go 用标准库 `syscall.Getrusage(RUSAGE_SELF)`，不需要 CGO；App 用 `proc_pid_rusage(getpid(), RUSAGE_INFO_V4)` |
 | 资源（窗口） | `idle.window.begin/end` 时 App 的 user/sys CPU、`ri_resident_size`、`ri_pkg_idle_wkups + ri_interrupt_wkups` 当前值 | `PerfDriver` 在窗口两端各读一次 `proc_pid_rusage(getpid())`；用于 P06，见下 |
@@ -238,7 +239,7 @@ load average，随样本保存，但不因负载使样本无效。运行单元�
 | 外部打断 | 另一程序夺走已显示 popover 的前台（驱动记 `driver.interrupted`）、运行单元期间屏幕锁定 | 不计入分布，不使批次无效：该次尝试移到批次的 `interrupted/` 留档，`stats` 报告 `interrupted_reruns`，等待解锁后同一运行单元重跑；同一单元第 5 次仍被打断则记工具无效（2026-10-25 用户决定） |
 | 工具无效 | 刺激未路由、环境条件不满足、oracle 失败、跨午夜、打点缺失 | 整批作废；修复工具后整批重测，原批保留在 CEv1 作为无效记录 |
 
-终点超时：P01/P03 5 s，P02/P04 30 s，P05/P10 30 s，P11 60 s。
+终点超时：P01/P03 5 s，P02/P04 30 s，P10 30 s，P11 60 s。
 
 **对比报告（见需求“性能衡量与报告”）。** 对比批次同时包含基线臂与被比较臂，两臂按正式样本表的运行单元数各跑一份，
 运行单元按序号配对交错：奇数序号先基线后被比较，偶数序号反之。比值与区间只是报告内容，不判通过或失败；
@@ -251,7 +252,6 @@ load average，随样本保存，但不因负载使样本无效。运行单元�
 | 配对差值 | P06（3） | 每个配对序号的“被比较 − 基线”CPU、稳定 RSS 与维护激活数，逐对列出并给三对的中位数；不出区间 |
 | 两臂并列 | P07（3 个运行单元，每单元一次全量重建；100 次增量只在第 3 个运行单元的重建之后执行，与正式样本表的“3 次全量重建 + 100 次增量”一致）、P11 完整历史（5） | 两臂各自的统计量并列：P07 每次重建的聚合 RSS 上界，以及该臂全部事务（3 次重建与 100 次增量中的全部 `tx.*`）的 p95、max；P11 完整历史的 median 与 max；另给中位数之比，不出区间 |
 | 确定性计数 | P08（每场景 3） | 两臂各自的计数（3 次须完全相同）与 append 界内差值，逐项并列 |
-| 仅绝对值 | P05（100 个事件） | 新路径没有基线臂，只报告被比较臂的统计量 |
 
 **工具 pilot** 只验证工具与环境能产出完整、有效的样本，不产生对比结果。每个条件在正式批次前
 按下表运行，工具无效必须为 0，否则先修工具。E0 在 `measurement-harness` 中跑完全部条件；
@@ -262,7 +262,6 @@ load average，随样本保存，但不因负载使样本无效。运行单元�
 | P01 首击 / 重复 / 重建中 | 20 / 20 / 20 + 20 | `measurement-harness` |
 | P02、P04 | 各 20 次启动 | `measurement-harness` |
 | P03 | 每维 20，共 60 | `measurement-harness` |
-| P05 | 20 个事件 | `otel-capture-and-reconciliation`，在其正式批次前（receiver 在该任务前不存在） |
 | P06 | 1 次 × 5 min 窗口，核对窗口两端读数与 RSS 序列完整；不按 30 min 判定 | `measurement-harness` |
 | P07 | 1 次全量重建 + 20 次增量 | `measurement-harness` |
 | P08 | 每场景 2 次，计数必须相同 | `measurement-harness` |
@@ -284,7 +283,7 @@ CEv1 证据记录：工具源码内容摘要、App/helper/framework 二进制 SH
 
 ## 逐项可测性判定
 
-所有十一项在设计阶段判定为**可测**。下表即实现时必须使用的方法；各项只报告，不设数值门。
+除已移出的 P05 外，其余十项在设计阶段判定为**可测**。下表即实现时必须使用的方法；各项只报告，不设数值门。
 
 | ID | 前置状态与刺激 | 起点 → 终点 | 正式样本 | 可测性与报告 |
 | --- | --- | --- | --- | --- |
@@ -292,7 +291,6 @@ CEv1 证据记录：工具源码内容摘要、App/helper/framework 二进制 SH
 | P02 | 进程退出后以 `open -n` 启动 Perf 构建，有效 serving 缓存，工作副本模板数据库 | 主值：`app.ready` → `model.usable`；另报 `process.start` → `app.ready`，以及 `model.usable` 后首次点击的 `input.event` → `frame.vsync`（计入 P01 首击层） | 100 次启动 | 可测。启动时间为暖页缓存口径（不清 OS 缓存，需 root 的 purge 不使用），在记录中声明 |
 | P03 | 已恢复 publication、popover 打开；按固定轮转切换 client / period / panel | `select.intent` → 新 key 的 `frame.vsync` | 每维 100，共 300（4 个运行单元 × 每维 25） | 可测。每维分别报告；期间 helper/扫描/OTel 打点必须为零，非零为产品失败（需求的行为要求） |
 | P04 | 无 serving 缓存、工作副本已提交库；启动后驱动在 `app.ready` 立即打开 popover | `app.ready` → 首个数据帧 `frame.vsync` | 100 次启动 | 可测。与 P11 分开批次 |
-| P05 | OTel 已启用、App 运行、popover 打开；`cmd/agentdeck-perf otel` 以种子向 loopback receiver 发送可计量事件 | `otel.ack` → 含该事件的 `frame.vsync`；另报 producer 发送 → `otel.ack` | 100 个事件 | 可测（mock producer）。真实 Codex producer 的端到端 freshness 另报 |
 | P06 | App 运行、自动更新开、无文件变化/无 OTel、工作副本已提交；窗口定义见下 | CPU、稳定 RSS、维护激活数，口径见下 | 每臂 3 × 30 min | 可测。“新增”= 被比较臂 − 同条件基线臂（同一 run 序号配对）；每次运行分别报告。另报 App 总量与 OS 唤醒差 |
 | P07 | 工作副本空库全量重建，期间同时执行 P01 重建层；以及 100 次 P10 增量 | RSS：所有时间上重叠的 helper/collector 进程自报的 `ru_maxrss` 求和（保守上界）；事务：全部 `tx.*` 耗时 | 3 次全量重建 + 100 次增量；事务取全部 | 可测。每个进程的峰值 RSS ≥ 它在任一时刻的 RSS，故求和 ≥ 真实聚合 RSS 峰值；求和即真实聚合 RSS 峰值的上界，不需要进程树追踪。报告按需求的 RSS 口径；`phys_footprint` 只由 App 另报。事务 p95 与 max 按全部事务计 |
 | P08 | 工作副本已提交库：no-op 扫描；一次 append（每个今天相关文件追加一条） | ingest 计数器：decode 记录数、读取字节、导入行数 | 每场景 3 次（结果须完全相同） | 可测。确定性计数，报告精确值；no-op decode 为 0 与第二次导入无重复是行为要求，违反即产品失败；不与 B0 比较，B0 也没有这些计数器。append 上界 = 本次实际追加字节 + 声明 anchors，anchors 按每个被追加文件 2 个 consumer（usage、session）× min(4096, 追加前大小) 计（产品 `ingest.Coordinator.Plan` 的校验后缀），由 append 命令按写入内容报告，不从实读量反推；统计输出实读字节、上界、差值与是否在界内 |
@@ -326,7 +324,7 @@ CEv1 证据记录：工具源码内容摘要、App/helper/framework 二进制 SH
 3. worker 数在 1/2/4/8 中按完整周期选择：增大 worker 须在 3 对候选 pilot 中均带来整周期收益，且不使聚合 RSS
    上界与写事务 max 变差，否则保留较小值。
 4. 多进程 parser 须相对最佳单进程多线程在候选 pilot 中整周期均改善，且不引入 IPC 失败或崩溃。
-5. 额外常驻 Go 引擎只在 P10/P05 分段证明 helper 启动/身份重建占主导，或持续 OTel 接收需要时选入；
+5. 额外常驻 Go 引擎只在 P10 分段证明 helper 启动/身份重建占主导，或持续 OTel 接收需要时选入；
    选入需设计增补与评审。
 6. 一个改动改善某些项、使另一些项变差时，保留与否在该任务评审记录中写明取舍，由最终对比报告呈现给用户。
 
@@ -340,8 +338,8 @@ CEv1 证据记录：工具源码内容摘要、App/helper/framework 二进制 SH
 | E3 | 采集与资源优化：P07–P09 相对 S0（P09 另对 B0）的对比；并行 reduce 与短事务的等价性 | `parallel-source-pipeline` |
 | E4 | 更新路径优化：P10 相对 S0 的对比；增量与 full oracle 等价 | `incremental-update` |
 | E5 | 生命周期与空闲：P06 对比；事件合并、CLI 衔接；常驻扩展是否需要 | `event-updates-and-cli` |
-| E6 | OTel：P05 绝对值及其对 P07/P10 的影响；身份与去重能力门 | `otel-capture-and-reconciliation` |
-| E7 | 最终内容状态上 P01–P11 全矩阵对 S0（P09 另对 B0）的 ABBA 对比报告，交用户判断 | `cross-surface-acceptance` |
+| E6 | 不产生性能批次：OTel 的会话所有权、支持表与计量正确性按该任务准则验收（2026-10-29 起） | `otel-capture-and-reconciliation` |
+| E7 | 最终内容状态上 P01–P11（不含已移出的 P05）全矩阵对 S0（P09 另对 B0）的 ABBA 对比报告，交用户判断 | `cross-surface-acceptance` |
 
 各阶段的对比批次只用于任务评审中的取舍记录；E7 的对比报告是本 topic 唯一的交付性能结论。
 
