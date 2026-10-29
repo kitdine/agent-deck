@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-27
+updated: 2026-10-29
 ---
 
 # 展示恢复、事件更新与有界采集
@@ -88,7 +88,7 @@ OTel 接收必须持续存活，可由显式启用的 App 随行 receiver 满足
 与 popover 快开收益分开评估。OTel off 时快开不依赖 receiver。
 
 实施顺序：测量工具与基线 → 打开路径与启动恢复 ∥ 并行 reduce 与短事务 → 增量更新 →
-文件事件合并与 CLI 衔接 → OTel → 全矩阵验收。若 P10/P05 分段证明 helper 启动/身份重建占主导，
+文件事件合并与 CLI 衔接 → OTel（Bug 修复载体，见需求·OTel）→ 全矩阵验收。若 P10 分段证明 helper 启动/身份重建占主导，
 才采用下面的常驻扩展。
 
 ## 打开路径
@@ -454,7 +454,7 @@ Plan 的 union range 与 captured-range validation 保留，不能为速度绕�
 | source_generation_heads | source + active generation，完整性/consumer watermarks | source 重建完成后 metadata swap |
 | derived_partition_state | partition key、input revisions、algorithm/pricing versions、dirty | fact publication 同事务标 dirty |
 | serving_publications | generation vector、coverage、file checksum | 已提交投影的可见 publication |
-| telemetry_observations/reconciliation | observation key、exact request identity、ownership、state | journal cursor + observation + canonical decision |
+| telemetry_observations/contributions | observation key、conversation、ownership（capture_only/pending/jsonl_owned/otel_owned）、contribution | journal cursor + observation + canonical decision 同事务 |
 
 现有 canonical event IDs、source ownership、对外字段和 protected tables 不变。
 为了 chunk 提交与 rewrite 原子性同时成立，rebuild 必须以 versioned shadow facts + active
@@ -496,11 +496,13 @@ partial publication，但依赖 session 的字段不得借旧 revision 声称新
 本轮已读取：默认 exporter=none；批处理异步并在 shutdown flush；SSE response.completed 有 token counts；
 WebSocket 有独立 event。官方页面没有保证本项目需要的所有 exact request identity 与后台 root 关联。
 前述 Bug 的本机 0.162.0 隔离实验支持后台 memory token coverage，但没有完成 identity/transport 验收。
+2026-10-29 的 0.165.0 隔离生产者实验确定了下文“去重与源所有权”使用的身份事实，记录在该 Bug 同日评论。
 
 ### 配置与接收
 
-`telemetry config-preview` 生成供操作者审阅的 Codex `[otel]` 片段和本地 endpoint；
-`telemetry enable` 和 Settings 开关只写 AgentDeck 自己的 receiver 配置。两者都不改 `~/.codex/config.toml`。
+`telemetry config-preview` 生成供操作者审阅的 Codex `[otel]` 片段和本地 endpoint，不写任何文件。
+`telemetry enable` 和 Settings 开关写 AgentDeck 自己的 receiver 配置；只有用户明确同意（Settings 的“写入并开启”或
+CLI `--write-codex-config`）时，才按下文“Codex 配置读取与受管写入”修改 `~/.codex/config.toml`。
 GUI 字段供给：receiver_enabled 为偏好，listener_state 为运行事实，producer_configured/last_received
 为连接观察，metering_capability 为 reconciler 结果；缺失字段保持 unknown，不从开关推出 connected。
 producer 配置预览、接收失败后的真实开关状态与停止保留数据由 Settings UX 约束。
@@ -515,12 +517,37 @@ receiver 使用每 state root 随机本地 token（0600 保存），校验 `X-Ag
 token 不进入 status、日志、serving cache 或诊断记录。config-preview 默认隐藏，只有显式
 `--reveal-local-token` 输出可复制片段；loopback 本身不是来源真实性证明。
 
-允许字段白名单：producer/version、event kind、transport、record timestamp、observed timestamp、
+允许字段白名单：producer/version、event name（取 `event.name` 属性；OTLP `eventName` 字段在 0.165.0 是 tracing target，不作事件名）、
+originator、event kind、transport、record timestamp、observed timestamp、
 model raw identity、response/request/attempt/thread IDs（存在才收）、明确 source classification、
 input/output/cached/cache-write/reasoning token 与 token semantics。拒绝保留 arbitrary attributes/body，
 忽略 prompt、tool output、authorization、email、command 内容等，即使 producer 配置失误也不落盘。
 collector request body 上限 4 MiB，decode budget 有界；坏格式返回 400，超限 413，
 disk/backpressure 不可持久化返回 503。不得先返回成功再异步写盘。
+
+### Codex 配置读取与受管写入
+
+只读事实（Settings 打开、App 启动、listener 运行中每次检查 AgentDeck 配置时顺带比较 Codex 配置的 mtime）：
+用已依赖的 `pelletier/go-toml/v2` 解析用户级 `~/.codex/config.toml`，得到 `codex_memories`（`features.memories`
+显式 true/false，否则 unknown）与 `codex_exporter`（managed/agentdeck/other/absent/unknown，含义见 Settings UX）。
+解析失败、文件不存在或不可读都是 unknown；不执行 codex，不读取 profile 或命令行覆盖。
+
+联动规则：`receiver_enabled` 是用户偏好；App 只在 `receiver_enabled && codex_memories != off` 时启动随行 listener。
+listener 运行中发现 `codex_memories` 变为 off 即停止（记录覆盖区间结束原因 `codex_memories_off`），偏好不变；
+重新变为 on/unknown 后由 App 下次检查时启动。“需要采集的功能”集合目前只有 Memories；guardian 与压缩经支持表实验
+确认会产生无 JSONL 的用量后加入该集合，规则不变。
+
+受管写入（仅在用户同意后）：
+
+- 写入前重新读取并解析文件；存在 `[otel]` 表或 `otel.` 开头的点号键即 other，拒绝写入（`codex_otel_conflict`）。
+- 只在文件末尾追加：一个空行、`# BEGIN AgentDeck OTel (managed)`、`[otel]` 段（endpoint、`protocol = "json"`、
+  token header、`log_user_prompt = false`）、`# END AgentDeck OTel (managed)`。追加内容之外的字节保持不变。
+- 同目录临时文件写入、fsync、保留原权限后原子 rename；rename 前比较原文件内容摘要，期间被改动则放弃并报
+  `codex_config_write_failed`；写后重新解析，结果必须为 managed，否则恢复原字节并报同一错误。
+- 在 AgentDeck 状态目录（0600）记录受管段的内容摘要与写入时间；不复制或备份用户的其他配置内容。
+- 移除（关闭采集时）：仅当文件中恰有一对标记且其间字节摘要等于记录值时，删除这一段（含前导空行），同样原子写入；
+  否则不改文件并报 `codex_config_restore_incomplete`。Codex 自己重写配置导致标记丢失，按同一规则处理。
+- 写入与移除都不改变已统计数据、observations 或 journal；token 只出现在受管段与 AgentDeck 自己的 0600 文件中。
 
 ### Journal 与保留
 
@@ -538,26 +565,84 @@ segment 最大 8 MiB，总 journal cap 256 MiB，已成功规范化的 segments 
 
 ### 去重与源所有权
 
-observation 与 canonical request 分开。观察身份用于 delivery replay；canonical key 优先
-`producer instance + exact response_id`，其次经能力验证的稳定 request/attempt identity。
-JSONL envelope 的 response_id 与 OTel identity 必须通过隔离生产者实验精确等值核验。
-producer instance 的作用域及重启稳定性必须有证据，不能默认 conversation_id 唯一到每请求。
+2026-10-29 隔离生产者实验（codex-cli 0.165.0、SSE、Memories 开启、本地模拟模型服务）确认：
 
-同一 canonical request 只能有一个计量贡献；多个 observations 可以补字段和溯源。
-已确认等价时 OTel 提供经 adapter 验证的 usage 与模型观测，JSONL 补历史/thread context；
-模型字段保存 raw identity 与 provenance。只有确有生产者返回字段时才标记实际服务模型已知；
-配置模型/上下文 model tag 不能直接当成 A/B 服务端实际模型，缺失保持 unknown，交由价格专题处理。
-若二者 token 冲突，保留原 canonical contribution、标 conflict，不把较大值当真相。
-无 exact match 的重叠观测进入 pending，不相加、不用时间/model/token 猜测合并。
-只有经过测试证明的 non-overlap 来源和唯一 request identity 才能单独贡献 canonical usage。
+- 计量事件是 `event.name=codex.sse_event`、`event.kind=response.completed` 且带 token 计数的记录；
+  同一请求另有一条不带计数的 `response.completed` 流事件，不计量。计数与服务端 usage 逐项相等。
+- 事件带 `conversation.id`、`originator`、`model`、`app.version`；resource 有 `service.name`/`service.version`，
+  没有 `service.instance.id`。计量事件**不含** response/request id，无法逐请求与 JSONL 精确对账。
+- 主会话的请求写入以同一 id 命名的 rollout（其 `token_usage_record` 含 response id 与相同计数）；
+  后台 Memories 整理请求运行在自己的 `conversation.id` 下，该会话没有 rollout。
 
-能力状态：`disabled → capture_only → reconciled`。切到 reconciled 需要支持的 Codex 版本、
-SSE/WebSocket、normal/memory/guardian、retry/失败/中断及 JSONL 双格式的所有相关测试通过。
-未知 producer 版本回到 capture_only，保留 JSONL 既有计量并暴露补采未计入的原因。
-token counts 缺失保持 null，input cached/reasoning 是 component，不额外加到 input/output total。
-不把每个 SSE event 当调用，不从失败/中断虚构 usage；有明确实际 usage 的记录才进入 reconciliation。
+因此源所有权按**会话**判定，不按请求：
+
+| 状态 | 条件 | 计量 |
+| --- | --- | --- |
+| `capture_only` | producer（service.name + 版本）、transport 或事件形状不在支持表中 | 保存，不计入，状态说明原因 |
+| `pending` | 支持表内，settle 条件尚未满足 | 保存，不计入 |
+| `jsonl_owned` | 该会话存在 JSONL 证据（定义见下） | 会话全部用量以 JSONL 为准；OTel 只作溯源，永不计入 |
+| `otel_owned` | 支持表内，且 settle 后该会话仍不属于 JSONL | 每条计量事件产生一条 canonical 贡献 |
+
+- **JSONL 证据**只来自本地日志本身：`usage_events` 中 `client=codex`、`session_id=conversation.id` 且
+  `source_path` 不以 `otel:` 开头的事件，或最近一次有限 inventory 中会话 id 为该值的 Codex rollout 文件。
+  `usage_sessions`、会话索引与 `telemetry_sessions` 中由 OTel 建立的行都不是证据——它们是本主题自己的写入，
+  不能反过来证明 JSONL 所有。所有权每次 reconciliation 按同一谓词重新求值，与运行次数无关：
+  `otel_owned` 会话在后续 reconciliation、App/CLI 重启、journal 清理和全量 rebuild 之后保持 `otel_owned`，
+  直到出现 JSONL 证据。
+- settle 条件：观测接收后至少 10 分钟，且其后已完成一次覆盖 Codex 来源的有限 inventory 扫描，
+  扫描结果中没有该会话 id。等待不改变任何已提交总量，也不阻塞 popover 或其他发布。
+- 晚到 rollout：此后若出现同 id 的 JSONL 证据，该会话转为 `jsonl_owned`，在写入 JSONL 事实的同一事务中
+  撤销其 OTel 贡献、`usage_sessions` 中由 OTel 建立的首末时间与来源标记；任何已提交状态都不存在同一会话的两份贡献。
+  会话索引中的 `otel:` 来源随后由投影删除（见下），在此之前 JSONL 来源的优先级更高，读取面已只显示 JSONL 来源。
+- observation 身份是白名单化内容（含记录时间戳）的摘要，只用于 delivery replay 与重复导入的幂等。
+- 不按 timestamp/model/token 相似性匹配，不用 originator、模型名或配置推断会话归属。
+- 同会话内 JSONL 未记录的请求不由 OTel 补计：会话整体归 JSONL，遗漏作为已知限制报告，而不是重复计量。
+- 同一会话同一记录时间出现计数不同的计量事件时标 conflict，保留两者为证据，不选较大值、不计入。
+
+贡献写入 canonical usage facts：`client=codex`、`session_id=conversation.id`、原始 model、记录时间、
+input/cached/output/reasoning/cache_write 按 Codex JSONL 同一语义映射（cached 与 reasoning 为 component，
+不额外相加），`source_path` 为 `otel:` 加 observation key，使 pricing、分区重算、serving 发布沿用现有路径。
+observation 与贡献的对应关系单独记录，撤销与重放按它进行。`otel:` 来源不属于文件 inventory：
+orphan 清理与来源所有权检查跳过它；全量 rebuild 后由 reconciler 从持久的 observations 重新派生贡献，
+不依赖 journal 仍在。token/成本始终计入 All 与模型构成。
+
+会话记录、读取面与来源标记：
+
+- 真相源在 core：每个 `otel_owned` 会话在贡献的同一事务中写入 `usage_sessions`（client=codex、
+  session_id=`conversation.id`、首末时间取其贡献的记录时间）与 `telemetry_sessions`（client、session_id、
+  `source_kind='codex-otel-background'`、最后计量模型、首末时间、依据：支持表条目与 settle 完成时间）。
+- 读取面在会话索引：现有 `session list`、`session show` 与 popover 会话面板（`internal/session` 的 `List` /
+  `ShowMetadata` / `ShowWithActivity`，`internal/desktop` 的 `loadSessions`）都从会话索引的
+  `session_metadata JOIN session_sources ON source_path` 读取，不读 `usage_sessions`。因此由一个会话索引投影把
+  `telemetry_sessions` 写成索引来源，两表使用**同一个非空合成来源键** `otel:codex/<conversation.id>`：
+  `session_sources` 一行（`source_path` 与 `identity` 均为该键，size/mtime/cursor 为 0，`priority=-1`，低于文件来源的
+  0（归档）与 1（活动会话），不参与文件 identity/大小比较）；`session_metadata` 一行，`source_path` 为同一键（满足现有
+  非空外键与等值连接），project 为空、model 为最后计量模型、首末时间同 core；不写 `session_documents`，即没有正文
+  或标题。这与现有非文件合成来源 `agentdeck://replace-documents` 同类。投影幂等：会话索引被 purge、rebuild 或丢失后
+  从 `telemetry_sessions` 重新生成；core 中的撤销使投影删除对应 `otel:` 来源及其 metadata。
+- “没有文件路径”约束的是展示与文件 I/O，而不是关联键：凡把 `source_path` 当文件使用的读取方都先识别 `otel:` 前缀
+  并跳过文件访问——`ShowWithActivity` 的 `activity.ReadDetails`、会话查看器的 `os.Stat` 与 `activity.ReadDetailsPage`
+  对该来源返回“无活动明细”，不报来源缺失或文件不可读；文本输出中显示来源文件路径的位置对该来源省略路径。
+  JSON 的 `source_path` 字段保持该键原值（字段语义是来源标识），按 `path` 的会话排除按该键字面匹配。
+- 现有读取面的结果：`session list` 与 popover 会话面板把后台会话列为一个 Codex 会话，项目显示为未知（现有空项目
+  规则），可以按会话 id 追溯；`session show` 显示该会话的元数据与用量明细（`session_usage.go` 按
+  client/session_id 读取 `usage_events`，包含 `otel:` 贡献），转录部分为空，不再落入“缺少索引，请运行
+  session scan”的分支；`session search` 不会命中，因为没有正文。
+- 会话索引的文件 inventory 全集对账（删除 inventory 中不存在的来源）跳过 `otel:` 来源；用户的会话排除
+  （project/source/session/client）同样适用于投影，被排除的会话不再投影。
+- store 另提供只读查询（按 client 与 session id 批量取来源标记），作为 `auxiliary-session-classification`
+  采用的分类接口；它不是会话读取接口。带此标记的会话属于辅助会话（同 claude-mem 观察会话）。在该专题采用
+  标记之前，这些会话按上面的读取路径出现在工作视图中，数值正确但会话数偏多；这是跨主题依赖，不在本主题以
+  其他方式隐藏。
+逐会话记忆提取请求与其来源会话的关联需读取 Codex memories 状态库，不属于本主题，作为后续待办记录。
+
+能力状态：`disabled → capture_only → reconciled`。`reconciled` 表示接收到的 producer/版本/transport/事件形状
+在经实验验证的支持表中，按上表计量；支持表外一律 `capture_only`。0.165.0 SSE 的 `codex_exec` 已有上述实验依据；
+条目进入支持表前，实现须以同类隔离实验补齐并记录：WebSocket transport、Memories stage1 请求、交互式 TUI 与
+Desktop 的 service.name/originator、重试/失败/中断不产生虚构 usage、主会话压缩请求的表现。任一组合未验证则不入表。
+token counts 缺失保持 null，不把每个 SSE event 当调用，不从失败/中断虚构 usage。
 OTLP integer/string number 解码保留整数精度；负值、overflow、cached > input、reasoning > output
-或明确 total 与 components 冲突进入 invalid/conflict，不经 float 截断后计量。未知的 detail
+或明确 total 与 components 冲突进入 invalid，不经 float 截断后计量。未知的 detail
 保持 null，不能以 0 代替缺失。首版只支持经能力验证的 Codex producer，Claude 仍走 JSONL。
 
 新 source adapter 不改变 pricing 或父子/auxiliary 的展示决策；原始 model/thread/root 均保留

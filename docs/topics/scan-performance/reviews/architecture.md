@@ -566,3 +566,175 @@ SP-ARCH-R10-F1 closed：97–105 行区分端到端耗时与未定位的成本�
 Task checkpoint：ad-scan-performance-doc-arch；content_state `4ed215db32354821bc88b7cb2a36d9fa166120176c0bfe1bb3de381037d81a1b`；gate VERIFIED。
 提交建议：另行授权提交架构、对应评审记录及 Review 勾选，可等待整批修复完成后统一交付。
 推送建议：提交范围、署名、签名及远端核验后，另行授权推送 origin/feature/scan-performance；远端未核验。
+
+
+## Round 12 — 2026-10-29
+
+## 📋 OTel 设计变更批量独立评审 — architecture.md
+
+📊 总体评分：5/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+#### SP-ARCH-R12-F1 — P1：OTel 会话被自身写入误判为 JSONL 所有
+
+位置：`architecture.md:583,602–605`。
+- 行为风险：第一次 settle 后写入 OTel 贡献与 usage_sessions；下一轮因 usage_sessions 已存在该 id 而判 jsonl_owned，撤销或停止计入本来没有 rollout 的后台用量。
+- 证据：583 行把已提交 usage_sessions 作为 JSONL 会话依据，602 行又要求 OTel 会话写入同一表。当前 `internal/store/migrations.go:39` 的该表只有 client、session_id、first_at、last_at，没有 JSONL 来源列。按两条合同执行“无 rollout → settle → 写入 → 再 reconciliation”即可导出矛盾，无需运行旧实现证明新设计缺陷。
+- 处置：OPEN。
+💡 修复：给出来源可证明的 JSONL 所有权谓词，明确排除仅由 OTel 建立的 usage_sessions，保留真正晚到 rollout 的优先权；补入连续 reconciliation/restart/rebuild 场景。
+
+#### SP-ARCH-R12-F2 — P1：会话写入位置未连接现有会话读取面
+
+位置：`architecture.md:602–608`。
+- 行为风险：只写 usage_sessions 和 telemetry_sessions 不能让后台会话出现在现有 session list/show 或其消费者中，无法兑现“各自会话记录可追溯”；“采用分类标记前仍显示在工作视图”缺乏数据路径。
+- 证据：`internal/session/session.go:1635–1665` 的 List/ShowMetadata 从 session_metadata JOIN session_sources 读取，不读 usage_sessions；`internal/store/migrations.go:39` 的 usage_sessions 也没有该处声称保持为空的路径、项目、标题字段。原有 session list/show 是 `docs/specs/cli-design.md:1832` 起的产品表面。
+- 处置：OPEN。
+💡 修复：明确后台会话的持久化位置、现有列表/详情的读取适配与无正文/无文件路径行为，以及晚到 JSONL 后的替换边界；与 Task 7 对齐，不把来源标记查询接口当成完整会话读取接口。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+不再假设 OTel 存在 response id；支持表、settle、晚到 rollout 撤销和受管配置边界均已明确列出。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档差分、状态转换推演、现有源码/SQL 与标本核对；未参与本轮设计，未委派。
+- Scope：会话所有权、canonical 贡献、会话消费端及配置/联动依赖；不是未提交实现的产品评审。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；document blob `6d52fb7dda1dda378d7dadaf4028bbb6325fe240`；digest `3bc3dea9685d9780e92edb349c4cfe4d50d5902e4cfb3d08e5e0d26b13625743`。
+- ContentState：`scan-perf-otel-docreview-20261029-arch-0SDA62-state`；WorkUnit `scan-performance:architecture.md`；dispatch `ad-scan-performance-doc-arch`。
+- Evidence：本轮 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 均通过。结构检查不替代语义评审。CEv1 入口查询两项 required criteria 均缺本目标证据，旧观察不重标；最终结果以本轮完成门禁字段为准。
+- 以上是设计合同与现有消费者的差异，不是要求未完成实现提前通过。既有 Round 11 的归因修复仍关闭；本轮出现两个新的阻断问题后停止扩大运行验证。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`。只更新评审、矩阵与协调/证据，保留现有产品改动；未提交、推送或运行真实配置变更。
+
+CEv1 收口：标准 gate-status 查询返回 FAILED；两项 required criteria 的结构证据通过，独立评审证据为 fail，无 unresolved candidate impact。6 个状态、12 个观察及 24 条关系已读回核验；关系批次预检 24/24 ok。未查询 Topic 门禁，因为仍有未完成设计与实现。
+
+## Repair candidate — 2026-10-29（Round 12 后）
+
+修复方：Claude Code 主会话（`修复：scan-performance / architecture.md、ux/settings.md、tasks.md / …`）；未提交，工作区
+`agent-deck.scan-performance`。只改本记录两项发现所在段落，不改动其他设计。
+
+- SP-ARCH-R12-F1 -> repaired in candidate：“去重与源所有权”表中 `jsonl_owned` 改为引用新定义的 **JSONL 证据**：只来自
+  `usage_events` 中该会话非 `otel:` 来源的事件，或最近一次有限 inventory 中同 id 的 Codex rollout 文件；明确
+  `usage_sessions`、会话索引与 `telemetry_sessions` 中由 OTel 建立的行不是证据。所有权每次 reconciliation 按同一谓词
+  重新求值，`otel_owned` 在连续 reconciliation、App/CLI 重启、journal 清理与全量 rebuild 后保持，直到出现 JSONL 证据；
+  晚到 rollout 仍优先，撤销贡献、OTel 建立的会话首末时间与来源标记。
+- SP-ARCH-R12-F2 -> repaired in candidate：新增“会话记录、读取面与来源标记”。真相源在 core（`usage_sessions` +
+  `telemetry_sessions`，同事务写入/撤销）；读取面经会话索引投影：`session_sources` 写 `otel:codex/<conversation.id>`
+  （优先级低于任何文件来源）、`session_metadata` 写空项目与路径、最后计量模型、首末时间，不写 `session_documents`。
+  由此现有 `session list`/`ShowMetadata`/popover `loadSessions`（核对 `internal/session/session.go:1635–1665`、
+  `internal/desktop/desktop.go:616–635`）可见；`session show` 用量明细来自按 client/session_id 读取的 `usage_events`
+  （`internal/usage/session_usage.go:166`），不再落入 `cmd/agentdeck/main.go:673–695` 的“请运行 session scan”分支；
+  文件 inventory 全集对账（`session.go:~975–995` 删除缺失来源）豁免 `otel:` 来源；会话排除约束投影；purge/rebuild 后
+  从 `telemetry_sessions` 重新生成；晚到 JSONL 后删除 `otel:` 来源。来源标记查询明确只作分类接口。
+- 验证：`git diff --check` 干净；锚点 `architecture.md#去重与源所有权` 未变；与 Task 7 的对齐见 `reviews/tasks.md`
+  同日修复候选。设计推演按评审给出的“无 rollout → settle → 写入 → 再 reconciliation”序列复核：第二轮 reconciliation
+  不再把自身写入当证据。
+
+
+## Round 13 — 2026-10-29
+
+## 📋 OTel 设计缺陷定向复评 — architecture.md
+
+📊 总体评分：7/10
+
+✅ 复评结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+#### SP-ARCH-R12-F2 — P1：仍未关闭；会话索引关联键被“路径类字段为空”覆盖
+
+位置：`architecture.md:615–620`。
+- 处置：STILL OPEN。修复已补上索引投影，但没有把内部来源键与可展示的文件路径区分。
+- 行为风险：617 行要求 session_sources.source_path 为 `otel:codex/<id>`，618 行要求 session_metadata 的路径类字段为空。按字面写入后，现有 List/ShowMetadata/ShowWithActivity 的 JOIN 无法匹配，会话仍不可追溯；启用外键时写入本身不满足引用约束。
+- 证据：`internal/store/store.go:61,65` 定义 source_path 为来源主键及 metadata 非空外键；`internal/session/session.go:1635–1665,1710–1713` 按 `s.source_path=m.source_path` 连接。本轮 Python sqlite3 内存最小对照：sources 一行 `otel:codex/background-1`，metadata 对应会话的 source_path 为空，执行现有等值连接得到 []；只把 metadata.source_path 改为同一合成键，相同查询返回 [('background-1',)]。不读写产品数据库。
+💡 修复：明确两表使用同一非空合成来源键；“无文件路径”只约束用户展示与文件 I/O，不清空关联键。明确读取面如何抑制把该键当真实文件路径。Task 7 已有列表/详情读取断言，保留即可。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点与已关闭问题
+
+SP-ARCH-R12-F1 CLOSED：586–591 行只接受非 otel: usage_events 或 rollout 证据，明确自身写入不构成 JSONL 证据，连续 reconciliation、重启、journal 清理与 rebuild 的不变量已补齐。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，非修复作者；Method：逐 finding 文档/源码核对、最小 SQL 对照及标本身份与截图检查，无委派。
+- Scope：本文件上一轮两项 finding 及修复影响。SP-ARCH-R12-F2 的修复方向正确，但关联键合同仍矛盾，因此本文件 FAIL。没有新增独立 finding；修复范围仅限原 F2 的剩余字段/消费约定。最小反例明确后未扩大产品验证。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；blob `8c40117296fe7877d4080d640763f32ef3b5ee4c`；digest `4f068c3ff4df9186086aef0caed320b96ceee61a15a1d394b14fecb28e27b9ec`。
+- ContentState：`scan-perf-otel-rereview-20261029-arch-lziiHa-state`；WorkUnit `scan-performance:architecture.md`；dispatch `ad-scan-performance-doc-arch`。
+- Evidence：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 通过。CEv1 入口精确目标 NOT_VERIFIED，缺本轮独立复评及结构证据；旧失败观察保持原身份，最终门禁见本轮单一字段。
+- 依赖影响：requirements/performance-evaluation/ux-cli 文档 blob 分别仍为 812d3f4c206101a62812b232e5c34e262b9287de、913a03fa724daca96e2e628ef6b4f9e35269fc08、38374626fbdf82f7c0e5f61de34f6cba2f6e2563；保留其已有语义结论，不宣称变动后的共享 manifest 已被旧门禁认证。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`；correlation `lziiHa3A3s6UgvCO`。生产代码、测试和配置只读；未提交或推送。
+
+CEv1 收口：标准 gate-status 返回 FAILED；本轮 3 个状态、6 个观察与 12 条关系均已精确读回，关系预检 12/12 ok。结构准则 pass，语义准则 fail；无 unresolved candidate impact。旧失败观察保留，不重标。
+
+## Repair candidate — 2026-10-29（Round 13 后）
+
+修复方：Claude Code 主会话（`修复：scan-performance / architecture.md / SP-ARCH-R12-F2`）；未提交，工作区
+`agent-deck.scan-performance`。只改“会话记录、读取面与来源标记”中读取面一条，不改其他设计。
+
+- SP-ARCH-R12-F2 -> repaired in candidate：`session_sources.source_path` 与 `session_metadata.source_path` 明确为
+  **同一个非空合成来源键** `otel:codex/<conversation.id>`，满足 `internal/store/store.go:61,65` 的主键与非空外键及
+  `internal/session/session.go:1635–1665,1710–1713` 的等值连接；`session_sources` 的 identity 同为该键、size/mtime/cursor
+  为 0、`priority=-1`（低于 `internal/ingest/ingest.go:161–163` 的文件来源 0/1）；与现有非文件合成来源
+  `agentdeck://replace-documents`（`session.go:29,1608`）同类。删除“路径类字段为空”的写法，改为：“没有文件路径”只约束
+  展示与文件 I/O——`ShowWithActivity` 的 `activity.ReadDetails`（`session.go:1731`）、会话查看器的 `os.Stat` 与
+  `activity.ReadDetailsPage`（`cmd/agentdeck/session_viewer_data.go:30,39`）识别 `otel:` 前缀并返回“无活动明细”，不报来源
+  缺失；文本输出省略该来源的路径；JSON `source_path` 保留键原值；按 `path` 的排除（`session.go:1794`）按该键字面匹配。
+- 验证：内存 SQLite 使用 `store.go` 的真实建表语句与现有 `List` 查询（不读写产品数据库）：只有合成来源时返回
+  `('codex','background-1','','otel:codex/background-1','gpt-5.6-terra')`；再加入同 id 的 priority 1 文件来源后只返回文件来源；
+  metadata `source_path` 为空时外键拒绝写入（复现评审的最小反例）。`git diff --check` 干净。Task 7 现有列表/详情读取断言
+  覆盖此合同，未改 tasks.md。
+
+
+## Round 14 — 2026-10-29
+
+## 📋 合成会话来源键与读取契约复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点与已关闭问题
+
+SP-ARCH-R12-F2 CLOSED：architecture.md:613–630 明确 session_sources.source_path、identity 与 session_metadata.source_path 使用同一个非空合成键 `otel:codex/<conversation.id>`；priority=-1 低于文件来源 0/1。“无文件路径”仅约束展示与文件 I/O：ShowWithActivity、viewer os.Stat/ReadDetailsPage 识别 otel: 并返回无明细，文本省略路径，JSON 保留来源键，path 排除按键匹配。已消除 Round 13 的空键/等值连接矛盾。
+
+SP-ARCH-R12-F1 保持 CLOSED：JSONL 证据仍仅由非 otel: usage_events 或 rollout 提供，自身 usage_sessions/索引写入不构成证据。无新发现或回归。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，非修复作者；Method：定向文档与现有 DDL/SQL/消费者核对、隔离内存 SQLite 对照；无委派。
+- Scope：SP-ARCH-R12-F2 的来源键与展示/文件 I/O 边界；不评审或修复未提交产品实现。
+- Reviewed state：HEAD `bd72d138fe280ec84ecb822176bd27de8e635cf4`；blob `7744862383b013a4b446f4727083d933d69c4e6c`；digest `e922edc2b72ccf18c0cd32e99c6c160e94857ba0ab3a0920298ab5ad313ff4d6`；ContentState `scan-perf-arch-r14-20261029-tVcY3H-state`。
+- Evidence：使用 internal/store/store.go 中 session_sources/session_metadata 的真实 CREATE TABLE 语句，启用 foreign_keys，提取 internal/session/session.go 的原 List SQL。只插入合成来源时返回该 Codex 会话；再插入同 id、priority=1 的文件来源时只返回文件来源；metadata 空来源键被外键拒绝。整个实验在 :memory:，不读取产品数据库。核对 internal/ingest/ingest.go:161–163 的 0/1、session.go:29 的既有合成来源，以及 session_viewer_data.go:30,39 的文件访问点。前轮已核验的 List/ShowMetadata/ShowWithActivity 连接事实继续有效。
+- 验证边界：设计声明的是待实施分支，未把现有产品已支持 otel: 当成事实。Task 7 现有列表/详情、晚到 JSONL 与 rebuild 断言仍承接实现验收。
+- 本轮恢复 tasks.md Documents 中 architecture.md 的 Review 勾选；这是状态投影，不改变任务正文或重开 tasks.md 语义评审。待提交的 tasks.md 仍需在架构章节交付后核验提交树依赖，旧目标证据不能直接重标其新矩阵 blob。
+- CEv1 入口精确目标 NOT_VERIFIED，缺本轮独立复评和结构证据；保留 Round 12/13 失败观察与历史。最终门禁见本轮单一字段。
+- 工作区 agent-deck.scan-performance / feature/scan-performance；correlation tVcY3HTfsxjZ5nZ7。未提交、推送或修改生产代码/测试/配置；Topic 与实现任务尚未完成。
+
+Task checkpoint：ad-scan-performance-doc-arch；content_state `scan-perf-arch-r14-20261029-tVcY3H-state`；gate VERIFIED。
+提交建议：门禁已 VERIFIED；独立提交 architecture.md、本记录与仅属于本任务的 Review 格状态。不得合并其他文档任务或产品实现。
+推送建议：门禁已 VERIFIED；核验单任务提交范围、正文/trailers、SSH 签名及远端，再另行授权推送 origin/feature/scan-performance；远端未核验。
+
+收口证据：上述四项 L0 命令通过；1 个 ContentState、2 个 evidence 节点和 4 条关系精确读回，关系预检 4/4 ok；标准 gate-status 返回 VERIFIED，两个 required criteria 均 pass，missing/unresolved 为空。原失败记录未重标。
