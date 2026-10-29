@@ -526,3 +526,42 @@ WORKFLOW_WORKSPACE: agent-deck.scan-performance
 Task checkpoint：ad-scan-performance-doc-req；content_state `1cb3bfd29a058276580f7f89a1256099161d45c0876e9e48b0d9e6ba3675c768`；gate VERIFIED。
 提交建议：另行授权提交需求、对应评审记录及 Review 勾选，可等待整批修复完成后统一交付。
 推送建议：提交范围、署名、签名及远端核验后，另行授权推送 origin/feature/scan-performance；远端未核验。
+
+
+## Round 13 — 2026-10-29
+
+## 📋 OTel 设计变更批量独立评审 — requirements.md
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+OTel 的 Bug 修复边界、会话级去重、来源标记与辅助分类的跨主题责任明确；P05 移出不改变其余性能对比与正确性义务。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档差分、状态转换推演、现有源码/SQL 与标本核对；未参与本轮设计，未委派。
+- Scope：需求变更及性能评估、架构、Settings/CLI、Task 7/8 的边界一致性。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；document blob `812d3f4c206101a62812b232e5c34e262b9287de`；digest `9f0afbb365f4728079e9a63e3bb5333881015da0affe692987b2218768ddbbb7`。
+- ContentState：`scan-perf-otel-docreview-20261029-req-0SDA62-state`；WorkUnit `scan-performance:requirements.md`；dispatch `ad-scan-performance-doc-req`。
+- Evidence：本轮 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 均通过。结构检查不替代语义评审。CEv1 入口查询两项 required criteria 均缺本目标证据，旧观察不重标；最终结果以本轮完成门禁字段为准。
+- 核对 Bug 评论 a5f6d798-e9c5-5b74-a8b2-61c5cdac35cc、ab350dc4-b40c-53d0-931a-3789a708d23d：隔离 0.165.0 SSE 实验有三个请求，两个主会话有 rollout、一个 Memories 整理会话无 rollout，OTel 无 response/request id；未验证组合不入支持表。此前 Round 12 的关闭处置保留，未变性能要求复用其语义判断。本轮不重跑真实 producer，不把实验外推到 WebSocket/TUI/Desktop。架构如何兑现会话可追溯、Settings 如何退出由其本轮 FAIL 承接，不削弱本需求。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`。只更新评审、矩阵与协调/证据，保留现有产品改动；未提交、推送或运行真实配置变更。
+
+Task checkpoint：ad-scan-performance-doc-req；content_state `scan-perf-otel-docreview-20261029-req-0SDA62-state`；gate VERIFIED。
+提交建议：门禁已 VERIFIED；在独立授权下提交 requirements.md、本轮评审记录及对应矩阵状态；可与修复完成后的设计批次统一交付。
+推送建议：门禁已 VERIFIED；核验提交范围、署名/SSH 签名与远端，再另行授权推送 origin/feature/scan-performance；当前远端未核验。
+
+CEv1 收口：标准 gate-status 查询返回 VERIFIED；两项 required criteria 的结构证据通过，独立评审证据为 pass，无 unresolved candidate impact。6 个状态、12 个观察及 24 条关系已读回核验；关系批次预检 24/24 ok。未查询 Topic 门禁，因为仍有未完成设计与实现。

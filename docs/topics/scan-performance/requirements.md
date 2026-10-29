@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-27
+updated: 2026-10-29
 ---
 
 # Scan performance：先准备数据，再打开界面
@@ -166,13 +166,30 @@ Widget 不新增 UX 文档，兼容性仍须验收。测量打点与驱动不新
 
 ### OTel
 
-- 默认关闭；Settings 或 CLI 只启用 AgentDeck receiver。操作者审阅并自行应用 config preview；
-  本轮和自动启动均不修改 Codex 配置。
+2026-10-29：用户指出 OTel 已与本 topic 的性能目标无关，而它所修的 Bug `ad-bug-codex-subagent-usage-attribution`
+（Codex 后台 Memories 请求的用量不写 JSONL，因而漏计）必须在本版本修复。本设计据此把 OTel 留在本 topic，
+作为该 Bug 的修复载体，不再属于性能衡量与报告（P05 移出）；留下而不拆分 topic，是为了避免重复修改已评审的
+UX/CLI 文档、迁移未提交的实现与改动版本合约。
+
+- 默认关闭，**不自动开启**；由用户在 Settings 或 CLI 确认后开启（2026-10-29 用户决定）。
+- 经用户明确同意，AgentDeck 可向 `~/.codex/config.toml` 追加一个受管 `[otel]` 段（2026-10-29 用户决定，取代此前
+  “不修改 Codex 配置”）：只追加这一段，不改动其他内容、不覆盖已有 exporter；关闭采集时只移除未被改动的受管段，
+  被改动则不碰并提示手动检查；写入失败时不做任何修改且开关保持关闭。不修改模型或 Memories 设置。
+- 联动：只读识别 Codex 是否开启了需要采集的功能（目前为 Memories；guardian 与压缩待验证后加入）。明确关闭时采集
+  不可用、接收端不运行；明确开启而采集未开时提示后台用量未统计；无法识别时不阻止开启也不提示。
+  文案与状态见 [Settings](ux/settings.md#codex-记忆联动与配置写入) 与 [CLI](ux/cli.md#codex-记忆联动2026-10-29)。
 - 本地接收不代理模型请求，不发送模型请求。只接受允许的模型/token/身份/时间字段，
   prompt、response、tool output、headers 和凭据在落盘前丢弃。
 - OTel 到达 → 持久化 → 规范化/去重 → 原子更新统计 → 发布，与 popover 打开完全独立。
-- 精确请求/响应身份和 transport 覆盖未通过时保持 `capture_only`，不自动作为完整主来源。
-- 不按 timestamp/model/token 相似性猜测 JSONL 与 OTel 属于同一请求。
+- 修复目标：经实验验证的 Codex producer 的后台请求（会话没有 JSONL rollout）计入 All 与模型构成的 token 和成本；
+  已由 JSONL 计量的会话不得由 OTel 重复计入。源所有权按会话判定，规则见[架构·去重与源所有权](architecture.md#去重与源所有权)。
+- 每个后台请求所在的会话以其自身的会话 id 成为一个 Codex 会话记录，带可验证的来源标记，归属可追溯，不编造项目或标题；
+  它与 claude-mem 观察会话同属辅助会话。
+- 未经实验验证的 producer 版本、transport 或事件形状保持 `capture_only`：保存但不计入，并说明原因。
+- 不按 timestamp/model/token 相似性猜测 JSONL 与 OTel 属于同一请求或同一会话。
+- 边界：本主题负责采集、计量、会话记录与来源标记；把带标记的会话判为辅助会话并默认移出工作视图的会话数/项目/时长，
+  由 `auxiliary-session-classification` 承接（跨主题依赖，见 [tasks.md](tasks.md)）。逐会话记忆提取与其来源会话的
+  关联不属于本主题，作为该专题或后续专题的待办明确记录，不得省略。
 - 已导出但未留存的数据可能丢失；从启用开始记录覆盖区间、已知断连和历史未知，
   没有记录的历史不能补齐。SSE/WebSocket、重试、失败及中断分别验收。
 
@@ -201,10 +218,10 @@ Widget 不新增 UX 文档，兼容性仍须验收。测量打点与驱动不新
 
 - **基线。** App 侧与 CLI 侧各项以 S0（`baseline-remeasure` 交付提交 `7e7e7e3` 的构建，E1 已在同一冻结语料上
   完整测量）为基线；P09 另与本 topic 产品改动之前的 B0（提交 `14234ec`）比较。B0 没有产品内打点，
-  只能用于 P09。P05 是新路径，没有可比基线，只报告绝对值。
+  只能用于 P09。P05 已于 2026-10-29 移出（见 [OTel](#otel)），编号不复用。
 - **对比方法。** 最终对比在同一批次内将基线臂与最终臂按运行单元配对交错运行；各项按其样本结构使用性能评估
   “对比报告”预先固定的方法：ABBA 比值与配对 bootstrap 区间、P06 配对差值、P07 与 P11 完整历史两臂并列、
-  P08 确定性计数并列、P05 只报绝对值。比值与差值只是报告内容，不是门。
+  P08 确定性计数并列。比值与差值只是报告内容，不是门。
 - **交付判断。** 报告逐项列出基线、最终值与变化幅度，并标出变差的项及原因；由用户判断整体提升是否足够。
   实现中不因某一项未改善而停止或返回设计；一个改动是否保留按[候选采用规则](performance-evaluation.md#候选采用规则)
   的实测收益决定。
@@ -217,7 +234,7 @@ Widget 不新增 UX 文档，兼容性仍须验收。测量打点与驱动不新
 | P02 | App 重启、有效磁盘展示缓存 | App ready 到可用模型；另报完整 launch 时间，不把 hosted XCTest 的空 coordinator 当完整冷启动 |
 | P03 | 已恢复 publication 内切换现有客户端/时段/面板 | 每维 median、p95；期间不得有 helper/扫描/OTel 等待（行为要求） |
 | P04 | 无展示缓存但已有完整已提交数据库；第一次准备可用数据 | median、p95；与完全没有已存数据的首次导入分开 |
-| P05 | 引擎已接收并持久化的可计量 OTel event 到新可见 publication | median、p95；另报端到端 freshness，不含生产者未发送的时间 |
+| P05 | 已移出（2026-10-29）：OTel 是所修 Bug 的计量来源，不是本 topic 的性能目标 | 不测量、不报告 |
 | P06 | 空闲、无任务/无 OTel 流量，30 分钟 | 后台新增平均 CPU、新增稳定 RSS、维护唤醒次数；有限 helper 应退出（行为要求）；另报 App 总量 |
 | P07 | 重建中 aggregate engine + collector + 子进程资源 | 聚合 RSS 上界；写事务 p95 与 max |
 | P08 | 规模 no-op 与一次 append | no-op 正文 decode 数（须为 0，行为要求）；append 实读字节与 delta + 已声明 anchors 之差；第二次导入无重复（行为要求） |
