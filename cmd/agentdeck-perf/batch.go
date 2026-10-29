@@ -33,6 +33,9 @@ type batchState struct {
 	Binding     string           `json:"source_binding"`
 	Dirty       bool             `json:"dirty"`
 	Generations int              `json:"generations"`
+	// UnitDir is the run unit attempt being prepared; startRunUnit records
+	// there what it actually restored. Never persisted.
+	UnitDir string `json:"-"`
 }
 
 func (b *batchState) save() error { return writeJSON(filepath.Join(b.Root, "batch.json"), b) }
@@ -172,23 +175,74 @@ func (b *batchState) startRunUnit(mode stateMode) error {
 	if err := os.Mkdir(state, 0o700); err != nil {
 		return err
 	}
-	if mode == stateEmpty {
+	restored := map[string]string{}
+	if mode != stateEmpty {
+		entries, err := os.ReadDir(filepath.Join(b.Root, "template"))
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if mode == stateNoCache && (name == "desktop-serving-snapshot.json" || name == "desktop-derived-cache.json") {
+				continue
+			}
+			if out, err := exec.Command("/bin/cp", "-c", filepath.Join(b.Root, "template", name), state+"/").CombinedOutput(); err != nil {
+				return fmt.Errorf("copy template: %v: %s", err, out)
+			}
+			if restored[name], err = fileSHA256(filepath.Join(state, name)); err != nil {
+				return err
+			}
+		}
+	}
+	return b.recordUnitStart(mode, restored)
+}
+
+// unitIdentityFile lists, one entry per startRunUnit of the attempt, the data
+// state the attempt actually started from (performance evaluation, records
+// and evidence). It travels with the attempt directory, so an interrupted
+// attempt keeps the identity it ran on. It is a JSON array, not .jsonl: stats
+// reads every .jsonl in a sample as a trace.
+const unitIdentityFile = "unit-identity.json"
+
+type unitIdentity struct {
+	Mode        string            `json:"state_mode"`
+	Generation  int               `json:"working_copy_generation"`
+	AnchorDate  string            `json:"anchor_date"`
+	Corpus      string            `json:"corpus_identity"`
+	WorkingCopy string            `json:"working_copy_identity"`
+	ShiftDays   int               `json:"shift_days"`
+	Unparsed    int               `json:"timestamps_unparsed"`
+	Binding     string            `json:"source_binding"`
+	Template    templateManifest  `json:"template"`
+	Restored    map[string]string `json:"restored_sha256"`
+}
+
+// recordUnitStart refuses a restore whose bytes are not the template the
+// batch names, then appends the identity to the attempt's record.
+func (b *batchState) recordUnitStart(mode stateMode, restored map[string]string) error {
+	want := map[string]string{"agentdeck.sqlite3": b.Template.CoreSHA256, "sessions.sqlite3": b.Template.SessionSHA256,
+		"desktop-serving-snapshot.json": b.Template.ServingSHA256}
+	for name, sum := range restored {
+		if expected, ok := want[name]; ok && expected != sum {
+			return fmt.Errorf("restored %s does not match the batch template", name)
+		}
+	}
+	if b.UnitDir == "" {
 		return nil
 	}
-	entries, err := os.ReadDir(filepath.Join(b.Root, "template"))
-	if err != nil {
+	path := filepath.Join(b.UnitDir, unitIdentityFile)
+	var records []unitIdentity
+	if raw, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(raw, &records); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	for _, entry := range entries {
-		name := entry.Name()
-		if mode == stateNoCache && (name == "desktop-serving-snapshot.json" || name == "desktop-derived-cache.json") {
-			continue
-		}
-		if out, err := exec.Command("/bin/cp", "-c", filepath.Join(b.Root, "template", name), state+"/").CombinedOutput(); err != nil {
-			return fmt.Errorf("copy template: %v: %s", err, out)
-		}
-	}
-	return nil
+	records = append(records, unitIdentity{Mode: [...]string{"full", "no_cache", "empty"}[mode], Generation: b.Generations,
+		AnchorDate: b.Anchor, Corpus: b.WorkingCopy.Corpus, WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days,
+		Unparsed: b.WorkingCopy.Unparsed, Binding: b.Binding, Template: b.Template, Restored: restored})
+	return writeJSON(path, records)
 }
 
 // noOpCheck is the template start invariant: a scan right after a reset reads

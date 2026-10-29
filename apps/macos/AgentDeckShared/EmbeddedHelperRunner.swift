@@ -1843,7 +1843,9 @@ public enum DesktopFullRefreshTrigger: Int, Equatable, Sendable {
 	case manual
 	case providerSwitch
 
-	var requestsFollowUp: Bool { self == .sourceChange || self == .manual || self == .providerSwitch }
+	// A running update may have frozen its inventory before the event, so each
+	// of these leaves exactly one follow-up; any burst of them merges into it.
+	var requestsFollowUp: Bool { self == .wake || self == .sourceChange || self == .manual || self == .providerSwitch }
 	var quotaIsManual: Bool { self == .manual || self == .providerSwitch }
 
 	static func merged(_ current: Self?, _ incoming: Self) -> Self? {

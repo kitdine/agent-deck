@@ -77,84 +77,89 @@ public final class DesktopSourceChangeMonitor {
 	}
 }
 
-public enum DesktopRefreshSchedulerReason: Equatable, Sendable {
-	case periodic
-	case wake
-
-	var trigger: DesktopFullRefreshTrigger {
-		switch self {
-		case .periodic: .periodic
-		case .wake: .wake
-		}
-	}
-}
-
+/// Automatic local-data updates are event driven: a source change requests a
+/// finite update, and start, wake and re-enable request one finite
+/// reconciliation for changes no event reported. There is no refresh period.
+/// While disabled nothing is watched; startup, manual and CLI updates remain.
 @MainActor
-public final class DesktopRefreshScheduler {
-	public static let fullRefreshInterval: TimeInterval = 60
-	public static let evaluatorInterval: Duration = .seconds(30)
-
-	public private(set) var deadline: TimeInterval?
+public final class DesktopAutomaticUpdates {
 	public private(set) var isEnabled: Bool
+	public private(set) var isWatching = false
 
-	private let now: @MainActor @Sendable () -> TimeInterval
+	private let startWatching: @MainActor () -> Bool
+	private let stopWatching: @MainActor () -> Void
 	private let request: @MainActor @Sendable (DesktopFullRefreshTrigger) -> Void
+	private var started = false
 
 	public init(
 		enabled: Bool,
-		now: (@MainActor @Sendable () -> TimeInterval)? = nil,
+		startWatching: @escaping @MainActor () -> Bool,
+		stopWatching: @escaping @MainActor () -> Void,
 		request: @escaping @MainActor @Sendable (DesktopFullRefreshTrigger) -> Void
 	) {
 		isEnabled = enabled
-		self.now = now ?? { Self.sleepInclusiveUptime() }
+		self.startWatching = startWatching
+		self.stopWatching = stopWatching
 		self.request = request
 	}
 
-	private static func sleepInclusiveUptime() -> TimeInterval {
-		var timebase = mach_timebase_info_data_t()
-		_ = mach_timebase_info(&timebase)
-		return Double(mach_continuous_time())
-			* Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000
+	/// Called once the startup restore and its finite update settle; that
+	/// startup update is the launch reconciliation, so none is requested here.
+	public func start() {
+		guard !started else { return }
+		started = true
+		if isEnabled { watch() }
 	}
 
-	public func updateEnabled(_ enabled: Bool) {
+	public func setEnabled(_ enabled: Bool) {
 		guard enabled != isEnabled else { return }
 		isEnabled = enabled
-		deadline = enabled ? now() + Self.fullRefreshInterval : nil
+		guard started else { return }
+		if enabled {
+			watch()
+			request(.wake)
+		} else {
+			unwatch()
+		}
 	}
 
-	public func fullAttemptCompleted() {
-		deadline = isEnabled ? now() + Self.fullRefreshInterval : nil
+	public func didWake() {
+		guard started, isEnabled else { return }
+		request(.wake)
 	}
 
-	public func evaluate(_ reason: DesktopRefreshSchedulerReason) {
-		guard isEnabled, let deadline, now() >= deadline else { return }
-		self.deadline = nil
-		request(reason.trigger)
+	public func stop() {
+		started = false
+		unwatch()
+	}
+
+	private func watch() {
+		guard !isWatching else { return }
+		isWatching = startWatching()
+	}
+
+	private func unwatch() {
+		guard isWatching else { return }
+		isWatching = false
+		stopWatching()
 	}
 }
 
+/// The quota probe's own schedule; it never requests a full data update.
 @MainActor
 public final class DesktopRefreshPeriodicDriver {
-	private let scheduler: DesktopRefreshScheduler
+	public static let evaluatorInterval: Duration = .seconds(30)
+
 	private let requestQuota: @MainActor @Sendable () async -> Void
 	private var quotaTask: Task<Void, Never>?
 
 	public var hasActiveQuotaRequest: Bool { quotaTask != nil }
 
-	public init(
-		scheduler: DesktopRefreshScheduler,
-		requestQuota: @escaping @MainActor @Sendable () async -> Void
-	) {
-		self.scheduler = scheduler
+	public init(requestQuota: @escaping @MainActor @Sendable () async -> Void) {
 		self.requestQuota = requestQuota
 	}
 
-	public func tick(
-		_ reason: DesktopRefreshSchedulerReason = .periodic,
-		quotaEnabled: Bool
-	) async {
-		scheduler.evaluate(reason)
+	public func tick(quotaEnabled: Bool) async {
 		guard quotaEnabled, quotaTask == nil else { return }
 		quotaTask = Task { [weak self] in
 			guard let self else { return }

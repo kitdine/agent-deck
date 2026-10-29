@@ -319,9 +319,9 @@ enum DesktopCopy {
 	static let settingsLoginItemNote = "Registered as a system login item; no background daemon is installed"
 	static let settingsLoginItemRefused = "Could not change the login item"
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
-	static let settingsPeriodicRefresh = "Periodic refresh"
-	static let settingsPeriodicRefreshNote =
-		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
+	static let settingsAutomaticUpdate = "Automatically update local data"
+	static let settingsAutomaticUpdateNote =
+		"Update when logs change, without an interval. Manual updates remain available when off."
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -490,8 +490,8 @@ enum DesktopCopy {
 		menuShows, menuSettings, menuAbout, menuQuit,
 		settingsTitle, settingsGroupGeneral, settingsGroupMenuBar,
 		settingsLoginItem, settingsLoginItemNote, settingsLoginItemRefused,
-		settingsLoginItemApproval, settingsPeriodicRefresh,
-		settingsPeriodicRefreshNote, settingsMenuBarValue,
+		settingsLoginItemApproval, settingsAutomaticUpdate,
+		settingsAutomaticUpdateNote, settingsMenuBarValue,
 		settingsMenuBarValueNote, settingsMenuBarValueCost,
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,

@@ -447,6 +447,65 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.latestSnapshot, second)
 	}
 
+	func testWakeDuringScanLeavesOneFollowUpMergedWithSourceEvents() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, second])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		let wake = Task { await coordinator.requestFullRefresh(trigger: .wake) }
+		let sources = (0..<4).map { _ in Task { await coordinator.requestFullRefresh(trigger: .sourceChange) } }
+		for _ in 0..<50 { await Task.yield() }
+		host.resumeCall(1)
+		await host.waitForCall(2)
+		for _ in 0..<50 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 2, "no third update is queued behind the merged follow-up")
+		host.resumeCall(2)
+		await initial.value
+		await wake.value
+		for source in sources { await source.value }
+		XCTAssertEqual(host.callCount, 2, "the wake and the source burst share one follow-up")
+		XCTAssertEqual(coordinator.latestSnapshot, second)
+	}
+
+	func testWakeAloneDuringScanStillGetsItsReconciliation() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, second])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		let wake = Task { await coordinator.requestFullRefresh(trigger: .wake) }
+		for _ in 0..<50 { await Task.yield() }
+		host.resumeCall(1)
+		// Bounded: a dropped wake leaves no second call, and must fail, not hang.
+		let deadline = ContinuousClock.now + .seconds(2)
+		while host.callCount < 2 && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertEqual(host.callCount, 2, "a wake during a running update is not dropped")
+		guard host.callCount == 2 else { return }
+		host.resumeCall(2)
+		await initial.value
+		await wake.value
+	}
+
+	func testStopAppWorkDropsQueuedFollowUpSoQuitStartsNoNewUpdate() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, second])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		let source = Task { await coordinator.requestFullRefresh(trigger: .sourceChange) }
+		for _ in 0..<50 { await Task.yield() }
+		coordinator.stopAppWork()
+		host.resumeCall(1)
+		await initial.value
+		await source.value
+		for _ in 0..<50 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 1, "quit leaves no follow-up update behind")
+	}
+
 	func testConcurrentQuotaRequestsShareOneOwnerSideEffectSequence() async throws {
 		let alert = DesktopQuotaAlertV1(id: "quota.shared", kind: .threshold, client: "codex", usedPercent: 80, threshold: 75)
 		let quota = SuspendingQuotaRefresher(alerts: [alert])

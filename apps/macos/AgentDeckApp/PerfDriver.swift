@@ -69,6 +69,13 @@ final class PerfDriver {
 	private var usableAt: ContinuousClock.Instant?
 	/// Watches for another app taking the front while the popover is shown.
 	private var resignObserver: NSObjectProtocol?
+	/// Watches for the popover closing while the driver holds it open.
+	private var closeObserver: NSObjectProtocol?
+	/// The driver's stimulus showed the popover and the driver has not closed
+	/// it since; a close it did not ask for is then an outside dismissal.
+	private var holdingPopover = false
+	/// Closes the driver asked for whose notification has not arrived yet.
+	private var expectedCloses = 0
 	private var interrupted = false
 
 	init(model: MenuBarViewModel, itemController: MenuBarItemController) {
@@ -98,6 +105,22 @@ final class PerfDriver {
 				self.markInterrupted()
 			}
 		}
+		// A click in another app, or a system prompt taking the key window,
+		// closes the transient popover before the App resigns active, so the
+		// resign check above no longer sees it shown. Any close of a held
+		// popover that the driver did not ask for is that same interruption.
+		closeObserver = NotificationCenter.default.addObserver(forName: NSPopover.didCloseNotification,
+			object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let self else { return }
+				if self.expectedCloses > 0 {
+					self.expectedCloses -= 1
+				} else if self.holdingPopover {
+					self.holdingPopover = false
+					self.markInterrupted()
+				}
+			}
+		}
 		Task { @MainActor in
 			for (index, step) in script.steps.enumerated() {
 				guard !interrupted else { break }
@@ -123,6 +146,10 @@ final class PerfDriver {
 		if let resignObserver {
 			NotificationCenter.default.removeObserver(resignObserver)
 			self.resignObserver = nil
+		}
+		if let closeObserver {
+			NotificationCenter.default.removeObserver(closeObserver)
+			self.closeObserver = nil
 		}
 		PerfFrameProbe.shared.stop()
 		PerfTrace.flush()
@@ -156,13 +183,13 @@ final class PerfDriver {
 			}
 			return true
 		case .close:
-			itemController.closePopover()
+			closeHeldPopover()
 			try? await Task.sleep(for: .milliseconds(100))
 			return !itemController.popoverIsShown
 		case .click:
 			for _ in 0..<(step.repeatCount ?? 1) {
 				if itemController.popoverIsShown {
-					itemController.closePopover()
+					closeHeldPopover()
 					try? await Task.sleep(for: .milliseconds(100))
 				}
 				guard await click(timeout: timeout, action: step.stimulus == "action", reportUnrouted: step.unrouted == "report")
@@ -268,12 +295,22 @@ final class PerfDriver {
 	/// and the system dismissed the transient popover: then the stimulus was
 	/// interrupted from outside and the unit is rerun.
 	private func framedOrUndisturbed(_ framed: Task<Bool, Never>) async -> Bool {
-		if await framed.value { return true }
+		if await framed.value {
+			if itemController.popoverIsShown { holdingPopover = true }
+			return true
+		}
 		if !itemController.popoverIsShown, !NSApp.isActive {
 			markInterrupted()
 			return false
 		}
 		return true
+	}
+
+	/// A close the driver asks for is never an interruption.
+	private func closeHeldPopover() {
+		holdingPopover = false
+		if itemController.popoverIsShown { expectedCloses += 1 }
+		itemController.closePopover()
 	}
 
 	private func markInterrupted() {

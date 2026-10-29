@@ -27,16 +27,16 @@ struct SettingsWindowView: View {
 				}
 				Divider()
 				SettingsRow(
-					label: t(DesktopCopy.settingsPeriodicRefresh),
-					note: t(DesktopCopy.settingsPeriodicRefreshNote),
+					label: t(DesktopCopy.settingsAutomaticUpdate),
+					note: t(DesktopCopy.settingsAutomaticUpdateNote),
 					status: nil
 				) {
-					Toggle(t(DesktopCopy.settingsPeriodicRefresh), isOn: $preferences.periodicRefreshEnabled)
+					Toggle(t(DesktopCopy.settingsAutomaticUpdate), isOn: $preferences.automaticUpdateEnabled)
 						.toggleStyle(.switch)
 						.tint(DesktopVisualTheme.accent)
 						.labelsHidden()
-						.accessibilityLabel(t(DesktopCopy.settingsPeriodicRefresh))
-						.accessibilityHint(t(DesktopCopy.settingsPeriodicRefreshNote))
+						.accessibilityLabel(t(DesktopCopy.settingsAutomaticUpdate))
+						.accessibilityHint(t(DesktopCopy.settingsAutomaticUpdateNote))
 				}
 			}
 

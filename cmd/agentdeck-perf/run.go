@@ -157,6 +157,9 @@ func runBatch(cfg runConfig, condition string, formal bool, stdout io.Writer) er
 	if err := writeJSON(filepath.Join(cfg.Out, scheduleFile), s); err != nil {
 		return err
 	}
+	if err := writeArmIdentity(cfg); err != nil {
+		return err
+	}
 	expected := armOracle(cfg, plan)
 	for index := 1; index <= s.Units; index++ {
 		if err := runUnit(cfg, plan, index, s, expected); err != nil {
@@ -298,7 +301,10 @@ func runUnitOnce(cfg runConfig, plan conditionPlan, index int, s schedule, expec
 			return err
 		}
 	}
-	if err := plan.run(cfg, dir, index, s); err != nil {
+	cfg.Batch.UnitDir = dir
+	err := plan.run(cfg, dir, index, s)
+	cfg.Batch.UnitDir = ""
+	if err != nil {
 		// An interrupted attempt is rerun, not recorded invalid.
 		if unitInterruption(dir) != "" {
 			return nil
@@ -321,6 +327,9 @@ func runArms(cfg runConfig, plan conditionPlan, condition string, s schedule, st
 			return err
 		}
 		if err := writeJSON(filepath.Join(arm.Out, scheduleFile), s); err != nil {
+			return err
+		}
+		if err := writeArmIdentity(arm); err != nil {
 			return err
 		}
 		if err := arm.Batch.ensureClean(); err != nil {
@@ -368,6 +377,62 @@ func writeJSON(path string, value any) error {
 		return err
 	}
 	return os.WriteFile(path, append(raw, '\n'), 0o600)
+}
+
+// armIdentityFile records what stays fixed for one arm: the executables it
+// ran and the corpus, anchor and working copy identity (performance
+// evaluation, records and evidence). The template a run unit restored can
+// change between units, so each attempt records it in unitIdentityFile.
+// Source digests are bound by the evidence, not by this tool.
+const armIdentityFile = "identity.json"
+
+type armIdentity struct {
+	Tool        string            `json:"perf_tool_sha256"`
+	Binaries    map[string]string `json:"binaries_sha256"`
+	AnchorDate  string            `json:"anchor_date"`
+	Corpus      string            `json:"corpus_identity"`
+	WorkingCopy string            `json:"working_copy_identity"`
+	ShiftDays   int               `json:"shift_days"`
+	Unparsed    int               `json:"timestamps_unparsed"`
+}
+
+// appBinaries are the measured App's executables, relative to the bundle.
+var appBinaries = []string{
+	"Contents/MacOS/AgentDeck",
+	"Contents/Helpers/agentdeck",
+	"Contents/Frameworks/AgentDeckShared.framework/Versions/A/AgentDeckShared",
+}
+
+func writeArmIdentity(cfg runConfig) error {
+	identity, err := identifyArm(cfg)
+	if err != nil {
+		return err
+	}
+	return writeJSON(filepath.Join(cfg.Out, armIdentityFile), identity)
+}
+
+func identifyArm(cfg runConfig) (armIdentity, error) {
+	b := cfg.Batch
+	identity := armIdentity{Binaries: map[string]string{}, AnchorDate: b.Anchor, Corpus: b.WorkingCopy.Corpus,
+		WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days, Unparsed: b.WorkingCopy.Unparsed}
+	var err error
+	if cfg.Perf != "" {
+		if identity.Tool, err = fileSHA256(cfg.Perf); err != nil {
+			return armIdentity{}, err
+		}
+	}
+	paths := map[string]string{"agentdeck": cfg.Agentdeck}
+	if cfg.App != "" {
+		for _, name := range appBinaries {
+			paths[name] = filepath.Join(cfg.App, name)
+		}
+	}
+	for name, path := range paths {
+		if identity.Binaries[name], err = fileSHA256(path); err != nil {
+			return armIdentity{}, err
+		}
+	}
+	return identity, nil
 }
 
 // batchEnvironment is recorded with every condition run.

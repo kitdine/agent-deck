@@ -120,17 +120,22 @@ final class DesktopCopyTests: XCTestCase {
 		}
 	}
 
-	func testPeriodicRefreshNoteMatchesReviewedOneMinuteCopy() throws {
-		let expected = [
-			"en": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data",
-			"zh-Hans": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据",
+	func testAutomaticUpdateCopyMatchesReviewedEventDrivenWording() throws {
+		let expected: [String: [String: String]] = [
+			"en": [
+				DesktopCopy.settingsAutomaticUpdate: "Automatically update local data",
+				DesktopCopy.settingsAutomaticUpdateNote: "Update when logs change, without an interval. Manual updates remain available when off.",
+			],
+			"zh-Hans": [
+				DesktopCopy.settingsAutomaticUpdate: "自动更新本地数据",
+				DesktopCopy.settingsAutomaticUpdateNote: "日志变化时更新，无需设置周期。关闭后仍可手动更新。",
+			],
 		]
-		for (language, value) in expected {
+		for (language, values) in expected {
 			let localized = try bundle(language)
-			XCTAssertEqual(
-				localized.localizedString(forKey: DesktopCopy.settingsPeriodicRefreshNote, value: nil, table: nil),
-				value
-			)
+			for (key, value) in values {
+				XCTAssertEqual(localized.localizedString(forKey: key, value: nil, table: nil), value)
+			}
 		}
 	}
 

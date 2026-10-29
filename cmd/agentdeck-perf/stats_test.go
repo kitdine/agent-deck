@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -330,6 +333,165 @@ func TestInterruptedAttemptsAreRerunNotCounted(t *testing.T) {
 	}
 	report := statsReport(t, root, "P02")
 	if report.Samples != 1 || report.ToolInvalid != 0 || report.Interrupted != 1 || report.Summary.N != 1 {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
+func TestArmIdentityRecordsEveryMeasuredExecutableAndTheFixedData(t *testing.T) {
+	root := t.TempDir()
+	app := filepath.Join(root, "AgentDeck.app")
+	write := func(path, body string) string {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, name := range appBinaries {
+		write(filepath.Join(app, name), name)
+	}
+	cfg := runConfig{App: app, Agentdeck: write(filepath.Join(root, "agentdeck"), "cli"),
+		Perf: write(filepath.Join(root, "agentdeck-perf"), "tool"), Out: root,
+		Batch: &batchState{Anchor: "2026-10-29", WorkingCopy: shiftResult{Corpus: "corpus", Identity: "copy", Days: 7}}}
+	if err := writeArmIdentity(cfg); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, armIdentityFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var identity armIdentity
+	if err := json.Unmarshal(raw, &identity); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"agentdeck": "cli"}
+	for _, name := range appBinaries {
+		want[name] = name
+	}
+	if len(identity.Binaries) != len(want) {
+		t.Fatalf("binaries = %v", identity.Binaries)
+	}
+	for name, body := range want {
+		if identity.Binaries[name] != sha256Hex(body) {
+			t.Fatalf("%s = %s, want the SHA-256 of its bytes", name, identity.Binaries[name])
+		}
+	}
+	if identity.Tool != sha256Hex("tool") || identity.AnchorDate != "2026-10-29" || identity.Corpus != "corpus" ||
+		identity.WorkingCopy != "copy" || identity.ShiftDays != 7 {
+		t.Fatalf("identity = %+v", identity)
+	}
+	cfg.App = filepath.Join(root, "missing.app")
+	if err := writeArmIdentity(cfg); err == nil {
+		t.Fatal("an arm whose executable cannot be read must not run unidentified")
+	}
+}
+
+func sha256Hex(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
+// A writing condition regenerates the template between attempts; each attempt
+// must record the template it actually restored, and an interrupted attempt
+// keeps its record when it is moved aside.
+func TestUnitIdentityRecordsTheTemplateEachAttemptRestored(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := sourceBinding(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &batchState{Root: root, Home: home, Anchor: "2026-10-29", Binding: binding,
+		WorkingCopy: shiftResult{Corpus: "corpus", Identity: "copy", Days: 7}}
+	generate := func(generation int) {
+		template := filepath.Join(root, "template")
+		if err := os.MkdirAll(template, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		core := fmt.Sprintf("core-%d", generation)
+		session := fmt.Sprintf("session-%d", generation)
+		for name, body := range map[string]string{"agentdeck.sqlite3": core, "sessions.sqlite3": session} {
+			if err := os.WriteFile(filepath.Join(template, name), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		b.Template = templateManifest{CoreSHA256: sha256Hex(core), SessionSHA256: sha256Hex(session)}
+		b.Generations = generation
+	}
+	start := func(dir string) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		b.UnitDir = dir
+		defer func() { b.UnitDir = "" }()
+		if err := b.startRunUnit(stateFull); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(dir string) []unitIdentity {
+		raw, err := os.ReadFile(filepath.Join(dir, unitIdentityFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var records []unitIdentity
+		if err := json.Unmarshal(raw, &records); err != nil {
+			t.Fatal(err)
+		}
+		return records
+	}
+	attempt := filepath.Join(root, "sample-0001")
+	generate(1)
+	start(attempt)
+	kept := filepath.Join(root, interruptedDir, "sample-0001-attempt-1")
+	if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(attempt, kept); err != nil {
+		t.Fatal(err)
+	}
+	generate(2)
+	start(attempt)
+	for dir, generation := range map[string]int{kept: 1, attempt: 2} {
+		records := read(dir)
+		if len(records) != 1 {
+			t.Fatalf("%s: %d records", dir, len(records))
+		}
+		got := records[0]
+		core, session := sha256Hex(fmt.Sprintf("core-%d", generation)), sha256Hex(fmt.Sprintf("session-%d", generation))
+		if got.Generation != generation || got.Mode != "full" || got.Binding != binding || got.Template.CoreSHA256 != core ||
+			got.Restored["agentdeck.sqlite3"] != core || got.Restored["sessions.sqlite3"] != session ||
+			got.WorkingCopy != "copy" || got.Corpus != "corpus" || got.AnchorDate != "2026-10-29" {
+			t.Fatalf("%s: record = %+v, want generation %d as restored", dir, got, generation)
+		}
+	}
+	// A template whose bytes differ from the batch manifest is never measured.
+	if err := os.WriteFile(filepath.Join(root, "template", "agentdeck.sqlite3"), []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b.UnitDir = filepath.Join(root, "sample-0002")
+	if err := os.MkdirAll(b.UnitDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.startRunUnit(stateFull); err == nil {
+		t.Fatal("a restore that differs from the batch template must fail")
+	}
+}
+
+// stats reads every .jsonl in a sample as a trace; the unit identity record
+// beside the traces must not make a valid sample tool-invalid.
+func TestStatsAcceptsASampleWithItsUnitIdentity(t *testing.T) {
+	root := t.TempDir()
+	writeSchedule(t, root, schedule{Mode: "formal", Units: 1})
+	sampleDir(t, root, 1, map[string]string{
+		"app-000001.jsonl": trace("app", traceRecord{Stage: "app.ready", T: 10}, traceRecord{Stage: "model.usable", T: 2_000_010}),
+		unitIdentityFile:   `[{"state_mode":"full","working_copy_generation":1}]`,
+	})
+	if report := statsReport(t, root, "P02"); report.ToolInvalid != 0 || report.Samples != 1 {
 		t.Fatalf("report = %+v", report)
 	}
 }

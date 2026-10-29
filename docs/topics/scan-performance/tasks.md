@@ -60,7 +60,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | 3. `serving-open-path` | [x] | [x] |
 | 4. `parallel-source-pipeline` | [x] | [x] |
 | 5. `incremental-update` | [x] | [x] |
-| 6. `event-updates-and-cli` | [ ] | [ ] |
+| 6. `event-updates-and-cli` | [x] | [x] |
 | 7. `otel-capture-and-reconciliation` | [ ] | [ ] |
 | 8. `cross-surface-acceptance` | [ ] | [ ] |
 
@@ -69,6 +69,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 `serving-open-path` 的当前评审与修复交接见 [评审记录](reviews/serving-open-path.md)；Round 2 PASS，精确状态门禁 VERIFIED；交付状态由对应 Beads 任务记录。
 `parallel-source-pipeline` 当前评审与交接见 [评审记录](reviews/parallel-source-pipeline.md)；Round 3 PASS，候选 `scan-perf-psp-r2f-20261028-state` 完成门禁 VERIFIED；交付状态由对应 Beads 任务记录。
 `incremental-update` 当前评审与交接见 [评审记录](reviews/incremental-update.md)；Round 2 PASS，候选 `scan-perf-iu-r1f-20261028-state` 门禁 VERIFIED；交付状态由 Beads 任务 `ad-scan-performance-incremental-update` 记录。
+`event-updates-and-cli` 当前评审与交接见 [评审记录](reviews/event-updates-and-cli.md)；Round 4 PASS，候选 `scan-perf-euc-r2f-20261029-state` 门禁 VERIFIED；交付状态由 Beads 任务 `ad-scan-performance-event-updates-and-cli` 记录。
 
 依赖：1 → 2 → 3、4；4 的前台准则在 3 通过后验证；3、4 → 5 → 6 → 7 → 8。
 额外常驻 Go 引擎与多进程 parser 不是预建任务，只在性能评估的候选采用规则满足后经设计增补选入。

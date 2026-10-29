@@ -2028,15 +2028,18 @@ write action; it holds no state of its own that matters.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
-- **Refresh scheduling.** Startup remains unconditional. Opt-in periodic full
-  refresh is off by default and schedules from terminal completion plus 60
-  seconds; a monotonic evaluator runs every 30 seconds, so accepted active-app
-  requests occur in the 60–90 second window without overlap or catch-up replay.
-  Manual and provider-switch requests remain available while periodic refresh
-  is off. Quota refresh has its own single-flight lane and cannot block the full
-  deadline evaluator.
-- **Settings.** Exactly four preferences: periodic refresh (off by default,
-  because it is background work the user did not ask for), the menu-bar value
+- **Refresh scheduling.** Startup remains unconditional. Automatic local-data
+  updates are event driven and have no refresh period: while on, a source-file
+  change requests one finite update, and wake or re-enabling requests one finite
+  reconciliation for changes no event reported; a burst of these during a
+  running update merges into exactly one follow-up. While off, the App neither
+  watches log files nor polls them. Manual and provider-switch requests remain
+  available either way. Quota refresh keeps its own single-flight lane and
+  schedule and never requests a data update.
+- **Settings.** Exactly four preferences: automatic local-data updates (stored
+  under the former periodic-refresh preference: a stored value, including an
+  explicit off, is kept; an absent value is on, matching the file watching
+  earlier builds always ran), the menu-bar value
   (cost, tokens, or icon), the menu-bar scope (all clients, or follow the
   panel filter), and start at login. The login-item control renders what
   `SMAppService` reports, never what the toggle intended, so a refusal is

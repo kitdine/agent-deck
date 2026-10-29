@@ -94,15 +94,15 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let model: MenuBarViewModel
 	private let quotaSettings: QuotaSettingsController
 	private let settingsController: SettingsWindowController
-	private let refreshScheduler: DesktopRefreshScheduler
 	private let periodicDriver: DesktopRefreshPeriodicDriver
 	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
-	private var periodicRefresh: Task<Void, Never>?
+	private var quotaSchedule: Task<Void, Never>?
 	private var wakeObserver: NSObjectProtocol?
 	private var acceptanceWindow: NSWindow?
 	private let sourceHome: URL
 	private var sourceMonitor: DesktopSourceChangeMonitor?
+	private var automaticUpdates: DesktopAutomaticUpdates?
 	#if AGENTDECK_PERF
 	private var perfDriver: PerfDriver?
 	#endif
@@ -178,19 +178,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
 			snapshotStore: snapshotStore
 		)
-		let scheduler = DesktopRefreshScheduler(enabled: preferences.periodicRefreshEnabled) { [weak coordinator] trigger in
-			Task { @MainActor in
-				await coordinator?.requestFullRefresh(trigger: trigger)
-			}
-		}
-		let periodicDriver = DesktopRefreshPeriodicDriver(scheduler: scheduler) { [weak coordinator] in
+		let periodicDriver = DesktopRefreshPeriodicDriver { [weak coordinator] in
 			await coordinator?.requestQuotaRefresh(manual: false)
-		}
-		coordinator.setFullAttemptTerminalHandler { [weak scheduler] in
-			scheduler?.fullAttemptCompleted()
-		}
-		preferences.periodicRefreshDidChange = { [weak scheduler] enabled in
-			scheduler?.updateEnabled(enabled)
 		}
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
 		let quotaSettings = QuotaSettingsController(
@@ -203,7 +192,6 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			}
 		)
 		self.preferences = preferences
-		refreshScheduler = scheduler
 		self.periodicDriver = periodicDriver
 		self.automaticRefreshEnabled = automaticRefreshEnabled
 		self.sourceHome = sourceHome
@@ -256,17 +244,30 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		}
 		itemController?.warmsWindowAfterPreparation = true
 		if automaticRefreshEnabled {
-			sourceMonitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
+			let monitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
 				Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: .sourceChange) }
 			}
+			let updates = DesktopAutomaticUpdates(
+				enabled: preferences.automaticUpdateEnabled,
+				startWatching: { [weak monitor] in monitor?.start() ?? false },
+				stopWatching: { [weak monitor] in monitor?.stop() },
+				request: { [weak refreshCoordinator] trigger in
+					Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: trigger) }
+				}
+			)
+			sourceMonitor = monitor
+			automaticUpdates = updates
+			preferences.automaticUpdateDidChange = { [weak updates] enabled in
+				updates?.setEnabled(enabled)
+			}
 			refreshCoordinator.startInitialRefresh()
-			// Restore first: the watcher's first pass and periodic quota work start
-			// after it, like the startup refresh (architecture, startup order).
+			// Restore first: watching and quota work start after it, like the
+			// startup refresh (architecture, startup order).
 			Task { @MainActor [weak self] in
 				await self?.refreshCoordinator.waitForStartupSettled()
 				guard let self else { return }
-				self.sourceMonitor?.start()
-				self.startPeriodicRefresh()
+				self.automaticUpdates?.start()
+				self.startBackgroundSchedules()
 			}
 		}
 		#if DEBUG
@@ -281,10 +282,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	}
 
 		func applicationWillTerminate(_ notification: Notification) {
-			sourceMonitor?.stop()
+			preferences.automaticUpdateDidChange = nil
+			automaticUpdates?.stop()
 			refreshCoordinator.stopAppWork()
 			PerfTrace.flush()
-		periodicRefresh?.cancel()
+		quotaSchedule?.cancel()
 		periodicDriver.cancel()
 		if let wakeObserver {
 			NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
@@ -313,41 +315,34 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		settingsController.show()
 	}
 
-	/// The full snapshot refresh is opt-in and completion-based. The scheduler
-	/// uses monotonic deadlines; the wire's `next_refresh_at` remains a
-	/// compatibility hint and never owns this app deadline.
+	/// Wake asks automatic updates for one finite reconciliation (a no-op
+	/// while they are off); data never refreshes on a period.
 	///
 	/// Codex PR #5 tenth review, P1: quota alert evaluation must not depend
-	/// on that same opt-in preference -- a user can turn on quota reading and
-	/// alerts while leaving "Periodic refresh" off, and still expects
-	/// threshold/reset notifications. `refreshQuotaAlertsOnly` runs
-	/// independently of `periodicRefreshEnabled`, gated instead on the
-	/// mirrored reading/alerts preferences so it does not wait on
+	/// on the local-data update preference -- a user can turn on quota reading
+	/// and alerts while leaving automatic updates off, and still expects
+	/// threshold/reset notifications. The quota tick runs on its own schedule,
+	/// gated on the mirrored reading preference so it does not wait on
 	/// `QuotaSettingsController.load()`'s async round trip either.
-	private func startPeriodicRefresh() {
+	private func startBackgroundSchedules() {
 		wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
 			forName: NSWorkspace.didWakeNotification,
 			object: nil,
 			queue: .main
 		) { [weak self] _ in
-			Task { @MainActor in
-				guard let self else { return }
-				self.refreshScheduler.updateEnabled(self.preferences.periodicRefreshEnabled)
-				self.refreshScheduler.evaluate(.wake)
-			}
+			Task { @MainActor in self?.automaticUpdates?.didWake() }
 		}
-		periodicRefresh = Task { [weak self] in
+		quotaSchedule = Task { [weak self] in
 			while !Task.isCancelled {
-				try? await Task.sleep(for: DesktopRefreshScheduler.evaluatorInterval)
+				try? await Task.sleep(for: DesktopRefreshPeriodicDriver.evaluatorInterval)
 				guard let self else { continue }
-				// Codex PR #5 twelfth review, P1: refreshQuotaAlertsOnly is this
-				// app's only recurring caller into the quota probe itself, not
-				// merely alert evaluation -- gating it on alerts too meant a
-				// user with reading on but alerts off (both defaults: alerts
-				// starts off) never got a single background probe after
-				// startup. The helper already no-ops alert delivery on its own
-				// when alerts are disabled; gate this call on reading alone.
-				self.refreshScheduler.updateEnabled(self.preferences.periodicRefreshEnabled)
+				// Codex PR #5 twelfth review, P1: this tick is this app's only
+				// recurring caller into the quota probe itself, not merely alert
+				// evaluation -- gating it on alerts too meant a user with reading
+				// on but alerts off (both defaults: alerts starts off) never got a
+				// single background probe after startup. The helper already no-ops
+				// alert delivery on its own when alerts are disabled; gate this
+				// call on reading alone.
 				await self.periodicDriver.tick(quotaEnabled: self.preferences.quotaProbeEnabled)
 			}
 		}

@@ -2649,18 +2649,18 @@
         }
       }
     },
-    "Periodic refresh": {
+    "Automatically update local data": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Periodic refresh"
+            "value": "Automatically update local data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "定时刷新"
+            "value": "自动更新本地数据"
           }
         }
       }
@@ -2849,18 +2849,18 @@
         }
       }
     },
-    "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data": {
+    "Update when logs change, without an interval. Manual updates remain available when off.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
+            "value": "Update when logs change, without an interval. Manual updates remain available when off."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据"
+            "value": "日志变化时更新，无需设置周期。关闭后仍可手动更新。"
           }
         }
       }

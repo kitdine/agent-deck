@@ -122,7 +122,7 @@ final class MenuBarViewModelTests: XCTestCase {
 			switchController: SwitchController(transport: StubSwitchTransport(), refreshCoordinator: coordinator),
 			preferences: preferences, now: { clock.value })
 		await coordinator.startInitialRefresh().value
-		preferences.periodicRefreshEnabled = false
+		preferences.automaticUpdateEnabled = false
 		preferences.quotaProbeEnabled = false
 		preferences.menuBarValue = .cost
 		model.selectedPanel = .usage
