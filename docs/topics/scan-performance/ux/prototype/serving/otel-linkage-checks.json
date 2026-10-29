@@ -336,8 +336,128 @@
     {
       "name": "en/light disabling never removes the user's own exporter",
       "passed": true
+    },
+    {
+      "name": "40/memories_on public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/memories_on channels",
+      "passed": true
+    },
+    {
+      "name": "40 not-counted warning",
+      "passed": true
+    },
+    {
+      "name": "80/memories_on public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/memories_on channels",
+      "passed": true
+    },
+    {
+      "name": "80 not-counted warning",
+      "passed": true
+    },
+    {
+      "name": "40/memories_off public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/memories_off channels",
+      "passed": true
+    },
+    {
+      "name": "40 memories off stops listener",
+      "passed": true
+    },
+    {
+      "name": "80/memories_off public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/memories_off channels",
+      "passed": true
+    },
+    {
+      "name": "80 memories off stops listener",
+      "passed": true
+    },
+    {
+      "name": "40/write_config public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/write_config channels",
+      "passed": true
+    },
+    {
+      "name": "80/write_config public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/write_config channels",
+      "passed": true
+    },
+    {
+      "name": "40/write_conflict public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/write_conflict channels",
+      "passed": true
+    },
+    {
+      "name": "80/write_conflict public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/write_conflict channels",
+      "passed": true
+    },
+    {
+      "name": "40/disable_removed public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/disable_removed channels",
+      "passed": true
+    },
+    {
+      "name": "80/disable_removed public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/disable_removed channels",
+      "passed": true
+    },
+    {
+      "name": "40/restore_incomplete public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/restore_incomplete channels",
+      "passed": true
+    },
+    {
+      "name": "40 restore incomplete is a warning at exit 0",
+      "passed": true
+    },
+    {
+      "name": "80/restore_incomplete public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/restore_incomplete channels",
+      "passed": true
+    },
+    {
+      "name": "80 restore incomplete is a warning at exit 0",
+      "passed": true
     }
   ],
   "all_passed": true,
-  "scope": "Synthetic prototype Settings specimens only; no real Codex configuration, receiver, producer or native acceptance"
+  "scope": "Synthetic prototype Settings and CLI specimens only; no real Codex configuration, receiver, producer or native acceptance"
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-29
 ---
 
 # CLI：共用事实与发布，保留命令自己的语义
@@ -121,12 +121,13 @@ Restart at a safe checkpoint; no process was terminated.
 | --- | --- |
 | `telemetry config-preview` | 显示 user-level Codex 配置提案；不应用；local token 默认 redacted |
 | `telemetry config-preview --reveal-local-token` | 用户显式要求可复制的本地 token 片段；不进入日志/报告 |
-| `telemetry enable` / `telemetry disable` | 只启停 AgentDeck receiver 配置；enable 不隐含独立常驻或 Codex exporter 改动 |
+| `telemetry enable` / `telemetry disable` | 启停 AgentDeck receiver；enable 不隐含独立常驻，也不改 Codex 配置；disable 时若存在未被改动的受管段则移除它 |
+| `telemetry enable --write-codex-config` | 该参数即用户同意：向 `~/.codex/config.toml` 追加受管 `[otel]` 段并启用 receiver；已有其他 `[otel]` 或无法写入时不做任何修改、exit 1 |
 | `telemetry status` | enabled、实际 listener 状态、capture_only/reconciled、pending/conflict、coverage 与 gaps |
 | `telemetry import <otel-json-file>` | 用户明确指定的真实 OTLP JSON 记录；同一校验/去重，不接受 CPA 文件 |
 
-配置示例中的 port 只是示意，实际由 receiver 配置供给。保留已有用户 exporter 的合并决策，
-不让 CLI 自动覆盖配置。启用后 App 未运行且 independent 未启用时 receiver 为 stopped，
+配置示例中的 port 只是示意，实际由 receiver 配置供给。CLI 只在 `--write-codex-config` 下写入 Codex 配置，
+规则与 [Settings·联动与配置写入](settings.md#codex-记忆联动与配置写入)相同：只追加受管段，不覆盖已有 exporter。启用后 App 未运行且 independent 未启用时 receiver 为 stopped，
 status 必须说明；不能只因配置 enabled 就说正在接收。
 
 ```text
@@ -146,6 +147,61 @@ No pending tokens were added to totals.
 import 的 malformed/unsupported 输入 exit 1；可持久化但 reconciliation pending 时
 `partial: true` 并说明未计入，不将 import 成功包装成全部用量已恢复。
 重复导入产生 no-op receipt；禁止 silent conflict overwrite、近似匹配或历史推算。
+
+### Codex 记忆联动（2026-10-29）
+
+`telemetry status` 增加两行只读事实，含义与取值同 Settings：`Codex Memories: on|off|unknown`、
+`Codex exporter: managed|agentdeck|other|absent|unknown`（JSON：`codex_memories`、`codex_exporter`）。
+记忆 off 时 Listener 行写明原因，记忆 on 且未采集时给出警告并指向开启命令：
+
+```text
+$ agentdeck telemetry status
+Receiver: disabled
+Codex Memories: on
+Codex exporter: absent
+Warning: Codex Memories background usage is not counted.
+Run agentdeck telemetry enable --write-codex-config to count it.
+# exit 0；JSON warnings: ["codex_memories_usage_not_counted"]
+
+$ agentdeck telemetry status
+Receiver: enabled
+Listener: stopped (Codex Memories is off; collection is not needed)
+Codex Memories: off
+# exit 0
+```
+
+写入与恢复的结果，按通道与退出码：
+
+```text
+$ agentdeck telemetry enable --write-codex-config
+Receiver enabled.
+Appended AgentDeck's [otel] block to ~/.codex/config.toml.
+Restart Codex for it to take effect.
+# exit 0
+
+$ agentdeck telemetry enable --write-codex-config
+# stdout empty; stderr:
+codex_otel_conflict: ~/.codex/config.toml already has an [otel] section.
+Nothing was changed. Run agentdeck telemetry config-preview and merge it yourself.
+# exit 1（不可写为 codex_config_write_failed，同样不做任何修改）
+
+$ agentdeck telemetry disable
+Receiver disabled. Stored observations and the journal are kept.
+Removed AgentDeck's [otel] block from ~/.codex/config.toml.
+Restart Codex to stop exporting.
+# exit 0；受管段已被改动或不存在时不改文件，stderr：
+# codex_config_restore_incomplete: the [otel] block was changed elsewhere and was left untouched.
+# JSON warnings: ["codex_config_restore_incomplete"]，仍 exit 0
+```
+
+标本入口 `?surface=cli&engine=memories_on|memories_off|write_config|write_conflict|disable_removed|restore_incomplete`，
+40/80 列：[漏统计警告](prototype/serving/cli-memories_on-en-dark.png)、
+[写入冲突](prototype/serving/cli-write_conflict-en-dark.png)、[恢复不完整](prototype/serving/cli-restore_incomplete-en-dark.png)；
+通道、退出码与 JSON 字段的检查同在 [otel-linkage-checks](prototype/serving/otel-linkage-checks.json)。
+
+`telemetry status` 的 JSON 字段名以原型 `engineSamples` 为准（`receiver`、`listener`、`engine_mode`、`metering`、
+`reason_code`、`pending_observations`、`producer_configured`、`last_received_at`、`historical_coverage`），
+本节新增 `codex_memories`、`codex_exporter`。
 
 ## 终端边界与可访问性
 

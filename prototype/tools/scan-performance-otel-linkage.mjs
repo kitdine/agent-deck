@@ -72,5 +72,16 @@ for(const lang of ['zh','en'])for(const theme of ['dark','light']){
  check(`${tag} disabling never removes the user's own exporter`,!v.on&&v.result==='userConfigKept'&&v.row==='');
  if(lang==='zh'&&theme==='light')await browser('screenshot',path.join(out,'settings-linkage-user-config-kept-zh-light.png'));
 }
-fs.writeFileSync(path.join(out,'otel-linkage-checks.json'),JSON.stringify({kind:'scan-performance-otel-linkage-synthetic-acceptance',checks,all_passed:checks.every(x=>x.passed),scope:'Synthetic prototype Settings specimens only; no real Codex configuration, receiver, producer or native acceptance'},null,2)+'\n');
+for(const scenario of ['memories_on','memories_off','write_config','write_conflict','disable_removed','restore_incomplete'])for(const cols of [40,80]){
+ await browser('set','viewport','1280','1400');await browser('open',`${base}/?surface=cli&engine=${scenario}&cols=${cols}&lang=en&theme=dark`);
+ const v=await evaluate(`(()=>{const value=JSON.parse(document.querySelector('[data-engine-json]').textContent);return {value,stdout:document.querySelector('[data-engine-stdout]').textContent,stderr:document.querySelector('[data-engine-stderr]').textContent,out:document.querySelector('[data-engine-json-stdout]').textContent.trim(),err:document.querySelector('[data-engine-json-stderr]').textContent.trim()}})()`);
+ const failing=scenario==='write_conflict';
+ check(`${cols}/${scenario} public envelope`,v.value.schema_version===1&&Array.isArray(v.value.warnings)&&!v.value.command.includes(' '));
+ check(`${cols}/${scenario} channels`,failing?v.out===''&&v.err.startsWith('{')&&v.value.data===null&&v.value.error.code==='codex_otel_conflict'&&v.stdout.trim()===''&&v.stderr.includes('Nothing was changed'):v.err===''&&v.out.startsWith('{'));
+ if(scenario==='memories_on')check(`${cols} not-counted warning`,v.value.warnings.includes('codex_memories_usage_not_counted')&&v.value.data.codex_memories==='on'&&v.stdout.includes('--write-codex-config'));
+ if(scenario==='memories_off')check(`${cols} memories off stops listener`,v.value.data.listener==='stopped'&&v.stdout.includes('Codex Memories is off'));
+ if(scenario==='restore_incomplete')check(`${cols} restore incomplete is a warning at exit 0`,v.value.warnings.includes('codex_config_restore_incomplete')&&v.stderr.includes('left untouched'));
+ if(cols===80&&['memories_on','write_conflict','restore_incomplete'].includes(scenario))await browser('screenshot',path.join(out,`cli-${scenario}-en-dark.png`));
+}
+fs.writeFileSync(path.join(out,'otel-linkage-checks.json'),JSON.stringify({kind:'scan-performance-otel-linkage-synthetic-acceptance',checks,all_passed:checks.every(x=>x.passed),scope:'Synthetic prototype Settings and CLI specimens only; no real Codex configuration, receiver, producer or native acceptance'},null,2)+'\n');
 console.log(`${checks.length} checks passed`);

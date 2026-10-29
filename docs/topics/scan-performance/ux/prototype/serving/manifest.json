@@ -11,8 +11,16 @@
       "sha256": "4ebe7a7c7a6671de768f52d83d7b5d23e76bc722562cc0a499428b036115c532"
     },
     {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-memories_on-en-dark.png",
+      "sha256": "a6e2ed2303898612a51b4c060b786de060807015b441e21ab0f3843e1fe8a55c"
+    },
+    {
       "path": "docs/topics/scan-performance/ux/prototype/serving/cli-mismatch-en-dark.png",
       "sha256": "18316ecb169fdce35d625fdcba872566e82999a1031e3468d5ad364239f2b2e7"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-restore_incomplete-en-dark.png",
+      "sha256": "ca3ae1bb57e26bf796a03d3ca352162f83573c2526e45ac31860f7edf1f1530c"
     },
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/cli-stored_partial-en-dark.png",
@@ -25,6 +33,10 @@
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/cli-telemetry_unknown-en-dark.png",
       "sha256": "7cf35a2cffb10cc22ea27f573e166075c5b54a9b31f79ee36b5d3faed8788500"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-write_conflict-en-dark.png",
+      "sha256": "14b813c33f3732c6cd59d3daac83333480c133193314df7fd2e4766a3da74959"
     },
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/disk-zh-dark-420.png",
@@ -88,7 +100,7 @@
     },
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/otel-linkage-checks.json",
-      "sha256": "f722b3d792c89e8427d008d2be1ddc5ff4a92ff433bd835bb535b169f8f2696f"
+      "sha256": "ed09dff06295e3e1895da77970ce0e2154e59d2dfc5b2e78587927a6eb5466eb"
     },
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/partial-en-light-420.png",
@@ -200,7 +212,7 @@
     },
     {
       "path": "prototype/src/ServingSnapshot.jsx",
-      "sha256": "4842a23305b6bc9156ba57c9d4821ff5e56921a7e0003db14c16ea0a3f34a72e"
+      "sha256": "125e6118a88867479c9cbf31ba18232e97665e771183259417c9093812fd00e1"
     },
     {
       "path": "prototype/src/Settings.jsx",
@@ -268,7 +280,7 @@
     },
     {
       "path": "prototype/tools/scan-performance-otel-linkage.mjs",
-      "sha256": "e925c6773de11b833d72cd84523279387352a8a2f9c550b96a4dc4dbb81d48a6"
+      "sha256": "300af15b360468663dc1ed6c885a7aa32875a4e8728f4ddd65fd4dc4a10ed698"
     },
     {
       "path": "prototype/tools/scan-performance-repair-check.mjs",

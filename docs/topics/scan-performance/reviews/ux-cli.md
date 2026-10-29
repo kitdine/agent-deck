@@ -106,3 +106,49 @@ Task checkpoint：ad-scan-performance-doc-ux-cli；content_state `752d9eb4874fa2
 提交建议：将 CLI UX、完整输出标本与复评记录纳入完整设计批次的授权提交。
 
 推送建议：feature/scan-performance；须核验远端及分别获得提交/推送授权。
+
+
+## Round 3 — 2026-10-29
+
+## 📋 OTel 设计变更批量独立评审 — ux/cli.md
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+显式写配置参数、冲突退出 1、恢复不完整仍关闭 receiver 且退出 0、text/JSON 通道与 warning 字段彼此一致。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档差分、状态转换推演、现有源码/SQL 与标本核对；未参与本轮设计，未委派。
+- Scope：新增 telemetry status/enable/disable 契约与 engineSamples、渲染截图；既有 scan/watch/envelope 兼容约束。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；document blob `38374626fbdf82f7c0e5f61de34f6cba2f6e2563`；digest `56f8814188682978e4b28d2a8c5e283ba78cf010be9cc6adf56ce95a6d4d79b1`。标本 manifest SHA256 `edc7c2012ae85c5f5679bfa978b8ae68738d0c2023e1ea53ed06f73bfd568013`。
+- ContentState：`scan-perf-otel-docreview-20261029-ux-cli-0SDA62-state`；WorkUnit `scan-performance:ux/cli.md`；dispatch `ad-scan-performance-doc-ux-cli`。
+- Evidence：本轮 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 均通过。结构检查不替代语义评审。CEv1 入口查询两项 required criteria 均缺本目标证据，旧观察不重标；最终结果以本轮完成门禁字段为准。
+- 直接核对 ServingSnapshot.jsx:102–145 的六个新增场景、commandId、warning、stdout/stderr 和退出码；目视核对写入冲突、恢复不完整截图。manifest 70/70 匹配，记录中的合成检查绑定当前原型源码；未执行真实 CLI 写配置。C1-F1/C1-F2 的原关闭处置保留；未变 scan/watch/公共 envelope 约束沿用。Settings 的禁用开关缺口不适用于 CLI 的显式 disable；架构写入/所有权算法的阻断问题由架构记录承接，CLI PASS 不批准其实现。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`。只更新评审、矩阵与协调/证据，保留现有产品改动；未提交、推送或运行真实配置变更。
+
+Task checkpoint：ad-scan-performance-doc-ux-cli；content_state `scan-perf-otel-docreview-20261029-ux-cli-0SDA62-state`；gate VERIFIED。
+提交建议：门禁已 VERIFIED；在独立授权下提交 ux/cli.md、本轮评审记录及对应矩阵状态；可与修复完成后的设计批次统一交付。
+推送建议：门禁已 VERIFIED；核验提交范围、署名/SSH 签名与远端，再另行授权推送 origin/feature/scan-performance；当前远端未核验。
+
+CEv1 收口：标准 gate-status 查询返回 VERIFIED；两项 required criteria 的结构证据通过，独立评审证据为 pass，无 unresolved candidate impact。6 个状态、12 个观察及 24 条关系已读回核验；关系批次预检 24/24 ok。未查询 Topic 门禁，因为仍有未完成设计与实现。
+
+
+## Delivery impact assessment — 2026-10-29
+
+范围：CLI 文档任务的独立授权提交，不产生新的语义评审轮。CLI 文档 blob 仍为 `38374626fbdf82f7c0e5f61de34f6cba2f6e2563`；`prototype/src/ServingSnapshot.jsx` 仍为 `ca45f6212bbf82d4b1b6f63f06ab879aa240db9e`。共享标本 manifest 从 Round 3 的身份变为 `6e9a9af054713b277976722035425a491deaf58c7b9e1ac6733640b11e3c716c`，变化由 Settings 修复、新增 Settings 截图及同一合成检查脚本补充引起。CLI 六场景的字段、通道与退出码未改变；当前 114 项合成检查仍含 40/80 列 CLI 断言，72 项 manifest 匹配，重新生成的冲突截图已目视核对，仍为 stdout 空、stderr error envelope、exit 1。故保持 Round 3 CLI 语义结论，显式绑定交付目标并关联原证据，不将旧 manifest 证据直接重标。架构 F2 仍未解决，不提交架构正文或其失败评审记录，不宣称整批设计可进入实现。
+
+交付拆分更正：按用户要求一任务一提交。Settings 任务先提交其源码、截图、Settings 检查条目与 Settings-only harness；CLI 任务随后独立提交 CLI 文档/评审、EngineCli 场景、三张 CLI 截图，以及共享清单/检查结果/harness 的 CLI 增量。CLI 条目按同一内容保留，未改变字段、通道、退出码或断言。上述完整共享 manifest 为评审环境身份，不表示把其他任务纳入本提交。
