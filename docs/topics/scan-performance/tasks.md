@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-28
+updated: 2026-10-29
 ---
 
 # Scan performance：设计集与任务矩阵
@@ -48,6 +48,28 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 任何任务都不删除或修改它们，因此 UX 标本身份与上述评审保持有效。
 
 评审按 1→2→3→4 依次进行，每份文档各自的记录、round 与内容身份；全部通过才进入实现。
+
+2026-10-29 OTel 设计变更（依据：同日 0.165.0 隔离生产者实验，事实记录在 Bug
+`ad-bug-codex-subagent-usage-attribution` 评论；用户同日决定：经同意写入 Codex 配置、采集不自动开启、后台会话按
+辅助会话处理）。受影响文档的 Review 列置回待评审，按下表顺序复审：
+
+| 文档 | 本次变化与评审重点 |
+| --- | --- |
+| requirements.md | OTel 留在本 topic 作为该 Bug 的修复载体；修复目标；P05 移出性能衡量与报告 |
+| performance-evaluation.md | P05 与 E6 的测量移出；OTel 打点降为诊断 |
+| architecture.md | 会话级源所有权（capture_only/pending/jsonl_owned/otel_owned）、settle、晚到 rollout 撤销、贡献落点与 `otel:` 来源、支持表 |
+| ux/settings.md | Codex 记忆联动状态、征得同意写入的同意区、写入/关闭/恢复的结果表与文案；新标本 |
+| ux/cli.md | `telemetry status` 的 Codex 事实与警告、`enable --write-codex-config`、`disable` 的移除与恢复不完整；新标本 |
+| tasks.md | 任务 7 改为 Bug 修复与正确性验收、跨主题依赖；任务 8 不再分 OTel 开/关列 |
+
+`ux/menubar.md` 无变化：后台用量进入既有总量与模型构成，漏统计提示复用既有完整性 / Health 文案。
+标本影响评估：本次改动的原型共享文件 `prototype/src/styles.css` 只在末尾追加 `.telemetry-consent*` 与
+`.telemetry-details .tone-text-warn` 规则，`prototype/src/ServingSnapshot.jsx` 只新增 CLI 场景并让错误消息按场景取值
+（既有场景输出不变），因此 `ux/menubar.md` 与既有 CLI 标本的评审结论沿用。Settings 不沿用：开启开关现在先经过
+同意区，`scan-performance-repair-check.mjs` 中“直接点击开关进入 unknown”的 Settings 步骤已不能用当前原型复现
+（该工具按约定不修改，也未重跑，以免覆盖已评审的截图）；开启路径与开启后的状态由
+`scan-performance-otel-linkage.mjs` 覆盖，`ux/settings.md` 整体复审。
+[manifest](ux/prototype/serving/manifest.json) 已更新这些文件与新增标本的身份。
 文档 dispatch 为 `ad-scan-performance-doc-req`、`ad-scan-performance-doc-perf`、
 `ad-scan-performance-doc-arch`、`ad-scan-performance-doc-tasks`。
 
@@ -125,7 +147,7 @@ macOS 双架构构建（Debug/Release/Perf 三配置）、native 全量 XCTest�
 模板起点测试（运行单元起点的源树绑定指纹与模板一致；复制得到的源树指纹不同并被判为工具无效；
 从模板起步的 no-op 扫描读取字节与 decode 记录数为 0；累积写入序列内不重置）；
 Release 产物不含 `PerfDriver` 符号。E0：按[性能评估的工具 pilot 表](performance-evaluation.md#样本与统计)
-运行其中标为 `measurement-harness` 的条件，工具无效为 0；P05 的 pilot 归 `otel-capture-and-reconciliation`。
+运行其中标为 `measurement-harness` 的条件，工具无效为 0；P05 的 pilot 原归 `otel-capture-and-reconciliation`（2026-10-29 P05 移出，不再执行）。
 若点击刺激出现未路由样本，按性能评估在本任务评审中确认替代刺激。
 
 准则：`clock-source`、`marker-coverage`、`driver-isolation`、`fixture-determinism`、`measurement-privacy`、
@@ -169,7 +191,8 @@ P10 各段；更新来源与版本影响图。按需求“数值验收”的换�
 `gate_test.go`（随之改名为 `compare_test.go`）与 `stats_test.go`。验收：不接受也不需要 `k`；输出不含通过/不确定/失败等
 性能判定；ABBA 条件输出两臂 median、p95、p99（P03 每维、P09 中位 wall）、比值与固定种子的 bootstrap 95% 区间，组不完整时
 拒绝出区间并报工具无效；P06 输出逐对差值与中位数；P07 与 P11 完整历史输出两臂并列值与中位数之比；P08 输出两臂计数并列；
-P05 只输出单臂统计。
+P05 原为单臂统计，该输出义务自 2026-10-29 随 P05 移出而退役；已交付的本任务不因此重测，
+`cmd/agentdeck-perf otel` 与 `otel.*` 打点只保留诊断用途。
 
 范围：按架构“打开路径”实施，每步以分段打点衡量并按候选采用规则保留或撤回：分段定位 → 首次窗口暖启动
 （产品路径，满足不产生可见帧、不改变前台应用与 key 窗口、不触发 helper 的约束）→ ready 后空闲分片预热 →
@@ -252,29 +275,64 @@ P10 复测；连续写入、App/CLI 同时请求、Ctrl-C、App quit、崩溃/�
 
 ## 7. otel-capture-and-reconciliation
 
-目标：OTel 接收、持久化、身份与去重能力门按架构交付；报告 P05 绝对值及 OTel 开启时 P07、P10 的对比（E6）。
+目标：修复 Bug `ad-bug-codex-subagent-usage-attribution`——支持表内 Codex producer 的后台请求用量计入 All 与
+模型构成，并以各自会话记录可追溯；已由 JSONL 计量的会话不重复计入；Codex 记忆联动与征得同意的配置写入按 UX 交付。
+2026-10-29 起本任务不产生性能批次（P05 移出，E6 改为正确性验收）。
 
-文件：telemetry receiver/journal/reconciler、store observations 与 usage 桥接、Settings/CLI 偏好与状态、
-`cmd/agentdeck-perf otel` mock producer。
+已有实现（2026-10-29 开发轮，未提交，本设计复审通过后在其上修改）：迁移 33 的 observation/cursor/coverage 表，
+`internal/telemetry` 接收端、journal、reconciler 与状态，CLI `telemetry status|enable|disable|config-preview|import`
+及隐藏的 `serve`，Settings“实时用量”组与 App 随行 listener，`cmd/agentdeck-perf otel` mock producer。
 
-范围：默认 off；配置 preview 不自动应用；loopback 白名单、durable ACK、journal cap/retention、
-精确 JSONL 跨源身份、coverage/gap；未证明身份时 `capture_only`，接收/持久化/状态仍须交付。
-持续 listener 随 App 生命周期；独立后台模式显式另启。
+文件：上述实现；`internal/store` 贡献、会话记录、`telemetry_sessions` 来源标记与撤销；`internal/usage` orphan 清理与
+rebuild 对 `otel:` 来源的处理；`internal/session` 的会话索引投影（`otel:` 来源与元数据的写入/删除/重新生成）、文件
+inventory 全集对账对 `otel:` 来源的豁免、会话排除对投影的约束，以及 `cmd/agentdeck` `session show` 对无正文会话的读取；Codex 配置读取与受管写入（新文件，使用已依赖的 go-toml/v2）；status 与 App 解码；
+Settings 同意区与结果提示；原型 `TelemetrySettings.jsx` 与 CLI 标本已在设计中更新，实现以其为准。
 
-验证（L3）：相关 Go/race/vet/build、隐私（无正文/headers/凭据落盘）、mock 与真实受支持版本 producer 分列；
-测量批次：P05（100 个事件）、OTel 开启下的 P07 RSS 上界与 P10。真实 producer 端到端 freshness 另报。
+范围：
 
-准则：`durable-ingress`、`request-identity`、`transport-coverage`、`cross-source-idempotency`、`coverage-truth`、
-`otel-publication-latency`。
+- 事件识别按架构修正：事件名取 `event.name` 属性，白名单加入 originator，transport 由事件名判定；
+  删除依赖 producer instance + response id 的 canonical key 路径。
+- 会话所有权（JSONL 证据只来自非 `otel:` 事件或 rollout 文件）、settle、晚到 rollout 撤销、贡献写入、会话记录与
+  来源标记、会话索引投影、`otel:` 来源排除、rebuild 后重派生，按[架构·去重与源所有权](architecture.md#去重与源所有权)。
+  来源标记查询只是分类接口；后台会话必须经现有会话读取面（`session list`、`session show`、popover 会话面板）可见。
+- Codex 配置读取、联动规则与受管写入/移除，按[架构·Codex 配置读取与受管写入](architecture.md#codex-配置读取与受管写入)；
+  Settings 与 CLI 的状态、文案、通道与退出码按 [Settings](ux/settings.md#codex-记忆联动与配置写入) 与
+  [CLI](ux/cli.md#codex-记忆联动2026-10-29)，`telemetry status` 的 JSON 字段名改为原型 `engineSamples` 的命名。
+  已实现的 Settings 文案与原型不一致处（如隐私说明）按原型修正。
+- 支持表：0.165.0 SSE `codex_exec` 入表；WebSocket、Memories stage1、guardian、交互式 TUI 与 Desktop、重试/失败/中断、
+  主会话压缩请求按架构做同类隔离实验（隔离 CODEX_HOME 与 HOME、本地模拟模型服务、不改真实配置、不发真实请求），
+  通过者入表，未通过者保持 `capture_only`；guardian 或压缩若确认产生无 JSONL 用量，加入联动的“需要采集的功能”。
+  评审记录写明每个组合与结论。
+- 默认 off、不自动开启、loopback 与 token、durable ACK、journal cap/retention、coverage/gap 保持已实现契约。
+
+跨主题依赖：`auxiliary-session-classification` 采用 `codex-otel-background` 来源标记，把这些会话判为辅助会话。
+本任务交付标记与只读查询接口，并在该专题的 Beads 任务上登记接口请求；v0.7.0 版本装配需两者同在才算该 Bug
+修复完整。逐会话记忆提取与来源会话的关联作为该专题或后续专题的待办，不在本任务实现。
+
+验证（L3）：相关 Go/race/vet/build、迁移与 rebuild、隐私（无正文/headers/凭据落盘，token 只在受管段与 0600 文件）；
+会话所有权测试：JSONL 会话不计入、无 rollout 会话 settle 后恰计入一次并生成会话记录与标记、settle 前不计入、
+晚到 rollout 撤销贡献/会话记录/标记后只剩 JSONL、replay 与重复导入幂等、rebuild 后重派生且不重复、orphan 清理
+不删 `otel:` 来源、conflict 不计入、支持表外 `capture_only`；自身写入不成为证据：同一 `otel_owned` 会话经连续多次
+reconciliation、App/CLI 重启、journal 清理与全量 rebuild 后仍为 `otel_owned` 且贡献恰一份；读取面断言：后台会话出现在
+`session list` 与 popover 会话面板（项目未知、有会话 id），`session show` 返回元数据与用量明细且转录为空、不提示运行
+session scan，`session search` 不命中；会话索引 purge/rebuild 后投影重新生成，文件 inventory 全集对账不删除 `otel:` 来源，
+被排除的会话不投影，晚到 JSONL 后读取面只显示 JSONL 来源且 `otel:` 来源被删除；配置写入测试（只用临时 HOME）：absent 追加后其余字节
+不变且解析为 managed、other 拒写且不改、不可写与写入期间被改动均不改、移除只删未改动的受管段、标记缺失或被改为
+恢复不完整且不改文件；联动测试：记忆 off 时 listener 不启动、运行中变 off 即停止、偏好保留；native：Settings 同意区
+与全部结果状态、开关真实状态；真实 producer 端到端：隔离 Codex 实验经 App 随行 listener 计入后台请求，App 与 CLI
+总量一致、会话记录带标记。不跑性能批次。
+
+准则：`durable-ingress`、`session-ownership`、`background-metering`、`late-jsonl-retraction`、
+`producer-support-table`、`codex-config-consent`、`memories-linkage`、`coverage-truth`、`real-producer-e2e`。
 
 ## 8. cross-surface-acceptance
 
-目标：在最终内容状态上对 P01–P11 全矩阵做相对 S0（P09 另对 B0）的对比（E7），各项按性能评估“对比报告”的分类方法报告：
+目标：在最终内容状态上对 P01–P11（不含已移出的 P05）全矩阵做相对 S0（P09 另对 B0）的对比（E7），各项按性能评估“对比报告”的分类方法报告：
 ABBA 比值与区间（P01 三层、P02、P03、P04、P09、P10、P11 首批）、P06 配对差值、P07 与 P11 完整历史两臂并列、
-P08 计数并列、P05 只报单臂绝对值；给出逐项基线、最终值与变化幅度的报告交用户判断整体提升是否足够；并完成跨表面一致性与生命周期验收。
+P08 计数并列；给出逐项基线、最终值与变化幅度的报告交用户判断整体提升是否足够；并完成跨表面一致性与生命周期验收。
 
 范围：全部指标按契约样本数在同一内容状态重测，只复用与该内容状态精确绑定的证据；
-OTel on/off 分列；默认 quota/全部 tab、cache miss/跨天/升级/restore、CLI 与 Widget 逻辑对照、App quit 生命周期。
+性能矩阵不分 OTel 开/关列；默认 quota/全部 tab、cache miss/跨天/升级/restore、CLI 与 Widget 逻辑对照、App quit 生命周期。
 同步最终契约到 `docs/specs/cli-design.md`、`docs/specs/cli-manual.md` 与原型；topic 本地矩阵与评审记录收尾。
 不执行未授权的 L4 release、安装或发布，不更新 `main` 全局状态，不关闭未交付的 Bug。
 

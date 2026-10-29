@@ -918,3 +918,104 @@ Task checkpoint：ad-scan-performance-doc-tasks；content_state `d869c465bb29195
 下一步指令：开发：scan-performance / serving-open-path
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+
+## Round 19 — 2026-10-29
+
+## 📋 OTel 设计变更批量独立评审 — tasks.md
+
+📊 总体评分：6/10
+
+✅ 评审结论：FAIL
+
+完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+#### SP-TASKS-R19-F1 — P2：后台会话的现有读取面和验收未落实到任务范围
+
+位置：`tasks.md:285–287,309–316`。
+- 行为风险：实施者只完成 store 用量行与来源标记即可满足当前列举测试，却仍不能从产品会话列表/详情追溯后台请求。
+- 证据：本任务文件范围只列 store 会话记录与来源标记接口；验证只检查“生成会话记录与标记”。当前 `internal/session/session.go:1635–1665` 读取 session_metadata/session_sources，与架构拟写的 usage_sessions 不同；见本轮架构 SP-ARCH-R12-F2。
+- 处置：OPEN。
+💡 修复：随架构决定补齐现有会话读取端的实现范围，以及列表/详情可见、无 rollout、晚到 JSONL 替换、rebuild 与重复 reconciliation 的实际读取断言；保持辅助分类由相邻主题承接。
+
+### 🟡 建议改进 — 推荐
+
+#### SP-TASKS-R19-F2 — P3：P05 仍残留有效的输出验收义务
+
+位置：`tasks.md:194`。
+- 行为风险：Task 3 的工具验收仍要求“P05 只输出单臂统计”，与当前需求“不测量、不报告”和 performance-evaluation 删除 P05 报告分类相冲突。
+- 证据：该句仍处在当前 Task 3 验收段，未标为历史；Task 7/8 和性能文档已明确移出 P05。
+- 处置：OPEN。
+💡 修复：删除或明确退役该项当前报告义务，保留诊断/mock producer 所需用途，不把已完成 Task 3 重新变成性能重测任务。
+
+### 🟢 优点
+
+Task 7 明确改为计量正确性与 Bug 修复，保留独立生产者验收；Task 8 已移除 P05 与 OTel 开/关性能列。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话；Method：独立文档差分、状态转换推演、现有源码/SQL 与标本核对；未参与本轮设计，未委派。
+- Scope：完整 Documents/Tasks 分解及 Task 7/8 对本轮五份上游文档的覆盖；只同步矩阵状态，不修复任务正文。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；document blob `9a799169aa62cfa147bf87baa4202b4112f8166d`；digest `a29179438fc396c44d5c1981784de0dfedba8bdd29a6d524aff490cd438f2ce2`。
+- ContentState：`scan-perf-otel-docreview-20261029-tasks-0SDA62-state`；WorkUnit `scan-performance:tasks.md`；dispatch `ad-scan-performance-doc-tasks`。
+- Evidence：本轮 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 均通过。结构检查不替代语义评审。CEv1 入口查询两项 required criteria 均缺本目标证据，旧观察不重标；最终结果以本轮完成门禁字段为准。
+- SP-TASKS-R17-F1 等此前关闭处置保留。本轮只把 requirements、performance-evaluation、ux/cli 的 Review 格勾选；架构、Settings、tasks 仍未勾选。批次上游存在 FAIL，不能进入按本设计实施的完成边界，也未到 Topic 完成边界。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`。只更新评审、矩阵与协调/证据，保留现有产品改动；未提交、推送或运行真实配置变更。
+
+CEv1 收口：标准 gate-status 查询返回 FAILED；两项 required criteria 的结构证据通过，独立评审证据为 fail，无 unresolved candidate impact。6 个状态、12 个观察及 24 条关系已读回核验；关系批次预检 24/24 ok。未查询 Topic 门禁，因为仍有未完成设计与实现。
+
+## Repair candidate — 2026-10-29（Round 19 后）
+
+修复方：Claude Code 主会话；未提交，工作区 `agent-deck.scan-performance`。
+
+- SP-TASKS-R19-F1 -> repaired in candidate：Task 7 文件范围加入 `internal/session` 会话索引投影、文件 inventory 全集对账
+  对 `otel:` 来源的豁免、会话排除约束与 `session show` 无正文读取；范围写明 JSONL 证据定义、来源标记查询只是分类接口、
+  后台会话必须经现有读取面可见；验证加入自身写入不成为证据（连续 reconciliation/重启/journal 清理/rebuild）与读取面断言
+  （`session list`、popover 会话面板、`session show` 元数据+用量明细且不提示 session scan、`session search` 不命中、
+  索引 purge/rebuild 重新生成、全集对账不删 `otel:`、排除不投影、晚到 JSONL 后只显示 JSONL）。辅助分类仍由相邻主题承接。
+- SP-TASKS-R19-F2 -> repaired in candidate：Task 3 验收中“P05 只输出单臂统计”改为该义务自 2026-10-29 退役、已交付任务
+  不重测，`cmd/agentdeck-perf otel` 与 `otel.*` 打点只保留诊断用途。
+- 验证：`git diff --check` 干净；`rg` 确认 topic 文档中不再有有效的 P05 输出义务。
+
+
+## Round 20 — 2026-10-29
+
+## 📋 OTel 设计缺陷定向复评 — tasks.md
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+完成门禁：VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点与已关闭问题
+
+SP-TASKS-R19-F1 CLOSED：Task 7 加入 internal/session 索引投影、全集对账豁免、排除规则及 session show 无正文读取；316–320 行覆盖 list/popover/show/search、purge/rebuild、晚到 JSONL 和自身写入不成为证据的断言。任务现在能检查架构 F2 的实际失败，分解缺口已补齐。
+
+SP-TASKS-R19-F2 CLOSED：194–195 行明确 P05 输出义务退役、已交付 Task 3 不重测，mock producer/打点仅供诊断。
+
+### 📝 总结
+
+- Reviewer：Codex 主会话，非修复作者；Method：逐 finding 文档/源码核对、最小 SQL 对照及标本身份与截图检查，无委派。
+- Scope：本文件上一轮两项 finding 及修复影响。本 PASS 仅确认任务分解的修复，不能代替 architecture.md 的字段合同。SP-ARCH-R12-F2 仍由 ad-scan-performance-doc-arch / reviews/architecture.md Round 13 承接，整批实施准备仍未完成。只恢复本文件与 ux/settings.md 的 Review 勾选，不改任务正文；不查询 Topic 完成门禁。
+- Reviewed state：HEAD `5a57b26b15142ae980f5e19976555314a8759f2a`；blob `ab66606de9a68deb65ab01ffd0121415382d072d`；digest `28e3c8de0b1a69783a2d9ffa7ca02fb9349917a15a15360b93070a560fe80a0b`。
+- ContentState：`scan-perf-otel-rereview-20261029-tasks-lziiHa-state`；WorkUnit `scan-performance:tasks.md`；dispatch `ad-scan-performance-doc-tasks`。
+- Evidence：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh scan-performance`、`make check-whitespace`、`git diff --check` 通过。CEv1 入口精确目标 NOT_VERIFIED，缺本轮独立复评及结构证据；旧失败观察保持原身份，最终门禁见本轮单一字段。
+- 依赖影响：requirements/performance-evaluation/ux-cli 文档 blob 分别仍为 812d3f4c206101a62812b232e5c34e262b9287de、913a03fa724daca96e2e628ef6b4f9e35269fc08、38374626fbdf82f7c0e5f61de34f6cba2f6e2563；保留其已有语义结论，不宣称变动后的共享 manifest 已被旧门禁认证。
+- 工作区 `agent-deck.scan-performance` / `feature/scan-performance`；correlation `lziiHa3A3s6UgvCO`。生产代码、测试和配置只读；未提交或推送。
+
+Task checkpoint：ad-scan-performance-doc-tasks；content_state `scan-perf-otel-rereview-20261029-tasks-lziiHa-state`；gate VERIFIED。
+提交建议：门禁已 VERIFIED；另行授权提交 tasks.md、相关标本/矩阵状态与本轮记录；可随架构修复后的批次统一交付。
+推送建议：门禁已 VERIFIED；核验提交范围、署名、SSH 签名与远端，再另行授权推送 origin/feature/scan-performance；远端未核验。
+
+CEv1 收口：标准 gate-status 返回 VERIFIED；本轮 3 个状态、6 个观察与 12 条关系均已精确读回，关系预检 12/12 ok。结构准则 pass，语义准则 pass；无 unresolved candidate impact。旧失败观察保留，不重标。
