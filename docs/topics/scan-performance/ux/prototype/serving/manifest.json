@@ -87,6 +87,10 @@
       "sha256": "8bf85f67b9f8ce9f5bcdb1eb4bda8ac6b25df04d9f3ebe0a5aa2a4d13dee0eb7"
     },
     {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/otel-linkage-checks.json",
+      "sha256": "f722b3d792c89e8427d008d2be1ddc5ff4a92ff433bd835bb535b169f8f2696f"
+    },
+    {
       "path": "docs/topics/scan-performance/ux/prototype/serving/partial-en-light-420.png",
       "sha256": "0d88cef1668db991ee61a27b999b1d790d753ce0e99caf6d0ee44ed7ca40275c"
     },
@@ -97,6 +101,38 @@
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/repair-checks.json",
       "sha256": "600c3f0e4daa1602629f21f8c49f80069602b72c40cd5e284c8d439aa09e793a"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-conflict-zh-dark.png",
+      "sha256": "544af1cf8ef08bec62aa02759cd446e68f9031ca5474939932e2ddf8d079e736"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-consent-zh-light.png",
+      "sha256": "fc4aeebc5f347eccb79505bd24622660d585e2520b6c0c6021f6cb2df03d663c"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-memories-off-zh-dark.png",
+      "sha256": "ed12ccb294ea5da9e7f230d64543274fe7b6624e6f25df1560bb09009eaebfa3"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-memories-stopped-en-dark.png",
+      "sha256": "8bd375f1224c73c49d6612c06d869b7b6a8ca6a2f3cb370c0c31e0b367adc30d"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-not-counted-en-light.png",
+      "sha256": "be0fc062b84ea95cacee3dbe41185a824e8fdf616ea76ecae9404fb93227eb6f"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-refused-en-dark.png",
+      "sha256": "a1941125149ea71947794ca57a4f75d2f5d8ea7c671d80b5c8cf0f580f814b6e"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-restore-incomplete-en-light.png",
+      "sha256": "bbbdc40e3e149da56cf5caff23afe62e769e944e5f029e3b88e24073ac2eb315"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-linkage-user-config-kept-zh-light.png",
+      "sha256": "f184b387a5529e2ffed992cc128a07355fd704d1688781b75f665d4ff63c2353"
     },
     {
       "path": "docs/topics/scan-performance/ux/prototype/serving/settings-otel-off-zh-dark.png",
@@ -176,7 +212,7 @@
     },
     {
       "path": "prototype/src/TelemetrySettings.jsx",
-      "sha256": "1ca872b890eacbb3adb6269916c45aa64f38cca3a8a99e9b9d588a52959d7823"
+      "sha256": "a629aaddf15b7333e1e71771f9f00d9f53eb97f4b9c404d0447bbf7fa66a3bb3"
     },
     {
       "path": "prototype/src/data.js",
@@ -200,7 +236,7 @@
     },
     {
       "path": "prototype/src/styles.css",
-      "sha256": "a850b86354a15693a7730d0a87b9dd8214f43631e64bfcdc75d5c6dc0010d1ca"
+      "sha256": "538a829ff8f51723b50633cba18ca347c63dea14bf921936eb056418fa865933"
     },
     {
       "path": "prototype/tools/scan-performance-db-bootstrap.mjs",
@@ -229,6 +265,10 @@
     {
       "path": "prototype/tools/scan-performance-native-input.mjs",
       "sha256": "c7429daf707adb7d9c1e1d4be86d3a7b99bc10beaf9eda7b6e1e15a1f5b7aeef"
+    },
+    {
+      "path": "prototype/tools/scan-performance-otel-linkage.mjs",
+      "sha256": "e925c6773de11b833d72cd84523279387352a8a2f9c550b96a4dc4dbb81d48a6"
     },
     {
       "path": "prototype/tools/scan-performance-repair-check.mjs",

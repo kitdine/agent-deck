@@ -3244,3 +3244,11 @@ button.notice:hover {
 .settings-window:not(.embedded):has(.telemetry-settings) { display:flex; flex-direction:column; max-height:calc(100dvh - 96px); max-width:calc(100vw - 32px); }
 .settings-window:not(.embedded):has(.telemetry-settings) > header { flex-shrink:0; }
 .settings-window:not(.embedded):has(.telemetry-settings) .settings-body { overflow-y:auto; min-height:0; }
+/* Codex configuration consent (scan-performance otel, 2026-10-29). Inline,
+   never a modal, so the switch and status stay reachable. */
+.telemetry-consent { border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:8px 0; }
+.telemetry-consent p { margin:6px 0; }
+.telemetry-consent-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.telemetry-consent-actions button { font:inherit; padding:3px 10px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
+.telemetry-consent-actions button:first-child { background:var(--accent); border-color:var(--accent); color:#fff; }
+.telemetry-details .tone-text-warn { color:var(--warn); }
