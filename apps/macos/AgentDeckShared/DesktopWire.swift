@@ -1170,12 +1170,16 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 32
+	public static let maximumSupportedCoreSchema = 33
 
-	// Schema 32 adds derived caches only. All other identity changes still
+	// Schema 32 adds derived caches; 33 adds telemetry observations. Neither
+	// changes the canonical facts in a retained schema-31/32 publication.
+	// Keep this directional compatibility aligned with the Go serving reader.
+	// All other identity changes still
 	// invalidate a retained publication before date and fullness checks.
 	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
 		stored == current || (stored == 31 && current == 32)
+			|| ((stored == 31 || stored == 32) && current == 33)
 	}
 	public let stateIdentity: String
 	public let coreEpoch: Int64

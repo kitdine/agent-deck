@@ -1,10 +1,16 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # CLI：共用事实与发布，保留命令自己的语义
+
+2026-10-30 实现对照：下文保留设计阶段的 proposed/拟新增表述；其中 wire-v2 serving、
+stored-only 持久 coverage 提示和 telemetry 命令现已实现，当前调用契约见
+[CLI Manual](../../../specs/cli-manual.md)。因此下文“只按 scanErr 判断 partial”和
+“telemetry 待实现”不再描述当前实现。engine 命令仍是有条件扩展，未提供；不能从设计示例
+推断已有独立常驻模式。本次实现同步与原型调整由 Task 8 的实现评审覆盖，不自称新的评审 PASS。
 
 final candidate，尚无独立 PASS。依赖 [需求](../requirements.md)、[架构](../architecture.md)。
 现有入口以 [CLI Manual](../../../specs/cli-manual.md) 为准。以下 engine/telemetry 命令是

@@ -4,6 +4,18 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
+	func testServingAcceptsTelemetrySchemaAndRejectsUnknownFutureSchema() throws {
+		let snapshot = try servingCoordinatorFixture(id: "telemetry-schema", full: true,
+			generationChanges: ["core_schema": 33])
+		XCTAssertEqual(snapshot.header.generation.coreSchema, 33)
+		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
+			generationChanges: ["core_schema": 34]))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 32))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 34))
+	}
+
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {
 		let partial = try servingCoordinatorFixture(id: "first-partial", full: false)
 		let final = try servingCoordinatorFixture(id: "final-full", full: true)

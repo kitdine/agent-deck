@@ -132,11 +132,22 @@ func TestRatioIntervalCountsProductFailuresAsInfinite(t *testing.T) {
 
 // P06's three paired windows are reported as per-unit differences.
 func TestPairedDifferencesSubtractTheBaselineWindow(t *testing.T) {
-	baseline := map[string]any{"sample-0001": map[string]any{"cpu": 0.004, "label": "x"}, "schedule": "s"}
-	candidate := map[string]any{"sample-0001": map[string]any{"cpu": 0.003, "label": "x"}, "sample-0002": map[string]any{"cpu": 1.0}}
+	baseline := map[string]any{"sample-0001": map[string]any{"cpu": 0.004, "label": "x"}, "schedule": map[string]any{"units": 3.0}}
+	candidate := map[string]any{"sample-0001": map[string]any{"cpu": 0.003, "label": "x"}, "sample-0002": map[string]any{"cpu": 1.0}, "schedule": map[string]any{"units": 3.0}}
 	got := pairedDifferences(baseline, candidate)
 	if len(got) != 1 || math.Abs(got["sample-0001"]["cpu"]+0.001) > 1e-12 {
 		t.Fatalf("differences = %v", got)
+	}
+}
+
+func TestPairedDifferenceMediansPreserveSignedChanges(t *testing.T) {
+	got := pairedDifferenceMedians(map[string]map[string]float64{
+		"sample-0001": {"cpu": 2, "rss": -10},
+		"sample-0002": {"cpu": -4, "rss": 8},
+		"sample-0003": {"cpu": 1, "rss": 3},
+	})
+	if got["cpu"] != 1 || got["rss"] != 3 {
+		t.Fatalf("paired medians = %v", got)
 	}
 }
 

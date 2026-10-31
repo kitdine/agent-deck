@@ -214,6 +214,93 @@ func TestP08ReportsTheAppendBound(t *testing.T) {
 
 // P09 reports each arm's own rebuild cost: S0 from its worker's traces, B0
 // from its original scan profile, never from the front process alone.
+func TestP09TracedBaselineUsesItsOwnCounters(t *testing.T) {
+	dir := t.TempDir()
+	duration := int64(100)
+	writeFile(t, filepath.Join(dir, "B0", "collector-000001.jsonl"), processTrace("collector",
+		traceRecord{Stage: "resource.lifetime", T: 20, N: map[string]int64{"user_ns": 700, "sys_ns": 30, "maxrss_bytes": 160 << 20}},
+		traceRecord{Stage: "scan.usage", T: 1, Dur: &duration},
+		traceRecord{Stage: "scan.session", T: 1, Dur: &duration},
+		traceRecord{Stage: "scan.derive", T: 12, Dur: &duration},
+		traceRecord{Stage: "scan.end", T: 19, N: map[string]int64{"read_bytes": 4321}}))
+	run := cliRun{Label: "B0", CostSource: "perftrace", UserNS: 11}
+	got, err := p09ArmCost(dir, run)
+	if err != nil || got.ReadBytes != 4321 || got.WorkerCPUNS != 730 || got.FrontCPUNS != 11 {
+		t.Fatalf("traced baseline = %+v, %v", got, err)
+	}
+	// No automatic fallback: an unmarked legacy baseline still needs its own
+	// legacy profile, and a marked baseline cannot borrow candidate traces.
+	run.CostSource = ""
+	if _, err := p09ArmCost(dir, run); err == nil {
+		t.Fatal("legacy baseline silently accepted current traces")
+	}
+	run.CostSource = "perftrace"
+	if err := os.Rename(filepath.Join(dir, "B0"), filepath.Join(dir, "S0")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p09ArmCost(dir, run); err == nil {
+		t.Fatal("baseline borrowed candidate trace data")
+	}
+	baseline := filepath.Join(t.TempDir(), "baseline")
+	writeFile(t, baseline, "baseline executable")
+	candidate := filepath.Join(t.TempDir(), "candidate")
+	writeFile(t, candidate, "candidate executable")
+	identity, err := identifyArm(runConfig{Batch: &batchState{}, Agentdeck: candidate, B0: baseline, P09BaselineTraced: true})
+	if err != nil || !identity.P09BaselineTraced || identity.Binaries["p09_baseline"] != sha256Hex("baseline executable") {
+		t.Fatalf("baseline identity missing: %+v, %v", identity, err)
+	}
+}
+
+func TestStopOnFailureChecksCompletedUnitAndRetainsRecords(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		stage     string
+		invalid   bool
+		wantError bool
+	}{
+		{"completed unit before rest of batch", "model.usable", false, false},
+		{"product precondition failure", "driver.precondition_timeout", false, true},
+		{"tool invalid", "model.usable", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			body := processTrace("app", traceRecord{Stage: "resource.lifetime", T: 3},
+				traceRecord{Stage: "app.ready", T: 1}, traceRecord{Stage: tc.stage, T: 2})
+			path := filepath.Join(dir, "app-000001.jsonl")
+			writeFile(t, path, body)
+			if tc.invalid {
+				writeFile(t, filepath.Join(dir, "invalid.json"), `{"reason":"fixture identity mismatch"}`)
+			}
+			err := checkUnitOutcome(dir, "P02", schedule{Mode: "formal", Units: 100})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("outcome error = %v", err)
+			}
+			retained, err := os.ReadFile(path)
+			if err != nil || string(retained) != body {
+				t.Fatalf("original record changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestStopOnFailureReadsP08ScenarioDirectories(t *testing.T) {
+	dir := t.TempDir()
+	for _, scenario := range []string{"noop", "append"} {
+		writeFile(t, filepath.Join(dir, scenario, "collector-000001.jsonl"),
+			processTrace("collector", traceRecord{Stage: "resource.lifetime", T: 3}, traceRecord{Stage: "scan.end", T: 2}))
+	}
+	writeFile(t, filepath.Join(dir, "cli-runs.json"), `[{"label":"noop","exit_code":0},{"label":"append","exit_code":0}]`)
+	if err := checkUnitOutcome(dir, "P08", schedule{Units: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "append", "collector-000001.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkUnitOutcome(dir, "P08", schedule{Units: 3}); err == nil {
+		t.Fatal("missing append trace was accepted")
+	}
+}
+
 func TestP09ReportsEachArmsOwnRebuildCost(t *testing.T) {
 	root := t.TempDir()
 	writeSchedule(t, root, schedule{Mode: "formal", Units: 2})
@@ -235,6 +322,11 @@ func TestP09ReportsEachArmsOwnRebuildCost(t *testing.T) {
 			traceRecord{Stage: "resource.lifetime", T: 21, N: map[string]int64{"maxrss_bytes": 12 << 20}}))
 	}
 	report := statsReport(t, root, "P09")
+	for unit := 1; unit <= 2; unit++ {
+		if err := checkUnitOutcome(filepath.Join(root, fmt.Sprintf("sample-%04d", unit)), "P09", schedule{Units: 20}); err != nil {
+			t.Fatalf("completed P09 pair rejected before full batch: %v", err)
+		}
+	}
 	b0, _ := report.Values["B0_rebuild"].(map[string]any)
 	s0, _ := report.Values["S0_rebuild"].(map[string]any)
 	median := func(arm map[string]any, key string) any {

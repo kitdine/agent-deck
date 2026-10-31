@@ -196,7 +196,7 @@
     },
     {
       "path": "prototype/src/App.jsx",
-      "sha256": "770a9f22bb86e361ed01ea67cd75cbcf465c7add69c4522a0d6b6ca2e887b136"
+      "sha256": "33d5c257ea366c3bfcaca7ff9fad565b52e07378731e452413a30f3c720be632"
     },
     {
       "path": "prototype/src/Cli.jsx",
@@ -291,5 +291,13 @@
       "sha256": "c4ac0720af7ee64c2960e581501f6203008f29ff4c7ead4271c7f2526acd2482"
     }
   ],
-  "performance_scope": "Prior performance results unchanged; new captures/checks are synthetic UX repair only"
+  "performance_scope": "Prior performance results unchanged; new captures/checks are synthetic UX repair only",
+  "cross_surface_reconciliation": {
+    "date": "2026-10-29",
+    "source": "prototype/src/App.jsx",
+    "prior_sha256": "770a9f22bb86e361ed01ea67cd75cbcf465c7add69c4522a0d6b6ca2e887b136",
+    "prior_specimen_commit": "27bbe5f65483ff18e4e40ca85518b4a8cf42d3e4",
+    "change": "Only serving-mode initial periodicRefresh becomes true; explicit off remains selectable. Existing PNGs are prior-state specimens, not recaptured proof of this default.",
+    "validation": "Independent browser accessibility snapshot: Automatically update local data checked=true at initial serving Settings; checked=false after explicit toggle. OTel remains checked=false."
+  }
 }

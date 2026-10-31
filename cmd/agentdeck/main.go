@@ -386,26 +386,54 @@ func (e *inputError) Unwrap() error {
 }
 
 func main() {
-	if perftrace.Start(perfRole(os.Args[1:])) && !slices.Contains(os.Args[1:], "watch") {
-		flushTraceOnTermination()
+	stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
+	if os.Getenv(perftrace.EnvOut) != "" && !slices.Contains(os.Args[1:], "watch") {
+		traceReady := make(chan struct{})
+		flushTraceOnTermination(traceReady)
+		stdout, stderr = tracePipeOutputs()
+		perftrace.Start(perfRole(os.Args[1:]))
+		close(traceReady)
+	} else {
+		perftrace.Start(perfRole(os.Args[1:]))
 	}
-	code := execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	code := execute(os.Args[1:], os.Stdin, stdout, stderr)
 	_ = perftrace.Close()
 	os.Exit(code)
 }
 
-// flushTraceOnTermination keeps a measured helper's trace when its owner
-// terminates it: flush, then die by SIGTERM as before. Only installed while
-// recording, and never for watch, which handles SIGTERM itself.
-func flushTraceOnTermination() {
+// Arm before creating the trace file. A startup SIGTERM waits for the recorder
+// before flushing, then retains the original signal termination semantics.
+func flushTraceOnTermination(traceReady <-chan struct{}) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM)
 	go func() {
 		received := <-signals
+		<-traceReady
 		_ = perftrace.Close()
 		signal.Reset(received)
 		_ = syscall.Kill(os.Getpid(), received.(syscall.Signal))
 	}()
+}
+
+// Go normally exits immediately on EPIPE from stdout/stderr. During recording,
+// let that write return its error so the recorder can close first. Retrying the
+// failed write after Reset invokes Go's normal SIGPIPE exit (sending SIGPIPE via
+// Kill alone is ignored by Go and cannot preserve the original exit signal).
+func tracePipeOutputs() (io.Writer, io.Writer) {
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
+	return tracePipeWriter{os.Stdout}, tracePipeWriter{os.Stderr}
+}
+
+type tracePipeWriter struct{ file *os.File }
+
+func (w tracePipeWriter) Write(data []byte) (int, error) {
+	n, err := w.file.Write(data)
+	if errors.Is(err, syscall.EPIPE) {
+		_ = perftrace.Close()
+		signal.Reset(syscall.SIGPIPE)
+		return w.file.Write(data)
+	}
+	return n, err
 }
 
 // perfRole names this process in measurement traces: the scan worker is the

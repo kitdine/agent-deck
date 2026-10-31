@@ -92,7 +92,10 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState(params.get("settings") === "1");
   const [telemetryScenario, setTelemetryScenario] = useState(TELEMETRY_SCENARIOS.includes(params.get("telemetry")) ? params.get("telemetry") : "unknown");
-  const [prefs, setPrefs] = useState(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState(() => ({
+    ...DEFAULT_PREFS,
+    periodicRefresh: serving.enabled ? true : DEFAULT_PREFS.periodicRefresh,
+  }));
   const [client, setClient] = useState("all");
 
   useEffect(() => {

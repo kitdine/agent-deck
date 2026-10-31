@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // Before/after comparison (requirements "performance measurement and report",
@@ -330,7 +331,9 @@ func compareArms(root, condition string) (armComparison, error) {
 	}
 	switch condition {
 	case "P06":
-		result.Derived["pairs"] = pairedDifferences(result.Baseline.Values, result.Candidate.Values)
+		pairs := pairedDifferences(result.Baseline.Values, result.Candidate.Values)
+		result.Derived["pairs"] = pairs
+		result.Derived["median_differences"] = pairedDifferenceMedians(pairs)
 	case "P07", "P11-full":
 		if b, c := result.Baseline.Summary, result.Candidate.Summary; b != nil && c != nil && b.MedianMS > 0 {
 			result.Derived["median_ratio"] = c.MedianMS / b.MedianMS
@@ -358,6 +361,9 @@ func formalSchedule(condition string, s schedule) (schedule, error) {
 func pairedDifferences(baseline, candidate map[string]any) map[string]map[string]float64 {
 	out := map[string]map[string]float64{}
 	for unit, raw := range candidate {
+		if !strings.HasPrefix(unit, "sample-") {
+			continue
+		}
 		c, ok := raw.(map[string]any)
 		b, found := baseline[unit].(map[string]any)
 		if !ok || !found {
@@ -374,6 +380,21 @@ func pairedDifferences(baseline, candidate map[string]any) map[string]map[string
 		out[unit] = diff
 	}
 	return out
+}
+
+func pairedDifferenceMedians(pairs map[string]map[string]float64) map[string]float64 {
+	series := map[string][]float64{}
+	for _, pair := range pairs {
+		for key, value := range pair {
+			series[key] = append(series[key], value)
+		}
+	}
+	medians := map[string]float64{}
+	for key, values := range series {
+		sort.Float64s(values)
+		medians[key] = nearestRank(values, 0.5)
+	}
+	return medians
 }
 
 func runCompare(args []string, stdout, stderr io.Writer) int {

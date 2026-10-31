@@ -6,6 +6,7 @@ import AppKit
 struct PerfScriptStep: Decodable {
 	enum Operation: String, Decodable {
 		case waitUsable = "wait_usable"
+		case waitRebuild = "wait_rebuild"
 		case sleep
 		case click
 		case close
@@ -175,6 +176,13 @@ final class PerfDriver {
 			let usable = await waitUntil(timeout) { self.model.surface == .dataSurface && self.model.perfDataFrame != nil }
 			if usable { usableAt = ContinuousClock.now }
 			return usable
+		case .waitRebuild:
+			guard let directory = ProcessInfo.processInfo.environment[PerfTrace.environmentKey],
+				FileManager.default.createFile(atPath: directory + "/rebuild-request", contents: nil,
+					attributes: [.posixPermissions: 0o600]) else { return false }
+			return await waitUntil(timeout) {
+				FileManager.default.fileExists(atPath: directory + "/rebuild-ready")
+			}
 		case .sleep:
 			// An outside interruption ends a long hold (P10) at once.
 			let end = ContinuousClock.now.advanced(by: timeout)

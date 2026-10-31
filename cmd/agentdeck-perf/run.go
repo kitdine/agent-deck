@@ -22,14 +22,17 @@ import (
 
 // runConfig names the inputs of one condition run against a prepared batch.
 type runConfig struct {
-	App       string // Perf build AgentDeck.app
-	Agentdeck string // S0 CLI (the same build's helper)
-	B0        string // baseline CLI, P09 only
-	Perf      string // this tool, for appends
-	Seed      uint64
-	Out       string
-	TZ        string
-	Batch     *batchState
+	StopOnFailure     bool   // stop after a completed failing unit, preserving its evidence
+	Condition         string // selected condition, propagated to both arms
+	App               string // Perf build AgentDeck.app
+	Agentdeck         string // S0 CLI (the same build's helper)
+	B0                string // baseline CLI, P09 only
+	P09BaselineTraced bool   // S0 baseline uses current traces instead of the legacy B0 profile
+	Perf              string // this tool, for appends
+	Seed              uint64
+	Out               string
+	TZ                string
+	Batch             *batchState
 	// Baseline arm for a relative gate: its own build and its own batch,
 	// because the template depends on the binary that built it.
 	Baseline *runConfig
@@ -83,6 +86,8 @@ func runBatchCommand(args []string, stdout, stderr io.Writer) int {
 	flags.StringVar(&cfg.App, "app", "", "Perf AgentDeck.app")
 	flags.StringVar(&cfg.Agentdeck, "agentdeck", "", "agentdeck CLI under test (S0)")
 	flags.StringVar(&cfg.B0, "b0", "", "baseline agentdeck CLI (P09)")
+	flags.BoolVar(&cfg.P09BaselineTraced, "p09-baseline-traced", false, "P09 baseline is S0 with perftrace support, not legacy B0")
+	flags.BoolVar(&cfg.StopOnFailure, "stop-on-failure", false, "stop after the first failed run unit; preserve its records")
 	flags.Uint64Var(&cfg.Seed, "seed", 1, "append seed")
 	baselineApp := flags.String("baseline-app", "", "baseline arm Perf AgentDeck.app (ABBA relative run)")
 	baselineAgentdeck := flags.String("baseline-agentdeck", "", "baseline arm agentdeck CLI")
@@ -114,6 +119,10 @@ func runBatchCommand(args []string, stdout, stderr io.Writer) int {
 }
 
 func runBatch(cfg runConfig, condition string, formal bool, stdout io.Writer) error {
+	cfg.Condition = condition
+	if cfg.Baseline != nil {
+		cfg.Baseline.Condition = condition
+	}
 	plan, ok := conditionPlans()[condition]
 	if !ok {
 		return fmt.Errorf("unknown condition %q", condition)
@@ -217,10 +226,19 @@ func runUnit(cfg runConfig, plan conditionPlan, index int, s schedule, expected 
 		}
 		reason := unitInterruption(dir)
 		if reason == "" {
+			if cfg.StopOnFailure {
+				return checkUnitOutcome(dir, cfg.Condition, s)
+			}
 			return nil
 		}
 		if attempt == maxUnitAttempts {
-			return markInvalid(dir, fmt.Sprintf("interrupted %d times, last: %s", attempt, reason))
+			if err := markInvalid(dir, fmt.Sprintf("interrupted %d times, last: %s", attempt, reason)); err != nil {
+				return err
+			}
+			if cfg.StopOnFailure {
+				return fmt.Errorf("%s: interrupted %d times; records retained", dir, attempt)
+			}
+			return nil
 		}
 		kept := filepath.Join(cfg.Out, interruptedDir)
 		if err := os.MkdirAll(kept, 0o700); err != nil {
@@ -237,6 +255,78 @@ func runUnit(cfg runConfig, plan conditionPlan, index int, s schedule, expected 
 			cfg.Batch.Dirty = true
 		}
 	}
+}
+
+// Check only the completed unit, never treat the remaining schedule as missing
+// samples. External interruptions have already been handled by runUnit.
+func checkUnitOutcome(dir, condition string, s schedule) error {
+	if raw, err := os.ReadFile(filepath.Join(dir, "invalid.json")); err == nil {
+		return fmt.Errorf("%s: invalid unit: %s", dir, raw)
+	}
+	if condition == "P08" {
+		for _, scenario := range []string{"noop", "append"} {
+			if _, err := readSample(filepath.Join(dir, scenario)); err != nil {
+				return fmt.Errorf("%s: %s: %w", dir, scenario, err)
+			}
+		}
+		runs, err := readCLIRuns(dir)
+		if err != nil {
+			return err
+		}
+		if len(runs) == 0 {
+			return fmt.Errorf("%s: no CLI runs", dir)
+		}
+		for _, run := range runs {
+			if run.ExitCode != 0 {
+				return fmt.Errorf("%s: product failure: %s exit %d", dir, run.Label, run.ExitCode)
+			}
+		}
+		return nil
+	}
+	if condition == "P09" {
+		var index int
+		if _, err := fmt.Sscanf(filepath.Base(dir), "sample-%d", &index); err != nil {
+			return err
+		}
+		runs, err := p09Pair(dir, index)
+		if err != nil {
+			return err
+		}
+		for _, run := range runs {
+			if run.ExitCode != 0 {
+				return fmt.Errorf("%s: product failure: %s exit %d", dir, run.Label, run.ExitCode)
+			}
+			if _, err := p09ArmCost(dir, run); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	files, err := readSample(dir)
+	if err != nil {
+		return fmt.Errorf("%s: %w", dir, err)
+	}
+	if failure := preconditionFailure(files); failure != "" {
+		return fmt.Errorf("%s: product failure: %s (records retained)", dir, failure)
+	}
+	if conditionIntervals[condition].end != "" || condition == "P10" {
+		values, err := sampleIntervals(dir, condition, files, s)
+		if err != nil {
+			return fmt.Errorf("%s: %w", dir, err)
+		}
+		for _, value := range values {
+			if value.Failed {
+				return fmt.Errorf("%s: product failure (records retained)", dir)
+			}
+		}
+	}
+	if condition == "P03" && backgroundMarkers(files) != 0 {
+		return fmt.Errorf("%s: background work during selection (records retained)", dir)
+	}
+	if condition == "P06" {
+		_, err = idleWindowStats(dir, files)
+	}
+	return err
 }
 
 // unitInterruption names an outside interruption of the attempt in dir, or "".
@@ -387,13 +477,14 @@ func writeJSON(path string, value any) error {
 const armIdentityFile = "identity.json"
 
 type armIdentity struct {
-	Tool        string            `json:"perf_tool_sha256"`
-	Binaries    map[string]string `json:"binaries_sha256"`
-	AnchorDate  string            `json:"anchor_date"`
-	Corpus      string            `json:"corpus_identity"`
-	WorkingCopy string            `json:"working_copy_identity"`
-	ShiftDays   int               `json:"shift_days"`
-	Unparsed    int               `json:"timestamps_unparsed"`
+	P09BaselineTraced bool              `json:"p09_baseline_traced,omitempty"`
+	Tool              string            `json:"perf_tool_sha256"`
+	Binaries          map[string]string `json:"binaries_sha256"`
+	AnchorDate        string            `json:"anchor_date"`
+	Corpus            string            `json:"corpus_identity"`
+	WorkingCopy       string            `json:"working_copy_identity"`
+	ShiftDays         int               `json:"shift_days"`
+	Unparsed          int               `json:"timestamps_unparsed"`
 }
 
 // appBinaries are the measured App's executables, relative to the bundle.
@@ -415,6 +506,7 @@ func identifyArm(cfg runConfig) (armIdentity, error) {
 	b := cfg.Batch
 	identity := armIdentity{Binaries: map[string]string{}, AnchorDate: b.Anchor, Corpus: b.WorkingCopy.Corpus,
 		WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days, Unparsed: b.WorkingCopy.Unparsed}
+	identity.P09BaselineTraced = cfg.P09BaselineTraced
 	var err error
 	if cfg.Perf != "" {
 		if identity.Tool, err = fileSHA256(cfg.Perf); err != nil {
@@ -422,6 +514,9 @@ func identifyArm(cfg runConfig) (armIdentity, error) {
 		}
 	}
 	paths := map[string]string{"agentdeck": cfg.Agentdeck}
+	if cfg.B0 != "" {
+		paths["p09_baseline"] = cfg.B0
+	}
 	if cfg.App != "" {
 		for _, name := range appBinaries {
 			paths[name] = filepath.Join(cfg.App, name)
@@ -628,13 +723,14 @@ func measuredAppPIDs(app string) []string {
 
 // cliRun is one externally timed CLI process (P07/P08/P09).
 type cliRun struct {
-	Label     string `json:"label"`
-	WallNS    int64  `json:"wall_ns"`
-	UserNS    int64  `json:"user_ns"`
-	SysNS     int64  `json:"sys_ns"`
-	MaxRSS    int64  `json:"maxrss_bytes"`
-	ExitCode  int    `json:"exit_code"`
-	StartedNS int64  `json:"started_ns"`
+	CostSource string `json:"cost_source,omitempty"`
+	Label      string `json:"label"`
+	WallNS     int64  `json:"wall_ns"`
+	UserNS     int64  `json:"user_ns"`
+	SysNS      int64  `json:"sys_ns"`
+	MaxRSS     int64  `json:"maxrss_bytes"`
+	ExitCode   int    `json:"exit_code"`
+	StartedNS  int64  `json:"started_ns"`
 }
 
 func runCLI(binary, home, stateDir, traceDir, tz, label string, args ...string) (cliRun, error) {
@@ -846,8 +942,14 @@ func conditionPlans() map[string]conditionPlan {
 					return err
 				}
 				var rebuild rebuildRecord
-				err := launchApp(cfg, cfg.Batch.Home, dir, []map[string]any{usable, step("sleep", "ms", 3000), click(5000, 2)},
-					5*time.Minute, func(ctx context.Context, _ <-chan struct{}) { rebuild = runRebuild(ctx, cfg, dir) })
+				err := launchApp(cfg, cfg.Batch.Home, dir, []map[string]any{usable, settle, step("wait_rebuild", "ms", 60000), click(5000, 2)},
+					5*time.Minute, func(ctx context.Context, exited <-chan struct{}) {
+						if err := waitRebuildRequest(ctx, dir, exited); err != nil {
+							rebuild.Error = err.Error()
+							return
+						}
+						rebuild = runRebuild(ctx, cfg, dir)
+					})
 				if writeErr := writeJSON(filepath.Join(dir, rebuildFile), rebuild); err == nil {
 					err = writeErr
 				}
@@ -986,7 +1088,10 @@ func conditionPlans() map[string]conditionPlan {
 					}
 					var run cliRun
 					var err error
-					if arm == "B0" {
+					if arm == "B0" && cfg.P09BaselineTraced {
+						run, err = runCLI(cfg.B0, home(cfg), state(cfg), armDir, cfg.TZ, arm, "scan")
+						run.CostSource = "perftrace"
+					} else if arm == "B0" {
 						var profile bytes.Buffer
 						run, err = runCLIWith(cfg.B0, home(cfg), state(cfg), "", cfg.TZ, arm, []string{b0ProfileEnv + "=1"}, &profile, "scan")
 						if writeErr := os.WriteFile(filepath.Join(armDir, b0ProfileFile), profile.Bytes(), 0o600); err == nil {
@@ -1039,6 +1144,27 @@ type rebuildRecord struct {
 
 const rebuildFile = "rebuild.json"
 
+// The Perf driver requests the rebuild only after model.usable and settling.
+// A slow App launch must not consume the rebuild before either click occurs.
+func waitRebuildRequest(ctx context.Context, dir string, exited <-chan struct{}) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "rebuild-request")); err == nil {
+			return nil
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-exited:
+			return errors.New("App exited before requesting the rebuild")
+		case <-ticker.C:
+		}
+	}
+}
+
 // runRebuild runs a full rebuild of the working copy into a separate state
 // root, tracing into the sample (its processes' resources are P07's), and
 // returns only after its scan worker has exited and the root is removed.
@@ -1051,7 +1177,17 @@ func runRebuild(ctx context.Context, cfg runConfig, traceDir string) rebuildReco
 	command := exec.CommandContext(ctx, cfg.Agentdeck, "--state-dir", state, "scan")
 	command.Env = []string{"HOME=" + cfg.Batch.Home, "TZ=" + cfg.TZ, "PATH=/usr/bin:/bin", perftrace.EnvOut + "=" + traceDir}
 	record := rebuildRecord{StartNS: perftrace.Now()}
-	err = command.Run()
+	err = command.Start()
+	if err == nil {
+		// Release the driver only after a real rebuild process has started.
+		if readyErr := os.WriteFile(filepath.Join(traceDir, "rebuild-ready"), []byte("ready\n"), 0o600); readyErr != nil {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			err = readyErr
+		} else {
+			err = command.Wait()
+		}
+	}
 	record.EndNS = perftrace.Now()
 	if command.ProcessState != nil {
 		record.ExitCode = command.ProcessState.ExitCode()

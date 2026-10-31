@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-29
+updated: 2026-10-31
 ---
 
 # Scan performance：设计集与任务矩阵
@@ -84,7 +84,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | 5. `incremental-update` | [x] | [x] |
 | 6. `event-updates-and-cli` | [x] | [x] |
 | 7. `otel-capture-and-reconciliation` | [x] | [x] |
-| 8. `cross-surface-acceptance` | [ ] | [ ] |
+| 8. `cross-surface-acceptance` | [x] | [x] |
 
 `measurement-harness` 的当前评审与修复交接见 [评审记录](reviews/measurement-harness.md)。
 `baseline-remeasure` 的当前评审与修复交接见 [评审记录](reviews/baseline-remeasure.md)。
@@ -327,6 +327,33 @@ session scan，`session search` 不命中；会话索引 purge/rebuild 后投影
 `producer-support-table`、`codex-config-consent`、`memories-linkage`、`coverage-truth`、`real-producer-e2e`。
 
 ## 8. cross-surface-acceptance
+
+2026-10-31 独立复评 Round 2 PASS；Task 精确状态门禁 VERIFIED，待授权提交。当前结论与证据状态见
+[评审记录](reviews/cross-surface-acceptance.md)。不代表任务已交付或专题整体完成。
+
+- 批次脚本支持输入身份封存、失败即停、受控续跑与验收域布尔偏好恢复；工具补齐 P09 的
+  S0 traced 基线、P06 配对中位数及 P08/P09 分目录检查。native serving 已支持 schema 33，
+  保留对未知未来 schema 的拒绝；helper 的 SIGTERM 启动竞态和 SIGPIPE trace 丢失已修复。
+- 最终矩阵的 14 个正式条件及对应 pilot 已完成并核对封存身份。P02 和 P01 三层/P03
+  使用必要的最终状态补测，早期数值保留为历史，不充当最终结果。重建中点击改为双向握手：
+  App 可用且静置后请求重建，CLI 进程成功启动后才放行点击；原 CLI start→exit 区间校验保留。
+  两臂采用相同 Perf-only 驱动补丁，产品 helper 字节身份不变；未受影响条件不重复运行。
+- 验证包括 Go 全量串行回归、最终受影响包回归、信号与握手 race、双架构构建、vet、
+  native 全量及新增 CLI wire → Widget 逐值对照、原型与文档检查。既有 opt-in schema
+  手工矩阵未运行，不据此声称安装态 Widget、手工 UI 或 L4 验收通过。
+- CLI 设计/手册、topic 实现对照及原型默认自动更新已同步。独立评审须覆盖这些变更；
+  Round 2 已完成来源修复的独立复评，沿用未变部分的首轮检查。
+- 历史失败保留：默认并发 Go 回归超时（根因未定）、schema 不兼容、SIGTERM/SIGPIPE
+  空 trace、显示器切换、午夜准入拒绝、分目录误判及重建同步失效。外部打断与产品/工具失败
+  分开记录，不选择性剔除产品失败，不以重新采样挑选更好的数值。
+- 初次 P06 的采样在偏好恢复错误之前已完成。脚本已修复数字布尔值并先持久保存原值；
+  该次原偏好缺少备份，隔离验收域仍保持关闭，不能宣称已恢复。按用户要求不重开安装态 App。
+- 完成证据：WorkUnit `scan-performance:cross-surface-acceptance`，目标状态
+  `scan-perf-csa-rereview-r2-20261031-state`；完整数值、置信区间、逐臂身份、模板身份、失败处置及
+  工具来源补全见 `scan-perf-csa-repair-r1-20261030:full-metric-matrix`。四个工具均以恢复源码
+  重建并匹配原二进制 SHA-256；有效样本复用，未重跑测量。旧完成观察和评审否定观察保留。
+  2026-10-31 用户明确接受当前整体收益及 P04、RSS 退化取舍。验收状态
+  `scan-perf-topic-accepted-20261031-state` 的 Task/Topic 门禁 VERIFIED；尚待授权 Git 交付，未归档专题。
 
 目标：在最终内容状态上对 P01–P11（不含已移出的 P05）全矩阵做相对 S0（P09 另对 B0）的对比（E7），各项按性能评估“对比报告”的分类方法报告：
 ABBA 比值与区间（P01 三层、P02、P03、P04、P09、P10、P11 首批）、P06 配对差值、P07 与 P11 完整历史两臂并列、

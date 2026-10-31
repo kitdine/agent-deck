@@ -734,7 +734,10 @@ type p09Arm struct {
 
 func p09ArmCost(dir string, run cliRun) (p09Arm, error) {
 	arm := p09Arm{FrontCPUNS: run.UserNS + run.SysNS, Stages: map[string]int64{}}
-	if run.Label == "B0" {
+	if run.CostSource != "" && run.CostSource != "perftrace" {
+		return p09Arm{}, fmt.Errorf("unknown P09 cost source %q", run.CostSource)
+	}
+	if run.Label == "B0" && run.CostSource != "perftrace" {
 		raw, err := os.ReadFile(filepath.Join(dir, "B0", b0ProfileFile))
 		if err != nil {
 			return p09Arm{}, fmt.Errorf("B0 profile: %w", err)
@@ -772,7 +775,7 @@ func p09ArmCost(dir string, run cliRun) (p09Arm, error) {
 			profile.Stages.DiscoveryMS*ms, profile.Stages.UsageMS*ms, profile.Stages.SessionMS*ms, profile.Stages.DerivedCacheMS*ms, profile.Stages.TotalMS*ms
 		return arm, nil
 	}
-	files, err := readSample(filepath.Join(dir, "S0"))
+	files, err := readSample(filepath.Join(dir, run.Label))
 	if err != nil {
 		return p09Arm{}, fmt.Errorf("S0 traces: %w", err)
 	}
