@@ -239,12 +239,27 @@ func TestLinkageKeepsTheReceiverStoppedWhileMemoriesIsOff(t *testing.T) {
 	writeCodexConfig(t, home, "[features]\nmemories = true\n", 0o644)
 	done := make(chan error, 1)
 	ready := make(chan struct{})
+	resume := make(chan struct{})
+	stopped := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		done <- Serve(context.Background(), ServeOptions{StateRoot: root, Home: home, Owner: "app", Store: database, Ready: func(string) { close(ready) }})
+		defer close(stopped)
+		done <- Serve(ctx, ServeOptions{StateRoot: root, Home: home, Owner: "app", Store: database, Ready: func(string) {
+			close(ready)
+			select {
+			case <-resume:
+			case <-ctx.Done():
+			}
+		}})
+	}()
+	defer func() {
+		cancel()
+		<-stopped
 	}()
 	<-ready
-	time.Sleep(20 * time.Millisecond)
+	// Flip while Ready is paused, before initial reconciliation can finish.
 	writeCodexConfig(t, home, "[features]\nmemories = false\n", 0o644)
+	close(resume)
 	select {
 	case err := <-done:
 		if err != nil {

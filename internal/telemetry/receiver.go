@@ -184,6 +184,10 @@ var (
 // drains the journal at start (recovering after a crash) and after every
 // acknowledged request.
 func Serve(ctx context.Context, options ServeOptions) error {
+	// Capture baselines before reading the settings or announcing readiness.
+	// A startup/Ready callback change must still be noticed by the first poll.
+	configStamp := configModTime(options.StateRoot)
+	codexStamp := fileModTime(CodexConfigPath(options.Home))
 	config, err := LoadConfig(options.StateRoot)
 	if err != nil {
 		return err
@@ -297,8 +301,6 @@ func Serve(ctx context.Context, options ServeOptions) error {
 	}
 	settleTicker := time.NewTicker(settleEvery)
 	defer settleTicker.Stop()
-	configStamp := configModTime(options.StateRoot)
-	codexStamp := fileModTime(CodexConfigPath(options.Home))
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	exitReason := "stopped"

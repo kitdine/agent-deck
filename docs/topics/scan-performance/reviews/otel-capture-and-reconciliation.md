@@ -339,3 +339,40 @@ Codex 对 `d767bd202d134623ca33bf55eefda1e04ad52b92` 新增
 最终实现的本地验证：Go 1.27.3 经 `scripts/run-go-test.sh -p 1 ./...` 全套通过，
 session/store/telemetry/scanruntime 四包 race 通过，`make vet` 通过。
 新候选待独立 Code Review，历史失败与旧内容门禁不改写。
+
+### 本轮 CI race 整包预算诊断
+
+候选 `041b687aa25d04c75a8c1ec230681e81c9f3fa6c` 的 push CI 全部成功，
+但 [PR verify](https://github.com/kitdine/agent-deck/actions/runs/41200011287/job/124533933171)
+在完整 race 阶段触发 `cmd/agentdeck` 默认 10 分钟整包期限；普通全套测试已通过。
+期限触发时 `TestTelemetryListenerWaitsOutAHeldStateLock` 仅运行 7 秒。PR 合并树与
+push 树只差 LICENSE/README，排除测试代码差异。
+
+保持默认期限、隔离运行 `scripts/run-go-test.sh -race ./cmd/agentdeck`，在 601.665 秒
+同样触发整包期限，此时运行的是另一项测试
+`TestSessionViewerTokensUseNormalizedSummaryAndEveryComponent`，仅 1 秒。
+239 项顶层测试已通过，累计 599.24 秒，没有 data race 报告；仅限制包级并行度不能
+解决该累计预算问题。第一次候选只将整包预算设为 20 分钟，全套并行 race 仍在
+1202.521 秒触发期限，此时单项测试仅运行 2 秒；同时暴露了 PTY 测试失败清理的
+data race（修复见 Task 6 记录），不能视为通过。
+
+资源争用亦有同机对照：`TestIsolatedEndToEndFlow` 隔离运行 42.25 秒，全套包并行时
+115.76 秒。后续候选将 `make test-race` 的包级并行度设为 1，并保留 20 分钟整包
+预算；每个包内的并发测试、全部 race 测试、产品 200 ms 读取期限及各项断言均保留。
+串行定向重跑仍复现部分失败，所以预算和资源争用不是全部原因；不以仅调整
+执行参数声称修复。追加定位如下：
+
+- receiver 在 Ready 后、初始 drain/settle 后才读取配置时间戳基线，会漏掉期间
+  的 Memories 关闭。Ready 暂停握手固定了该顺序，修复前确定触发原 10 秒停止断言失败。
+  基线现在读取配置和 Ready 之前采集，第一轮轮询仍能观察到这次改动。
+  测试取消并等待 receiver 退出，失败也不遗留后台监听者。这是生产配置竞态修复。
+- worker 协议测试的空两库初始化现在原 5 秒请求期限前完成，保留真实的 Unix/
+  detached helper 启动、轮次、进度与重放断言；失败也回收 helper。此为协议测试夹具修复，
+  不以其代替冷库迁移或性能验收。
+- settled update 测试原来共用 seed/update/oracle 的 15 秒 context，oracle 入口已无预算。
+  三个独立操作现各用原 15 秒预算；一次 plan/全量发布、今日汇总数值及完整 usage/session/
+  coverage 的 fresh oracle 等价断言均保留。此为测试 context 生命周期修复。
+
+Unix 轮次、detached helper、settled update 四种变更、Ready/Memories 关闭回归在修复后
+各连续 3 轮 race 通过。提交前完整 CLI race 继续执行；完整 receiver 测试与当前候选 CI
+仍待完成。全部 Actions 成功后才请求新评审，未新发评审 PASS 或 Topic 验收。

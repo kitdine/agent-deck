@@ -243,20 +243,22 @@ func TestServingSettledUpdatePlansOncePublishesFullAndMatchesFreshOracle(t *test
 			}
 			change.apply(t, home, now, today, history)
 
+			updateCtx, stopUpdate := context.WithTimeout(context.Background(), 15*time.Second)
+			defer stopUpdate()
 			r := newRound(home)
 			r.serving = true
 			r.cacheNow = clock
 			batches := 0
 			r.beforeServingBatch = func(int) { batches++ }
-			r.execute(ctx, root, false)
-			result, err := r.wait(ctx, ScopeBoth)
+			r.execute(updateCtx, root, false)
+			result, err := r.wait(updateCtx, ScopeBoth)
 			if err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
 				t.Fatalf("settled update failed: %+v %v", result, err)
 			}
 			if batches != 0 {
 				t.Fatalf("settled update split into %d priority/history batches", batches)
 			}
-			prepared, err := (desktop.Service{StateRoot: root, Home: home, Now: clock}).ReadServingSnapshot(ctx)
+			prepared, err := (desktop.Service{StateRoot: root, Home: home, Now: clock}).ReadServingSnapshot(updateCtx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,10 +275,12 @@ func TestServingSettledUpdatePlansOncePublishesFullAndMatchesFreshOracle(t *test
 				t.Fatal(err)
 			}
 			oracle := Client{StateRoot: oracleRoot, Home: home, ForceLocal: true, Now: clock}
-			if result, err := oracle.Request(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+			oracleCtx, stopOracle := context.WithTimeout(context.Background(), 15*time.Second)
+			defer stopOracle()
+			if result, err := oracle.Request(oracleCtx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
 				t.Fatalf("oracle failed: %+v %v", result, err)
 			}
-			expected, err := (desktop.Service{StateRoot: oracleRoot, Home: home, Now: clock}).ReadServingSnapshot(ctx)
+			expected, err := (desktop.Service{StateRoot: oracleRoot, Home: home, Now: clock}).ReadServingSnapshot(oracleCtx)
 			if err != nil {
 				t.Fatal(err)
 			}
