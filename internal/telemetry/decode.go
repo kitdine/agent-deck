@@ -214,10 +214,11 @@ func errorClass(err error) string {
 	}
 }
 
-// Metered reports whether the record is a completed response that carries an
-// actual token count. Stream deltas, failures and interruptions are not.
+// Metered reports whether the record is a completed response that carries
+// both required token components. Stream deltas, failures, interruptions and
+// incomplete usage cannot create canonical contributions.
 func (r Record) Metered() bool {
-	return r.EventKind == "response.completed" && (r.InputTokens != nil || r.OutputTokens != nil)
+	return r.EventKind == "response.completed" && r.InputTokens != nil && r.OutputTokens != nil
 }
 
 func componentConflict(r Record) string {

@@ -315,3 +315,27 @@ pending，再推进 grace period，避免提前到达的发布通知被误当作
 
 本轮为用户授权的 PR 修复与交付；新候选等待独立 Codex Code Review，历史 PASS 和
 精确内容门禁保持其原内容绑定。全部 Actions 成功后才发送新的 `@codex review` 请求。
+
+## PR #61 第二轮修复交接 — 2026-10-31
+
+Codex 对 `d767bd202d134623ca33bf55eefda1e04ad52b92` 新增
+[合成会话投影使覆盖回退](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431526556) 与
+[缺失 token component 被当成零](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431526563)。
+
+- 合成 OTel 贡献与会话投影在同一事务内保留写入前已 complete 的 JSONL inventory，
+  不推进 head 或 captured_at，不把原先 pending/partial 的覆盖改为 complete。
+  同事务内只有合成事实发生变化；外部 JSONL 写入仍按 SQLite 隔离与原触发器失效。
+  同值 source/metadata upsert 不再写入，避免反复推进 serving revision。
+- completed 观测要求 input/output 均有值才可计量；缺失值保持 null，保留为
+  `capture_only / token_components_missing`。Store 入口也检查该条件，settle 撤回旧版
+  已计入的缺失组件贡献，重新分类并同步会话标记，重放不恢复虚构的零。
+
+直接验证：修复前，投影回归观察到 complete → update_pending，缺失计数仍为 pending，
+历史错误贡献未撤回；修复后对应回归通过。另覆盖普通/serving 两类完整轮次及重复扫描的
+最终发布，两库覆盖均 complete、没有 source_update_pending；真正的 JSONL 写入仍
+使覆盖 pending。输入/输出缺失、两者缺失、历史撤回及显式 0 值的边界回归通过。
+
+本轮继续沿用用户已授权的提交/推送与 CI 循环；SQL 池提交 `c768199` 保持独立。
+最终实现的本地验证：Go 1.27.3 经 `scripts/run-go-test.sh -p 1 ./...` 全套通过，
+session/store/telemetry/scanruntime 四包 race 通过，`make vet` 通过。
+新候选待独立 Code Review，历史失败与旧内容门禁不改写。

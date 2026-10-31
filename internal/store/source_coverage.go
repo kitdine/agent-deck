@@ -12,6 +12,33 @@ import (
 
 var ErrCoverageIncomplete = errors.New("inventory has uncommitted sources")
 
+// PreserveSourceCoverage snapshots complete JSONL coverage in the caller's
+// transaction. Call the returned function after synthetic OTel writes only:
+// these never change captured file facts or checkpoints. A pre-existing pending
+// head remains pending; a concurrent file writer cannot commit inside this tx.
+func PreserveSourceCoverage(ctx context.Context, tx *sql.Tx) (func() error, error) {
+	noop := func() error { return nil }
+	var present bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='domain_coverage_heads')`).Scan(&present); err != nil {
+		return nil, err
+	}
+	if !present {
+		return noop, nil
+	}
+	var id string
+	err := tx.QueryRowContext(ctx, `SELECT h.inventory_id FROM domain_coverage_heads h JOIN inventory_runs i USING(inventory_id) WHERE h.singleton=1 AND i.state='complete'`).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return noop, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return func() error {
+		_, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET state='complete' WHERE inventory_id=? AND state='update_pending' AND EXISTS(SELECT 1 FROM domain_coverage_heads h WHERE h.singleton=1 AND h.inventory_id=?)`, id, id)
+		return err
+	}, nil
+}
+
 type InventorySource struct {
 	Path     string
 	Identity string

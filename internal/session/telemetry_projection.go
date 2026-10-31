@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 // TelemetrySourcePrefix marks session-index sources projected from OTel-owned
@@ -43,6 +45,10 @@ func ProjectTelemetrySessions(ctx context.Context, db *sql.DB, sessions []Teleme
 		return err
 	}
 	defer tx.Rollback()
+	restoreCoverage, err := store.PreserveSourceCoverage(ctx, tx)
+	if err != nil {
+		return err
+	}
 	want := map[string]bool{}
 	scannedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, item := range sessions {
@@ -57,11 +63,13 @@ func ProjectTelemetrySessions(ctx context.Context, db *sql.DB, sessions []Teleme
 		}
 		want[path] = true
 		if _, err = tx.ExecContext(ctx, `INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,0,X'',0,0,'',?,?,?)
-ON CONFLICT(source_path) DO UPDATE SET priority=excluded.priority,parser_version=excluded.parser_version`, path, path, telemetrySourcePriority, ParserVersion, scannedAt); err != nil {
+ON CONFLICT(source_path) DO UPDATE SET priority=excluded.priority,parser_version=excluded.parser_version
+WHERE (session_sources.priority,session_sources.parser_version) IS NOT (excluded.priority,excluded.parser_version)`, path, path, telemetrySourcePriority, ParserVersion, scannedAt); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,'',?,?,?,?)
-ON CONFLICT(source_path,client,session_id) DO UPDATE SET model=excluded.model,first_at=excluded.first_at,last_at=excluded.last_at,parser_version=excluded.parser_version`, path, item.Client, item.SessionID, item.Model, ParserVersion, item.FirstAt, item.LastAt); err != nil {
+ON CONFLICT(source_path,client,session_id) DO UPDATE SET model=excluded.model,first_at=excluded.first_at,last_at=excluded.last_at,parser_version=excluded.parser_version
+WHERE (session_metadata.model,session_metadata.first_at,session_metadata.last_at,session_metadata.parser_version) IS NOT (excluded.model,excluded.first_at,excluded.last_at,excluded.parser_version)`, path, item.Client, item.SessionID, item.Model, ParserVersion, item.FirstAt, item.LastAt); err != nil {
 			return err
 		}
 	}
@@ -87,6 +95,9 @@ ON CONFLICT(source_path,client,session_id) DO UPDATE SET model=excluded.model,fi
 		if _, err = tx.ExecContext(ctx, `DELETE FROM session_metadata WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?`, path, path); err != nil {
 			return err
 		}
+	}
+	if err := restoreCoverage(); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

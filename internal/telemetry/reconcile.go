@@ -122,6 +122,9 @@ func Observation(record Record, source string, received time.Time) store.Telemet
 		observation.Metered = false
 	case !observation.Metered:
 		observation.State, observation.Reason = "unmetered", "no_completed_usage"
+		if record.EventKind == "response.completed" && (record.InputTokens != nil || record.OutputTokens != nil || record.TotalTokens != nil || record.CachedTokens != nil || record.CacheWriteTokens != nil || record.ReasoningTokens != nil) {
+			observation.State, observation.Reason = "capture_only", store.TelemetryIncompleteCountsReason
+		}
 	case !ok:
 		observation.State, observation.Reason = "capture_only", ReasonProducerUnsupported
 	case record.ThreadID == "":

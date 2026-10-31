@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -19,6 +20,53 @@ func openProjectionIndex(t *testing.T) *store.Store {
 }
 
 var background = TelemetrySession{Client: "codex", SessionID: "bg-1", Model: "gpt-5.6-terra", FirstAt: "2026-10-29T12:00:00Z", LastAt: "2026-10-29T12:00:05Z"}
+
+func TestTelemetryProjectionPreservesCompletedFileCoverageAndNoopRevision(t *testing.T) {
+	ctx := context.Background()
+	index := openProjectionIndex(t)
+	epoch, err := index.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.AcceptInventory(ctx, "captured-files", epoch, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := index.FinishInventory(ctx, "captured-files", "complete"); err != nil {
+		t.Fatal(err)
+	}
+	for _, projected := range [][]TelemetrySession{{background}, {background}, nil} {
+		if err := ProjectTelemetrySessions(ctx, index.DB, projected); err != nil {
+			t.Fatal(err)
+		}
+		coverage, err := index.ReadSourceCoverage(ctx)
+		if err != nil || coverage.State != "complete" || coverage.InventoryID != "captured-files" {
+			t.Fatalf("synthetic projection invalidated file coverage: %+v %v", coverage, err)
+		}
+		var before, after int64
+		if err := index.DB.QueryRow(`SELECT revision FROM serving_generation`).Scan(&before); err != nil {
+			t.Fatal(err)
+		}
+		if err := ProjectTelemetrySessions(ctx, index.DB, projected); err != nil {
+			t.Fatal(err)
+		}
+		if err := index.DB.QueryRow(`SELECT revision FROM serving_generation`).Scan(&after); err != nil {
+			t.Fatal(err)
+		}
+		if after != before {
+			t.Fatalf("unchanged projection advanced revision: %d -> %d", before, after)
+		}
+	}
+	if _, err := index.DB.Exec(`INSERT INTO session_sources(source_path,identity,cursor,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES('real.jsonl','real',0,0,0,'',1,?,'t')`, ParserVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProjectTelemetrySessions(ctx, index.DB, []TelemetrySession{background}); err != nil {
+		t.Fatal(err)
+	}
+	coverage, err := index.ReadSourceCoverage(ctx)
+	if err != nil || coverage.State != "update_pending" {
+		t.Fatalf("projection hid a real file change: %+v %v", coverage, err)
+	}
+}
 
 func TestProjectedBackgroundSessionIsReadableThroughExistingReaders(t *testing.T) {
 	ctx := context.Background()

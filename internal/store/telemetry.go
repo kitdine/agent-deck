@@ -135,6 +135,8 @@ type TelemetryApplyResult struct {
 	Changed bool
 }
 
+const TelemetryIncompleteCountsReason = "token_components_missing"
+
 // ErrTelemetryCursorMoved reports that another consumer advanced the journal
 // cursor first; the caller rereads the cursor instead of applying twice.
 var ErrTelemetryCursorMoved = errors.New("telemetry journal cursor moved")
@@ -151,6 +153,10 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 		return result, err
 	}
 	defer tx.Rollback()
+	restoreCoverage, err := PreserveSourceCoverage(ctx, tx)
+	if err != nil {
+		return result, err
+	}
 	if from != nil {
 		var current TelemetryCursor
 		if err := tx.QueryRowContext(ctx, `SELECT segment, offset FROM telemetry_journal_cursor WHERE singleton = 1`).Scan(&current.Segment, &current.Offset); err != nil {
@@ -161,6 +167,10 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 		}
 	}
 	for _, observation := range batch {
+		if (observation.Metered || observation.State == "pending" || observation.State == "otel_owned") && (observation.InputTokens == nil || observation.OutputTokens == nil) {
+			observation.Metered, observation.SupportEntry = false, ""
+			observation.State, observation.Reason = "capture_only", TelemetryIncompleteCountsReason
+		}
 		var exists int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM telemetry_observations WHERE observation_key = ?`, observation.Key).Scan(&exists); err != nil {
 			return result, err
@@ -217,6 +227,9 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 		if _, err := tx.ExecContext(ctx, `UPDATE telemetry_journal_cursor SET segment = ?, offset = ? WHERE singleton = 1`, to.Segment, to.Offset); err != nil {
 			return result, err
 		}
+	}
+	if err := restoreCoverage(); err != nil {
+		return result, err
 	}
 	return result, tx.Commit()
 }
@@ -303,6 +316,15 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 		return result, err
 	}
 	defer tx.Rollback()
+	restoreCoverage, err := PreserveSourceCoverage(ctx, tx)
+	if err != nil {
+		return result, err
+	}
+	result.Retracted, err = retractIncompleteTelemetry(ctx, tx, now)
+	if err != nil {
+		return result, err
+	}
+	result.Changed = result.Retracted > 0
 	var inventoryAt sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT max(captured_at) FROM inventory_runs WHERE state IN ('complete','update_pending')`).Scan(&inventoryAt); err != nil {
 		return result, err
@@ -361,14 +383,54 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 			return result, err
 		}
 	}
+	if err := restoreCoverage(); err != nil {
+		return result, err
+	}
 	return result, tx.Commit()
+}
+
+// Older receivers could store or count incomplete observations. Reclassify
+// those persisted records before ownership/restoration so no replay restores a
+// fabricated zero. Only actual removed contributions report a counted change.
+func retractIncompleteTelemetry(ctx context.Context, tx *sql.Tx, now time.Time) (int, error) {
+	const incomplete = `state IN ('pending','otel_owned') AND (input_tokens IS NULL OR output_tokens IS NULL)`
+	threads, err := queryStrings(ctx, tx, `SELECT DISTINCT thread_id FROM telemetry_observations WHERE `+incomplete)
+	if err != nil {
+		return 0, err
+	}
+	retracted := 0
+	for _, thread := range threads {
+		keys, err := queryStrings(ctx, tx, `SELECT observation_key FROM telemetry_observations WHERE thread_id=? AND `+incomplete, thread)
+		if err != nil {
+			return 0, err
+		}
+		var counted bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_observations o JOIN telemetry_contributions c USING(observation_key) JOIN usage_events e ON e.event_key=c.event_key WHERE o.thread_id=? AND o.state IN ('pending','otel_owned') AND (o.input_tokens IS NULL OR o.output_tokens IS NULL))`, thread).Scan(&counted); err != nil {
+			return 0, err
+		}
+		for _, key := range keys {
+			if err := deleteContribution(ctx, tx, key); err != nil {
+				return 0, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state='capture_only',reason=?,metered=0,support_entry='' WHERE thread_id=? AND `+incomplete, TelemetryIncompleteCountsReason, thread); err != nil {
+			return 0, err
+		}
+		if err := syncTelemetrySession(ctx, tx, thread, now); err != nil {
+			return 0, err
+		}
+		if counted {
+			retracted++
+		}
+	}
+	return retracted, nil
 }
 
 // ensureContributions writes the usage_events row of every otel_owned
 // observation of a conversation that does not have one.
 func ensureContributions(ctx context.Context, tx *sql.Tx, thread string) (int, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT o.observation_key, o.record_at, o.received_at, o.model, o.input_tokens, o.cached_tokens, o.output_tokens, o.cache_write_tokens
- FROM telemetry_observations o WHERE o.thread_id = ? AND o.state = 'otel_owned'
+ FROM telemetry_observations o WHERE o.thread_id = ? AND o.state = 'otel_owned' AND o.input_tokens IS NOT NULL AND o.output_tokens IS NOT NULL
  AND NOT EXISTS (SELECT 1 FROM telemetry_contributions c JOIN usage_events e ON e.event_key = c.event_key WHERE c.observation_key = o.observation_key)`, thread)
 	if err != nil {
 		return 0, err
