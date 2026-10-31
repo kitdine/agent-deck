@@ -226,3 +226,12 @@ desktop job 在 `MenuBarViewModelTests.swift:168` 失败：五项日期事件均
 后的正向显示条件不满足，原过期后的检查没有对应失败。本机单独及全套 XCTest 的通过
 不能替代此 runner 的失败。后续只补充该断言的合成金额、菜单栏/模型值、AX 文本和窗口
 状态诊断，保留原条件与 2 秒期限，以区分显示恢复与测试获取内容的差异。
+
+第二次 CI [41190042429](https://github.com/kitdine/agent-deck/actions/runs/41190042429)
+对 `7aaefa2` 给出五次一致诊断：expected、button、hero 都是 `$1.44`，
+active/key/visible/unoccluded 均为 true，只有 accessibility 数组为空。
+辅助函数要求节点声明完整 `NSAccessibility` 协议；AppKit 还允许 role-specific 和
+informal AX 节点，旧筛选会丢弃这些合法节点。现按节点支持的公开 AX getter/attribute
+读取文本，并保留 attributed text 的字符串内容；仍读取实际 hosting view，原金额与
+日期失效条件、2 秒期限均保留。新增不声明完整协议的 AX 节点回归，连同原日期渲染
+用例在本机通过；远端继续验证该兼容性修复。

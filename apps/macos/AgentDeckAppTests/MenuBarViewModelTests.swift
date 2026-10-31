@@ -5,6 +5,17 @@ import Observation
 @testable import AgentDeck
 @testable import AgentDeckShared
 
+private final class DateSurfaceAXNode: NSObject {
+	let value: Any?
+	let children: [Any]
+	init(value: Any? = nil, children: [Any] = []) {
+		self.value = value
+		self.children = children
+	}
+	@objc func accessibilityValue() -> Any? { value }
+	@objc func accessibilityChildren() -> [Any] { children }
+}
+
 @MainActor
 final class MenuBarViewModelTests: XCTestCase {
 	private func healthySnapshotStore() -> AppGroupSnapshotStore {
@@ -209,12 +220,43 @@ final class MenuBarViewModelTests: XCTestCase {
 	private func dateSurfaceText(_ hosting: NSView) -> [String] {
 		hosting.layoutSubtreeIfNeeded()
 		hosting.displayIfNeeded()
+		return dateAccessibilityText(hosting)
+	}
+
+	private func dateAccessibilityText(_ root: Any) -> [String] {
+		var visited = Set<ObjectIdentifier>()
 		func text(_ object: Any) -> [String] {
-			guard let element = object as? any NSAccessibilityProtocol else { return [] }
-			return [element.accessibilityValue() as? String, element.accessibilityLabel()].compactMap { $0 }
-				+ (element.accessibilityChildren() ?? []).flatMap(text)
+			guard let element = object as? any NSObjectProtocol,
+				visited.insert(ObjectIdentifier(element)).inserted else { return [] }
+			// AX role-specific and informal nodes need not declare the complete
+			// NSAccessibility protocol. Read their supported public AX getters.
+			func attribute(_ getter: String, _ legacy: NSAccessibility.Attribute) -> Any? {
+				let selector = NSSelectorFromString(getter)
+				if element.responds(to: selector), let value = element.perform(selector)?.takeUnretainedValue() {
+					return value
+				}
+				let names = NSSelectorFromString("accessibilityAttributeNames")
+				let value = NSSelectorFromString("accessibilityAttributeValue:")
+				guard element.responds(to: names), element.responds(to: value),
+					let supported = element.perform(names)?.takeUnretainedValue() as? [String],
+					supported.contains(legacy.rawValue) else { return nil }
+				return element.perform(value, with: legacy.rawValue)?.takeUnretainedValue()
+			}
+			func string(_ value: Any?) -> String? {
+				if let attributed = value as? NSAttributedString { return attributed.string }
+				return value as? String
+			}
+			return [attribute("accessibilityValue", .value), attribute("accessibilityLabel", .description)].compactMap(string)
+				+ ((attribute("accessibilityChildren", .children) as? [Any]) ?? []).flatMap(text)
 		}
-		return text(hosting)
+		return text(root)
+	}
+
+	func testDateSurfaceReadsAXNodesWithoutCompleteProtocolConformance() {
+		let amount = DateSurfaceAXNode(value: NSAttributedString(string: "$1.44"))
+		let root = DateSurfaceAXNode(children: [amount, DateSurfaceAXNode(value: "Today")])
+		XCTAssertNil((root as Any) as? any NSAccessibilityProtocol)
+		XCTAssertEqual(dateAccessibilityText(root), ["$1.44", "Today"])
 	}
 
 	func testSchemaSignalNoticeVariantsAndHealthProse() async throws {
