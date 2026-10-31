@@ -2,22 +2,47 @@ import AppKit
 import XCTest
 import SwiftUI
 import Observation
+import Vision
 @testable import AgentDeck
 @testable import AgentDeckShared
 
-private final class DateSurfaceAXNode: NSObject {
-	let value: Any?
-	let children: [Any]
-	init(value: Any? = nil, children: [Any] = []) {
-		self.value = value
-		self.children = children
+private final class DateSurfacePixelView: NSView {
+	var value = ""
+	override func draw(_ dirtyRect: NSRect) {
+		NSColor.white.setFill()
+		NSBezierPath(rect: bounds).fill()
+		NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: 40), .foregroundColor: NSColor.black])
+			.draw(at: NSPoint(x: 20, y: 20))
 	}
-	@objc func accessibilityValue() -> Any? { value }
-	@objc func accessibilityChildren() -> [Any] { children }
+	override func accessibilityChildren() -> [Any]? { [] }
+}
+
+// Each image owns a completed immutable bitmap; recognition does not access
+// AppKit objects or mutable view state off the main actor.
+private struct DateSurfaceFrame: @unchecked Sendable { let image: CGImage }
+
+private enum DateSurfaceCaptureError: Error { case captureUnavailable, imageUnavailable }
+
+private actor DateSurfaceTextRecognizer {
+	private lazy var request: VNRecognizeTextRequest = {
+		let request = VNRecognizeTextRequest()
+		request.recognitionLevel = .accurate
+		request.usesLanguageCorrection = false
+		request.recognitionLanguages = ["en-US"]
+		request.minimumTextHeight = 0.005
+		request.usesCPUOnly = true
+		return request
+	}()
+	func text(_ frame: DateSurfaceFrame) throws -> [String] {
+		try VNImageRequestHandler(cgImage: frame.image, options: [:]).perform([request])
+		return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+	}
 }
 
 @MainActor
 final class MenuBarViewModelTests: XCTestCase {
+	private let dateTextRecognizer = DateSurfaceTextRecognizer()
+	private var lastDateSurfaceText: [String] = []
 	private func healthySnapshotStore() -> AppGroupSnapshotStore {
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
@@ -169,6 +194,8 @@ final class MenuBarViewModelTests: XCTestCase {
 			return
 		}
 		let amount = try XCTUnwrap(model.hero?.amount)
+		// Load the on-device recognizer before timing date-change updates.
+		_ = try await dateSurfaceText(hosting)
 		let before = clock.value
 		let after = try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-14T00:00:00Z"))
 		let events: [Notification.Name?] = [nil, .NSCalendarDayChanged, .NSSystemClockDidChange, .NSSystemTimeZoneDidChange, NSWorkspace.didWakeNotification]
@@ -177,8 +204,11 @@ final class MenuBarViewModelTests: XCTestCase {
 			clock.value = before
 			dates.post(name: .NSSystemClockDidChange, object: nil)
 			try await waitForDateSurface(diagnostics: {
-				"rearm event=\(event?.rawValue ?? "timer") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) accessibility=\(self.dateSurfaceText(hosting))"
-			}) { button.title == amount && self.dateSurfaceText(hosting).contains { $0.contains(amount) } }
+				"rearm event=\(event?.rawValue ?? "timer") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) rendered=\(self.lastDateSurfaceText)"
+			}) {
+				let rendered = try await self.dateSurfaceText(hosting)
+				return button.title == amount && rendered.contains { $0.contains(amount) }
+			}
 			XCTAssertEqual(model.nextDateInvalidationDelay, 60)
 			XCTAssertTrue(try XCTUnwrap(controller.dateInvalidationTimer).isValid)
 			XCTAssertGreaterThan(try XCTUnwrap(controller.dateInvalidationTimer).fireDate.timeIntervalSinceNow, 0)
@@ -195,7 +225,11 @@ final class MenuBarViewModelTests: XCTestCase {
 				try XCTUnwrap(controller.dateInvalidationTimer).fire()
 			}
 			await fulfillment(of: [changed], timeout: 2)
-			try await waitForDateSurface { button.title.isEmpty && !self.dateSurfaceText(hosting).contains { $0.contains(amount) } }
+			try await waitForDateSurface {
+				let rendered = try await self.dateSurfaceText(hosting)
+				let hasSurface = rendered.contains { $0.replacingOccurrences(of: " ", with: "").lowercased().contains("agentdeck") }
+				return button.title.isEmpty && hasSurface && !rendered.contains { $0.contains(amount) }
+			}
 			XCTAssertNil(model.hero)
 			XCTAssertFalse(model.sessionsPanel.available)
 			XCTAssertEqual(model.selectedPeriod, "today")
@@ -210,53 +244,46 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(button.title.isEmpty)
 	}
 
-	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, diagnostics: () -> String = { "" }, _ condition: () -> Bool) async throws {
+	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, diagnostics: () -> String = { "" }, _ condition: () async throws -> Bool) async throws {
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(2))
-		while !condition(), clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-		XCTAssertTrue(condition(), diagnostics(), file: file, line: line)
+		while clock.now < deadline {
+			if try await condition() { return }
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		XCTFail(diagnostics(), file: file, line: line)
 	}
 
-	private func dateSurfaceText(_ hosting: NSView) -> [String] {
+	private func dateSurfaceText(_ hosting: NSView) async throws -> [String] {
 		hosting.layoutSubtreeIfNeeded()
 		hosting.displayIfNeeded()
-		return dateAccessibilityText(hosting)
-	}
-
-	private func dateAccessibilityText(_ root: Any) -> [String] {
-		var visited = Set<ObjectIdentifier>()
-		func text(_ object: Any) -> [String] {
-			guard let element = object as? any NSObjectProtocol,
-				visited.insert(ObjectIdentifier(element)).inserted else { return [] }
-			// AX role-specific and informal nodes need not declare the complete
-			// NSAccessibility protocol. Read their supported public AX getters.
-			func attribute(_ getter: String, _ legacy: NSAccessibility.Attribute) -> Any? {
-				let selector = NSSelectorFromString(getter)
-				if element.responds(to: selector), let value = element.perform(selector)?.takeUnretainedValue() {
-					return value
-				}
-				let names = NSSelectorFromString("accessibilityAttributeNames")
-				let value = NSSelectorFromString("accessibilityAttributeValue:")
-				guard element.responds(to: names), element.responds(to: value),
-					let supported = element.perform(names)?.takeUnretainedValue() as? [String],
-					supported.contains(legacy.rawValue) else { return nil }
-				return element.perform(value, with: legacy.rawValue)?.takeUnretainedValue()
-			}
-			func string(_ value: Any?) -> String? {
-				if let attributed = value as? NSAttributedString { return attributed.string }
-				return value as? String
-			}
-			return [attribute("accessibilityValue", .value), attribute("accessibilityLabel", .description)].compactMap(string)
-				+ ((attribute("accessibilityChildren", .children) as? [Any]) ?? []).flatMap(text)
+		guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+			throw DateSurfaceCaptureError.captureUnavailable
 		}
-		return text(root)
+		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+		guard let image = bitmap.cgImage else {
+			throw DateSurfaceCaptureError.imageUnavailable
+		}
+		let rendered = try await dateTextRecognizer.text(DateSurfaceFrame(image: image))
+		lastDateSurfaceText = rendered
+		return rendered
 	}
 
-	func testDateSurfaceReadsAXNodesWithoutCompleteProtocolConformance() {
-		let amount = DateSurfaceAXNode(value: NSAttributedString(string: "$1.44"))
-		let root = DateSurfaceAXNode(children: [amount, DateSurfaceAXNode(value: "Today")])
-		XCTAssertNil((root as Any) as? any NSAccessibilityProtocol)
-		XCTAssertEqual(dateAccessibilityText(root), ["$1.44", "Today"])
+	func testDateSurfaceReadsRenderedPixelsWithoutAccessibilityNodes() async throws {
+		let view = DateSurfacePixelView(frame: NSRect(x: 0, y: 0, width: 320, height: 100))
+		let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentView = view
+		defer { window.close() }
+		view.value = "$1.44"
+		view.needsDisplay = true
+		XCTAssertEqual(view.accessibilityChildren()?.count, 0)
+		let present = try await dateSurfaceText(view)
+		XCTAssertTrue(present.contains { $0.contains("$1.44") })
+		view.value = ""
+		view.needsDisplay = true
+		let removed = try await dateSurfaceText(view)
+		XCTAssertFalse(removed.contains { $0.contains("$1.44") })
 	}
 
 	func testSchemaSignalNoticeVariantsAndHealthProse() async throws {
