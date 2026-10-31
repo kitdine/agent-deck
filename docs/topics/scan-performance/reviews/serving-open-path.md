@@ -218,3 +218,11 @@ Snapshot 合成夹具在最后 writer 关闭前排空池，以建立原用例要
 四包完整通过（含 scanruntime 全包与原超时用例），无 race 报告；`make vet` 通过。
 原始失败观察保留为根因与修复输入，不将其改写为通过。SQL 修复按用户要求独立提交，
 远端 Actions 与新 Code Review 继续针对最终提交核对。
+
+### CI 日期用例定位补充
+
+PR CI [41189217902](https://github.com/kitdine/agent-deck/actions/runs/41189217902) 的
+desktop job 在 `MenuBarViewModelTests.swift:168` 失败：五项日期事件均是 re-arm today
+后的正向显示条件不满足，原过期后的检查没有对应失败。本机单独及全套 XCTest 的通过
+不能替代此 runner 的失败。后续只补充该断言的合成金额、菜单栏/模型值、AX 文本和窗口
+状态诊断，保留原条件与 2 秒期限，以区分显示恢复与测试获取内容的差异。

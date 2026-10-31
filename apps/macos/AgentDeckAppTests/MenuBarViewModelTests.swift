@@ -165,7 +165,9 @@ final class MenuBarViewModelTests: XCTestCase {
 			// Re-arm the same publication by a clock event; no filter/preference/refresh change.
 			clock.value = before
 			dates.post(name: .NSSystemClockDidChange, object: nil)
-			try await waitForDateSurface { button.title == amount && self.dateSurfaceText(hosting).contains { $0.contains(amount) } }
+			try await waitForDateSurface(diagnostics: {
+				"rearm event=\(event?.rawValue ?? "timer") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) accessibility=\(self.dateSurfaceText(hosting))"
+			}) { button.title == amount && self.dateSurfaceText(hosting).contains { $0.contains(amount) } }
 			XCTAssertEqual(model.nextDateInvalidationDelay, 60)
 			XCTAssertTrue(try XCTUnwrap(controller.dateInvalidationTimer).isValid)
 			XCTAssertGreaterThan(try XCTUnwrap(controller.dateInvalidationTimer).fireDate.timeIntervalSinceNow, 0)
@@ -197,11 +199,11 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(button.title.isEmpty)
 	}
 
-	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async throws {
+	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, diagnostics: () -> String = { "" }, _ condition: () -> Bool) async throws {
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(2))
 		while !condition(), clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-		XCTAssertTrue(condition(), file: file, line: line)
+		XCTAssertTrue(condition(), diagnostics(), file: file, line: line)
 	}
 
 	private func dateSurfaceText(_ hosting: NSView) -> [String] {
