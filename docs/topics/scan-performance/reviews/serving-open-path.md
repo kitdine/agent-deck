@@ -247,3 +247,17 @@ Vision 识别已渲染文字，不从模型构造结果。移除已不使用的 
 超时后不再次计算条件并把晚到结果判为通过。新增无 AX 节点的绘制夹具，验证仍能从
 像素识别 `$1.44`，擦除后该金额消失。
 本机最终像素方案的原日期用例与无 AX 夹具均通过，文档结构和 whitespace 检查通过。
+
+### CI Homebrew fixture 兼容修复
+
+`4fab0ca` 的 PR CI desktop 全部通过，push CI 的 Swift/XCTest 也通过，后者在
+[隔离分发测试](https://github.com/kitdine/agent-deck/actions/runs/41192855433) 因 Homebrew
+拒绝加载未信任的 `agentdeck-fixture/cask-fixture/agentdeck-app` 失败。
+
+分发脚本对 Homebrew fixture 调用统一使用本次临时目录中的 XDG/用户配置目录。
+支持 `brew trust` 的版本先精确信任本次生成的 cask token；旧版仍执行原有加载检查。
+普通 operator 的 trust 配置不参与此测试，临时信任随 fixture 清理。保留 `brew info`
+失败退出、deprecated warning、全部 artifact 与 Widget 生命周期检查；没有关闭信任检查。
+Shell 语法及 8 项 cleanup 回归通过，本机完整隔离分发验证继续收口。
+本机 Homebrew 7.0.11 下 `make check-macos-distribution` 最终退出 0，包含 cask 加载、
+打包/签名分支与最终 fixture 注销清理。`4fab0ca` 两轮 CI 的 Go verify 均成功。
