@@ -2349,6 +2349,7 @@ public final class DesktopRefreshCoordinator {
 				case .refreshing: update(\.state, .refreshing(previous: updated))
 				case .uninitialized: break
 				}
+				await publishWidgetSnapshot(updated)
 			}
 			return
 		}

@@ -4,6 +4,38 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
+	func testLateBootstrapQuotaMergePublishesTheFinalWidgetSnapshot() async throws {
+		let partial = try servingCoordinatorFixture(id: "quota-partial", full: false)
+		let final = try servingCoordinatorFixture(id: "quota-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: partial, final: final)
+		let subscription = DesktopSubscriptionSnapshotV1(available: !final.payload.data.subscription.available, clients: [])
+		let quota = SuspendingQuotaRefresher(alerts: [], subscription: subscription)
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(directoryURL: directory)
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: store, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		await quota.waitUntilSuspended()
+		host.resume()
+		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload)
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(3))
+		while (try? store.read()) != baseline, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		let fullPublishedBeforeQuota = (try? store.read()) == baseline
+		await quota.resume()
+		await initial.value
+		XCTAssertTrue(fullPublishedBeforeQuota, "the fixture must finish full publication before quota")
+		let updated = final.payload.replacingSubscription(subscription)
+		XCTAssertNotEqual(updated, final.payload)
+		XCTAssertEqual(coordinator.latestSnapshot, updated)
+		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated), "Widget snapshot must contain the final quota merge without changing the full snapshot")
+		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
+	}
+
 	func testServingAcceptsTelemetrySchemaAndRejectsUnknownFutureSchema() throws {
 		let snapshot = try servingCoordinatorFixture(id: "telemetry-schema", full: true,
 			generationChanges: ["core_schema": 33])
@@ -995,9 +1027,11 @@ private actor SuspendingQuotaRefresher: DesktopQuotaRefreshing {
 	private var manualValues = [Bool]()
 	private var continuation: CheckedContinuation<Void, Never>?
 	private let alerts: [DesktopQuotaAlertV1]
+	private let subscription: DesktopSubscriptionSnapshotV1?
 
-	init(alerts: [DesktopQuotaAlertV1]) {
+	init(alerts: [DesktopQuotaAlertV1], subscription: DesktopSubscriptionSnapshotV1? = nil) {
 		self.alerts = alerts
+		self.subscription = subscription
 	}
 
 	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
@@ -1010,7 +1044,7 @@ private actor SuspendingQuotaRefresher: DesktopQuotaRefreshing {
 	func acknowledgeQuotaAlerts(ids: [String]) async { acknowledgements.append(ids) }
 	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? {
 		fetchCount += 1
-		return nil
+		return subscription
 	}
 	func recordedAcknowledgements() -> [[String]] { acknowledgements }
 	func recordedManualValues() -> [Bool] { manualValues }

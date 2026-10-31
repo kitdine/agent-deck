@@ -396,3 +396,18 @@ Task checkpoint：`ad-scan-performance-event-updates-and-cli`；content_state `f
 开发：scan-performance / otel-capture-and-reconciliation
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## PR #61 第二轮修复交接 — 2026-10-31
+
+来源：[晚到 quota 合并未发布 Widget](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431526558)，
+Codex 评审目标 `d767bd202d134623ca33bf55eefda1e04ad52b92`；用户授权继续原 PR 修复/交付循环。
+
+回归固定 bootstrap 完整文件已发布、quota 仍暂停的顺序，再释放 quota。修复前 App 的
+latestSnapshot 已合并新 subscription，App Group 文件仍是旧值，回归确定失败。
+最终 quota 合并后现等待 `publishWidgetSnapshot(updated)`，保留 generation/取消检查
+及独立 Widget 发布结果；不以 App 状态替代 Widget 文件成功。
+
+`testLateBootstrapQuotaMergePublishesTheFinalWidgetSnapshot` 比较最终实际 App Group 文件
+与完整 merged envelope，连同整个 `DesktopRefreshCoordinatorTests` 在本机通过。
+本轮完整 Go 测试与 `make vet` 亦通过；新提交仍需等待其全部 Actions 成功后请求评审。
+新候选待独立 Code Review；此前 PASS 与精确内容证据仍仅对应其原状态。

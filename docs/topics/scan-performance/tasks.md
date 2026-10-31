@@ -82,7 +82,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | 3. `serving-open-path` | [x] | [ ] |
 | 4. `parallel-source-pipeline` | [x] | [ ] |
 | 5. `incremental-update` | [x] | [x] |
-| 6. `event-updates-and-cli` | [x] | [x] |
+| 6. `event-updates-and-cli` | [x] | [ ] |
 | 7. `otel-capture-and-reconciliation` | [x] | [ ] |
 | 8. `cross-surface-acceptance` | [x] | [x] |
 
@@ -91,7 +91,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 `serving-open-path` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/serving-open-path.md)；新候选待复评，交付状态由对应 Beads 任务记录。
 `parallel-source-pipeline` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/parallel-source-pipeline.md)；新候选待复评，交付状态由对应 Beads 任务记录。
 `incremental-update` 当前评审与交接见 [评审记录](reviews/incremental-update.md)；Round 2 PASS，候选 `scan-perf-iu-r1f-20261028-state` 门禁 VERIFIED；交付状态由 Beads 任务 `ad-scan-performance-incremental-update` 记录。
-`event-updates-and-cli` 当前评审与交接见 [评审记录](reviews/event-updates-and-cli.md)；Round 4 PASS，候选 `scan-perf-euc-r2f-20261029-state` 门禁 VERIFIED；交付状态由 Beads 任务 `ad-scan-performance-event-updates-and-cli` 记录。
+`event-updates-and-cli` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/event-updates-and-cli.md)；新候选待复评，交付状态由 Beads 任务 `ad-scan-performance-event-updates-and-cli` 记录。
 `otel-capture-and-reconciliation` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/otel-capture-and-reconciliation.md)；新候选待复评，交付状态由 Beads 任务 `ad-scan-performance-otel-capture-and-reconciliation` 记录。
 
 依赖：1 → 2 → 3、4；4 的前台准则在 3 通过后验证；3、4 → 5 → 6 → 7 → 8。
