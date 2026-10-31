@@ -144,7 +144,8 @@ type Reconciler struct {
 	Batch   int
 	// SessionsChanged, when set, runs after a settle pass changed OTel-owned
 	// sessions, to refresh the session-index projection.
-	SessionsChanged func(context.Context) error
+	SessionsChanged   func(context.Context) error
+	projectionPending bool
 }
 
 // Drain normalizes every complete journal record after the cursor.
@@ -182,6 +183,8 @@ func (r *Reconciler) Drain(ctx context.Context) (store.TelemetryApplyResult, err
 		total.Conflict += result.Conflict
 		total.Invalid += result.Invalid
 		total.Unmetered += result.Unmetered
+		total.Changed = total.Changed || result.Changed
+		r.projectionPending = r.projectionPending || result.Changed
 	}
 }
 
@@ -189,10 +192,18 @@ func (r *Reconciler) Drain(ctx context.Context) (store.TelemetryApplyResult, err
 // refreshes the session-index projection.
 func (r *Reconciler) Settle(ctx context.Context) (store.TelemetrySettleResult, error) {
 	result, err := r.Store.SettleTelemetry(ctx, r.Now(), SettleAfter)
-	if err != nil || !result.Changed || r.SessionsChanged == nil {
+	if err != nil {
 		return result, err
 	}
-	return result, r.SessionsChanged(ctx)
+	result.Changed = result.Changed || r.projectionPending
+	if result.Changed && r.SessionsChanged != nil {
+		if err := r.SessionsChanged(ctx); err != nil {
+			r.projectionPending = true
+			return result, err
+		}
+	}
+	r.projectionPending = false
+	return result, nil
 }
 
 // Import normalizes records from an explicitly named OTLP JSON file through

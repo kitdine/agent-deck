@@ -161,9 +161,12 @@ type ServeOptions struct {
 	Now   func() time.Time
 	// Ready, when set, is called once the listener is bound.
 	Ready func(addr string)
-	// Published, when set, is called after a settle pass changed counted
-	// usage, so the owner can refresh its publication.
+	// Published requests an owner refresh after counted usage changes or a
+	// finite inventory finishes (which may already have settled and published).
 	Published func()
+	// Inventory requests one finite reconciliation when pending observations
+	// lack a post-receipt inventory. It runs independently of HTTP reception.
+	Inventory func(context.Context) error
 	// SettleEvery is the interval between settle passes; zero uses one minute.
 	SettleEvery time.Duration
 }
@@ -255,14 +258,35 @@ func Serve(ctx context.Context, options ServeOptions) error {
 			defer index.Close()
 			return ProjectSessionIndex(ctx, options.Store, index)
 		}}
-	settle := func() {
-		if result, err := reconciler.Settle(context.Background()); err == nil && result.Changed && options.Published != nil {
-			options.Published()
+	settle := func() bool {
+		if result, err := reconciler.Settle(context.Background()); err == nil && result.Changed {
+			if options.Published != nil {
+				options.Published()
+			}
+			return true
 		}
+		return false
+	}
+	inventoryDone := make(chan error, 1)
+	inventoryRunning := false
+	requestInventory := func() {
+		if options.Inventory == nil || inventoryRunning || ctx.Err() != nil {
+			return
+		}
+		needed, err := options.Store.TelemetryNeedsInventory(ctx)
+		if err != nil || !needed {
+			return
+		}
+		inventoryRunning = true
+		go func() { inventoryDone <- options.Inventory(ctx) }()
 	}
 	drain := func() {
-		if _, err := reconciler.Drain(context.Background()); err == nil {
+		if result, err := reconciler.Drain(context.Background()); err == nil {
 			_ = journal.Cleanup()
+			if result.Changed {
+				settle()
+			}
+			requestInventory()
 		}
 	}
 	drain()
@@ -296,6 +320,14 @@ loop:
 			_ = writeListenerState(options.StateRoot, state)
 		case <-settleTicker.C:
 			settle()
+			requestInventory()
+		case err := <-inventoryDone:
+			inventoryRunning = false
+			if changed := settle(); err == nil && !changed && options.Published != nil {
+				// The scan can settle an old pending observation itself. Its
+				// publication still needs to reach an owner with no source event.
+				options.Published()
+			}
 		case <-ticker.C:
 			// The configuration is AgentDeck's own file; a disable from the
 			// CLI or Settings stops this listener without a signal.

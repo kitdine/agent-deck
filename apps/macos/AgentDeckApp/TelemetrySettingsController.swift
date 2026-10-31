@@ -103,8 +103,8 @@ enum TelemetryChangeResult: Equatable {
 
 /// Owns the App-attached listener process. The listener holds a pipe to the
 /// App as its stdin and exits when the pipe closes, so it stops with the App
-/// even if the App is killed. Each `publication_needed` line it writes means
-/// counted usage changed.
+/// even if the App is killed. Each `publication_needed` line requests a
+/// publication refresh after settlement or finite inventory reconciliation.
 @MainActor
 protocol TelemetryListenerSupervising: AnyObject {
 	var isRunning: Bool { get }
@@ -220,6 +220,7 @@ final class TelemetrySettingsController {
 	private let transport: any TelemetryTransport
 	private let supervisor: any TelemetryListenerSupervising
 	private let settleDelay: Duration
+	@ObservationIgnored private var configurationMonitor: DesktopSourceChangeMonitor?
 
 	private(set) var status: DesktopTelemetryStatusV1?
 	private(set) var preview: DesktopTelemetryPreviewV1?
@@ -228,10 +229,18 @@ final class TelemetrySettingsController {
 	private(set) var isApplying = false
 	var showsPreview = false
 
-	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800)) {
+	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURL: URL? = nil) {
 		self.transport = transport
 		self.supervisor = supervisor
 		self.settleDelay = settleDelay
+		if let configurationURL {
+			configurationMonitor = DesktopSourceChangeMonitor(configurationURL: configurationURL) { [weak self] in
+				Task { @MainActor [weak self] in
+					guard let self, !self.isApplying else { return }
+					await self.load()
+				}
+			}
+		}
 	}
 
 	var state: TelemetrySettingsState? { status.map(TelemetrySettingsState.init(status:)) }
@@ -281,6 +290,7 @@ final class TelemetrySettingsController {
 	/// on and Codex Memories is not off. Called at launch (after startup
 	/// settles) and when Settings opens.
 	func load() async {
+		configurationMonitor?.start()
 		await refresh()
 		startListenerIfNeeded()
 	}
@@ -327,6 +337,7 @@ final class TelemetrySettingsController {
 	}
 
 	func stop() {
+		configurationMonitor?.stop()
 		supervisor.stop()
 	}
 

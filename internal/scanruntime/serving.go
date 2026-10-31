@@ -7,9 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/perftrace"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
@@ -90,6 +92,14 @@ func servingSourceBatches(sources []ingest.Source, now time.Time) [][]ingest.Sou
 		}
 	}
 	return batches
+}
+
+func (r *round) desktopService(stateRoot string) desktop.Service {
+	vault := r.servingVault
+	if vault == nil {
+		vault = credentialvault.New(stateRoot, platform.MachineIdentity)
+	}
+	return desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow, Vault: vault}
 }
 
 // The caller owns the scan lock and has sealed the accepted inventory.
@@ -239,7 +249,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		// Publish after this safe commit checkpoint, before any history body is
 		// admitted. Neither a global terminal nor worker exit is required.
 		finishBatchDerive := perftrace.Span(perftrace.ScanDerive)
-		publication, publishErr := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, true)
+		publication, publishErr := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, true)
 		finishBatchDerive()
 		if publishErr == nil {
 			r.setServingPublication(publication)
@@ -276,8 +286,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: time.Since(started).Milliseconds()})
 	r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: time.Since(started).Milliseconds()})
 	finishDerive := perftrace.Span(perftrace.ScanDerive)
-	_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
-	publication, publishErr := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
+	_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
+	publication, publishErr := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
 	finishDerive()
 	perftrace.Mark(perftrace.ProjectionDone)
 	if publishErr == nil {

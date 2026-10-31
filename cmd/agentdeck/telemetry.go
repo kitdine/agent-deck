@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 )
@@ -47,7 +48,7 @@ func telemetryCodexBlockRemains() error {
 }
 
 // telemetryServeEventPublication is the line the App-attached listener
-// writes on stdout after counted usage changed.
+// writes on stdout when its owner needs a fresh publication.
 const telemetryServeEventPublication = "publication_needed"
 
 func newTelemetryCommand(opts *commandOptions) *cobra.Command {
@@ -557,7 +558,16 @@ func newTelemetryServeCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			defer database.Close()
-			err = telemetry.Serve(ctx, telemetry.ServeOptions{StateRoot: stateRoot, Home: home, Owner: owner, Store: database, Published: published})
+			err = telemetry.Serve(ctx, telemetry.ServeOptions{
+				StateRoot: stateRoot, Home: home, Owner: owner, Store: database, Published: published,
+				Inventory: func(ctx context.Context) error {
+					result, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, AppOwned: owner == "app", Background: true}).Request(ctx, scanruntime.ScopeBoth)
+					if err == nil && (result.Usage.State != "completed" || result.Session.State != "completed") {
+						err = errors.New("telemetry inventory reconciliation incomplete")
+					}
+					return err
+				},
+			})
 			switch {
 			case errors.Is(err, telemetry.ErrDisabled):
 				return &inputError{err: errors.New("the telemetry receiver is disabled; run agentdeck telemetry enable")}

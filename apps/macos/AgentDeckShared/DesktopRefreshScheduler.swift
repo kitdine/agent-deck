@@ -7,13 +7,23 @@ import CoreServices
 @MainActor
 public final class DesktopSourceChangeMonitor {
 	private let roots: [String]
+	private let configuration: Bool
 	private let request: @MainActor @Sendable () -> Void
 	private var stream: FSEventStreamRef?
 
 	public init(home: URL, request: @escaping @MainActor @Sendable () -> Void) {
+		configuration = false
 		roots = [".codex/sessions", ".codex/archived_sessions", ".claude/projects"].map {
 			home.appendingPathComponent($0).standardizedFileURL.path
 		}
+		self.request = request
+	}
+
+	/// Observe one configuration file, including atomic replacement and creation.
+	/// This stream is independent of source watching and the listener lifetime.
+	public init(configurationURL: URL, request: @escaping @MainActor @Sendable () -> Void) {
+		roots = [configurationURL.standardizedFileURL.path]
+		configuration = true
 		self.request = request
 	}
 
@@ -60,7 +70,7 @@ public final class DesktopSourceChangeMonitor {
 			let path = URL(fileURLWithPath: paths[index]).standardizedFileURL.path
 			return flags[index] & recovery != 0 || roots.contains { root in
 				(path == root || path.hasPrefix(root + "/")) &&
-					(path.hasSuffix(".jsonl") || flags[index] & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0)
+					(configuration || path.hasSuffix(".jsonl") || flags[index] & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0)
 			}
 		}
 		guard relevant else { return }

@@ -341,3 +341,18 @@ Task checkpoint：`ad-scan-performance-parallel-source-pipeline`；content_state
 开发：scan-performance / incremental-update
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## PR #61 修复交接 — 2026-10-31
+
+来源：Codex 对 `3e07c892f34d775e60919774f49ae7c85afb755f` 的
+[过期 inventory 回收发现](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431001380)。
+已确认成功扫描只移动 coverage head，旧 checkpoint 与 inventory 持续累积。
+
+`FinishInventory` 完成后按每事务最多 128 个 checkpoint 回收过期终态 inventory，
+保留当前 head、telemetry 结算所需的最近完整 inventory，以及其他仍在 staging 的 pending
+inventory。核心与会话数据库共用相同规则；不改变所有权判断或扫描覆盖范围。
+`TestCompletedInventoriesReclaimCheckpointsAndRetainSettlementEvidence` 在两个数据库分别
+验证五轮、每轮 257 个来源的回收，以及 pending/paused head 下结算证据和在途 staging
+的保留，定向回归通过。
+
+新候选等待 PR Code Review；此前各轮 PASS 与精确门禁只对应其原内容身份。

@@ -79,6 +79,28 @@ final class TelemetrySettingsControllerTests: XCTestCase {
 		XCTAssertTrue(controller.isOn)
 	}
 
+	func testConfigurationChangesResumeReceptionWithoutReopeningSettings() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let config = directory.appendingPathComponent("config.toml")
+		try "[features]\nmemories = false\n".write(to: config, atomically: true, encoding: .utf8)
+		let supervisor = StubTelemetryListenerSupervisor()
+		let transport = StubTelemetryTransport(statuses: [status(listener: "stopped", memories: "off"), status(listener: "stopped", memories: "on")])
+		let controller = TelemetrySettingsController(transport: transport, supervisor: supervisor, configurationURL: config)
+		defer { controller.stop() }
+		await controller.load()
+		XCTAssertEqual(supervisor.starts, 0)
+		// A real atomic configuration replacement, while the receiver is stopped.
+		try "[features]\nmemories = true\n".write(to: config, atomically: true, encoding: .utf8)
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(5))
+		while !supervisor.isRunning, clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+		XCTAssertTrue(supervisor.isRunning)
+		XCTAssertEqual(supervisor.starts, 1)
+		XCTAssertEqual(transport.enableCalls, [], "the existing preference resumes without enabling or rewriting configuration")
+	}
+
 	func testARefusedWriteKeepsTheSwitchOffAndRetryClearsTheError() async {
 		var refuse = true
 		let transport = StubTelemetryTransport(

@@ -197,11 +197,11 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(button.title.isEmpty)
 	}
 
-	private func waitForDateSurface(_ condition: () -> Bool) async throws {
+	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async throws {
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(2))
 		while !condition(), clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-		XCTAssertTrue(condition())
+		XCTAssertTrue(condition(), file: file, line: line)
 	}
 
 	private func dateSurfaceText(_ hosting: NSView) -> [String] {

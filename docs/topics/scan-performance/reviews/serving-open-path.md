@@ -152,3 +152,25 @@ Task checkpoint：`ad-scan-performance-serving-open-path`；content_state `scan-
 开发：scan-performance / parallel-source-pipeline
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## PR #61 修复交接 — 2026-10-31
+
+来源：Codex 对 `3e07c892f34d775e60919774f49ae7c85afb755f` 的
+[凭据检查发现](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431001383)。
+用户授权本 PR 的修复、提交与推送；全部 Actions 成功后再请求 Codex Code Review。
+
+完整 serving 发布原先没有给 `desktop.Service` 传 Vault，导致已有加密凭据时
+doctor 报告 `credential_key_missing`。普通轮次与分批 serving 轮次现统一使用带
+生产凭据 Vault 的 builder；测试注入合成机器身份与临时密钥。
+`TestServingPublicationsUseTheCredentialVault` 覆盖普通/serving 两条路径各两轮，
+验证发布中的 `provider_credential_key` 为 `ok`，定向 Go 回归通过。
+
+原 CI 的文档空行失败使 documentation 与 verify 同时失败，已删除
+`incremental-projections.md` 的尾部空行。日期表面 XCTest 的等待断言补充调用点位置，
+单独运行原失败用例通过，保留原条件与时限。组合验证以本轮 CI 结果继续核对。
+
+完整 `make test-macos-app` 隔离验证通过：Shared 121、App 165（1 项既有跳过）、
+Widget 51 项，0 failure；原日期用例在整套测试中通过。文档结构、document set、
+review-record 与 whitespace 检查通过；远端以修复提交的 Actions 结果继续核对。
+
+新候选等待 PR Code Review；此前各轮 PASS 与精确门禁只对应其原内容身份。

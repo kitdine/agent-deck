@@ -181,7 +181,42 @@ func (s *Store) FinishInventory(ctx context.Context, id, state string) error {
 	if _, err = tx.ExecContext(ctx, `UPDATE serving_generation SET revision=revision+1 WHERE singleton=1`); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return s.reclaimSupersededInventories(ctx)
+}
+
+// Reclaim in bounded transactions. Keep the head and the most recent complete
+// inventory (telemetry's ownership evidence), including while the next head is
+// pending. Never remove another acceptance's staged, pending inventory.
+func (s *Store) reclaimSupersededInventories(ctx context.Context) error {
+	const obsolete = `state<>'pending' AND inventory_id NOT IN (SELECT inventory_id FROM domain_coverage_heads)
+ AND inventory_id<>coalesce((SELECT inventory_id FROM inventory_runs WHERE state='complete' ORDER BY captured_at DESC,inventory_id DESC LIMIT 1),'')`
+	for {
+		tx, err := s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		checkpoints, err := tx.ExecContext(ctx, `DELETE FROM source_domain_checkpoints WHERE rowid IN (SELECT rowid FROM source_domain_checkpoints WHERE inventory_id IN (SELECT inventory_id FROM inventory_runs WHERE `+obsolete+`) LIMIT ?)`, inventoryInsertBatch)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		runs, err := tx.ExecContext(ctx, `DELETE FROM inventory_runs WHERE inventory_id IN (SELECT inventory_id FROM inventory_runs WHERE `+obsolete+` AND NOT EXISTS(SELECT 1 FROM source_domain_checkpoints c WHERE c.inventory_id=inventory_runs.inventory_id) LIMIT ?)`, inventoryInsertBatch)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		removedCheckpoints, _ := checkpoints.RowsAffected()
+		removedRuns, _ := runs.RowsAffected()
+		if removedCheckpoints+removedRuns == 0 {
+			return nil
+		}
+	}
 }
 
 // ReadSourceCoverage is stored-only. Legacy absence is unknown; SQL failures

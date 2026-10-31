@@ -208,7 +208,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 				publicationNeeded: { [weak coordinator] in
 					Task { @MainActor in await coordinator?.requestFullRefresh(trigger: .sourceChange) }
 				}
-			)
+			),
+			configurationURL: sourceHome.appendingPathComponent(".codex/config.toml")
 		)
 		self.telemetrySettings = telemetrySettings
 		model = MenuBarViewModel(

@@ -31,6 +31,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
@@ -900,6 +901,7 @@ type round struct {
 	progressSeq        uint64
 	terminalErr        error
 	cacheNow           func() time.Time
+	servingVault       provider.CredentialVault
 	openCore           func(context.Context, string) (*store.Store, error)
 	openSessions       func(context.Context, string) (*store.Store, error)
 	beforeDiscovery    func()
@@ -1144,8 +1146,8 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		if sessionsErr == nil {
 			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
 		}
-		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
-		if publication, err := (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false); err == nil {
+		_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
+		if publication, err := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false); err == nil {
 			r.setServingPublication(publication)
 		}
 		r.setDerivedCache(time.Since(started).Milliseconds())

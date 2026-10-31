@@ -276,3 +276,42 @@ Task checkpoint：ad-scan-performance-otel-capture-and-reconciliation；content_
 下一步指令：开发：scan-performance / cross-surface-acceptance
 
 WORKFLOW_WORKSPACE: agent-deck.scan-performance
+
+## PR #61 修复交接 — 2026-10-31
+
+来源：Codex 对 `3e07c892f34d775e60919774f49ae7c85afb755f` 的三项发现：
+[pending 无后续 inventory](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431001372)、
+[Memories 重开后监听未恢复](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431001375)、
+[归一化冲突撤回未传播](https://github.com/kitdine/agent-deck/pull/61#discussion_r4431001378)。
+
+- 接收端查询 pending 是否缺少接收之后的完整 inventory，按需发起单个有限扫描，
+  并在完成后继续原有 grace period 与 JSONL 所有权结算。已被 inventory 覆盖的 pending
+  不重复扫描；扫描自行结算时也通知 App 读取新发布。
+- 配置文件事件监听独立于接收进程与自动来源更新开关。Codex 配置原子替换后刷新真实
+  状态；既有采集偏好开启且 Memories 恢复时启动接收进程，不自动开启偏好或写 Codex 配置。
+- 归一化结果携带已计入贡献的撤回，后续 Settle 同步会话投影并通知发布；投影失败保留
+  待同步状态，成功后清除，避免冲突会话留在会话索引或漏发刷新通知。
+
+验证：`TestServeReconcilesNewBackgroundUsageAndPublishesConflictRetractions` 以临时状态、
+合成 OTLP HTTP 请求及受控时钟，确认一次有限 inventory 后计入 1010 tokens 并投影；
+冲突请求后 tokens、会话标记及索引投影撤回且通知发布。
+`TestReconcilerRetriesNormalizationProjectionAfterFailure` 确认投影失败重试与成功后幂等。
+两项定向 Go 回归通过。原生
+`testConfigurationChangesResumeReceptionWithoutReopeningSettings` 使用临时配置文件的
+真实原子替换事件，验证无需重开 Settings 即恢复监听，且没有启用/配置写入调用；
+TelemetrySettingsController 的 10 项 XCTest 与日期表面用例定向运行通过。`make vet` 通过。
+
+完整 `make test-macos-app` 通过（121 Shared、165 App、51 Widget，1 项既有跳过，
+0 failure）。Go 全量首次运行中其余包通过，三项失败按原断言复核：两个 LaunchServices
+1 秒超时用例在隔离运行中通过；`TestBatchTemplateStartIsANoOpAndBindsTheSourceTree`
+在允许只读 `ps` 的环境通过。后者在受限沙箱中 `ps` 明确被拒，原 worker 等待因此提前结束，
+导致读取尚未刷盘的空 trace；没有通过忽略 trace、放宽断言或增加超时消除失败。
+
+本机完整相关包 race 运行中，store 包通过；scanruntime 的多个 serving 读取在既有
+200 ms `ServingGenerationReader` 期限内超时，保留该运行的失败事实，完整 race 以远端
+Actions 继续核对。新增接收回归的时钟驱动已修正：先观察 inventory 完成通知并确认仍为
+pending，再推进 grace period，避免提前到达的发布通知被误当作冲突完成通知。
+修正后的接收/投影重试两项回归以 `-race -count=10` 连续通过；store 完整包 race 通过。
+
+本轮为用户授权的 PR 修复与交付；新候选等待独立 Codex Code Review，历史 PASS 和
+精确内容门禁保持其原内容绑定。全部 Actions 成功后才发送新的 `@codex review` 请求。

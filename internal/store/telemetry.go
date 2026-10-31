@@ -131,6 +131,8 @@ type TelemetryApplyResult struct {
 	Conflict    int
 	Invalid     int
 	Unmetered   int
+	// Changed includes contributions retracted while normalizing conflicts.
+	Changed bool
 }
 
 // ErrTelemetryCursorMoved reports that another consumer advanced the journal
@@ -174,9 +176,14 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 			}
 			if conflict {
 				observation.State, observation.Reason = "conflict", "token_counts_disagree"
+				var counted bool
+				if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_contributions c JOIN telemetry_observations o USING(observation_key) WHERE o.thread_id=? AND o.record_at=?)`, observation.ThreadID, observation.RecordAt).Scan(&counted); err != nil {
+					return result, err
+				}
 				if err := retractConflicting(ctx, tx, observation); err != nil {
 					return result, err
 				}
+				result.Changed = result.Changed || counted
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO telemetry_observations(
@@ -212,6 +219,14 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 		}
 	}
 	return result, tx.Commit()
+}
+
+// TelemetryNeedsInventory reports pending observations that no completed finite
+// inventory has checked yet. It does not grant ownership or bypass settlement.
+func (s *Store) TelemetryNeedsInventory(ctx context.Context) (bool, error) {
+	var needed bool
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_observations o WHERE o.state='pending' AND NOT EXISTS(SELECT 1 FROM inventory_runs i WHERE i.state='complete' AND i.captured_at > o.received_at))`).Scan(&needed)
+	return needed, err
 }
 
 func telemetryConflicts(ctx context.Context, tx *sql.Tx, observation TelemetryObservation) (bool, error) {
