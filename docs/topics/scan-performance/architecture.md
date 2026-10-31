@@ -278,6 +278,15 @@ App 在显示 status item 的同时，后台做轻量 read-only identity check�
 只有身份已验证才恢复缓存；检查超时是身份未知，不能为了 P02 显示来自另一个库的数字。
 已运行 App 保留这次 verified identity，不在每次 click 读 SQL。
 
+同一进程按数据库文件身份与连接配置复用只读 `sql.DB`，请求仅持有 lease，结束时归还，
+不逐次创建/销毁连接池。identity 的 20 ms busy timeout 与普通只读连接配置分开；驻留池
+缓存上限为 32，活动租借占满时临时池归还即关闭。文件替换使旧池失效，已有 lease 释放后
+再关闭旧连接。正常进程退出释放池资源。
+扫描轮次完成数据库初始化后预热首个 identity 连接，后续读取沿用全局 200 ms 期限；
+每次仍读取当前 epoch/schema/revision 并重验文件身份，不缓存这些值。
+writer 关闭时若有常驻只读池，先作 PASSIVE checkpoint，使已提交 WAL 对主库副本可见；
+不会等待活动 reader 结束或强制关闭其连接。
+
 后台校验、decode、格式化与 prepared-view 构建后，MainActor 只交换 publication/view model。
 点击不 await 引擎、helper、disk read 或网络；已经存在的 memory publication 直接 bind。
 打开路径的优化以 `PerfTrace` 分段为依据（见“打开路径”），不在缺少测量时重写整个 UI。

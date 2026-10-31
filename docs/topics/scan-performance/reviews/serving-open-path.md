@@ -174,3 +174,47 @@ Widget 51 项，0 failure；原日期用例在整套测试中通过。文档结�
 review-record 与 whitespace 检查通过；远端以修复提交的 Actions 结果继续核对。
 
 新候选等待 PR Code Review；此前各轮 PASS 与精确门禁只对应其原内容身份。
+
+## sql.DB 连接池修复交接 — 2026-10-31
+
+用户要求继续修复本机完整 scanruntime race 的 200 ms 读取超时，并将 sql.DB 处理单独
+提交，以便独立评审。此前 PR 修复提交为 `c12cd86f984c6a91ae461996da1b33175fbe5d81`，
+保留该提交，不改写历史。
+
+### 根因与改动
+
+`OpenServingGenerationReader` 每次新建 `sql.DB`，`PingContext` 初始化首个连接，
+请求结束就销毁池；普通只读 Store 也逐次建池。分段诊断（同机 Go 1.27.3、race、合成库）
+测得 core 连接打开 100–209 ms，而 generation 查询各约 1 ms，重复连接初始化耗尽
+200 ms 期限。该期限及原失败断言保留。
+
+现按物理数据库文件身份与配置复用进程只读池，最多驻留 32 个；请求持有独立 lease
+和 context。首次初始化合并，等待者取消不影响创建者，创建者取消也不污染其他等待者。
+20 ms identity 与 5000 ms 普通只读 busy timeout 分开；文件替换、空闲淘汰与进程退出
+均按租借生命周期释放连接。每次仍查当前 schema/epoch/revision，并校验文件身份。
+写 Store 完成初始化时预热首个 identity 连接，不把冷连接成本逐次带入读取期限。
+
+常驻只读连接会改变 SQLite 的最后连接关闭行为，故 writer 关闭时显式 PASSIVE
+checkpoint，保留主库副本可见性；重复关闭保持幂等。CLI 正常退出释放进程池。
+Snapshot 合成夹具在最后 writer 关闭前排空池，以建立原用例要求的完全关闭输入；
+主库 hash 不变、sidecar 权限与前后状态的原断言全部保留。
+
+### 已取得的直接验证
+
+- 连接复用、活跃旧读者与文件替换、冷初始化合并、双向取消隔离、容量/淘汰/退出回收，
+  及独立读取 context 的定向 race 回归通过。五次 primed 双库 identity 读取为
+  1.37–2.77 ms；这是上述合成库的诊断对照，不替代 topic 的完整性能报告。
+- 连接池候选下 `scripts/run-go-test.sh -race ./internal/scanruntime` 全包通过，
+  原先超时的用例通过。200 ms 期限及不续期/取消检查通过。
+- 新增主库副本回归在缺少关闭 checkpoint 时确定失败（副本缺少 schema_metadata）；
+  修复后该回归与原 IntegrityCheck 用例在 race 下连续三次通过。
+- Snapshot 的完全关闭输入夹具修正后，原完整快照用例在 race 下连续三次通过；
+  没有删除或放宽原有断言。最终全量及跨包 race 结果随本修复提交收口。
+
+本 SQL 候选等待独立 Code Review；此前历史失败及旧内容门禁不改写。
+
+最终本机收口：Go 1.27.3，`scripts/run-go-test.sh -p 1 ./...` 全量通过；
+`scripts/run-go-test.sh -race -p 1 ./internal/store ./internal/telemetry ./internal/scanruntime ./internal/desktop`
+四包完整通过（含 scanruntime 全包与原超时用例），无 race 报告；`make vet` 通过。
+原始失败观察保留为根因与修复输入，不将其改写为通过。SQL 修复按用户要求独立提交，
+远端 Actions 与新 Code Review 继续针对最终提交核对。

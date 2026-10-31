@@ -397,6 +397,7 @@ func main() {
 		perftrace.Start(perfRole(os.Args[1:]))
 	}
 	code := execute(os.Args[1:], os.Stdin, stdout, stderr)
+	_ = store.CloseReadPools()
 	_ = perftrace.Close()
 	os.Exit(code)
 }

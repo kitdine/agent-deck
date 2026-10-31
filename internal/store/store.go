@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
@@ -88,6 +89,7 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	primeServingReadPool(ctx, path)
 	return s, nil
 }
 
@@ -98,22 +100,22 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 // can still hold a brief write lock on this index while this reads it.
 func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
 		return nil, err
 	}
 	for _, table := range []string{"session_sources", "session_metadata"} {
 		var present int
 		if err = db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
-			db.Close()
+			_ = release()
 			return nil, err
 		}
 		if present != 1 {
-			db.Close()
+			_ = release()
 			return nil, fmt.Errorf("session index missing table %s", table)
 		}
 	}
-	return &Store{DB: db, path: path, readOnly: true}, nil
+	return &Store{DB: db, path: path, readOnly: true, releaseReadPool: release}, nil
 }
 
 // Session indexes are rebuildable. The first source-level schema upgrade
@@ -259,9 +261,12 @@ func (e *SchemaAhead) Error() string {
 func (e *SchemaAhead) Unwrap() error { return ErrSchemaAhead }
 
 type Store struct {
-	DB       *sql.DB
-	path     string
-	readOnly bool
+	DB              *sql.DB
+	path            string
+	readOnly        bool
+	releaseReadPool func() error
+	closeOnce       sync.Once
+	closeErr        error
 }
 
 type stateLock interface {
@@ -325,20 +330,20 @@ func OpenWithLockHeld(ctx context.Context, stateRoot string) (*Store, error) {
 // mode=ro already refuses to create or migrate anything.
 func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
 		return nil, err
 	}
 	var version int
 	if err = db.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&version); err != nil {
-		db.Close()
+		_ = release()
 		return nil, err
 	}
 	if version > CurrentSchemaVersion {
-		db.Close()
+		_ = release()
 		return nil, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
-	return &Store{DB: db, path: path, readOnly: true}, nil
+	return &Store{DB: db, path: path, readOnly: true, releaseReadPool: release}, nil
 }
 
 // schemaAheadAtRest only probes after lock acquisition fails. It never creates
@@ -423,18 +428,28 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 		db.Close()
 		return nil, err
 	}
+	primeServingReadPool(ctx, path)
 	return store, nil
 }
 
 func (s *Store) Close() error {
-	err := s.DB.Close()
-	if s.readOnly {
-		return err
-	}
-	if secureErr := s.secureFiles(); err == nil {
-		err = secureErr
-	}
-	return err
+	s.closeOnce.Do(func() {
+		if s.releaseReadPool != nil {
+			s.closeErr = s.releaseReadPool()
+			return
+		}
+		if !s.readOnly && processReadPools.contains(s.path) {
+			// Idle pooled readers keep SQLite from performing its usual last-
+			// connection checkpoint. Preserve writer-close durability without
+			// waiting for active readers or destroying their connection pools.
+			_, s.closeErr = s.DB.ExecContext(context.Background(), "PRAGMA wal_checkpoint(PASSIVE)")
+		}
+		s.closeErr = errors.Join(s.closeErr, s.DB.Close())
+		if !s.readOnly {
+			s.closeErr = errors.Join(s.closeErr, s.secureFiles())
+		}
+	})
+	return s.closeErr
 }
 
 // Exec is the write path used by early foundation code. It re-applies the

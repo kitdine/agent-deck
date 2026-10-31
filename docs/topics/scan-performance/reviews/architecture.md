@@ -738,3 +738,12 @@ Task checkpoint：ad-scan-performance-doc-arch；content_state `scan-perf-arch-r
 推送建议：门禁已 VERIFIED；核验单任务提交范围、正文/trailers、SSH 签名及远端，再另行授权推送 origin/feature/scan-performance；远端未核验。
 
 收口证据：上述四项 L0 命令通过；1 个 ContentState、2 个 evidence 节点和 4 条关系精确读回，关系预检 4/4 ok；标准 gate-status 返回 VERIFIED，两个 required criteria 均 pass，missing/unresolved 为空。原失败记录未重标。
+
+## sql.DB 实现修订交接 — 2026-10-31
+
+用户要求修复反复建立连接池导致的读取超时，并将 sql.DB 改动单独提交。
+`architecture.md` 的“恢复与 MainActor”同步进程只读池的身份绑定、配置隔离、有限驻留、
+预热、lease/退出释放及 writer checkpoint；200 ms identity 期限与每次读取当前
+schema/epoch/revision 的约束保留。根因、修复和直接验证统一记录于
+[serving-open-path 的 SQL 修复交接](serving-open-path.md#sqldb-连接池修复交接--2026-10-31)。
+此修订待新候选评审；上述历史 PASS 和精确证据仅对应原文档身份。

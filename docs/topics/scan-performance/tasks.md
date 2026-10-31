@@ -24,7 +24,7 @@ updated: 2026-10-31
 | requirements.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
 | ux/cli.md | [x] | [x] |
-| architecture.md | [x] | [x] |
+| architecture.md | [x] | [ ] |
 | performance-evaluation.md | [x] | [x] |
 | tasks.md | [x] | [x] |
 | ux/settings.md | [x] | [x] |

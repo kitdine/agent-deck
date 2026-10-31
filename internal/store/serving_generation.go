@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -91,15 +90,16 @@ func installServingRevisionTriggers(ctx context.Context, tx *sql.Tx, tables []st
 	return nil
 }
 
-// ServingGenerationReader retains read-only connections for the two identity
-// observations of one snapshot read. It never caches the generation values.
-// It is request-local, not shared concurrently, and owns one 200ms deadline.
+// ServingGenerationReader borrows process-owned read-only pools for the two
+// identity observations. Generation values are never cached. The reader itself
+// is request-local, not shared concurrently, and owns one 200ms deadline.
 type ServingGenerationReader struct {
-	ctx            context.Context
-	cancel         context.CancelFunc
-	root, identity string
-	paths          map[string]*syscall.Stat_t
-	core, sessions *sql.DB
+	ctx                          context.Context
+	cancel                       context.CancelFunc
+	root, identity               string
+	paths                        map[string]*syscall.Stat_t
+	core, sessions               *sql.DB
+	releaseCore, releaseSessions func() error
 }
 
 func OpenServingGenerationReader(ctx context.Context, stateRoot string) (*ServingGenerationReader, error) {
@@ -130,22 +130,22 @@ func OpenServingGenerationReader(ctx context.Context, stateRoot string) (*Servin
 	identity := fmt.Sprintf("%s:%d:%d:%d:%d:%d:%d", root, rootInfo.Dev, rootInfo.Ino, coreInfo.Dev, coreInfo.Ino, sessionInfo.Dev, sessionInfo.Ino)
 	digest := sha256.Sum256([]byte(identity))
 	identityValue := hex.EncodeToString(digest[:])
-	core, err := openServingIdentityDB(ctx, corePath)
+	core, release, err := acquireReadOnlySQL(ctx, corePath, "identity")
 	if err != nil {
 		return nil, err
 	}
 
 	success = true
 	return &ServingGenerationReader{ctx: ctx, cancel: cancel, root: root, identity: identityValue,
-		paths: map[string]*syscall.Stat_t{root: rootInfo, corePath: coreInfo, sessionPath: sessionInfo}, core: core}, nil
+		paths: map[string]*syscall.Stat_t{root: rootInfo, corePath: coreInfo, sessionPath: sessionInfo}, core: core, releaseCore: release}, nil
 }
 
 func (r *ServingGenerationReader) Close() {
 	r.cancel()
-	if r.sessions != nil {
-		r.sessions.Close()
+	if r.releaseSessions != nil {
+		_ = r.releaseSessions()
 	}
-	r.core.Close()
+	_ = r.releaseCore()
 }
 
 func (r *ServingGenerationReader) Read() (ServingGeneration, error) {
@@ -163,7 +163,7 @@ func (r *ServingGenerationReader) Read() (ServingGeneration, error) {
 		return ServingGeneration{}, &SchemaAhead{Stored: result.CoreSchema, Supported: CurrentSchemaVersion}
 	}
 	if r.sessions == nil {
-		r.sessions, err = openServingIdentityDB(ctx, filepath.Join(r.root, "sessions.sqlite3"))
+		r.sessions, r.releaseSessions, err = acquireReadOnlySQL(ctx, filepath.Join(r.root, "sessions.sqlite3"), "identity")
 		if err != nil {
 			return ServingGeneration{}, err
 		}
@@ -194,20 +194,6 @@ func ReadServingGeneration(ctx context.Context, stateRoot string) (ServingGenera
 	}
 	defer reader.Close()
 	return reader.Read()
-}
-
-func openServingIdentityDB(ctx context.Context, path string) (*sql.DB, error) {
-	u := url.URL{Scheme: "file", Path: path}
-	db, err := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=busy_timeout(20)")
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if err = db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
 }
 
 func privateServingPath(path string, directory bool) (*syscall.Stat_t, error) {
