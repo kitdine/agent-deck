@@ -411,3 +411,15 @@ latestSnapshot 已合并新 subscription，App Group 文件仍是旧值，回归
 与完整 merged envelope，连同整个 `DesktopRefreshCoordinatorTests` 在本机通过。
 本轮完整 Go 测试与 `make vet` 亦通过；新提交仍需等待其全部 Actions 成功后请求评审。
 新候选待独立 Code Review；此前 PASS 与精确内容证据仍仅对应其原状态。
+
+### PR CI 跟进：PTY 失败清理
+
+全套 race 诊断发现 `TestSessionBrowserCommandReleasesStateLockWhileWaiting` 的
+PTY 读取失败后，测试的 defer 关闭 slave，但后台命令仍调用 `File.Fd()`，race
+检测器报告 `File.Close` / `File.Fd` 竞争。分类为测试清理缺陷，生产读取期限未修改。
+两个浏览器 PTY 测试现共用可取消、可等待退出的 owner；正常完成或测试 Fatal 都先
+取消并 join owner，再执行原文件关闭。新增实际浏览器首帧之前取消的回归，验证
+退出后才关闭 PTY。空状态两库在交互计时前完成初始化，避免将 race 下的
+首次迁移耗时混入本测试要求的交互等待；真实状态锁的释放仍由命令完成。
+原 2 秒读取/退出、锁争用和界面内容断言均保留；最终浏览器相关 race
+测试连续 5 轮通过。提交前完整 CLI race 仍在执行，新候选仍需 CI 与独立评审。
