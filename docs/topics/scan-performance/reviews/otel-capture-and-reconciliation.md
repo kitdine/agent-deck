@@ -452,3 +452,16 @@ listener 又未运行，接收要到重开 Settings 或重启 App 才开始。
   `TestServingSnapshotHonorsTheRequestedRecentLimit` 回归，并断言发布未被改动。
 
 新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
+
+## PR #61 第七轮修复交接 — 2026-11-01
+
+来源：[最终 serving 发布遇代际冲突后重试](https://github.com/kitdine/agent-deck/pull/61#discussion_r4435634137)，
+评审目标 `fa8fe4e3c3acf25e93561e4b6a046a929e7ddd0f`，核实成立。App 并行的 quota 探针在构建快照期间提交时，
+`quota_envelopes` 触发器推进 serving generation，`PublishServingSnapshot` 返回 `ErrServingChanged` 且被直接丢弃。
+settled 轮次这是唯一一次发布机会，`bootstrapServingSnapshot` 拿不到 publication，把成功的刷新判为 malformed。
+
+两条最终发布路径统一走 `publishFinalServing`，只重试 `ErrServingChanged`，上限 5 次；其他错误仍保持尽力发布。
+持续冲突耗尽后本轮仍无 publication，App 按刷新失败处理，下一次刷新恢复。
+`TestFinalServingPublicationSurvivesAGenerationConflict` 覆盖 settled、无缓存与持续冲突有界三种情形，上限压到 1 时前两种失败。
+
+新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
