@@ -424,3 +424,16 @@ journal 与 coverage 区间不变；前台 owner 没有 supervisor，所以不�
 修复后通过。使用隔离 state/HOME 与合成记录，不宣称真实 producer 验收。
 
 新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
+
+## PR #61 第五轮修复交接 — 2026-11-01
+
+来源：[listener 停止时观察接收配置变化](https://github.com/kitdine/agent-deck/pull/61#discussion_r4434993438)，
+评审目标 `bfe24bab428b2ef7b3ace212eda4cd25aeb55199`，核实成立。App 以采集关闭启动后，CLI 在 exporter
+已配置时执行 `telemetry enable` 只改 `telemetry/receiver.json`，App 只监听 `.codex/config.toml`，
+listener 又未运行，接收要到重开 Settings 或重启 App 才开始。
+
+`TelemetrySettingsController` 改为监听一组配置文件，App 同时传入这两个路径，复用同一 `load()` 与
+`startListenerIfNeeded()`；不新增定时器。`testEnablingTheReceiverElsewhereStartsReceptionWithoutReopeningSettings`
+用真实原子替换与 FSEvents 回归。
+
+新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。

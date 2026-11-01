@@ -220,7 +220,7 @@ final class TelemetrySettingsController {
 	private let transport: any TelemetryTransport
 	private let supervisor: any TelemetryListenerSupervising
 	private let settleDelay: Duration
-	@ObservationIgnored private var configurationMonitor: DesktopSourceChangeMonitor?
+	@ObservationIgnored private var configurationMonitors: [DesktopSourceChangeMonitor] = []
 
 	private(set) var status: DesktopTelemetryStatusV1?
 	private(set) var preview: DesktopTelemetryPreviewV1?
@@ -229,12 +229,12 @@ final class TelemetrySettingsController {
 	private(set) var isApplying = false
 	var showsPreview = false
 
-	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURL: URL? = nil) {
+	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURLs: [URL] = []) {
 		self.transport = transport
 		self.supervisor = supervisor
 		self.settleDelay = settleDelay
-		if let configurationURL {
-			configurationMonitor = DesktopSourceChangeMonitor(configurationURL: configurationURL) { [weak self] in
+		configurationMonitors = configurationURLs.map { configurationURL in
+			DesktopSourceChangeMonitor(configurationURL: configurationURL) { [weak self] in
 				Task { @MainActor [weak self] in
 					guard let self, !self.isApplying else { return }
 					await self.load()
@@ -290,7 +290,7 @@ final class TelemetrySettingsController {
 	/// on and Codex Memories is not off. Called at launch (after startup
 	/// settles) and when Settings opens.
 	func load() async {
-		configurationMonitor?.start()
+		configurationMonitors.forEach { $0.start() }
 		await refresh()
 		startListenerIfNeeded()
 	}
@@ -337,7 +337,7 @@ final class TelemetrySettingsController {
 	}
 
 	func stop() {
-		configurationMonitor?.stop()
+		configurationMonitors.forEach { $0.stop() }
 		supervisor.stop()
 	}
 

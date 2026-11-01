@@ -87,7 +87,7 @@ final class TelemetrySettingsControllerTests: XCTestCase {
 		try "[features]\nmemories = false\n".write(to: config, atomically: true, encoding: .utf8)
 		let supervisor = StubTelemetryListenerSupervisor()
 		let transport = StubTelemetryTransport(statuses: [status(listener: "stopped", memories: "off"), status(listener: "stopped", memories: "on")])
-		let controller = TelemetrySettingsController(transport: transport, supervisor: supervisor, configurationURL: config)
+		let controller = TelemetrySettingsController(transport: transport, supervisor: supervisor, configurationURLs: [config])
 		defer { controller.stop() }
 		await controller.load()
 		XCTAssertEqual(supervisor.starts, 0)
@@ -99,6 +99,30 @@ final class TelemetrySettingsControllerTests: XCTestCase {
 		XCTAssertTrue(supervisor.isRunning)
 		XCTAssertEqual(supervisor.starts, 1)
 		XCTAssertEqual(transport.enableCalls, [], "the existing preference resumes without enabling or rewriting configuration")
+	}
+
+	func testEnablingTheReceiverElsewhereStartsReceptionWithoutReopeningSettings() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let codexConfig = directory.appendingPathComponent("config.toml")
+		let receiverConfig = directory.appendingPathComponent("receiver.json")
+		try "[features]\nmemories = true\n".write(to: codexConfig, atomically: true, encoding: .utf8)
+		try #"{"enabled":false}"#.write(to: receiverConfig, atomically: true, encoding: .utf8)
+		let supervisor = StubTelemetryListenerSupervisor()
+		let transport = StubTelemetryTransport(statuses: [status(enabled: false, listener: "stopped", memories: "on", exporter: "managed"), status(listener: "stopped", memories: "on", exporter: "managed")])
+		let controller = TelemetrySettingsController(transport: transport, supervisor: supervisor, configurationURLs: [codexConfig, receiverConfig])
+		defer { controller.stop() }
+		await controller.load()
+		XCTAssertEqual(supervisor.starts, 0)
+		// `telemetry enable` with a configured exporter changes only this file.
+		try #"{"enabled":true}"#.write(to: receiverConfig, atomically: true, encoding: .utf8)
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(5))
+		while !supervisor.isRunning, clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+		XCTAssertTrue(supervisor.isRunning)
+		XCTAssertEqual(supervisor.starts, 1)
+		XCTAssertEqual(transport.enableCalls, [], "the CLI already saved the preference")
 	}
 
 	func testARefusedWriteKeepsTheSwitchOffAndRetryClearsTheError() async {

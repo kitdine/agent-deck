@@ -209,7 +209,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 					Task { @MainActor in await coordinator?.requestFullRefresh(trigger: .sourceChange) }
 				}
 			),
-			configurationURL: sourceHome.appendingPathComponent(".codex/config.toml")
+			// With no listener running, nothing else notices `telemetry enable`.
+			configurationURLs: [
+				sourceHome.appendingPathComponent(".codex/config.toml"),
+				sourceHome.appendingPathComponent(".agentdeck/telemetry/receiver.json")
+			]
 		)
 		self.telemetrySettings = telemetrySettings
 		model = MenuBarViewModel(
