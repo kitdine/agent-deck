@@ -656,3 +656,72 @@ func TestServingEmptyInventoryReconcilesLikeOrdinaryScan(t *testing.T) {
 		}
 	}
 }
+
+func TestFinalServingPublicationSurvivesAGenerationConflict(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		settled   bool
+		conflicts int
+		calls     int
+		published bool
+	}{
+		{name: "settled round's only publication", settled: true, conflicts: 1, calls: 2, published: true},
+		{name: "no-cache final publication", conflicts: 1, calls: 2, published: true},
+		{name: "persistent conflict stays bounded", settled: true, conflicts: servingPublishAttempts + 1, calls: servingPublishAttempts},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			now := time.Date(2026, time.October, 20, 12, 0, 0, 0, time.Local)
+			writeServingSource(t, home, now.UTC().Format("2006/01/02"), now.Add(-time.Minute), 27)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			clock := func() time.Time { return now }
+			root, _, err := prepareStateRoot(filepath.Join(home, ".agentdeck"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := Client{StateRoot: root, Home: home, ForceLocal: true, Now: clock}
+			if result, err := client.Request(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" {
+				t.Fatalf("seed failed: %+v %v", result, err)
+			}
+			if !test.settled {
+				if err := os.Remove(filepath.Join(root, "desktop-serving-snapshot.json")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if servingSettled(ctx, root, home, clock) != test.settled {
+				t.Fatalf("fixture settled = %v, want %v", !test.settled, test.settled)
+			}
+			r := newRound(home)
+			r.serving = true
+			r.cacheNow = client.Now
+			calls := 0
+			var published string
+			r.publishFullServing = func(ctx context.Context, stateRoot string) (desktop.ServingSnapshot, error) {
+				calls++
+				if calls <= test.conflicts {
+					return desktop.ServingSnapshot{}, desktop.ErrServingChanged
+				}
+				publication, err := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
+				published = publication.Header.PublicationID
+				return publication, err
+			}
+			r.execute(ctx, root, false)
+			if result, err := r.wait(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+				t.Fatalf("round failed: %+v %v", result, err)
+			}
+			if calls != test.calls {
+				t.Fatalf("publication attempts = %d, want %d", calls, test.calls)
+			}
+			r.mu.Lock()
+			final := r.publication
+			r.mu.Unlock()
+			if test.published && (final == nil || final.Header.PublicationID != published) {
+				t.Fatalf("round kept %+v, want publication %s", final, published)
+			}
+			if !test.published && test.settled && final != nil {
+				t.Fatalf("a failed publication was installed: %+v", final.Header)
+			}
+		})
+	}
+}

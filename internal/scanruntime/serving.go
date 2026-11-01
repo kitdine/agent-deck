@@ -18,6 +18,9 @@ import (
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
+// servingPublishAttempts bounds retries of one publication's generation conflict.
+const servingPublishAttempts = 5
+
 func acceptDomainInventory(ctx context.Context, db *store.Store, id string, sources []ingest.Source, sessions bool, at time.Time) error {
 	var epoch int64
 	var err error
@@ -287,11 +290,30 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: time.Since(started).Milliseconds()})
 	finishDerive := perftrace.Span(perftrace.ScanDerive)
 	_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
-	publication, publishErr := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
+	r.publishFinalServing(ctx, stateRoot)
 	finishDerive()
 	perftrace.Mark(perftrace.ProjectionDone)
-	if publishErr == nil {
-		r.setServingPublication(publication)
+}
+
+// publishFinalServing retries a publication raced by an unrelated commit, such
+// as the App's parallel quota probe. It may be the round's only publication,
+// and the App treats a bootstrap without one as a failed refresh.
+func (r *round) publishFinalServing(ctx context.Context, stateRoot string) {
+	publish := r.publishFullServing
+	if publish == nil {
+		publish = func(ctx context.Context, stateRoot string) (desktop.ServingSnapshot, error) {
+			return r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false)
+		}
+	}
+	for range servingPublishAttempts {
+		publication, err := publish(ctx, stateRoot)
+		if errors.Is(err, desktop.ErrServingChanged) {
+			continue
+		}
+		if err == nil {
+			r.setServingPublication(publication)
+		}
+		return
 	}
 }
 

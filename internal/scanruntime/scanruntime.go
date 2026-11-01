@@ -907,6 +907,7 @@ type round struct {
 	beforeDiscovery    func()
 	afterDiscovery     func([]ingest.Source)
 	beforeServingBatch func(int)
+	publishFullServing func(context.Context, string) (desktop.ServingSnapshot, error)
 	inventoryObserved  chan struct{}
 	inventoryOnce      sync.Once
 	serving            bool
@@ -1147,9 +1148,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
 		}
 		_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
-		if publication, err := r.desktopService(stateRoot).PublishServingSnapshot(ctx, desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: desktop.DefaultRecentLimit}, false); err == nil {
-			r.setServingPublication(publication)
-		}
+		r.publishFinalServing(ctx, stateRoot)
 		r.setDerivedCache(time.Since(started).Milliseconds())
 	}()
 	if sessionPlanErr == nil {
