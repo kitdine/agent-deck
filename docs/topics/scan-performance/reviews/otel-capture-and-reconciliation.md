@@ -437,3 +437,18 @@ listener 又未运行，接收要到重开 Settings 或重启 App 才开始。
 用真实原子替换与 FSEvents 回归。
 
 新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
+
+## PR #61 第六轮修复交接 — 2026-11-01
+
+来源：[全量未变更判断排除遥测来源](https://github.com/kitdine/agent-deck/pull/61#discussion_r4435333787)、
+[复用 serving snapshot 时遵守请求的会话上限](https://github.com/kitdine/agent-deck/pull/61#discussion_r4435333792)，
+评审目标 `7bb1a31ac1aaacb192369e6cd32f2d991aecd342`，两项核实成立。
+
+- 后台会话投影进 `session_sources` 后，合成的 `otel:` 路径不在文件清单内；全量判断因此恒为否，
+  `PreparedSourcesUnchanged` 让 serving 轮次失去 metadata-only 快路径。现在遥测来源独立于 `fullSet`
+  跳过，已移除的文件来源仍判否。`TestUnchangedSourcesIgnoreProjectedTelemetrySessions` 回归。
+- `desktop snapshot --wire-version 2` 命中缓存时只校验 `--recent-limit`，不应用。现在请求更小时截断返回；
+  发布内容少于请求可见行数时，走不落盘的只读全量构建，不改写共享发布。
+  `TestServingSnapshotHonorsTheRequestedRecentLimit` 回归，并断言发布未被改动。
+
+新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
