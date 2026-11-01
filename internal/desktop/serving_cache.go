@@ -110,11 +110,7 @@ func (s Service) BuildToday(ctx context.Context) (Result, error) {
 	}
 	if coverage.State != "complete" {
 		result.warn(coverageWarning(coverage.State))
-		// An empty partial source set proves no measured zero.
-		if len(presentation.Scopes) == 0 || presentation.Scopes[0].Periods.Items[0].Totals.Events == 0 {
-			result.Snapshot.Usage.Available = false
-			result.Snapshot.Usage.Presentation = usage.EmptyPresentationReport()
-		}
+		withholdUnprovenZero(&result)
 	}
 	s.loadProvider(ctx, core, &result)
 	s.loadSubscription(ctx, core, now, &result)
@@ -123,6 +119,20 @@ func (s Service) BuildToday(ctx context.Context) (Result, error) {
 	result.warn("health_unavailable")
 	sort.Strings(result.Warnings)
 	return result, nil
+}
+
+// withholdUnprovenZero keeps an empty partial source set from reading as a
+// measured zero. Only a complete inventory proves one.
+func withholdUnprovenZero(result *Result) {
+	for _, scope := range result.Snapshot.Usage.Presentation.Scopes {
+		for _, period := range scope.Periods.Items {
+			if period.Totals.Events != 0 {
+				return
+			}
+		}
+	}
+	result.Snapshot.Usage.Available = false
+	result.Snapshot.Usage.Presentation = usage.EmptyPresentationReport()
 }
 
 func coverageWarning(state string) string {
@@ -200,6 +210,9 @@ func (s Service) prepareServingSnapshot(ctx context.Context, request Request, to
 		if coverage.State != "complete" {
 			result.warn(coverageWarning(coverage.State))
 		}
+	}
+	if usageCoverage.State != "complete" {
+		withholdUnprovenZero(&result)
 	}
 	after, err := store.ReadServingGeneration(ctx, s.StateRoot)
 	if err != nil {

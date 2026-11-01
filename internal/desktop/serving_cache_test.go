@@ -234,3 +234,45 @@ func TestServingSnapshotRechecksIdentityAfterRead(t *testing.T) {
 		t.Fatalf("identity changed during file decode was accepted: %v", err)
 	}
 }
+
+func TestFullPublicationKeepsEmptyIncompleteCoverageUnavailable(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name      string
+		state     string
+		events    bool
+		available bool
+	}{
+		{name: "empty partial proves no zero", state: "partial"},
+		{name: "empty complete is a measured zero", state: "complete", available: true},
+		{name: "committed usage stays visible under partial", state: "partial", events: true, available: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, core, _ := newServingFixture(t)
+			if test.events {
+				seedServingUsage(t, s, core)
+			}
+			generation, err := core.DerivedSnapshotGeneration(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = core.AcceptInventory(ctx, "inventory", generation.Epoch, nil, s.now()); err != nil {
+				t.Fatal(err)
+			}
+			if err = core.FinishInventory(ctx, "inventory", test.state); err != nil {
+				t.Fatal(err)
+			}
+			published, err := s.PublishServingSnapshot(ctx, Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			usage := published.Payload.Data.Usage
+			if usage.Available != test.available {
+				t.Fatalf("usage available=%v coverage=%+v warnings=%v", usage.Available, published.Header.UsageCoverage, published.Payload.Warnings)
+			}
+			if !test.available && len(usage.Presentation.Scopes) != 0 {
+				t.Fatalf("unavailable usage kept presentation totals: %+v", usage.Presentation.Scopes)
+			}
+		})
+	}
+}
