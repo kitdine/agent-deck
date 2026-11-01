@@ -46,7 +46,9 @@ func unchangedSourceSet(ctx context.Context, db *sql.DB, paths []source, fullSet
 			return false, err
 		}
 		src, found := expected[path]
-		if !found && !fullSet {
+		// A projected telemetry session has no file to discover, so it is never
+		// part of the inventory this proof compares against.
+		if !found && (!fullSet || IsTelemetrySource(path)) {
 			continue
 		}
 		if !found || identity != src.identity || size != src.size || cursor != size ||
