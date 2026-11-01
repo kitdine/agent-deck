@@ -284,8 +284,11 @@ func Serve(ctx context.Context, options ServeOptions) error {
 		inventoryRunning = true
 		go func() { inventoryDone <- options.Inventory(ctx) }()
 	}
+	drainPending := false
 	drain := func() {
-		if result, err := reconciler.Drain(context.Background()); err == nil {
+		result, err := reconciler.Drain(context.Background())
+		drainPending = err != nil
+		if err == nil {
 			_ = journal.Cleanup()
 			if result.Changed {
 				settle()
@@ -348,6 +351,10 @@ loop:
 					exitReason = ReasonMemoriesOff
 					break loop
 				}
+			}
+			if drainPending {
+				// Retry the uncommitted journal batch after normalization failed.
+				drain()
 			}
 		}
 	}

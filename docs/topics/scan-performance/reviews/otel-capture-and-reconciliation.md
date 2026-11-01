@@ -376,3 +376,25 @@ data race（修复见 Task 6 记录），不能视为通过。
 Unix 轮次、detached helper、settled update 四种变更、Ready/Memories 关闭回归在修复后
 各连续 3 轮 race 通过。提交前完整 CLI race 继续执行；完整 receiver 测试与当前候选 CI
 仍待完成。全部 Actions 成功后才请求新评审，未新发评审 PASS 或 Topic 验收。
+
+## PR #61 第三轮修复交接 — 2026-11-01
+
+来源：[规范化暂态失败后重试 journal](https://github.com/kitdine/agent-deck/pull/61#discussion_r4432027292)，
+评审目标 `c37829d14fde0b81e8b6ac3894ed11137d95e0e4`。用户授权沿用修复、提交、推送、
+全部当前提交 Actions 成功后请求新 review 的流程；SQL 池提交 `c768199` 保持独立。
+
+原 receiver 在 HTTP durable ACK 后丢弃 Drain 错误，周期分支只 settle 已入库的记录，
+没有下一次 HTTP 时不会恢复规范化。只读核验在相同 WAL 配置下复现读后写的
+`SQLITE_BUSY_SNAPSHOT(517)`，回滚后新事务可成功；接收器故障注入亦验证了原先只有
+再发 HTTP 才能恢复。数据仍在 journal，问题是存活 listener 内的处理与计量停滞。
+
+现由 actor 保留 `drainPending`，复用现有 2 秒 ticker 重试失败批次，成功即清除；
+空闲无失败时不新增 journal 读取。配置关闭/记忆关闭检查仍先执行。重试从已提交 cursor
+继续，沿用 observation key 幂等与 cursor/observation 同事务，不改变 ACK 持久化边界。
+
+`TestServeRetriesFailedNormalizationWithoutAnotherDelivery` 通过临时 SQLite trigger 注入一次
+规范化失败，只有一次真实 loopback HTTP 请求；解除故障后自动恢复、推进 cursor、完成一次
+inventory，再推进业务时钟，发布并恰计入 1010 tokens、一份贡献及会话标记。该回归连续
+3 轮 race 通过；遥测整包 race 与 `make vet` 亦通过（Go 1.27.3）。使用隔离 state/HOME 与合成记录，不宣称真实 producer 验收。
+
+新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
