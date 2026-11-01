@@ -218,3 +218,11 @@ func Import(ctx context.Context, database *store.Store, records []Record, now ti
 	}
 	return database.ApplyTelemetryObservations(ctx, batch, nil, nil)
 }
+
+// Import normalizes records like the package Import and carries a retraction
+// made while normalizing a conflict to the next Settle's projection.
+func (r *Reconciler) Import(ctx context.Context, records []Record, now time.Time) (store.TelemetryApplyResult, error) {
+	result, err := Import(ctx, r.Store, records, now)
+	r.projectionPending = r.projectionPending || result.Changed
+	return result, err
+}

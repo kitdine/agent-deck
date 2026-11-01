@@ -325,6 +325,49 @@ func TestBackgroundSessionIsVisibleThroughSessionCommands(t *testing.T) {
 	}
 }
 
+func TestTelemetryImportRetractionReachesTheSessionIndex(t *testing.T) {
+	state, _ := telemetryState(t)
+	ctx := context.Background()
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := telemetry.Decode([]byte(importFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := telemetry.Import(ctx, core, records, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := core.DB.Exec(`INSERT INTO inventory_runs(inventory_id, epoch, captured_at, source_count, state) VALUES('inv', 1, ?, 0, 'complete')`, time.Now().Add(-30*time.Minute).UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	index, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := telemetry.SettleAndProject(ctx, core, index, time.Now()); err != nil || !changed {
+		t.Fatalf("settle = %v %v", changed, err)
+	}
+	index.Close()
+	core.Close()
+	if listed, _, _ := runTelemetry(t, state, "--format", "json", "session", "list"); !strings.Contains(listed, `"session_id":"bg-cli-1"`) {
+		t.Fatalf("background session not projected: %s", listed)
+	}
+	// The same record with other counts conflicts: only the import retracts
+	// the contribution, and settlement afterwards finds nothing left to change.
+	file := filepath.Join(t.TempDir(), "conflict.json")
+	if err := os.WriteFile(file, []byte(strings.Replace(importFixture, `"intValue":"13"`, `"intValue":"14"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if stdout, _, code := runTelemetry(t, state, "--format", "json", "telemetry", "import", file); code != 0 || decodeEnvelope(t, stdout)["data"].(map[string]any)["conflict"] == float64(0) {
+		t.Fatalf("conflicting import = %d %s", code, stdout)
+	}
+	if listed, _, code := runTelemetry(t, state, "--format", "json", "session", "list"); code != 0 || strings.Contains(listed, `"session_id":"bg-cli-1"`) {
+		t.Fatalf("retracted session still listed: %d %s", code, listed)
+	}
+}
+
 func TestTelemetryListenerWaitsOutAHeldStateLock(t *testing.T) {
 	state, _ := telemetryState(t)
 	ctx := context.Background()

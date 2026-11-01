@@ -451,10 +451,6 @@ func newTelemetryImportCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			defer database.Close()
-			applied, err := telemetry.Import(command.Context(), database, records, time.Now())
-			if err != nil {
-				return err
-			}
 			reconciler := &telemetry.Reconciler{Store: database, Now: time.Now, SessionsChanged: func(ctx context.Context) error {
 				index, err := store.OpenSessions(ctx, stateRoot)
 				if err != nil {
@@ -463,6 +459,10 @@ func newTelemetryImportCommand(opts *commandOptions) *cobra.Command {
 				defer index.Close()
 				return telemetry.ProjectSessionIndex(ctx, database, index)
 			}}
+			applied, err := reconciler.Import(command.Context(), records, time.Now())
+			if err != nil {
+				return err
+			}
 			if _, err := reconciler.Settle(command.Context()); err != nil {
 				return err
 			}
