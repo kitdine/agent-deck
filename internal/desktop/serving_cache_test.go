@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
@@ -274,5 +276,45 @@ func TestFullPublicationKeepsEmptyIncompleteCoverageUnavailable(t *testing.T) {
 				t.Fatalf("unavailable usage kept presentation totals: %+v", usage.Presentation.Scopes)
 			}
 		})
+	}
+}
+
+func TestServingSnapshotHonorsTheRequestedRecentLimit(t *testing.T) {
+	s, core, sessions := newServingFixture(t)
+	seedServingUsage(t, s, core)
+	ctx := context.Background()
+	projected := make([]session.TelemetrySession, 0, 7)
+	for index := range 7 {
+		at := time.Date(2026, 10, 12, 10, index, 0, 0, time.UTC).Format(time.RFC3339)
+		projected = append(projected, session.TelemetrySession{Client: "codex", SessionID: fmt.Sprintf("bg-%d", index), FirstAt: at, LastAt: at})
+	}
+	if err := session.ProjectTelemetrySessions(ctx, sessions.DB, projected); err != nil {
+		t.Fatal(err)
+	}
+	full, err := s.PublishServingSnapshot(ctx, Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !full.Header.SessionPrepared || len(full.Payload.Data.Sessions.Items) != DefaultRecentLimit {
+		t.Fatalf("fixture did not publish the default limit: %+v", full.Payload.Data.Sessions)
+	}
+	for _, test := range []struct {
+		limit, want int
+		cached      bool
+	}{{limit: 1, want: 1, cached: true}, {limit: DefaultRecentLimit, want: DefaultRecentLimit, cached: true}, {limit: 20, want: 7}} {
+		read, err := s.ReadOrBootstrapServingSnapshot(ctx, Request{WireVersion: 1, RecentLimit: test.limit})
+		if err != nil {
+			t.Fatalf("limit %d: %v", test.limit, err)
+		}
+		items := read.Payload.Data.Sessions.Items
+		if len(items) != test.want || read.Payload.Data.Sessions.Total != 7 || items[0].SessionID != "bg-6" {
+			t.Fatalf("limit %d served %+v", test.limit, read.Payload.Data.Sessions)
+		}
+		if (read.Header.PublicationID == full.Header.PublicationID) != test.cached {
+			t.Fatalf("limit %d: publication %s, cached %s", test.limit, read.Header.PublicationID, full.Header.PublicationID)
+		}
+	}
+	if kept, err := s.ReadServingSnapshot(ctx); err != nil || kept.Header.PublicationID != full.Header.PublicationID || len(kept.Payload.Data.Sessions.Items) != DefaultRecentLimit {
+		t.Fatalf("a request's limit changed the publication: %+v %v", kept.Header, err)
 	}
 }

@@ -157,6 +157,15 @@ func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Req
 		return ServingSnapshot{}, err
 	}
 	if snapshot, err := s.ReadServingSnapshot(ctx); err == nil {
+		sessions := &snapshot.Payload.Data.Sessions
+		if request.RecentLimit < len(sessions.Items) {
+			sessions.Items = sessions.Items[:request.RecentLimit]
+		} else if len(sessions.Items) < min(request.RecentLimit, sessions.Total) {
+			// The publication holds fewer rows than this request can see, and
+			// only the session index has them. Serve them without persisting,
+			// so one caller's limit never narrows or widens the shared snapshot.
+			return s.prepareServingSnapshot(ctx, request, false, false)
+		}
 		return snapshot, nil
 	} else if errors.Is(err, store.ErrSchemaAhead) {
 		return ServingSnapshot{}, err
