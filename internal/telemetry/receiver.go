@@ -242,9 +242,14 @@ func Serve(ctx context.Context, options ServeOptions) error {
 			}
 		},
 	}
-	server := &http.Server{Handler: receiver, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second}
-	served := make(chan error, 1)
-	go func() { served <- server.Serve(listener) }()
+	var server *http.Server
+	var served chan error
+	serve := func(listener net.Listener) {
+		current, result := &http.Server{Handler: receiver, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second}, make(chan error, 1)
+		server, served = current, result
+		go func() { result <- current.Serve(listener) }()
+	}
+	serve(listener)
 	state.State = "running"
 	if err := writeListenerState(options.StateRoot, state); err != nil {
 		_ = server.Close()
@@ -284,6 +289,30 @@ func Serve(ctx context.Context, options ServeOptions) error {
 		inventoryRunning = true
 		go func() { inventoryDone <- options.Inventory(ctx) }()
 	}
+	shutdownServer := func(target *http.Server) {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = target.Shutdown(shutdown)
+	}
+	// The next port is bound before the current one is released, so a refused
+	// port leaves reception running. The caller retries on its next poll.
+	rebind := func(port int) {
+		next, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		if err != nil {
+			if state.Error != "bind_failed" {
+				state.Error = "bind_failed"
+				_ = writeListenerState(options.StateRoot, state)
+			}
+			return
+		}
+		previous := server
+		serve(next)
+		shutdownServer(previous)
+		config.Port = port
+		state.Port, state.Error = port, ""
+		_ = writeListenerState(options.StateRoot, state)
+	}
+	wantedPort := config.Port
 	drainPending := false
 	drain := func() {
 		result, err := reconciler.Drain(context.Background())
@@ -334,14 +363,20 @@ loop:
 				options.Published()
 			}
 		case <-ticker.C:
-			// The configuration is AgentDeck's own file; a disable from the
-			// CLI or Settings stops this listener without a signal.
+			// The configuration is AgentDeck's own file; a disable or a port
+			// change from the CLI or Settings arrives without a signal.
 			if stamp := configModTime(options.StateRoot); !stamp.Equal(configStamp) {
 				configStamp = stamp
-				if current, err := LoadConfig(options.StateRoot); err == nil && !current.Enabled {
-					exitReason = "disabled"
-					break loop
+				if current, err := LoadConfig(options.StateRoot); err == nil {
+					if !current.Enabled {
+						exitReason = "disabled"
+						break loop
+					}
+					wantedPort = current.Port
 				}
+			}
+			if wantedPort != config.Port {
+				rebind(wantedPort)
 			}
 			// Turning Codex Memories off stops collection; the preference
 			// stays, and the App starts the listener again when it is on.
@@ -358,9 +393,7 @@ loop:
 			}
 		}
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = server.Shutdown(shutdown)
+	shutdownServer(server)
 	drain()
 	settle()
 	_ = options.Store.EndTelemetryListening(context.Background(), interval, now(), exitReason)

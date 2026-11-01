@@ -135,6 +135,8 @@ Restart at a safe checkpoint; no process was terminated.
 配置示例中的 port 只是示意，实际由 receiver 配置供给。CLI 只在 `--write-codex-config` 下写入 Codex 配置，
 规则与 [Settings·联动与配置写入](settings.md#codex-记忆联动与配置写入)相同：只追加受管段，不覆盖已有 exporter。启用后 App 未运行且 independent 未启用时 receiver 为 stopped，
 status 必须说明；不能只因配置 enabled 就说正在接收。
+运行中的 listener 在下一次配置轮询时迁到 `--port` 的新端口；新端口绑定失败时继续在原端口接收，
+`listener_reason` 报告 `bind_failed` 并持续重试。
 
 ```text
 $ agentdeck telemetry status
