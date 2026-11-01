@@ -226,3 +226,39 @@ func TestBatchedSessionDocumentsPreserveOrderAndRollback(t *testing.T) {
 		t.Fatal("failed batch changed committed session index")
 	}
 }
+
+func TestUnchangedSourcesIgnoreProjectedTelemetrySessions(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	path := filepath.Join(home, ".codex", "sessions", "s.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"type":"visible_user_prompt","session_id":"s","payload":{"text":"original"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.OpenSessions(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := Scan(ctx, db.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProjectTelemetrySessions(ctx, db.DB, []TelemetrySession{background}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := sessionSources(home, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 || !paths[0].stable {
+		t.Skip("stable file generations unavailable")
+	}
+	if ok, err := unchangedSources(ctx, db.DB, paths); err != nil || !ok {
+		t.Fatalf("a projected session must not defeat the unchanged proof: unchanged=%v, %v", ok, err)
+	}
+	if ok, err := unchangedSources(ctx, db.DB, nil); err != nil || ok {
+		t.Fatalf("a removed file source must still fail the full set: unchanged=%v, %v", ok, err)
+	}
+}

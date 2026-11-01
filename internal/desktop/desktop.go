@@ -697,6 +697,10 @@ func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now tim
 }
 
 func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now time.Time) (WorkSignalsSnapshot, error) {
+	return s.workSignalsSnapshotWithProjection(ctx, core, now, false)
+}
+
+func (s Service) workSignalsSnapshotWithProjection(ctx context.Context, core *store.Store, now time.Time, projected bool) (WorkSignalsSnapshot, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
 	var options []usage.SignalOptions
@@ -705,7 +709,11 @@ func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now
 			options = append(options, usage.SignalOptions{Period: period.name, From: period.start, To: period.end, Client: client, IncludeSub: true})
 		}
 	}
-	reports, err := service.SignalsBatch(ctx, options)
+	loadReports := service.SignalsBatch
+	if projected {
+		loadReports = service.ProjectedSignalsBatch
+	}
+	reports, err := loadReports(ctx, options)
 	if err != nil {
 		return WorkSignalsSnapshot{}, err
 	}

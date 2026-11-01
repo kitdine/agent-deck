@@ -735,3 +735,70 @@ func isolatedDefaults() -> UserDefaults {
 	defaults.removePersistentDomain(forName: suite)
 	return defaults
 }
+
+/// Records telemetry helper calls. Status answers come from `statuses` in
+/// order, repeating the last one; enable/disable answers come from the
+/// matching closures, nil meaning a refused (undecodable) helper result.
+final class StubTelemetryTransport: TelemetryTransport, @unchecked Sendable {
+	private let lock = NSLock()
+	private var statuses: [DesktopTelemetryStatusV1]
+	private let enableResult: (Bool) -> DesktopTelemetryReceiverResultV1?
+	private let disableResult: () -> DesktopTelemetryReceiverResultV1?
+	private(set) var enableCalls: [Bool] = []
+	private(set) var disableCalls = 0
+	private(set) var previewLoads = 0
+
+	init(
+		statuses: [DesktopTelemetryStatusV1] = [DesktopTelemetryStatusV1(receiver: "disabled", listener: "stopped", metering: "disabled")],
+		enableResult: @escaping (Bool) -> DesktopTelemetryReceiverResultV1? = { write in DesktopTelemetryReceiverResultV1(receiver: "enabled", codexConfig: write ? "written" : "unchanged") },
+		disableResult: @escaping () -> DesktopTelemetryReceiverResultV1? = { DesktopTelemetryReceiverResultV1(receiver: "disabled") }
+	) {
+		self.statuses = statuses
+		self.enableResult = enableResult
+		self.disableResult = disableResult
+	}
+
+	func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1> {
+		.decoded(lock.withLock { statuses.count > 1 ? statuses.removeFirst() : statuses[0] })
+	}
+
+	func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		lock.withLock { enableCalls.append(writeCodexConfig) }
+		return enableResult(writeCodexConfig).map { .decoded($0) } ?? .undecodable
+	}
+
+	func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		lock.withLock { disableCalls += 1 }
+		return disableResult().map { .decoded($0) } ?? .undecodable
+	}
+
+	func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1> {
+		lock.withLock { previewLoads += 1 }
+		return .decoded(DesktopTelemetryPreviewV1(snippet: "[otel]\n<redacted>"))
+	}
+}
+
+@MainActor
+final class StubTelemetryListenerSupervisor: TelemetryListenerSupervising {
+	private(set) var isRunning = false
+	private(set) var starts = 0
+	private(set) var stops = 0
+
+	func start() {
+		starts += 1
+		isRunning = true
+	}
+
+	func stop() {
+		stops += 1
+		isRunning = false
+	}
+}
+
+@MainActor
+func makeTelemetrySettingsController(
+	transport: any TelemetryTransport = StubTelemetryTransport(),
+	supervisor: any TelemetryListenerSupervising = StubTelemetryListenerSupervisor()
+) -> TelemetrySettingsController {
+	TelemetrySettingsController(transport: transport, supervisor: supervisor, settleDelay: .zero)
+}

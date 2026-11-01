@@ -14,11 +14,13 @@
 		A10000000000000000000005 /* AppGroupSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AppGroupSnapshotStore.swift */; };
 		A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* EmbeddedHelperRunner.swift */; };
 		A10000000000000000000007 /* DesktopLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* DesktopLog.swift */; };
+		A10000000000000000000046 /* PerfTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003F /* PerfTrace.swift */; };
 		A10000000000000000000008 /* FixtureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* FixtureSupport.swift */; };
 		A10000000000000000000009 /* DesktopWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* DesktopWireTests.swift */; };
 		A1000000000000000000000A /* EmbeddedHelperRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */; };
 		A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */; };
 		A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* DesktopLogPolicyTests.swift */; };
+		A10000000000000000000049 /* PerfTraceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000042 /* PerfTraceTests.swift */; };
 		A1000000000000000000000D /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
 		A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */; };
 		A1000000000000000000000F /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* Localizable.xcstrings */; };
@@ -29,6 +31,8 @@
 		A10000000000000000000014 /* MenuBarSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* MenuBarSurfaceView.swift */; };
 		A10000000000000000000015 /* MenuBarPanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* MenuBarPanelViews.swift */; };
 		A10000000000000000000016 /* MenuBarItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* MenuBarItemController.swift */; };
+		A10000000000000000000048 /* PerfDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000041 /* PerfDriver.swift */; };
+		A10000000000000000000047 /* PerfFrameProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000040 /* PerfFrameProbe.swift */; };
 		A10000000000000000000017 /* SettingsWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* SettingsWindowView.swift */; };
 		A10000000000000000000018 /* AppTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* AppTestFixtures.swift */; };
 		A10000000000000000000019 /* MenuBarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* MenuBarViewModelTests.swift */; };
@@ -37,6 +41,7 @@
 		A1000000000000000000001C /* DesktopCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* DesktopCopyTests.swift */; };
 		A1000000000000000000001D /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
 		A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* MenuBarChromeTests.swift */; };
+		A1000000000000000000004A /* PerfClockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000043 /* PerfClockTests.swift */; };
 		A1000000000000000000001F /* AgentDeckMenuBarIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* AgentDeckMenuBarIcon.png */; };
 		A10000000000000000000020 /* AgentDeckAppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AgentDeckAppIcon.png */; };
 		A10000000000000000000021 /* WidgetDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* WidgetDomain.swift */; };
@@ -67,7 +72,9 @@
 		A10000000000000000000039 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
 		A1000000000000000000003A /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
 		A1000000000000000000003B /* QuotaSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000037 /* QuotaSettingsController.swift */; };
+		A10000000000000000000050 /* TelemetrySettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000050 /* TelemetrySettingsController.swift */; };
 		A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000038 /* QuotaSettingsControllerTests.swift */; };
+		A10000000000000000000051 /* TelemetrySettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */; };
 		A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* QuotaAlertNotifier.swift */; };
 		A1000000000000000000003E /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
 		A1000000000000000000003F /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
@@ -85,6 +92,7 @@
 		A20000000000000000000004 /* AppGroupSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* EmbeddedHelperRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedHelperRunner.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* DesktopLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLog.swift; sourceTree = "<group>"; };
+		A2000000000000000000003F /* PerfTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfTrace.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000007 /* AgentDeck.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentDeck.entitlements; sourceTree = SOURCE_ROOT; };
 		A20000000000000000000008 /* AgentDeckWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentDeckWidget.entitlements; sourceTree = SOURCE_ROOT; };
@@ -94,6 +102,7 @@
 		A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedHelperRunnerTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* DesktopLogPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLogPolicyTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000042 /* PerfTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfTraceTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A20000000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -106,8 +115,11 @@
 		A20000000000000000000019 /* MenuBarSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSurfaceView.swift; sourceTree = "<group>"; };
 		A2000000000000000000001A /* MenuBarPanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelViews.swift; sourceTree = "<group>"; };
 		A2000000000000000000001B /* MenuBarItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemController.swift; sourceTree = "<group>"; };
+		A20000000000000000000041 /* PerfDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfDriver.swift; sourceTree = "<group>"; };
+		A20000000000000000000040 /* PerfFrameProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfFrameProbe.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* SettingsWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowView.swift; sourceTree = "<group>"; };
 		A20000000000000000000037 /* QuotaSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsController.swift; sourceTree = "<group>"; };
+		A20000000000000000000050 /* TelemetrySettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetrySettingsController.swift; sourceTree = "<group>"; };
 		A20000000000000000000039 /* QuotaAlertNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAlertNotifier.swift; sourceTree = "<group>"; };
 		A2000000000000000000003A /* AppGroupSnapshotBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotBytes.swift; sourceTree = "<group>"; };
 		A2000000000000000000003B /* WidgetSemanticProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSemanticProjection.swift; sourceTree = "<group>"; };
@@ -115,6 +127,7 @@
 		A2000000000000000000003D /* DesktopRefreshScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshScheduler.swift; sourceTree = "<group>"; };
 		A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshSchedulerTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000038 /* QuotaSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsControllerTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetrySettingsControllerTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* SwitchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchFlowTests.swift; sourceTree = "<group>"; };
@@ -122,6 +135,7 @@
 		A20000000000000000000021 /* DesktopCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopCopyTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000022 /* AgentDeckAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgentDeckAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000023 /* MenuBarChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChromeTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000043 /* PerfClockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfClockTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000024 /* AgentDeckMenuBarIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckMenuBarIcon.png; path = Resources/AgentDeckMenuBarIcon.png; sourceTree = "<group>"; };
 		A20000000000000000000025 /* AgentDeckAppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckAppIcon.png; path = Resources/AgentDeckAppIcon.png; sourceTree = "<group>"; };
 		A20000000000000000000026 /* AgentDeckWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AgentDeckWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -234,8 +248,11 @@
 				A20000000000000000000019 /* MenuBarSurfaceView.swift */,
 				A2000000000000000000001A /* MenuBarPanelViews.swift */,
 				A2000000000000000000001B /* MenuBarItemController.swift */,
+				A20000000000000000000041 /* PerfDriver.swift */,
+				A20000000000000000000040 /* PerfFrameProbe.swift */,
 				A2000000000000000000001C /* SettingsWindowView.swift */,
 				A20000000000000000000037 /* QuotaSettingsController.swift */,
+				A20000000000000000000050 /* TelemetrySettingsController.swift */,
 				A20000000000000000000039 /* QuotaAlertNotifier.swift */,
 				A20000000000000000000015 /* Assets.xcassets */,
 				A20000000000000000000024 /* AgentDeckMenuBarIcon.png */,
@@ -258,6 +275,7 @@
 				A2000000000000000000003D /* DesktopRefreshScheduler.swift */,
 				A20000000000000000000005 /* EmbeddedHelperRunner.swift */,
 				A20000000000000000000006 /* DesktopLog.swift */,
+				A2000000000000000000003F /* PerfTrace.swift */,
 				A20000000000000000000012 /* Info.plist */,
 			);
 			path = AgentDeckShared;
@@ -271,6 +289,7 @@
 				A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */,
 				A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */,
 				A2000000000000000000000E /* DesktopLogPolicyTests.swift */,
+				A20000000000000000000042 /* PerfTraceTests.swift */,
 				A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */,
 				A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */,
 			);
@@ -308,7 +327,9 @@
 				A20000000000000000000020 /* DesktopPreferencesTests.swift */,
 				A20000000000000000000021 /* DesktopCopyTests.swift */,
 				A20000000000000000000023 /* MenuBarChromeTests.swift */,
+				A20000000000000000000043 /* PerfClockTests.swift */,
 				A20000000000000000000038 /* QuotaSettingsControllerTests.swift */,
+				A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */,
 			);
 			path = AgentDeckAppTests;
 			sourceTree = "<group>";
@@ -560,8 +581,11 @@
 				A10000000000000000000014 /* MenuBarSurfaceView.swift in Sources */,
 				A10000000000000000000015 /* MenuBarPanelViews.swift in Sources */,
 				A10000000000000000000016 /* MenuBarItemController.swift in Sources */,
+				A10000000000000000000048 /* PerfDriver.swift in Sources */,
+				A10000000000000000000047 /* PerfFrameProbe.swift in Sources */,
 				A10000000000000000000017 /* SettingsWindowView.swift in Sources */,
 				A1000000000000000000003B /* QuotaSettingsController.swift in Sources */,
+				A10000000000000000000050 /* TelemetrySettingsController.swift in Sources */,
 				A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */,
 				A10000000000000000000045 /* WidgetIntents.swift in Sources */,
 			);
@@ -579,6 +603,7 @@
 				A10000000000000000000043 /* DesktopRefreshScheduler.swift in Sources */,
 				A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */,
 				A10000000000000000000007 /* DesktopLog.swift in Sources */,
+				A10000000000000000000046 /* PerfTrace.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -591,6 +616,7 @@
 				A1000000000000000000000A /* EmbeddedHelperRunnerTests.swift in Sources */,
 				A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */,
 				A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */,
+				A10000000000000000000049 /* PerfTraceTests.swift in Sources */,
 				A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */,
 				A10000000000000000000044 /* DesktopRefreshSchedulerTests.swift in Sources */,
 			);
@@ -606,7 +632,9 @@
 				A1000000000000000000001B /* DesktopPreferencesTests.swift in Sources */,
 				A1000000000000000000001C /* DesktopCopyTests.swift in Sources */,
 				A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */,
+				A1000000000000000000004A /* PerfClockTests.swift in Sources */,
 				A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */,
+				A10000000000000000000051 /* TelemetrySettingsControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -675,6 +703,15 @@
 			};
 			name = Release;
 		};
+		A70000000000000000000012 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+			};
+			name = Perf;
+		};
 		A70000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
@@ -717,6 +754,28 @@
 			};
 			name = Release;
 		};
+		A7000000000000000000000F /* Perf */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AgentDeck.entitlements;
+				CODE_SIGN_IDENTITY = "$(AGENTDECK_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = "$(AGENTDECK_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.perf;
+				PRODUCT_NAME = AgentDeck;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_PERF;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Perf;
+		};
 		A70000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
@@ -758,6 +817,26 @@
 			};
 			name = Release;
 		};
+		A70000000000000000000010 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
+				DEFINES_MODULE = YES;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckShared/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.shared;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Perf;
+		};
 		A70000000000000000000007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -779,6 +858,17 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
+		};
+		A70000000000000000000011 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Perf;
 		};
 		A70000000000000000000009 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -805,6 +895,19 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Release;
+		};
+		A70000000000000000000013 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.apptests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
+			};
+			name = Perf;
 		};
 		A7000000000000000000000B /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -852,6 +955,28 @@
 			};
 			name = Release;
 		};
+		A70000000000000000000014 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AgentDeckWidget.entitlements;
+				CODE_SIGN_IDENTITY = "$(AGENTDECK_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = "$(AGENTDECK_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../../../Frameworks";
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.perf.widget;
+				PRODUCT_NAME = AgentDeckWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Perf;
+		};
 		A7000000000000000000000D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -877,6 +1002,18 @@
 			};
 			name = Release;
 		};
+		A70000000000000000000015 /* Perf */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.widgettests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Perf;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -885,6 +1022,7 @@
 			buildConfigurations = (
 				A70000000000000000000003 /* Debug */,
 				A70000000000000000000004 /* Release */,
+				A7000000000000000000000F /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -894,6 +1032,7 @@
 			buildConfigurations = (
 				A70000000000000000000005 /* Debug */,
 				A70000000000000000000006 /* Release */,
+				A70000000000000000000010 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -903,6 +1042,7 @@
 			buildConfigurations = (
 				A70000000000000000000007 /* Debug */,
 				A70000000000000000000008 /* Release */,
+				A70000000000000000000011 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -912,6 +1052,7 @@
 			buildConfigurations = (
 				A70000000000000000000001 /* Debug */,
 				A70000000000000000000002 /* Release */,
+				A70000000000000000000012 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -921,6 +1062,7 @@
 			buildConfigurations = (
 				A70000000000000000000009 /* Debug */,
 				A7000000000000000000000A /* Release */,
+				A70000000000000000000013 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -930,6 +1072,7 @@
 			buildConfigurations = (
 				A7000000000000000000000B /* Debug */,
 				A7000000000000000000000C /* Release */,
+				A70000000000000000000014 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -939,6 +1082,7 @@
 			buildConfigurations = (
 				A7000000000000000000000D /* Debug */,
 				A7000000000000000000000E /* Release */,
+				A70000000000000000000015 /* Perf */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

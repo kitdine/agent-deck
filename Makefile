@@ -60,8 +60,10 @@ check-arm64-size: build-all
 test:
 	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) ./...
 
+# Race-instrumented SQLite suites compete heavily for runner resources. Bound
+# package concurrency and budget the full CLI suite; keep individual deadlines.
 test-race:
-	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race ./...
+	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race -p 1 -timeout=20m ./...
 
 test-macos-app:
 	bash scripts/test-macos-app.sh

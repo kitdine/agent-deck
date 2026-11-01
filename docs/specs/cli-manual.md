@@ -1,6 +1,7 @@
 ---
 status: active
 created: 2026-07-16
+updated: 2026-10-29
 ---
 
 # AgentDeck CLI 目标命令手册
@@ -494,6 +495,10 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 - `usage summary`、`usage stats` 和 `usage signals` 默认在输出前同步扫描，长扫描共享
   stderr progress。summary 与 stats 的 `--no-scan` 可跳过扫描并立即使用已存聚合；
   signals 没有 `--no-scan` 或 stored-only 模式，始终先尝试扫描再读取持久化派生。
+  stats/summary 的 stored-only 读取还核对持久 coverage：历史未齐、覆盖未知、已知更新
+  未提交分别给出 `source_coverage_partial`、`source_coverage_unknown`、
+  `source_update_pending`。保留已提交值且退出 `0`；text 警告到 stderr，JSON 在 stdout
+  合并 warnings 并标记 `partial: true`。旧库没有 coverage 记录时为 unknown，不推断完整。
   signals 扫描失败时返回上次已提交数据，envelope 标记 `partial: true` 并加入稳定的
   `scan_incomplete` warning。扫描不会移到后台。
 - 非交互 `usage stats` 在 `ACTIVITY BY WEEKDAY / HOUR` 之后、`COVERAGE`
@@ -842,18 +847,42 @@ release 检查，v0.5.0 在实现之前将其撤回，且没有任何替代物�
 通信。没有任何菜单项、偏好或文案提到应用更新，应用也从不下载、安装、
 替换、重启或请求提权。
 
+### OTel 用量采集
+
+采集默认关闭，接收端仅监听本机 loopback，默认随 App 起停。开启不安装后台服务，
+也不启用独立常驻引擎。状态中的配置、listener、最近事件与实际计量是不同事实。
+
+| 命令 | 行为 |
+| --- | --- |
+| `telemetry status` | 只读接收端、计量、coverage/gaps、Codex Memories 与 exporter 状态；unknown 不推断为关闭或断连 |
+| `telemetry config-preview` | 预览连接配置，不写入；本地 token 默认隐藏 |
+| `telemetry config-preview --reveal-local-token` | 显式显示可复制的本地 token；勿放入共享日志 |
+| `telemetry enable` | 启用采集偏好，不改 Codex 配置；App 未运行时不能据此声称 listener 正在运行 |
+| `telemetry enable --write-codex-config` | 显式同意追加受管 `[otel]` 段；已有 exporter 或不可写时拒绝；成功后需重启 Codex 生效 |
+| `telemetry disable` | 关闭采集，仅移除未被改动的受管段；用户自配或已修改的配置保留；不删除用量与 journal |
+| `telemetry import <otel-json-file>` | 显式导入真实 OTLP JSON，执行相同校验与去重；unsupported/malformed 输入失败，pending 不计入总量 |
+
+支持 text 与 JSON；成功输出到 stdout，错误到 stderr。成功诊断不表示历史完整。
+Codex Memories 明确 off 时无需采集；unknown 不阻止开启。Memories on 且未采集时
+提示 `codex_memories_usage_not_counted`。只保存用量、模型与必要身份，不保存提示、回答或工具输出。
+JSONL 与 OTel 按会话所有权互斥计量，不能因重复导入或双来源而重复累加。
+
 ### 桌面应用
 
 v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用；v0.6.0
 沿用内嵌 CLI 作为数据与受管写入边界。应用以阅读为主，显式写操作包括
 provider 切换和配额/提醒设置。
 
-- **边界**：应用先消费内嵌 helper 的 version-1 `scan` NDJSON stream，再解码
-  `desktop snapshot` 的 wire-v1 envelope。helper 运行期间显示等待、检查、已提交
+- **边界**：应用先异步恢复通过身份、版本和本地日期校验的 serving publication，
+  再安排后台工作。空库优先导入今天，允许先显示明确标注的 partial 数据；未完成域
+  保持 unavailable，不补零。打开与切换面板只读内存 publication，不等待扫描或额度探测。
+  既有 version-1 `scan` NDJSON 与 `desktop snapshot` wire-v1 保持兼容，内部发布通知
+  不混入公共 v1 事件流。helper 运行期间显示等待、检查、已提交
   导入计数和统计阶段；已有 snapshot 保持可见，只有完整新 envelope 校验通过后才
   原子替换。scan/event/snapshot 失败保留旧数据与 retry；关闭 popover 只分离显示，
   worker 继续，重开后读取当前 coordinator state。它不解析 text 输出、不直接读
-  数据库、不监听端口，也不直接发起 HTTP 或读取凭据。可选的配额刷新会让
+  数据库，也不直接发起 HTTP 或读取凭据。显式启用的 OTel 接收由受管 helper
+  监听本机端口。可选的配额刷新会让
   Go helper 启动已认证客户端探测，可能产生客户端的厂商网络流量。Go helper
   与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃投影。
 - **菜单栏表面**：quota、usage、breakdown、attribution、sessions 五个面板，加上
@@ -867,12 +896,15 @@ provider 切换和配额/提醒设置。
 - **显式写操作**：切换当前 provider 与更改 quota/提醒设置走内嵌 helper 的
   受管 CLI 路径；健康恢复按钮只复制命令或安全步骤，不替用户执行。阅读面板
   与 `desktop snapshot` 保持只读。
-- **刷新调度**：启动刷新不受偏好影响。周期完整刷新默认关闭；开启后从每次终态完成
-  加 60 秒计算单调 deadline，并由 30 秒 evaluator 评估，因此活跃应用的请求窗口为
-  60–90 秒，且不会重叠或回放错过的周期。关闭周期刷新时，手动刷新与 provider switch
-  仍可用；quota 使用独立 single-flight lane，不能阻塞完整刷新 deadline。
-- **设置**：常规偏好包括周期刷新（默认关闭，因为那是用户没有要求的后台
-  工作）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
+- **刷新调度**：启动刷新不受偏好影响。本地数据自动更新由文件事件触发，没有刷新周期：
+  开启时，来源文件变化发起一次有限更新；唤醒或重新开启时发起一次有限校对，覆盖没有
+  事件报告的变化；更新进行中到达的这些请求合并为恰好一次后续更新。关闭时 App 既不
+  监听也不轮询日志文件。手动刷新与 provider switch 始终可用；quota 保持独立的
+  single-flight lane 与调度，不发起数据更新。
+- **退出**：App 退出停止自身 watcher、接收端与 App-owned 工作，在 checkpoint
+  暂停历史补齐；已经接受的有限 CLI 工作仍完成其范围。关闭 popover 不等于退出 App。
+- **设置**：常规偏好包括自动更新本地数据（沿用原周期刷新偏好的存储：已存的值，包括
+  明确的关闭，继续保留；没有存值时为开启，与此前版本一直进行的文件监听一致）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
   跟随面板筛选）与开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
   而非开关的意图，因此系统拒绝是可见的而不是被默认成功。配额设置另有
   读取开关、读取间隔、状态行授权、提醒开关、阈值和重置通知六项控件；依赖

@@ -1,7 +1,7 @@
 ---
 status: active
-version: 32
-updated: 2026-10-07
+version: 33
+updated: 2026-10-29
 created: 2026-07-14
 ---
 
@@ -1257,6 +1257,51 @@ that scan fails, it returns the last committed signals with `partial: true` and
 the stable `scan_incomplete` warning. No implicit scan moves to the background,
 which would make report contents depend on a race.
 
+Stored-only stats and summary also read persisted source coverage. Incomplete
+history, unknown coverage, and known uncommitted updates produce respectively
+`source_coverage_partial`, `source_coverage_unknown`, and `source_update_pending`.
+They preserve committed values, exit successfully, and set JSON `partial: true`;
+text warnings go to stderr. These warnings combine with existing pricing and
+scan warnings. A legacy database without coverage is unknown, not complete.
+
+### Serving Publications and Optional Telemetry
+
+The macOS App restores a validated serving publication asynchronously before
+starting background work. Opening or changing a panel consumes the in-memory
+publication; it does not wait for a scan, quota probe, or telemetry event.
+An empty state imports today's sources first and publishes committed partial
+coverage before completing history. Unavailable domains remain unavailable,
+never fabricated zeroes. A failed replacement preserves the last valid data.
+Publication identity, schema, epoch, ownership, permissions, size, corruption,
+and local-day validity are checked before binding a cached value.
+
+The default engine remains finite. File events trigger bounded updates; wake
+and re-enabling automatic updates trigger bounded reconciliation. Disabling
+automatic updates stops App file watching and polling, while startup, manual,
+and CLI requests remain available. App quit stops App-owned watching and work
+at checkpoints without cancelling accepted finite CLI obligations. Closing the
+popover only detaches its display. Widget reads the bounded App Group projection
+and never starts a helper or scans sources. Wire v1 stays compatible; internal
+publication notifications do not extend the public v1 scan event stream.
+
+`telemetry status`, `config-preview`, `enable`, `disable`, and `import` expose
+the optional loopback-only OTel receiver. Collection is off by default and runs
+with the App; enabling it does not install a service or an independent engine.
+Status separates configured preference, actual listener, producer configuration,
+received observations, and reconciled usage. HTTP silence does not prove a
+disconnect. Pending or unsupported observations do not increase totals.
+
+Codex Memories and exporter configuration are read-only observations of the
+user-level config. Explicit Memories off stops collection without changing the
+saved preference; unknown does not infer off. Memories on with no collection
+warns about uncounted background usage. `enable --write-codex-config` is explicit
+consent to append an AgentDeck-managed `[otel]` block; an existing exporter is
+never overwritten. Disable removes only an unchanged managed block and retains
+usage and journal data. Preview redacts the local token unless explicitly
+revealed. No prompts, responses, or tool output enter the telemetry journal.
+JSONL and OTel use exclusive session ownership so reconciliation cannot count
+the same session twice; unsupported producer capabilities remain capture-only.
+
 Attribution has three explicit qualities:
 
 - `exact`: an exact run or an effective session route proves the provider and
@@ -2028,15 +2073,18 @@ write action; it holds no state of its own that matters.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
-- **Refresh scheduling.** Startup remains unconditional. Opt-in periodic full
-  refresh is off by default and schedules from terminal completion plus 60
-  seconds; a monotonic evaluator runs every 30 seconds, so accepted active-app
-  requests occur in the 60–90 second window without overlap or catch-up replay.
-  Manual and provider-switch requests remain available while periodic refresh
-  is off. Quota refresh has its own single-flight lane and cannot block the full
-  deadline evaluator.
-- **Settings.** Exactly four preferences: periodic refresh (off by default,
-  because it is background work the user did not ask for), the menu-bar value
+- **Refresh scheduling.** Startup remains unconditional. Automatic local-data
+  updates are event driven and have no refresh period: while on, a source-file
+  change requests one finite update, and wake or re-enabling requests one finite
+  reconciliation for changes no event reported; a burst of these during a
+  running update merges into exactly one follow-up. While off, the App neither
+  watches log files nor polls them. Manual and provider-switch requests remain
+  available either way. Quota refresh keeps its own single-flight lane and
+  schedule and never requests a data update.
+- **Settings.** Exactly four preferences: automatic local-data updates (stored
+  under the former periodic-refresh preference: a stored value, including an
+  explicit off, is kept; an absent value is on, matching the file watching
+  earlier builds always ran), the menu-bar value
   (cost, tokens, or icon), the menu-bar scope (all clients, or follow the
   panel filter), and start at login. The login-item control renders what
   `SMAppService` reports, never what the toggle intended, so a refusal is

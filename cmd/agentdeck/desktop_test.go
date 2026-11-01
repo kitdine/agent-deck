@@ -210,7 +210,7 @@ func TestDesktopSnapshotInputErrorsHaveStableJSONCodesAndExitTwo(t *testing.T) {
 		args []string
 		code string
 	}{
-		{name: "unsupported wire", args: []string{"--wire-version", "2"}, code: desktop.ErrUnsupportedWireVersion.Error()},
+		{name: "unsupported wire", args: []string{"--wire-version", "3"}, code: desktop.ErrUnsupportedWireVersion.Error()},
 		{name: "zero limit", args: []string{"--recent-limit", "0"}, code: desktop.ErrInvalidRecentLimit.Error()},
 		{name: "large limit", args: []string{"--recent-limit", "21"}, code: desktop.ErrInvalidRecentLimit.Error()},
 	} {

@@ -27,6 +27,22 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertFalse(encoded.contains("projects"))
 	}
 
+	func testWidgetProjectionPreservesCLIWireValuesAcrossCoverageStates() throws {
+		for name in ["snapshot-complete.json", "snapshot-empty-client.json", "snapshot-schema-ahead.json"] {
+			let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData(name))
+			let widget = AppGroupDesktopSnapshotV1(envelope: envelope)
+			XCTAssertEqual(widget.partial, envelope.partial, name)
+			XCTAssertEqual(widget.usage.available, envelope.data.usage.available, name)
+			XCTAssertEqual(widget.usage.tokens, envelope.data.usage.tokens, name)
+			XCTAssertEqual(widget.usage.counts, envelope.data.usage.counts, name)
+			XCTAssertEqual(widget.usage.providerCost, envelope.data.usage.providerCost, name)
+			XCTAssertEqual(widget.usage.catalogBaseCost, envelope.data.usage.catalogBaseCost, name)
+			XCTAssertEqual(widget.usage.pricingComplete, envelope.data.usage.pricingComplete, name)
+			XCTAssertEqual(widget.usage.presentation, envelope.data.usage.presentation, name)
+			XCTAssertEqual(widget.subscription, envelope.data.subscription, name)
+		}
+	}
+
 	func testFirstPublicationReloadsEveryWidgetKindExactlyOnce() async throws {
 		let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -1,6 +1,246 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Some usage is not recorded": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Some usage is not recorded" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分用量尚未收录" } }
+      }
+    },
+    "Live usage": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Live usage" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "实时用量" } }
+      }
+    },
+    "Enable OTel usage collection": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Enable OTel usage collection" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "启用 OTel 用量采集" } }
+      }
+    },
+    "Off by default. Receive live Codex usage without a refresh interval. Collected data is kept when disabled.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Off by default. Receive live Codex usage without a refresh interval. Collected data is kept when disabled." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "默认关闭。接收 Codex 的实时用量；不需要设置刷新周期。关闭后保留已采集数据。" } }
+      }
+    },
+    "Only usage, model and required identity fields are retained. Prompts, response text and tool output are not stored.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Only usage, model and required identity fields are retained. Prompts, response text and tool output are not stored." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "仅接收用量、模型和必要身份字段，不保存提示、回答正文或工具输出。" } }
+      }
+    },
+    "View connection configuration": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "View connection configuration" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "查看连接配置" } }
+      }
+    },
+    "Hide configuration": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Hide configuration" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "收起配置" } }
+      }
+    },
+    "Not applied to Codex. Token is redacted. Review and merge with existing configuration.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Not applied to Codex. Token is redacted. Review and merge with existing configuration." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "未应用到 Codex。令牌已隐藏；请审阅并合并已有配置。" } }
+      }
+    },
+    "Collection is off": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Collection is off" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "采集已关闭" } }
+      }
+    },
+    "Receiver ready · Waiting for first event; connection unknown": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Receiver ready · Waiting for first event; connection unknown" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "接收端已就绪 · 等待首次事件，连接状态未知" } }
+      }
+    },
+    "No verified configuration or reception observation yet. Silence does not mean unconfigured or disconnected.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No verified configuration or reception observation yet. Silence does not mean unconfigured or disconnected." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "尚无可验证的配置或接收观察。闲置没有事件不表示未配置或断连。" } }
+      }
+    },
+    "Receiver enabled · Configuration check found no valid exporter": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Receiver enabled · Configuration check found no valid exporter" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "接收端已启用 · 配置检查未发现有效 exporter" } }
+      }
+    },
+    "First-time setup requires checking Codex telemetry configuration. The switch changes Codex configuration only after you agree.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "First-time setup requires checking Codex telemetry configuration. The switch changes Codex configuration only after you agree." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "首次启用需要检查 Codex 的遥测配置。开关只在你同意后才写入 Codex 配置。" } }
+      }
+    },
+    "Receiving · Usage can be counted": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Receiving · Usage can be counted" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在接收 · 用量可计入" } }
+      }
+    },
+    "Receiving · Usage is not counted yet": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Receiving · Usage is not counted yet" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在接收 · 用量尚未计入" } }
+      }
+    },
+    "Request identity is not verified. Observations are saved without adding them to totals.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Request identity is not verified. Observations are saved without adding them to totals." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请求身份尚未验证，观测先保存；不直接加入总量。" } }
+      }
+    },
+    "Confirmed reception failure · Previous data is retained": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Confirmed reception failure · Previous data is retained" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已确认接收异常 · 保留已有数据" } }
+      }
+    },
+    "Codex Memories is off · Collection is not needed": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Codex Memories is off · Collection is not needed" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Codex 记忆未开启 · 无需采集" } }
+      }
+    },
+    "Other Codex usage is already counted from local logs. Turn on Codex Memories to enable collection here.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Other Codex usage is already counted from local logs. Turn on Codex Memories to enable collection here." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "其他 Codex 用量已由本地日志统计。开启 Codex 记忆后可在此启用采集。" } }
+      }
+    },
+    "Codex Memories turned off · Receiver stopped": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Codex Memories turned off · Receiver stopped" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Codex 记忆已关闭 · 接收已停止" } }
+      }
+    },
+    "Turn off collection to remove AgentDeck's block from the Codex configuration. If you leave it on, receiving resumes when Codex Memories is turned back on.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Turn off collection to remove AgentDeck's block from the Codex configuration. If you leave it on, receiving resumes when Codex Memories is turned back on." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关闭采集可移除 Codex 配置中的 AgentDeck 段；保持开启时，Codex 记忆重新开启后恢复接收。" } }
+      }
+    },
+    "Codex Memories background usage is not counted": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Codex Memories background usage is not counted" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Codex 记忆的后台用量未统计" } }
+      }
+    },
+    "Turn on collection and allow the Codex configuration change to count it.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Turn on collection and allow the Codex configuration change to count it." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "开启采集并允许写入 Codex 配置后才能统计。" } }
+      }
+    },
+    "Collection needs a Codex configuration change": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Collection needs a Codex configuration change" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "开启采集需要修改 Codex 配置" } }
+      }
+    },
+    "File: ~/.codex/config.toml": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "File: ~/.codex/config.toml" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "文件：~/.codex/config.toml" } }
+      }
+    },
+    "Only this block is appended; nothing else changes. It is removed when collection is turned off. Takes effect after Codex restarts.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Only this block is appended; nothing else changes. It is removed when collection is turned off. Takes effect after Codex restarts." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "只追加这一段，不改动其他内容；关闭采集时移除这一段。重启 Codex 后生效。" } }
+      }
+    },
+    "Write and turn on": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Write and turn on" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "写入并开启" } }
+      }
+    },
+    "I'll configure it": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "I'll configure it" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "我自己配置" } }
+      }
+    },
+    "Codex already has another OTel configuration. AgentDeck will not overwrite it. Merge the connection configuration yourself.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Codex already has another OTel configuration. AgentDeck will not overwrite it. Merge the connection configuration yourself." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Codex 已有其他 OTel 配置，AgentDeck 不会覆盖。请按连接配置自行合并。" } }
+      }
+    },
+    "Turn on receiver only": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Turn on receiver only" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "仅开启接收端" } }
+      }
+    },
+    "Codex configuration updated · Takes effect after Codex restarts": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Codex configuration updated · Takes effect after Codex restarts" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已写入 Codex 配置 · 重启 Codex 后生效" } }
+      }
+    },
+    "Could not update the Codex configuration; nothing was changed. Retry or configure it yourself.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Could not update the Codex configuration; nothing was changed. Retry or configure it yourself." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法写入 Codex 配置，未做任何修改。可重试或选择自己配置。" } }
+      }
+    },
+    "Connection configuration is shown below; merge it into your Codex configuration": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connection configuration is shown below; merge it into your Codex configuration" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接配置已展开，请自行合并到 Codex 配置" } }
+      }
+    },
+    "Removed AgentDeck's block from the Codex configuration · Codex stops exporting after restart": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Removed AgentDeck's block from the Codex configuration · Codex stops exporting after restart" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已从 Codex 配置移除 AgentDeck 段 · 重启 Codex 后停止导出" } }
+      }
+    },
+    "The Codex configuration was changed elsewhere; AgentDeck left it untouched. Check the [otel] section of ~/.codex/config.toml.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The Codex configuration was changed elsewhere; AgentDeck left it untouched. Check the [otel] section of ~/.codex/config.toml." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Codex 配置已被修改，AgentDeck 未改动它。请手动检查 ~/.codex/config.toml 的 [otel] 段。" } }
+      }
+    },
+    "Receiver turned off · Your own Codex OTel configuration was not changed": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Receiver turned off · Your own Codex OTel configuration was not changed" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "接收端已关闭 · 你自行添加的 Codex OTel 配置未改动" } }
+      }
+    },
+    "%1$lld events · %2$lld sessions · — projects": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%1$lld events · %2$lld sessions · — projects" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%1$lld 次事件 · %2$lld 个会话 · — 个项目" } }
+      }
+    },
+    "Collected usage · source coverage is partial": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Collected usage · source coverage is partial" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已采集用量 · 来源覆盖尚不完整" } }
+      }
+    },
+    "Stored usage · source coverage is unknown": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Stored usage · source coverage is unknown" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已存用量 · 来源覆盖未知" } }
+      }
+    },
+    "Stored usage · source updates are pending": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Stored usage · source updates are pending" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已存用量 · 来源更新待提交" } }
+      }
+    },
     "State": {
       "localizations": {
         "en": {
@@ -2625,18 +2865,18 @@
         }
       }
     },
-    "Periodic refresh": {
+    "Automatically update local data": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Periodic refresh"
+            "value": "Automatically update local data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "定时刷新"
+            "value": "自动更新本地数据"
           }
         }
       }
@@ -2825,18 +3065,18 @@
         }
       }
     },
-    "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data": {
+    "Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
+            "value": "Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据"
+            "value": "日志变化时更新，无需设置周期。关闭后仍可手动更新；OTel 采集单独控制。"
           }
         }
       }

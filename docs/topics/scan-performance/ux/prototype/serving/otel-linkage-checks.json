@@ -1,0 +1,463 @@
+{
+  "kind": "scan-performance-otel-linkage-synthetic-acceptance",
+  "checks": [
+    {
+      "name": "zh/dark memories off with collection off disables switch and explains",
+      "passed": true
+    },
+    {
+      "name": "zh/dark memories on and collection off warns not counted",
+      "passed": true
+    },
+    {
+      "name": "zh/dark collection is never on automatically",
+      "passed": true
+    },
+    {
+      "name": "zh/dark switch opens inline consent, not a modal, without writing",
+      "passed": true
+    },
+    {
+      "name": "zh/dark cancel leaves everything off",
+      "passed": true
+    },
+    {
+      "name": "zh/dark written turns on with restart notice",
+      "passed": true
+    },
+    {
+      "name": "zh/dark turning off removes managed block",
+      "passed": true
+    },
+    {
+      "name": "zh/dark live region exists empty before failure",
+      "passed": true
+    },
+    {
+      "name": "zh/dark refused write keeps switch off with error tone",
+      "passed": true
+    },
+    {
+      "name": "zh/dark retry succeeds and clears error",
+      "passed": true
+    },
+    {
+      "name": "zh/dark existing exporter is not overwritten",
+      "passed": true
+    },
+    {
+      "name": "zh/dark receiver only shows the preview to merge",
+      "passed": true
+    },
+    {
+      "name": "zh/dark unknown memories neither blocks nor warns",
+      "passed": true
+    },
+    {
+      "name": "zh/dark self configure turns on and expands preview",
+      "passed": true
+    },
+    {
+      "name": "zh/dark managed exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "zh/dark restore incomplete leaves switch off with warning tone",
+      "passed": true
+    },
+    {
+      "name": "zh/dark memories turned off stops receiver but the switch can still turn collection off",
+      "passed": true
+    },
+    {
+      "name": "zh/dark turning off with memories off removes the managed block",
+      "passed": true
+    },
+    {
+      "name": "zh/dark memories back on keeps collection off and only warns",
+      "passed": true
+    },
+    {
+      "name": "zh/dark user-owned exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "zh/dark disabling never removes the user's own exporter",
+      "passed": true
+    },
+    {
+      "name": "zh/light memories off with collection off disables switch and explains",
+      "passed": true
+    },
+    {
+      "name": "zh/light memories on and collection off warns not counted",
+      "passed": true
+    },
+    {
+      "name": "zh/light collection is never on automatically",
+      "passed": true
+    },
+    {
+      "name": "zh/light switch opens inline consent, not a modal, without writing",
+      "passed": true
+    },
+    {
+      "name": "zh/light cancel leaves everything off",
+      "passed": true
+    },
+    {
+      "name": "zh/light written turns on with restart notice",
+      "passed": true
+    },
+    {
+      "name": "zh/light turning off removes managed block",
+      "passed": true
+    },
+    {
+      "name": "zh/light live region exists empty before failure",
+      "passed": true
+    },
+    {
+      "name": "zh/light refused write keeps switch off with error tone",
+      "passed": true
+    },
+    {
+      "name": "zh/light retry succeeds and clears error",
+      "passed": true
+    },
+    {
+      "name": "zh/light existing exporter is not overwritten",
+      "passed": true
+    },
+    {
+      "name": "zh/light receiver only shows the preview to merge",
+      "passed": true
+    },
+    {
+      "name": "zh/light unknown memories neither blocks nor warns",
+      "passed": true
+    },
+    {
+      "name": "zh/light self configure turns on and expands preview",
+      "passed": true
+    },
+    {
+      "name": "zh/light managed exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "zh/light restore incomplete leaves switch off with warning tone",
+      "passed": true
+    },
+    {
+      "name": "zh/light memories turned off stops receiver but the switch can still turn collection off",
+      "passed": true
+    },
+    {
+      "name": "zh/light turning off with memories off removes the managed block",
+      "passed": true
+    },
+    {
+      "name": "zh/light memories back on keeps collection off and only warns",
+      "passed": true
+    },
+    {
+      "name": "zh/light user-owned exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "zh/light disabling never removes the user's own exporter",
+      "passed": true
+    },
+    {
+      "name": "en/dark memories off with collection off disables switch and explains",
+      "passed": true
+    },
+    {
+      "name": "en/dark memories on and collection off warns not counted",
+      "passed": true
+    },
+    {
+      "name": "en/dark collection is never on automatically",
+      "passed": true
+    },
+    {
+      "name": "en/dark switch opens inline consent, not a modal, without writing",
+      "passed": true
+    },
+    {
+      "name": "en/dark cancel leaves everything off",
+      "passed": true
+    },
+    {
+      "name": "en/dark written turns on with restart notice",
+      "passed": true
+    },
+    {
+      "name": "en/dark turning off removes managed block",
+      "passed": true
+    },
+    {
+      "name": "en/dark live region exists empty before failure",
+      "passed": true
+    },
+    {
+      "name": "en/dark refused write keeps switch off with error tone",
+      "passed": true
+    },
+    {
+      "name": "en/dark retry succeeds and clears error",
+      "passed": true
+    },
+    {
+      "name": "en/dark existing exporter is not overwritten",
+      "passed": true
+    },
+    {
+      "name": "en/dark receiver only shows the preview to merge",
+      "passed": true
+    },
+    {
+      "name": "en/dark unknown memories neither blocks nor warns",
+      "passed": true
+    },
+    {
+      "name": "en/dark self configure turns on and expands preview",
+      "passed": true
+    },
+    {
+      "name": "en/dark managed exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "en/dark restore incomplete leaves switch off with warning tone",
+      "passed": true
+    },
+    {
+      "name": "en/dark memories turned off stops receiver but the switch can still turn collection off",
+      "passed": true
+    },
+    {
+      "name": "en/dark turning off with memories off removes the managed block",
+      "passed": true
+    },
+    {
+      "name": "en/dark memories back on keeps collection off and only warns",
+      "passed": true
+    },
+    {
+      "name": "en/dark user-owned exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "en/dark disabling never removes the user's own exporter",
+      "passed": true
+    },
+    {
+      "name": "en/light memories off with collection off disables switch and explains",
+      "passed": true
+    },
+    {
+      "name": "en/light memories on and collection off warns not counted",
+      "passed": true
+    },
+    {
+      "name": "en/light collection is never on automatically",
+      "passed": true
+    },
+    {
+      "name": "en/light switch opens inline consent, not a modal, without writing",
+      "passed": true
+    },
+    {
+      "name": "en/light cancel leaves everything off",
+      "passed": true
+    },
+    {
+      "name": "en/light written turns on with restart notice",
+      "passed": true
+    },
+    {
+      "name": "en/light turning off removes managed block",
+      "passed": true
+    },
+    {
+      "name": "en/light live region exists empty before failure",
+      "passed": true
+    },
+    {
+      "name": "en/light refused write keeps switch off with error tone",
+      "passed": true
+    },
+    {
+      "name": "en/light retry succeeds and clears error",
+      "passed": true
+    },
+    {
+      "name": "en/light existing exporter is not overwritten",
+      "passed": true
+    },
+    {
+      "name": "en/light receiver only shows the preview to merge",
+      "passed": true
+    },
+    {
+      "name": "en/light unknown memories neither blocks nor warns",
+      "passed": true
+    },
+    {
+      "name": "en/light self configure turns on and expands preview",
+      "passed": true
+    },
+    {
+      "name": "en/light managed exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "en/light restore incomplete leaves switch off with warning tone",
+      "passed": true
+    },
+    {
+      "name": "en/light memories turned off stops receiver but the switch can still turn collection off",
+      "passed": true
+    },
+    {
+      "name": "en/light turning off with memories off removes the managed block",
+      "passed": true
+    },
+    {
+      "name": "en/light memories back on keeps collection off and only warns",
+      "passed": true
+    },
+    {
+      "name": "en/light user-owned exporter enables without consent",
+      "passed": true
+    },
+    {
+      "name": "en/light disabling never removes the user's own exporter",
+      "passed": true
+    },
+    {
+      "name": "40/memories_on public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/memories_on channels",
+      "passed": true
+    },
+    {
+      "name": "40 not-counted warning",
+      "passed": true
+    },
+    {
+      "name": "80/memories_on public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/memories_on channels",
+      "passed": true
+    },
+    {
+      "name": "80 not-counted warning",
+      "passed": true
+    },
+    {
+      "name": "40/memories_off public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/memories_off channels",
+      "passed": true
+    },
+    {
+      "name": "40 memories off stops listener",
+      "passed": true
+    },
+    {
+      "name": "80/memories_off public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/memories_off channels",
+      "passed": true
+    },
+    {
+      "name": "80 memories off stops listener",
+      "passed": true
+    },
+    {
+      "name": "40/write_config public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/write_config channels",
+      "passed": true
+    },
+    {
+      "name": "80/write_config public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/write_config channels",
+      "passed": true
+    },
+    {
+      "name": "40/write_conflict public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/write_conflict channels",
+      "passed": true
+    },
+    {
+      "name": "80/write_conflict public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/write_conflict channels",
+      "passed": true
+    },
+    {
+      "name": "40/disable_removed public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/disable_removed channels",
+      "passed": true
+    },
+    {
+      "name": "80/disable_removed public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/disable_removed channels",
+      "passed": true
+    },
+    {
+      "name": "40/restore_incomplete public envelope",
+      "passed": true
+    },
+    {
+      "name": "40/restore_incomplete channels",
+      "passed": true
+    },
+    {
+      "name": "40 restore incomplete is a warning at exit 0",
+      "passed": true
+    },
+    {
+      "name": "80/restore_incomplete public envelope",
+      "passed": true
+    },
+    {
+      "name": "80/restore_incomplete channels",
+      "passed": true
+    },
+    {
+      "name": "80 restore incomplete is a warning at exit 0",
+      "passed": true
+    }
+  ],
+  "all_passed": true,
+  "scope": "Synthetic prototype Settings and CLI specimens only; no real Codex configuration, receiver, producer or native acceptance"
+}
