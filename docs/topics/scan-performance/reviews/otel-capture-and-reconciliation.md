@@ -398,3 +398,29 @@ inventory，再推进业务时钟，发布并恰计入 1010 tokens、一份贡�
 3 轮 race 通过；遥测整包 race 与 `make vet` 亦通过（Go 1.27.3）。使用隔离 state/HOME 与合成记录，不宣称真实 producer 验收。
 
 新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
+
+## PR #61 第四轮修复交接 — 2026-11-01
+
+来源：[import 撤回未投影](https://github.com/kitdine/agent-deck/pull/61#discussion_r4434849124)、
+[运行中端口变更未生效](https://github.com/kitdine/agent-deck/pull/61#discussion_r4434849126)、
+[空的不完整覆盖在全量发布中显示为 0](https://github.com/kitdine/agent-deck/pull/61#discussion_r4434849129)，
+评审目标 `fa76d9f8de5a3027e049dc590a046c03c19a953c`。用户授权判断、修复、CI 全绿后请求新 review 并循环至无意见。
+三条均核实成立；前几轮 10 条线程逐条核对当前代码，均已修复，无需再改。
+
+`telemetry import` 直接调用 `Import`，绕过 `Drain` 的 `projectionPending`，冲突撤回后
+`Settle` 无变化，`session list` 仍显示已撤回会话。新增 `Reconciler.Import` 复用同一通道，CLI 改用它。
+
+listener 轮询配置时只处理关闭。`Serve` 现在先绑定新端口、再优雅关闭旧 server，同一 token、
+journal 与 coverage 区间不变；前台 owner 没有 supervisor，所以不靠退出重启。绑定失败时继续
+在原端口接收，写入 `bind_failed`，下次轮询重试，成功后清除。
+
+`Build` 的 `usageSnapshot` 无条件可用，只有 `BuildToday` 判定空的不完整覆盖。判定收敛为
+`withholdUnprovenZero`，并在 `prepareServingSnapshot` 对全量与派生缓存路径一并生效；complete
+下的实测 0、partial 下已提交的用量都保持可用。
+
+回归 `TestTelemetryImportRetractionReachesTheSessionIndex`、
+`TestServeMovesToAChangedPortAndKeepsReceivingUntilItCan`（真实 loopback，含端口被占用再释放）、
+`TestFullPublicationKeepsEmptyIncompleteCoverageUnavailable`，用 overlay 换回 `fa76d9f` 实现时均失败，
+修复后通过。使用隔离 state/HOME 与合成记录，不宣称真实 producer 验收。
+
+新候选待独立 Code Review；历史失败与旧内容门禁保留，不新发 PASS 或 Topic 验收。
