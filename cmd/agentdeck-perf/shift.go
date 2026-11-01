@@ -127,7 +127,7 @@ func formatLike(original string, at time.Time) (string, bool) {
 			return "", false
 		}
 		_, offset := parsed.Zone()
-		text = at.In(time.FixedZone("", offset)).Format(layout + "Z07:00")
+		text = at.In(time.FixedZone("", offset)).Format(layout + "-07:00")
 	}
 	return text, len(text) == len(original)
 }

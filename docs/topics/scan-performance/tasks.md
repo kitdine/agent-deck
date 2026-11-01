@@ -77,7 +77,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `measurement-harness` | [x] | [x] |
+| 1. `measurement-harness` | [x] | [ ] |
 | 2. `baseline-remeasure` | [x] | [x] |
 | 3. `serving-open-path` | [x] | [ ] |
 | 4. `parallel-source-pipeline` | [x] | [ ] |
@@ -86,7 +86,7 @@ UX 文档 `ux/menubar.md`、`ux/cli.md`、`ux/settings.md` 本次无行为、文
 | 7. `otel-capture-and-reconciliation` | [x] | [ ] |
 | 8. `cross-surface-acceptance` | [x] | [x] |
 
-`measurement-harness` 的当前评审与修复交接见 [评审记录](reviews/measurement-harness.md)。
+`measurement-harness` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/measurement-harness.md)；新候选待复评，交付状态由对应 Beads 任务记录。
 `baseline-remeasure` 的当前评审与修复交接见 [评审记录](reviews/baseline-remeasure.md)。
 `serving-open-path` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/serving-open-path.md)；新候选待复评，交付状态由对应 Beads 任务记录。
 `parallel-source-pipeline` 的历史交付评审与 PR #61 修复交接见 [评审记录](reviews/parallel-source-pipeline.md)；新候选待复评，交付状态由对应 Beads 任务记录。

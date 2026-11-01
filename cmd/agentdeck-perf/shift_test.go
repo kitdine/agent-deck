@@ -124,6 +124,52 @@ func TestShiftFileChangesOnlyTimestampBytes(t *testing.T) {
 	}
 }
 
+func TestShiftCorpusPreservesNumericUTCOffsets(t *testing.T) {
+	corpus := t.TempDir()
+	source := filepath.Join(corpus, ".codex/sessions/2026/10/20/rollout-2026-10-20T12-00-00-test.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stamps := []string{
+		"2026-10-20T12:00:00.000+00:00",
+		"2026-10-20T12:00:00+00:00",
+		"2026-10-20T12:00:00.000Z",
+		"2026-10-20T20:00:00.000+08:00",
+	}
+	var raw, expected strings.Builder
+	for _, stamp := range stamps {
+		raw.WriteString(codexLine(stamp))
+		expected.WriteString(codexLine(strings.Replace(stamp, "2026-10-20", "2026-10-23", 1)))
+	}
+	if err := os.WriteFile(source, []byte(raw.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mtime := time.Date(2026, time.October, 20, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(source, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "shifted")
+	result, err := shiftCorpus(corpus, out, 3, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(out, ".codex/sessions/2026/10/23/rollout-2026-10-23T12-00-00-test.jsonl")
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != expected.String() || len(got) != raw.Len() {
+		t.Fatalf("timestamp shape or contents changed incorrectly:\n got %s\nwant %s", got, expected.String())
+	}
+	info, err := os.Stat(target)
+	if err != nil || !info.ModTime().Equal(mtime.AddDate(0, 0, 3)) {
+		t.Fatalf("shifted mtime=%v err=%v", info, err)
+	}
+	if result.Files != 1 || result.Rewritten != len(stamps) || result.Unparsed != 0 || result.FallbackFiles != 0 {
+		t.Fatalf("shift result=%+v", result)
+	}
+}
+
 func TestShiftPathMovesCodexDates(t *testing.T) {
 	got := shiftPath(".codex/sessions/2026/10/30/rollout-2026-10-30T23-10-00-abc.jsonl", 3)
 	if want := ".codex/sessions/2026/11/02/rollout-2026-11-02T23-10-00-abc.jsonl"; got != want {

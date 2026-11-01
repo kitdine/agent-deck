@@ -570,3 +570,21 @@ Evidence：
   对混合工作树按 hunk 区分，排除旧任务的独立优化和生成产物，提交前确认贡献者归属。
 - 推送建议：任务提交完成并核验后，再按明确授权推送 `feature/scan-performance`；本轮未提交或推送。
 - 下一任务：`开发：scan-performance / baseline-remeasure`；工作区 `agent-deck.scan-performance`。
+
+## PR #61 修复交接 — 2026-11-01
+
+来源：[数值 UTC 偏移平移失败](https://github.com/kitdine/agent-deck/pull/61#discussion_r4432027295)，
+评审目标 `c37829d14fde0b81e8b6ac3894ed11137d95e0e4`。用户授权修复、分笔提交推送，
+并在当前提交全部 Actions 成功后再请求 Codex review。
+
+修复前，合法 `+00:00` 被 `Z07:00` 格式化为 `Z`，长度检查失败，内容保留旧日期，
+而目录与 mtime 已平移。新回归用合成工作副本确定复现该不一致；`Z` 与 `+08:00` 对照正常。
+数值偏移分支现使用 `-07:00`，保留显式 UTC 偏移与小数位数。
+
+`TestShiftCorpusPreservesNumericUTCOffsets` 核对有/无小数的 `+00:00`、`Z` 与非零偏移，
+完整文件字节、字段长度、平移目录与 mtime 一致，4 条记录全部重写、unparsed 为 0。
+该回归连续 3 轮 race 通过；测量工具整包 race 与 `make vet` 亦通过（Go 1.27.3）。
+
+本轮只使用临时合成语料，不重新冻结或读取真实日志。历史测量是否涉及该形状，仍需按原
+冻结身份及平移报告核对；现有评审记录未提供可直接判断该范围的 unparsed 聚合，不能
+把本轮工具修复当作历史批次重新验证。旧 PASS 与精确状态证据保留原绑定；新候选待独立评审。
