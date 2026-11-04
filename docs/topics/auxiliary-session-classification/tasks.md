@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-10-27
+updated: 2026-11-04
 ---
 
 # 辅助会话识别与工作视图隔离：实现分解
@@ -22,7 +22,22 @@ updated: 2026-10-27
 | architecture.md | [x] | [x] |
 | tasks.md | [x] | [x] |
 
-输入判定 SUFFICIENT：需求 Round 2、架构 Round 2、CLI Round 3、菜单栏 Round 4、
+2026-11-03 集成修订：scan-performance 已合入 `main` `6fff208`，并在 Beads 任务
+`ad-auxiliary-session-classification-origin-adapter-reducer` 登记 `codex-otel-background` 分类接口请求。
+据此修订 requirements（第二维护来源、记忆关联非目标、基线刷新前提）、architecture（§3.4 内建来源，
+§4/§6 复用 serving generation 与分区失效）、CLI 与 Settings（内建来源的命令与状态行）及本文件任务 1/2/3/9。
+上述五份的 Review 置回待评审，按 requirements → architecture → ux/cli → ux/settings → tasks 顺序复审；
+requirements 已于 Round 3 PASS。
+
+2026-11-04 修复（ASC-ARCH-R3-F1…F5、ASC-CLI-R4-F1/F2、ASC-SET-R5-F1、ASC-TASKS-R3-F1/F2）：规则覆盖支持表全部两条
+（exec、TUI）；新增只读 store 接口 `TelemetrySessionOriginMarkers` 与 `TelemetryBackgroundSessionCount`（任务 1），
+不改 scan-performance 已交付的 `TelemetrySessionSourceKinds`；分类 reason_code 为封闭枚举，Codex 来源复用
+`maintenance_origin`、由 rule_version 区分；新增只读 `session origin-source status`（架构 §7）与 core
+`origin_adapter_runs` 摘要；Settings 内建行定义五种状态并加三个原型场景。菜单栏与 Widget 的 UX 文档无需修改：
+菜单栏已映射 maintenance_origin，其实现须按封闭枚举映射（含 `origin_metadata_missing`）并对未知码通用回退，列入任务 5；
+Widget 只消费聚合与安全 availability reason，不受影响。两份原 PASS 保留。
+
+修订前的历史输入判定（保留）：SUFFICIENT——需求 Round 2、架构 Round 2、CLI Round 3、菜单栏 Round 4、
 Settings Round 4、Widget Round 2 均有适用 PASS。四份 UX 为最终表面，不沿用 framework 勾选冒充。
 评审记录分别位于 reviews/requirements.md、reviews/architecture.md、reviews/ux-cli.md、
 reviews/ux-menubar.md、reviews/ux-settings.md、reviews/ux-widget.md；历史失败和门禁勘误保留。
@@ -31,16 +46,22 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 
 ## 分解输入身份
 
-以下 blob 对应本次读取的工作树内容；开发入口如有实质变化，先做影响核对，不能自动沿用批准。
+历史批准列为 Round 2 分解所读内容；当前列为 2026-11-04 工作树内容（未提交）。
 
-| 文档 | Git blob |
-| --- | --- |
-| [requirements.md](requirements.md) | `3c14de201f3b0f87b16bdee4d4abde424b6b7136` |
-| [architecture.md](architecture.md) | `5b5a3b5694827900a9380e3879058a6baca4919a` |
-| [ux/cli.md](ux/cli.md) | `e4651cca9dbdc40348a0624134778a327539eb3e` |
-| [ux/menubar.md](ux/menubar.md) | `770cb769987da4232789f629e079eec8a4aa8c98` |
-| [ux/settings.md](ux/settings.md) | `090ce4e2151722f3c89c08714e2501cc8eee41ce` |
-| [ux/widget.md](ux/widget.md) | `0e764dbee6e92d2a878508ac7151d54901ff06ca` |
+输入判定 SUFFICIENT（2026-11-04 复评同步）：requirements Round 3、architecture Round 5、ux/cli Round 6、Settings Round 6、
+菜单栏 Round 4、Widget Round 2 均对下表当前 blob 有适用 PASS。ux/cli.md 的 Round 5 PASS 绑定旧 blob `7b2d214…`，其第 211 行把
+单项读取失败写成 available=false，与架构 §7 冲突；已按 ASC-TASKS-R5-F1 改为引用 §7 的 available/partial 规则，并于 Round 6 复评 PASS。
+影响核对（更正）：§7 的 available/partial 收紧需要修改 CLI 文本（已改）；Settings 五态表本就按 §7 把“开关未知”定为可用，无需修改。
+开发入口如有实质变化，先做影响核对，不能自动沿用批准。
+
+| 文档 | 历史批准 blob | 当前 blob | 状态 |
+| --- | --- | --- | --- |
+| [requirements.md](requirements.md) | `3c14de201f3b0f87b16bdee4d4abde424b6b7136` | `50da36642b7db63fe8286893141a42b464a5559c` | Round 3 PASS |
+| [architecture.md](architecture.md) | `5b5a3b5694827900a9380e3879058a6baca4919a` | `416d63c922b9ea445a53a9774388efa13776af1c` | Round 5 PASS |
+| [ux/cli.md](ux/cli.md) | `e4651cca9dbdc40348a0624134778a327539eb3e` | `549477b1b3e47aae80b26756a27bde6cd44c1360` | Round 6 PASS |
+| [ux/menubar.md](ux/menubar.md) | `770cb769987da4232789f629e079eec8a4aa8c98` | `770cb769987da4232789f629e079eec8a4aa8c98` | 未变，Round 4 PASS |
+| [ux/settings.md](ux/settings.md) | `090ce4e2151722f3c89c08714e2501cc8eee41ce` | `bb96bb3d65d8ce625bf7250ee4e741f2286a9e03` | Round 6 PASS |
+| [ux/widget.md](ux/widget.md) | `0e764dbee6e92d2a878508ac7151d54901ff06ca` | `0e764dbee6e92d2a878508ac7151d54901ff06ca` | 未变，Round 2 PASS |
 
 完整文档集为上述六份输入加本 tasks.md，共七份；无 n/a 表面或未编写占位。
 本文件独立评审负责文档集完整性、最终 UX/架构一致性、任务覆盖和依赖可执行性。
@@ -62,21 +83,29 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 
 顺序：1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 可串行执行；最低依赖见各任务。
 共享文件变更须顺序协调；此处依赖图不授权并行代理、分支创建或跨工作树合并。
-实现任务须在本文件评审通过及适用门禁/检查点满足后才进入 Beads；沿用一任务一载体，不按阶段建重复项。
+实现任务已按 Round 2 PASS 进入 Beads（各一载体、open）；认领开发须在本文件当前版本评审通过及适用门禁/检查点满足后进行，
+不按阶段建重复项。
 每个任务完成后独立评审并解决其证据边界；后续集成不能替代前序任务的必要检查。
 
 ### 1. origin-store
 
 - 依赖：本计划批准；架构 §4–5。范围：`internal/store/store.go`、`internal/store/derived_generation.go`、
   core append-only migrations 与 store 测试；新增 `internal/sessionorigin/` 的类型、存储接口及写入服务。
-  新文件按包职责命名，实施时分配实际 migration 号，不固定沿用基线 schema 30 或抢占 scan-performance 版本。
-- 实现：preferences、overrides/tombstone、mutations、origins/evidence、scope_data_revision；
+  新文件按包职责命名，实施时按当时 main 的 migration 清单分配号（main 已为 33），不固定沿用基线 schema 30。
+  基线：分支已于 2026-11-03 经授权合入 `main` `660c815`（合并提交 `3ec8709`），包含 `6fff208`。
+- 实现：preferences、overrides/tombstone、mutations、origins/evidence；不新增 scope_data_revision，
+  为 preferences/overrides/origins/evidence 与 telemetry_sessions 安装 serving revision trigger（mutations 不装）；
   confirmed/value/revision/reason 默认 DTO；同 ID/同负载先返回回执，再 CAS，再 no-change；
   value 与 binding 一起比较。只读路径不建库/迁移；显式写路径使用既有锁与短事务。
   本任务提供接收已验证 binding 的存储接口，可见目标解析与来源绑定由任务 2 接入。
+  另含 core `origin_adapter_runs`（架构 §4）及 `internal/store/telemetry.go` 新增的两个只读接口：
+  `TelemetrySessionOriginMarkers(ctx, client, ids)` 返回 source_kind/support_entry/settled_at（200 一批、空候选不查、
+  不建表不写行）与 `TelemetryBackgroundSessionCount(ctx)`；不修改既有 `TelemetrySessionSourceKinds`。
 - 验收：无配置成功读才 Work/0；读取错误为 unconfirmed/null；新请求 stale revision 即使同值也冲突；
   archived-1/expected4 clear→tombstone5、never-present expected0→no_change/0、旧请求不能清除后来的 revision6；
   request ID 负载冲突拒绝。提交前失败、提交后权限警告、commit 边界未知分别返回；回执和数据同事务。
+  新读取接口：0/1/200/201 个候选的批次边界、无标记与跨 client 同 ID 不返回、只读连接下可执行；计数只计
+  `codex-otel-background` 行；既有 `TelemetrySessionSourceKinds` 的测试与行为不变。
   clear 不打开 sessions/源日志，automatic/effective=null、not_queried；回执不自动过期。
 - 验证 L3：store/sessionorigin 定向及迁移/事务故障注入；并发 CAS/race；权限 0600/0700；
   schema-ahead 拒绝、回滚不推进可见 revision；Go core L2 全量与相关 vet。所有数据库为隔离 fixture。
@@ -85,11 +114,20 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 
 - 依赖：1。范围：新增 `internal/sessionorigin/` adapter/reducer/binding，`internal/session/session.go`、
   `internal/usage/usage.go` 的现有采集接点及相关 parser/fixture 测试；本地 source registry 接点。
-- 实现：只读、显式配置、版本/schema 白名单的 claude-mem 映射适配器；仅必要 ID 元数据，
+- 实现：内建 `codex-otel-background-v1` 规则（架构 §3.4）经任务 1 的 `store.TelemetrySessionOriginMarkers` 批量读取，
+  按 support_entry 白名单（`codex_exec/0.165.0/codex_exec/sse`、`codex-app-server/0.165.0/codex-tui/sse`）产生
+  auxiliary/`maintenance_origin` 证据，support_entry+settled_at 作 source token；白名单外为 unknown/`origin_rule_unsupported`；
+  标记撤销即证据失效；不读 Codex 文件、memories 状态库或接收器配置。reason_code 按架构 §3.3 封闭枚举产出。
+  claude-mem 每次协调阶段结束时与 origin_evidence 同事务写 origin_adapter_runs 摘要。
+  只读、显式配置、版本/schema 白名单的 claude-mem 映射适配器；仅必要 ID 元数据，
   精确 memory_session_id 与 Claude canonical ID 匹配，绝不用 content_session_id、路径、模型或前缀推断。
   在现有 scan/rebuild 阶段有界批次读取，UI 切范围不访问外部库。自动结果统一归约、叠加用户覆盖，
   stable birth binding 与共享 origin_input_token 编码固定；证据撤销/禁用/漂移使自动结果 unknown，覆盖保留。
-- 验收：至少一种与受支持 SDK 版本对应的脱敏或合成忠实 observer fixture，通过隔离端到端得到 auxiliary；
+- 验收：OTel 来源用 scan-performance 的隔离 ownership fixture：两条支持条目各自 settle 后的带标记会话
+  （exec 的 Memories 整理、TUI 的标题生成）均为 auxiliary/maintenance_origin、rule_version=codex-otel-background-v1；
+  晚到 rollout 撤销后不再 auxiliary；支持表外条目 unknown/origin_rule_unsupported；跨 client 同 ID 不命中；
+  OTel 贡献与金额不变。origin_adapter_runs 的 ok/partial/unavailable/unsupported 与证据同事务、失败回滚不留摘要。
+  至少一种与受支持 SDK 版本对应的脱敏或合成忠实 observer fixture，通过隔离端到端得到 auxiliary；
   content-only/synthetic/跨 client/伪目录/任务子代理不能误隐藏。同 canonical 多副本、混合用途、冲突、
   父关系缺失/环、source append/rewrite/move、迟到元数据及 token mismatch 均按架构处理。
   普通来源无已证实用途字段时 unknown，不虚构 work；增量与全量归约一致。
@@ -102,8 +140,10 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 - 依赖：1、2。范围：`internal/session/` 查询和索引迁移、`internal/usage/` 统计/信号、
   `internal/store/derived_generation.go` 与新增 sessionorigin selection/publication 服务及测试。
 - 实现：exclusions/canonical 去重 → scope → 排序/分页/聚合；work 包含 unknown，auxiliary 为确定辅助。
-  core/session 事务时钟及 trigger 覆盖最终 SQL 的全部读取依赖（含直接 SQL I/U/D、FTS 输入），
-  形成可审计依赖清单；不以 dirty 位代替 revision。双库只读向量核对，最多重试 2 次，
+  复用 main 的 ServingGeneration 向量与读者，不另建时钟；对照最终 SQL 的全部读取依赖（含直接 SQL I/U/D、
+  FTS 输入）与既有+新增 trigger 形成可审计依赖清单；不以 dirty 位代替 revision。重分类经
+  usage_derived_invalidations(kind='session') 只 dirty 受影响分区，范围为分区 payload 内的 scoped membership；
+  session_scope_view 随 desktop serving cache 同代发布。双库只读向量核对，最多重试 2 次，
   失败回旧完整快照+stale 或 unavailable；同 epoch 拒绝迟到结果，恢复 epoch 不作大小比较。
 - 验收：token 不一致不能沿用旧 auxiliary；usage-only 不制造文本会话。列表/总量/信号同代；
   work+aux=all 会话数，项目并集、时长区间/平均值按独立 oracle；跨天/DST、并发与缺失时间。
@@ -117,13 +157,20 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 - 依赖：1–3。范围：`cmd/agentdeck/` session/usage 命令、文本 renderer、browser/viewer 与对应 command/PTY 测试；
   具体新命令文件可新增，复用既有 envelope/错误协议，不建立第二分类实现。
 - 实现：list/search/interactive、usage stats/signals 的 --session-scope；classify 查询/set/clear/list/--request，
-  scope get/set、origin-source set/disable；--id 消解保留字；expected_revision/request_id 与读-CAS。
+  scope get/set、origin-source set/disable/status；--id 消解保留字；expected_revision/request_id 与读-CAS。
+  `origin-source status`（`session.origin_source.status`）按架构 §7 字段白名单与来源状态 reason 枚举，
+  只读 core、本机来源配置与 `telemetry.LoadConfig` 的 enabled；内建来源 set/disable 为 exit2 且不改状态。
   clear 必须 client、仅 core；覆盖枚举含 unmatched，默认20/最大200，client/session_id 排序。
 - 验收：文本默认 work，省略 scope JSON 默认 all，显式三范围及分页 total 正确；--all 只取消分页，
   show 精确 ID 不加 scope。数组/对象旧形状不变，session_selection/origin additive，搜索文档 total
   与 selected_session_count 分开。scan 默认/--no-scan/signals 原合同不变；失败保持 partial/scan_incomplete。
   exit2 参数错误、exit1 冲突/写失败/身份不可用按 CLI 最终合同；clear 回执不伪造当前分类。
   unknown 先读回执，重试保留同 ID/负载/expected_revision；source 输出不泄漏配置路径。
+  status：两项固定顺序；claude-mem 六种原因与判定顺序；Codex 有记录/三种无记录/core_unavailable；
+  claude-mem 每种原因下 available 取值，含“先有 ok 运行摘要后 disable”与“有摘要但配置不可读”两例必须 available=false；
+  partial 仅在 core 不可读、来源配置不可读、receiver.json 不可读或无效（含有记录时 receiver=unknown）时为 true，
+  未配置/停用/未读取/来源不可用/版本不支持/无记录为 partial=false；各情形均 exit0；
+  命令前后 core、配置文件、receiver.json 与 token 字节不变，不启动监听器，输出无路径/端点/token。
 - 验证 L2，读写隐私/并发部分 L3：命令 golden/JSON 向后兼容、非交互与 PTY 键盘/窄终端/退出恢复，
   与任务 1 的 clear 七场景联合检查，CLI 与服务独立 oracle 一致。
 
@@ -134,10 +181,13 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 - 实现：wire v1 新 session_scope_view；旧 sessions.total/items/periods/work_signals 原义保留。
   selection/client/period/publication、counts/recent/work_signals 一致；新消费者缺 view 时仅会话区域 unavailable。
   临时三范围不写偏好；下次打开使用已确认默认；未知默认不能 fallback Work。
+  来源详情的原因文案按架构 §3.3 封闭枚举映射（含 `origin_metadata_missing`；Codex OTel 会话显示 maintenance_origin
+  文案并带 rule_version），未知码显示通用文案、不推断 auxiliary。
   向任务 7 提供可按显式 Selection 请求的 Go session_scope_view 与 Swift 解码接口；
   不将 Popover 控制器的当前 selection 作为 Widget 数据来源。任务 7 承担 Widget 调用与聚合生产链。
 - 验收：快速切换、旧请求迟到、刷新/关闭重开、partial/stale/no-store、unknown 及旧 producer，
   不拼接不同 selection/generation；任务子代理留 Work。金额/额度始终全量，来源详情仅安全字段。
+  七个已知原因码各有文案，注入未知码时走通用回退且分类显示不变。
   用户 UTC/本地时区显示按最终菜单栏合同，标本时间不当运行期证据。
 - 验证 L3：Go/Swift DTO 兼容与控制器时序、受影响 macOS build/tests；原生 Popover 键盘、
   VoiceOver、窗口/分辨率/主题、session/client/period 联动验收，不以 React 断言替代。
@@ -147,11 +197,14 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 - 依赖：4、5。范围：`apps/macos/AgentDeckApp/SettingsWindowView.swift`、App 级设置请求控制器（新增）、
   CLI bridge 与 `AgentDeckTests/`；Go 只复用已批准接口，Swift 不直连 SQLite。
 - 实现：默认范围、精确目标分类、有效覆盖列表（含 unmatched）、只读来源状态；source 定位仅 CLI。
+  来源状态经 CLI bridge 读取任务 4 的 `session origin-source status`，固定两行：claude-mem 与内建 Codex background（OTel），
+  后者按 ux/settings.md 五种状态（有记录、三种无记录、core 不可读）展示，无控件；未知 reason 通用文案。
   App 持有 pending/request ID；view 关闭不丢失操作；确认值与草稿分离，冲突读最新值后重新选择。
 - 验收：saved+权限警告与未保存分离；publication_pending 不回滚默认。unknown 回执缺失后可显式
   同 ID/负载/expected_revision 重试；确定结果结束 pending 并解锁，旧 clear 回执不能移除较新覆盖。
   clear 后 not_queried，独立可见查询才显示分类；撤销不可见/excluded 覆盖不查源。
   当前 Popover 临时范围不变，后续打开及 Widget 新发布采用默认；loading/loadFailed 不生成 Work。
+  来源状态两行与 status JSON 逐字段一致；“无记录”三态不显示为错误，core 不可读时两行均不可用且本组 loadFailed。
 - 验证 L3：原生关闭重开/应用重启后的读回、并发 CLI、重复提交与 unknown/conflict 恢复；
   列表分页/删除焦点、键盘/AX、中英/主题。覆盖 ASC-SET-R1-F1、ASC-SET-R3-F1 已批准回归场景。
 
@@ -215,7 +268,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   在实际合并后的内容上测量有界适配器读取、trigger 写放大、受影响分区重算、范围切换及发布成本。
   不从本主题复制未稳定的数值或降低其预算；记录采用的文档 blob、候选 SHA、工具链、输入身份和有效样本。
   同输入 full-view 等价先通过，按该矩阵测 scan/无变化/增量/恢复和前台延迟；不以孤立 microbenchmark 代替。
-  scan-performance 当前位于独立工作树，本文不将其未集成代码当成本分支已有能力；缺最终集成对象时
+  scan-performance 已合入 `main` `6fff208`，本分支已刷新包含它，在实际内容上测量；缺最终集成对象时
   仅该联合验收保持未完成，不反向撤销可独立通过的前序任务，不标记 AC8 完成。
 - 验证 L3：适用 Go 全量/race/vet 与 macOS 集成/原生检查，复用精确内容可复用证据；
   不运行仅发布需要的 L4，不授予合并/安装/发布。需要超出现有权限的数据或安装时另取得相应授权。
@@ -246,7 +299,12 @@ store/desktop/backup/Widget/controller 接点，图只用于范围发现，不�
 
 ## 当前交接
 
-分解与文档集已独立复评 PASS（Round 2），见 [reviews/tasks.md](reviews/tasks.md)；七份文档集已 ratify。
-所有实现 Dev/Review 未勾选。
-实现 Beads 任务尚未创建，按上文 Tasks 规定的条件进入 Beads；评审 PASS 不授权开发或提交。
+分解与文档集曾独立复评 PASS（Round 2），见 [reviews/tasks.md](reviews/tasks.md)；2026-11-03 集成修订后，
+五份文档回到待评审（见 Documents），开发须等复审通过。所有实现 Dev/Review 未勾选。
+基线已刷新到 `main` `660c815`（合并提交 `3ec8709`）；Codex 记忆提取与来源会话关联已登记为 roadmap
+Backlog 与 deferred 协调项 `ad-codex-memory-source-linkage`。Settings 原型已补内建来源行及三个非默认状态场景。
+九个实现 Beads 任务（`ad-auxiliary-session-classification-origin-store` … `-integrated-acceptance`）已于 2026-10-27
+依据 Round 2 PASS 矩阵创建，当前均为 open、未认领；本轮修订改变了任务 1/2/4/5/6 的范围，开发认领前以本文件复审通过的版本为准。
+评审 PASS 不授权开发或提交。2026-11-04 起七份文档对当前内容均已复评 PASS（tasks.md Round 6），文档集重新 ratified；
+各文档尚未提交，提交须单独授权。实现任务的认领与开发须经单独的开发指令。
 未合并主题状态在本文件及 Beads 维护，不平行修改 main 的 docs/status.md。

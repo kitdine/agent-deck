@@ -142,3 +142,199 @@ WidgetIntents.swift 中 `WidgetClient`（all/codex/claude）、`WidgetPeriod`（
 - Completion gate: VERIFIED
 - Disposition: ASC-TASKS-R1-F1 CLOSED；ASC-TASKS-R1-F2 CLOSED。文档集七份 ratified。本记录引用的 ASC-SET-R1-F1、ASC-SET-R3-F1 是 ux/settings.md 的发现，非本记录发现，均已在 reviews/ux-settings.md Round 4 CLOSED；tasks.md 任务 6 仅把它们作为回归场景承接。
 - Residual uncertainty: 任务 7 宿主批次请求的实际成本与指定代可得性需在实现与任务 9 中测得；本 PASS 不授权创建实现任务、开发或提交。
+
+## Round 3 — 2026-11-03
+
+## 📋 实现分解集成修订评审（批量评审：所有文档）
+
+📊 总体评分: 6/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+**ASC-TASKS-R3-F1**（P1）[tasks.md:94-112, 161-172, 146-159] 2026-11-03 新增内容的任务覆盖不完整。
+- 行为风险: (a) 任务 2 指定经 `store.TelemetrySessionSourceKinds` 读取并按 support_entry 白名单判定，该接口不返回 support_entry/settled_at
+  （ASC-ARCH-R3-F2），没有任务拥有所需的 store 读取扩展；验收只写 “settle 后带标记会话”，未覆盖第二个支持表条目（ASC-ARCH-R3-F1）。
+  (b) 任务 4/6 未包含来源状态读取入口与 Settings 内建来源行（ASC-ARCH-R3-F5、ASC-CLI-R4-F1、ASC-SET-R5-F1）。
+  (c) 第 30 行断言菜单栏/Widget 只消费通用原因码、无影响，但菜单栏按码映射文案（ASC-ARCH-R3-F4），任务 5 未包含新原因码的展示。
+💡 修复: 上游发现关闭后，按其结论把读取接口扩展、来源状态读取与内建行、原因码展示分别放入明确任务的范围与验收，并重新给出菜单栏/Widget 影响结论。
+
+### 🟡 建议改进 — 推荐
+
+以下是本轮开放发现，PASS 前必须关闭。
+
+**ASC-TASKS-R3-F2**（P2）[tasks.md:33-51, 73, 269] 交接与输入身份陈旧。
+- 证据: 第 269 行称“实现 Beads 任务尚未创建”，而九个实现任务（`ad-auxiliary-session-classification-origin-store` … `-integrated-acceptance`）已于
+  2026-10-27 依据 Round 2 PASS 矩阵创建（`ad-auxiliary-session-classification-doc-tasks` 2026-10-27 13:44 评论），状态 open；
+  第 33–51 行的输入判定与 blob 表仍是修订前身份，文件自述“复审后更新”，但 tasks.md 的评审对象应是它所分解的当前文档集。
+💡 修复: 改正 Beads 现状描述；上游文档通过后，以当前 blob 刷新输入判定与身份表，再提交复评。
+
+### 🟢 优点
+
+- 任务 1/3/9 已改为复用 serving generation、usage_derived_invalidations 与 main 的 migration 编号，不再要求自建时钟，与架构 §4/§6 一致。
+- 任务 9 明确在已合入 scan-performance 的实际内容上测量，不复制未稳定数值。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），独立评审会话。
+- Method: 单评审者；读 diff 与全文，对照上游四份文档本轮结论、源码与 Beads 现状（只读查询）；不委派。
+- Scope: tasks.md 全文及文档集完整性。菜单栏（blob `770cb769987da4232789f629e079eec8a4aa8c98`）与 Widget（blob `0e764dbee6e92d2a878508ac7151d54901ff06ca`）
+  相对其 PASS 未变；Widget 只消费聚合与安全 reason 枚举（ux/widget.md:160 未知原因走通用不可用），本轮确认无影响；菜单栏的影响待 ASC-ARCH-R3-F4 结论。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `86181720f41b24dd7efb5584bc98e6528b280d95`（未提交，评审前内容）。
+- Fingerprint: `edafd50b2627247393359e71709973cd939ba3d6eb024d88d5e25de4cb42255e`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `bash scripts/check-topic-docs.sh auxiliary-session-classification` exit 0；`python3 scripts/check-docs.py` 通过；`scripts/check-whitespace.sh` 无输出。
+- Disposition: ASC-TASKS-R3-F1、ASC-TASKS-R3-F2 开放。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；本内容状态未记录 pass 证据。
+- Completion gate: NOT_VERIFIED
+
+## Repair candidate — 2026-11-04（Round 3 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-TASKS-R3-F1/F2，未委派。
+- ASC-TASKS-R3-F1 → repaired in candidate。(a) 任务 1 拥有两个新只读 store 接口与 origin_adapter_runs 及批次边界验收，任务 2 改用新接口、列两条支持条目并分别验收；(b) 任务 4 加 `origin-source status` 实现与验收，任务 6 加内建行五态与 status JSON 一致性；(c) 修订段改写菜单栏/Widget 影响结论，任务 5 加封闭枚举映射与未知码回退验收。
+- ASC-TASKS-R3-F2 → repaired in candidate。交接改为九个实现 Beads 任务已于 2026-10-27 创建且均 open、未认领（只读核对）；Tasks 段改为认领须以当前版本复审通过为准；输入身份表改为“历史批准 blob / 当前 blob / 状态”三列，当前列为本候选内容，输入判定待上游复评后定。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `364f78b59181ea2606b6f693f7098e65fd4fb7a3`。
+- 验证：`npm run build` 通过；auxiliary CLI/Settings/Widget final 契约脚本 exit0（14/14/39 项）；浏览器 Settings 脚本 70 项、菜单栏 176 项 0 失败；Settings 五种 Codex 行状态逐一渲染核对。`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh`、`scripts/check-whitespace.sh` 见修复交接。未运行产品测试（无产品代码变更）。
+- 原 FAIL/OPEN 与 NOT_VERIFIED 保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 4 — 2026-11-04
+
+## 📋 实现分解集成修复复评
+
+📊 总体评分: 8/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+以下为本轮新增开放发现，PASS 前必须关闭。
+
+**ASC-TASKS-R4-F1**（P3）[tasks.md:46-58, 163-165] 输入判定不能为 SUFFICIENT，且任务 4 的 status 验收依赖尚未定下的语义。
+- 行为风险: architecture.md 本轮为 FAIL（ASC-ARCH-R4-F1），tasks.md 自己也写明“输入判定待上游复评后定”。
+  任务 4 的验收“claude-mem 六种原因”没有覆盖 available 在停用、配置不可读时的取值，也没有覆盖 receiver=unknown 时是否置 partial。
+💡 修复: 架构修复后，在任务 4 验收中补上 available/partial 的对应用例，更新输入身份表的当前 blob 与状态，并写出输入判定。
+
+### 🟢 优点
+
+- **ASC-TASKS-R3-F1 — CLOSED**：
+  - 任务 1 拥有两个新只读接口与 origin_adapter_runs，并验收 0/1/200/201 的批次边界。
+  - 任务 2 改用新接口，两条支持条目分别验收。
+  - 任务 4 加入 status 的实现与验收。
+  - 任务 5 加入封闭枚举映射与未知码回退。
+  - 任务 6 加入内建行五态，并与 JSON 逐字段一致。
+  - 依赖链 1→2→4→6 覆盖了 status 的数据来源。
+- **ASC-TASKS-R3-F2 — CLOSED**：交接改为九个实现 Beads 任务已创建，均为 open、未认领（本轮只读核对 Beads，属实）；输入身份表改为历史/当前/状态三列。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 3 评审会话；未参与修复。
+- Method: 单评审者；读 diff，对照架构修复候选与 Beads 实时状态；不委派。
+- Scope: ASC-TASKS-R3-F1/F2，以及修订段、身份表和任务 1/2/4/5/6/9。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `364f78b59181ea2606b6f693f7098e65fd4fb7a3`（未提交，评审前内容）。
+- Fingerprint: `ec5e7bb08d282bf0de593c31feaa2ca7192b7da413903af19761a387ee6c8341`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Status sync: 评审后只更新 Documents 矩阵中 ux/cli.md、ux/settings.md 的 Review 勾选与身份表状态列，不改分解内容。
+- Disposition: ASC-TASKS-R3-F1、ASC-TASKS-R3-F2 CLOSED；ASC-TASKS-R4-F1 OPEN。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；本内容状态未记录 pass 证据。
+- Completion gate: NOT_VERIFIED
+
+## Repair candidate — 2026-11-04（Round 4 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-TASKS-R4-F1，未委派。
+- ASC-TASKS-R4-F1 → repaired in candidate。任务 4 status 验收补 available 各原因取值（含 disable 后残留摘要、配置不可读两例为 false）与 partial 的真/假用例（含有记录时 receiver=unknown）；输入身份表 architecture 当前列更新为修复候选 blob；写出输入判定 INSUFFICIENT（仅 architecture 待复评，其余五份当前 blob 均有 PASS），并写明 architecture 原 blob PASS 时转 SUFFICIENT 的条件；交接复评顺序改为 architecture → tasks。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `b2f680fac6d5f1376a4d4efd0aaca08770489fbe`；输入 architecture blob `416d63c922b9ea445a53a9774388efa13776af1c`。
+- 验证：`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh auxiliary-session-classification`、`scripts/check-whitespace.sh` 均 exit0；未改原型或产品代码，未运行产品测试。
+- 原 FAIL/OPEN 与 NOT_VERIFIED 保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 5 — 2026-11-04
+
+## 📋 实现分解复评（随架构 Round 5）
+
+📊 总体评分: 8/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+以下为本轮新增开放发现，PASS 前必须关闭。
+
+**ASC-TASKS-R5-F1**（P3）[tasks.md:54；ux/cli.md:211] “CLI 文本无需修改”的影响结论不成立，输入文档之间存在矛盾。
+- 行为风险: 架构 §7（Round 5 PASS）把 receiver.json 读取或解析失败定为三种“单项读取失败”之一，并规定此时 Codex 项 available 仍为 true（core 可读即为 true），有记录时 reason=null。
+  ux/cli.md:211 却写“单项读取失败只置该项 available=false/相应 reason”。ux/settings.md 五态表按架构把“开关未知”定为 available=true。
+  照 CLI 文本实现，会在接收器配置损坏时把 Codex 来源报成不可用，与架构和 Settings 不一致，任务 4 的实现者也会面对两份相互矛盾的合同。
+💡 修复: 把 ux/cli.md:211 改为引用架构 §7 的 available/partial 规则：三种读取失败置 partial=true；available 按 §7 字段表取值，receiver=unknown 时 Codex 项仍可为 true。
+修改后 ux/cli.md 需要复评；tasks.md 第 54 行的影响结论与身份表中 CLI 的状态同步更新。
+
+### 🟢 优点
+
+- **ASC-TASKS-R4-F1 — CLOSED**：
+  - 任务 4 的验收补上了 claude-mem 各原因下 available 的取值，含“先有 ok 摘要后 disable”与“有摘要但配置不可读”两例必须为 false。
+  - 补上了 partial 的真/假用例，含“有记录时 receiver=unknown”。
+  - 输入身份表把 architecture 当前列更新为 `416d63c…`，写出 INSUFFICIENT 判定，以及转为 SUFFICIENT 的条件。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 3/4 评审会话；未参与修复。
+- Method: 单评审者；读任务 4 验收与输入身份段，用 rg 在全部输入文档中检索“单项读取失败”与 available/partial，对照架构 §7；不委派。
+- Scope: ASC-TASKS-R4-F1，以及修复带来的输入一致性。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `b2f680fac6d5f1376a4d4efd0aaca08770489fbe`（未提交，评审前内容）。
+- Fingerprint: `d6427382fe0f377afe49b4ac00ca8ce2d972281dab9f84f3f5733df794e95928`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Status sync: 评审后只更新 Documents 矩阵中 architecture.md 的 Review 勾选、身份表中 architecture 与 ux/cli.md 的状态列，以及 INSUFFICIENT 判定的依据说明，不改分解内容。
+- Coordination: `ad-auxiliary-session-classification-doc-ux-cli` 从 awaiting_commit 退回 in_progress。CLI Round 5 PASS 与它绑定的 CEv1 内容状态 `cli-r5-053e798c443f98a9` 仍属于原 blob；修改后按新内容复评。
+- Disposition: ASC-TASKS-R4-F1 CLOSED；ASC-TASKS-R5-F1 OPEN。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；本内容状态未记录 pass 证据。
+- Completion gate: NOT_VERIFIED
+
+## Repair candidate — 2026-11-04（Round 5 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-TASKS-R5-F1，未委派。
+- ASC-TASKS-R5-F1 → repaired in candidate。ux/cli.md §7 原“单项读取失败只置该项 available=false”改为引用架构 §7：partial=true 仅限三种读取失败；available 按 §7 字段表，claude-mem 需配置启用且最近运行 ok/partial，Codex 只要 core 可读即 true，receiver=unknown 时仍 available=true（有记录 reason=null，无记录 otel_receiver_unknown）；各情形 exit0。
+- tasks.md：输入判定改为 INSUFFICIENT（仅待 ux/cli.md 复评，其余五份当前 blob 均有 PASS），更正影响核对结论；身份表 CLI 当前列更新为修复候选 blob；交接复评顺序改为 ux/cli → tasks。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；tasks.md blob `1dc4887210bc77dcf7a805291bc882310699bbd4`；ux/cli.md blob `549477b1b3e47aae80b26756a27bde6cd44c1360`。
+- 验证：`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh auxiliary-session-classification`、`scripts/check-whitespace.sh` 均 exit0；未改原型或产品代码，未运行产品测试。
+- 本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 6 — 2026-11-04
+
+## 📋 实现分解与文档集复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-TASKS-R5-F1 — CLOSED**：ux/cli.md:210-213 改为引用架构 §7（见 reviews/ux-cli.md Round 6 PASS），影响核对结论已更正为“CLI 需改（已改），Settings 无需改”。至此架构、CLI 和 Settings 三处的 available/partial 规则一致。
+- 七份文档对下表当前 blob 都有适用 PASS：requirements Round 3、architecture Round 5、ux/cli Round 6、Settings Round 6、菜单栏 Round 4、Widget Round 2，本文 Round 6。输入判定为 SUFFICIENT。
+- 任务 1–9 的覆盖在 Round 4、5 已核实（读取接口、来源状态、原因码映射、Settings 内建行、available/partial 用例），本轮无回退。九个实现 Beads 任务仍是 open、未认领。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 3–5 评审会话；未参与修复。
+- Method: 单评审者；核对修复候选的输入判定与身份表、CLI 修改段，以及架构 §7 与 Settings 五态表；不委派。
+- Scope: ASC-TASKS-R5-F1 与文档集完整性；分解正文相对 Round 5 未变。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；修复候选 blob `1dc4887210bc77dcf7a805291bc882310699bbd4`。
+- Status sync: 复评后只更新本文件的 Documents 矩阵（ux/cli.md、tasks.md 的 Review 勾选）、输入判定（INSUFFICIENT 改为 SUFFICIENT）、身份表中 CLI 的状态列和“当前交接”末段，不改分解内容。同步后 blob 为 `8a8d16eeb4267f73ddcde4fecdd3181df8879bef`，证据绑定这一最终内容。
+- Fingerprint: `58803d3f516baa579f09ee9a14ff2510ade955f42fbf55e0d1b6b409519c7381`；SHA-256(`head=<HEAD>;document=<同步后 blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Disposition: ASC-TASKS-R5-F1 CLOSED；七份文档集重新 ratified。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；ContentState: `auxiliary-session-classification:tasks-r6-58803d3f516baa57`。
+- Completion gate: VERIFIED
+- Residual uncertainty: 本 PASS 只覆盖设计文档；实现的认领、开发、提交与推送各需单独指令或授权。
