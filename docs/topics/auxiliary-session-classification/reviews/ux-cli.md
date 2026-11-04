@@ -197,3 +197,135 @@ Task checkpoint：ad-auxiliary-session-classification-doc-ux-cli；content_state
 推送建议：经授权提交并核验提交对象、Codex trailer 与 SSH 签名后推送 feature/auxiliary-session-classification；remote/upstream 尚未解析。
 
 设计：auxiliary-session-classification / ux/menubar.md（final-surface reconciliation）
+
+## Round 4 — 2026-11-03
+
+## 📋 CLI 集成修订评审（批量评审：所有文档）
+
+📊 总体评分: 7/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+以下是本轮开放发现，PASS 前必须关闭。
+
+**ASC-CLI-R4-F1**（P2）[ux/cli.md:40-60, 202-203] 没有读取来源状态的 CLI/JSON 入口。
+- 行为风险: 命令表只有 `origin-source set/disable claude-mem`；内建 `codex-otel-background` 不可 set/disable，因此 CLI 用户与经 CLI bridge
+  读取的 Settings（tasks.md 任务 6）都无法得到任一来源的 configured/enabled/available/reason。修订新增内建来源后，这一缺口在两行来源状态上都存在。
+💡 修复: 待 ASC-ARCH-R3-F5 定义读取合同后，在命令表与 JSON 合同中加入只读来源状态入口（含两类来源、字段白名单、exit 码），并补对应 Specimen 说明。
+
+**ASC-CLI-R4-F2**（P3）[ux/cli.md:59] 依赖未定的 reason_code。
+- 行为风险: 文中固定显示 `codex_otel_background`；若 ASC-ARCH-R3-F4 选择复用 `maintenance_origin` 或改名，本处即与架构矛盾。
+💡 修复: 按 ASC-ARCH-R3-F4 的结论同步原因码文字。
+
+### 🟢 优点
+
+- 内建来源 set/disable 为 exit2 且不改状态、以单会话 `--set work` 代替按来源整体关闭，与架构 §3.4 “内建、无配置”一致，避免第二个开关语义。
+- 空项目与 `session show` 无转录的说明与 scan-performance 的会话索引投影（`otel:codex/<id>`、项目为空）一致。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），独立评审会话。
+- Method: 单评审者；读 diff 与命令/JSON 合同全文，对照架构 Round 3 与 Settings；未运行 CLI 原型检查（原型 CLI 文件本轮未修改）。
+- Scope: ux/cli.md 全文；依赖 architecture.md（Round 3 FAIL）。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/cli.md blob `4bafecb2d0559be573a888a278f8226b1616223c`（未提交）。
+- Fingerprint: `46974b3065f44c5a015a578c1b39772f4ea946b56eb72464eb0bb4d0c89911c1`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`scripts/check-whitespace.sh` 无输出。
+- Disposition: ASC-CLI-R4-F1、ASC-CLI-R4-F2 开放。
+- WorkUnit: `auxiliary-session-classification:ux/cli.md`；本内容状态未记录 pass 证据。
+- Completion gate: NOT_VERIFIED
+
+## Repair candidate — 2026-11-04（Round 4 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-CLI-R4-F1/F2，未委派。
+- ASC-CLI-R4-F1 → repaired in candidate。命令表新增 `session origin-source status`；§7 补 JSON command、字段白名单、单项失败 exit0+partial、多余参数 exit2，并给出文本 specimen 与未知 reason 回退；注明浏览器 CLI 标本未覆盖、由任务 4 按合同验收。
+- ASC-CLI-R4-F2 → repaired in candidate。原因码改为 `maintenance_origin` + 规则版本 `codex-otel-background-v1`，与架构 §3.3 一致。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/cli.md blob `7b2d21468d4de773c2da2c10edd0ac31af0d6aae`；依赖 architecture 候选 `d7c63db9b0933e7641564ff0a9711b31c7318d2f`。
+- 验证：`npm run build` 通过；auxiliary CLI/Settings/Widget final 契约脚本 exit0（14/14/39 项）；浏览器 Settings 脚本 70 项、菜单栏 176 项 0 失败；Settings 五种 Codex 行状态逐一渲染核对。`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh`、`scripts/check-whitespace.sh` 见修复交接。未运行产品测试（无产品代码变更）。
+- 原 FAIL/OPEN 与 NOT_VERIFIED 保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 5 — 2026-11-04
+
+## 📋 CLI 集成修复复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-CLI-R4-F1 — CLOSED**：命令表新增只读 `session origin-source status`。以下合同都已写明：JSON command、两项固定顺序、字段白名单、单项失败时 exit0 且 partial、多余参数 exit2、文本标本不打印路径/端点/token、未知 reason 的回退。文档也注明浏览器 CLI 标本未覆盖此命令，由任务 4 按合同验收。
+- **ASC-CLI-R4-F2 — CLOSED**：Codex 后台会话改为 `maintenance_origin` 加规则版本 `codex-otel-background-v1`，与架构 §3.3 的枚举一致。
+- 内建来源调用 set/disable 时 exit2 且不改状态，与架构 §3.4“内建、无配置”一致。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 4 评审会话；未参与修复。
+- Method: 单评审者；读 diff，对照架构 §3.3/§3.4/§7 的修复候选；未运行 CLI 原型（`prototype/src/auxiliaryCli.js` 本轮未修改）。
+- Scope: ASC-CLI-R4-F1/F2 及新增的 status 段落。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/cli.md blob `7b2d21468d4de773c2da2c10edd0ac31af0d6aae`（未提交）。
+- Fingerprint: `053e798c443f98a9ec6624c6fa45b8b450a6e5985f9a49b353ee6ef31699e451`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Dependency: 本文的 status 字段写为“按架构 §7”，只引用不复制。ASC-ARCH-R4-F1 只会收紧 available/partial 的取值，不改本文的命令、字段集合或退出码。架构修复后如果改动了 CLI 可见字段，需要对本文做一次影响核对。
+- Disposition: ASC-CLI-R4-F1、ASC-CLI-R4-F2 CLOSED。
+- WorkUnit: `auxiliary-session-classification:ux/cli.md`；ContentState: `auxiliary-session-classification:cli-r5-053e798c443f98a9`。
+- Completion gate: VERIFIED
+- Gate scope: 本文档的独立复评与完整性检查；不认证 CLI 实现或 PTY 验收。
+
+## Repair candidate — 2026-11-04（Round 5 后，来自 ASC-TASKS-R5-F1）
+
+- Repairer：Claude Code（claude-code）修复会话；因 tasks 评审发现 ASC-TASKS-R5-F1 修改本文件，未委派。
+- ux/cli.md §7 原“单项读取失败只置该项 available=false”改为引用架构 §7：partial=true 仅限三种读取失败；available 按 §7 字段表，claude-mem 需配置启用且最近运行 ok/partial，Codex 只要 core 可读即 true，receiver=unknown 时仍 available=true（有记录 reason=null，无记录 otel_receiver_unknown）；各情形 exit0。
+- Round 5 PASS 绑定旧 blob `7b2d21468d4de773c2da2c10edd0ac31af0d6aae`，不适用于本候选，需复评。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/cli.md blob `549477b1b3e47aae80b26756a27bde6cd44c1360`；依据 architecture blob `416d63c922b9ea445a53a9774388efa13776af1c`（Round 5 PASS）。
+- 验证：`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh auxiliary-session-classification`、`scripts/check-whitespace.sh` 均 exit0；未改原型或产品代码，未运行产品测试。
+- 本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 6 — 2026-11-04
+
+## 📋 CLI 来源状态语义复评（ASC-TASKS-R5-F1）
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-TASKS-R5-F1（本文部分）— CLOSED**：ux/cli.md:210-213 不再自行规定 available，改为“按架构 §7 规则取值，CLI 不另立判定”。
+  partial 只在三种读取失败时为 true；claude-mem 只有在配置启用且最近一次运行为 ok/partial 时才 available；Codex 只要 core 可读就是 available，receiver=unknown 时仍为 true（有记录时 reason=null，无记录时为 otel_receiver_unknown）；所有情形都 exit0。
+  这与架构 §7（blob `416d63c…`，Round 5 PASS）和 ux/settings.md 五态表的“开关未知 available=true”三处一致。
+- 在全文检索“单项读取失败”与 available/partial，没有其他与 §7 冲突的残留表述。第 204 行的 warning/partial 属于分类查询的来源不可用，与 status 命令无关。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 4/5 评审会话；未参与修复。
+- Method: 单评审者；读修改段 ux/cli.md:207-224，对照架构 §7 字段表、原因表与 partial 段落，以及 Settings 五态表；未运行 CLI 原型（原型未修改）；不委派。
+- Scope: status 段的 available/partial 表述；其余内容相对 Round 5（blob `7b2d214…`）未变。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/cli.md blob `549477b1b3e47aae80b26756a27bde6cd44c1360`（未提交）。
+- Fingerprint: `795243633f402267bda4bb7a113ce35ce670dd372a962f8309f32dc7ef5e0047`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Architecture dependency: blob `416d63c922b9ea445a53a9774388efa13776af1c`，ContentState `auxiliary-session-classification:arch-r5-4299e9eae33f0e15`，门禁 VERIFIED。
+- WorkUnit: `auxiliary-session-classification:ux/cli.md`；ContentState: `auxiliary-session-classification:cli-r6-795243633f402267`。
+- Completion gate: VERIFIED
+- Gate scope: 本文档的独立复评、完整性检查与架构对齐；不认证 CLI 实现或 PTY 验收。

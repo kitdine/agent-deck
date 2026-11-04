@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-10-27
+updated: 2026-11-04
 ---
 
 # 辅助会话隔离：CLI 最终表面
@@ -51,8 +51,17 @@ Round 2 PASS/VERIFIED，架构 blob `5b5a3b5694827900a9380e3879058a6baca4919a`�
 | session scope get / session scope set work\|auxiliary\|all | 读取或保存桌面/Widget 持久默认；不改变 CLI 默认和已打开的临时范围 |
 | session origin-source set claude-mem --data-dir <absolute> | 配置明确元数据根，不修改插件；成功回显只含来源名/配置结果，不打印路径或凭据，不宣称已验证映射覆盖 |
 | session origin-source disable claude-mem | 禁用适配器并使相应自动证据失效；不删除覆盖、源日志或 usage，不启动隐式扫描 |
+| session origin-source status | 只读列出两类来源状态（claude-mem、内建 codex-otel-background），不扫描、不写状态、不打开插件库；Settings 读同一 JSON |
 | usage signals [--session-scope work\|auxiliary\|all] | 工作信号按范围选择；文本默认 work、JSON 默认 all；保留既有 client/period/kind 条件 |
 | usage stats 的工作分析块 | 新增同名范围参数仅作用于会话/Activity/Workflow/Tooling；总 token、费用等消耗块仍为 all 并分别标注范围 |
+
+origin-source 只管理需要外部数据根的适配器（首版 claude-mem）。内建来源 `codex-otel-background`
+读取 AgentDeck 自身 core 事实，不可 set/disable：对它调用 set/disable 为参数错误 exit2，不修改任何状态；
+其状态只经 `origin-source status` 读取。
+带该证据的会话在 classify 中显示 automatic=auxiliary、reason `maintenance_origin` 与规则版本
+`codex-otel-background-v1`（原因码不区分来源，来源由规则版本区分，见架构 §3.3）；
+它们在 list/search 的项目列沿用既有空项目显示，`session show` 无转录，与 scan-performance 读取面一致。
+需要把这类会话计入工作视图时使用单会话 `--set work` 覆盖，不提供按来源整体关闭的开关。
 
 `usage summary`、价格和额度命令不新增此参数；它们继续表达全部消耗。
 `--all` 继续表示取消分页，不表示 session-scope all；两者可组合。
@@ -195,6 +204,23 @@ data=null，error.details.default_scope 带 confirmed=false、value=null、revis
 只有已确认无配置才为 work/revision0。来源不可用是带原因的 warning/partial，不伪造成确定 auxiliary。
 origin-source 的成功 data 仅含 source、configured、enabled、mapping_coverage；disable 另报
 evidence_invalidated。set 的 mapping_coverage=not_verified，disable 为 unavailable；绝不回传 data-dir。
+
+`origin-source status` 的 JSON command 为 `session.origin_source.status`，data.sources 固定两项、顺序 claude-mem
+→ codex-otel-background，字段白名单与 reason_code 枚举按架构 §7：source、kind、configured、enabled、available、
+supported_version、rule_version、reason_code，claude-mem 另有 last_run_at，Codex 另有 receiver、background_sessions。
+available 与 partial 按架构 §7 规则取值，CLI 不另立判定：partial=true 仅限三种读取失败（core 不可读、来源配置不可读、
+receiver.json 不可读或无效即 receiver=unknown）；available 按 §7 字段表——claude-mem 只有配置启用且最近运行 ok/partial 才为 true，
+Codex 只要 core 可读即为 true，因此 receiver=unknown 时 Codex 项仍 available=true（有记录时 reason=null，无记录时 otel_receiver_unknown）。
+以上各情形命令均 exit0；多余参数 exit2；不存在写入失败类错误。
+文本形式每来源一行，例如：
+
+```text
+claude-mem              adapter  configured  enabled  available  15.2.1  last read 2026-11-03T08:00:00Z
+codex-otel-background   builtin  no records  (OTel capture is off: otel_receiver_disabled)
+```
+
+文本不打印数据根、数据库路径、端点或 token；未知 reason_code 显示 `reason unavailable`，不显示为 available。
+CLI 原型标本未覆盖此命令，最终 PTY/文本形态在任务 4 实现时按本合同验收。
 
 | 结果 | exit / 文案与结构 |
 | --- | --- |
