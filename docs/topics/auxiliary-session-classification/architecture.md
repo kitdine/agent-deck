@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-27
-updated: 2026-10-27
+updated: 2026-11-04
 ---
 
 # 辅助会话分类：架构与数据合同
@@ -23,6 +23,12 @@ updated: 2026-10-27
 菜单栏 `6589bae7e4a2bd11e3cc3731ec02a79815f0d912`、Settings `578976e5f1e00bbcc2cf753597cc798ed9934cd2`、
 Widget `3b15e60bb77b3883dc3528e5dd5fd806657a2f25`。其他会话的状态勘误与评审修改保留，不纳入本轮改写。
 
+2026-11-03 集成修订：按只读核对的远端 `main` `6fff208ac852b191c0a62df1f5be34c937601cfe`（scan-performance
+经 PR #61 合入）和其在本主题 Beads 任务 `ad-auxiliary-session-classification-origin-adapter-reducer` 登记的接口请求，
+新增 §3.4 的 Codex OTel 后台来源，并把 §4、§6 的事务时钟与发布改为复用已合入的 serving generation 与分区失效机制。
+本分支随后经授权合入 `main` `660c815`（合并提交 `3ec8709`，相对 `6fff208` 只多 status 文档），
+下表“main”所列能力因此已存在于本工作树。
+
 ## 2. 已核实的当前实现
 
 | 源位置 | 当前事实及设计影响 |
@@ -30,9 +36,13 @@ Widget `3b15e60bb77b3883dc3528e5dd5fd806657a2f25`。其他会话的状态勘误�
 | internal/session/session.go Metadata、meta、List | 无用途字段；List 按 client/session_id 与来源优先级选一条。不能通过 UI 隐藏替代统一分类 |
 | internal/usage/usage.go rebuildSessions；usage_test.go TestScanCapturesClaudeSessionStartThroughToAttribution | 子代理来源可与主日志共用 session ID；不能假设每文件等于独立子会话 |
 | internal/store/store.go Setting/SetSettings | 设置缺行与读取错误不同；提交后 secureFiles 错误仍可能已经落盘，不能所有 error 都回滚显示未保存 |
-| internal/store/derived_generation.go | core 有 epoch/revision/dirty，session_index_generation 当前只有 epoch；新索引内容 revision 需要明确新增，不能假定已有 |
+| internal/store/derived_generation.go | core 有 epoch/revision/dirty，session_index_generation 只有 epoch；main 上的会话内容版本由 serving_generation.revision 提供（见下行） |
+| main internal/store/serving_generation.go | core 与 sessions 各有 `serving_generation(schema_version, revision)`，由 AFTER I/U/D trigger 推进：core 覆盖 derivedSnapshotGenerationTables（含 usage_events、usage_sessions、usage_work_signals）、settings、quota_envelopes 与覆盖检查点；sessions 覆盖 session_sources、session_metadata、session_exclusions。`ServingGeneration` 向量为 core_epoch/usage_revision/session_epoch/session_revision，并由同一读者带 200 ms 截止核对 |
+| main internal/store/usage_partitions.go | 分区键 (client, model, day)，无范围维度；usage_sessions 等依赖变化写入 `usage_derived_invalidations(kind='session', client, key)` 并只 dirty 受影响分区 |
+| main internal/store/telemetry.go | core `telemetry_sessions(client, session_id, source_kind, model, first_at, last_at, support_entry, settled_at)`；`TelemetrySessionSourceKinds(ctx, client, ids)` 每批 200 个只返回 session_id→source_kind，不含规则所需的 support_entry/settled_at（本主题新增读取接口见 §3.4）；晚到 JSONL 的 trigger 在同一事务撤销贡献与标记。该表不在 serving trigger 清单中 |
+| main internal/telemetry/reconcile.go supportTable、config.go LoadConfig | 支持表两条：`codex_exec/0.165.0/codex_exec/sse` 与 `codex-app-server/0.165.0/codex-tui/sse`（`SupportEntry.Name()` = producer/version/originator/transport）；接收器开关为 state root 下 `telemetry/receiver.json` 的 enabled，LoadConfig 只读、缺文件即 disabled |
 | internal/backup/backup.go Create/Restore | 默认复制 core；sessions 仅 include-sessions；恢复目标为空。新覆盖放 sessions 会在 purge 后丢失 |
-| internal/store/store.go CurrentSchemaVersion | 本工作树为 core schema 30；其他未合并主题的 schema 不可视作当前能力 |
+| internal/store/store.go CurrentSchemaVersion | 本工作树已合入 main，`CurrentSchemaVersion = 33`（31 serving、32 usage partitions、33 telemetry）。本主题 migration 从实施时 main 的下一个号开始 |
 | internal/desktop/desktop.go sessionsSnapshot | 列表、total、periods 来自现有会话索引；新范围需独立投影，不能重解释 v1 旧 total |
 | apps/macos/AgentDeckShared/AppGroupSnapshotStore.swift | sessions 是 available/total 的聚合白名单；新 Widget 数据仍不能带身份或正文 |
 
@@ -103,9 +113,67 @@ ID 格式限制为规范 UUID；非 UUID/合成 provider 前缀不参与此适�
 移除或禁用适配器使受影响自动证据失效，重分类为 unknown；用户覆盖不随之删除。
 覆盖优先但不抹掉 automatic 的冲突/缺失原因。证据与会话源 generation 不匹配时只能 unknown，不能旧 auxiliary 隐藏新来源。
 
+reason_code 是对外稳定的封闭枚举，与 rule_version 分开：哪个维护规则命中由 rule_version 表达，
+原因码不随来源增多而增加。首版枚举：
+
+| reason_code | automatic | 含义 |
+| --- | --- | --- |
+| maintenance_origin | auxiliary | 任一维护规则命中（claude-mem `claude-mem-sdk-map-v1`、Codex OTel `codex-otel-background-v1`），具体规则见 rule_version |
+| origin_metadata_missing | unknown | 没有任何可用证据，普通来源默认（CLI JSON 与 Settings 标本已用此码；菜单栏标本内部键 `origin_missing` 实现时映射到此码） |
+| task_child_unconfirmed | unknown | 有独立 ID 的任务子代理，无可验证用途关系 |
+| conflicting_origin | unknown | 维护证据与明确工作证据冲突、混合用途或循环关联 |
+| origin_source_unavailable | unknown | 映射读取失败或来源版本未知 |
+| origin_rule_unsupported | unknown | 来源有标记但不在当前规则版本覆盖的支持条目内 |
+| origin_input_mismatch | unknown | 证据与当前会话源 generation 不匹配 |
+
+新增原因码属于合同变更，需同步四个 UX 表面。消费者遇到不认识的码时显示通用“原因暂不可显示”，
+仍按 effective/automatic 字段呈现分类，不从未知码推断 auxiliary，也不隐藏会话。菜单栏详情已映射
+maintenance_origin，因此 Codex OTel 来源不需要新文案；Widget 只消费聚合与安全 availability reason，不受影响。
+
 实现验收必须包含至少一种真实 SDK observer 格式的脱敏或合成忠实 fixture：匹配 memory ID 为辅助，
 content ID-only、synthetic ID、跨 client、重复副本、用户任务子代理与冲突均不误隐藏。
 源码核对不能替代支持版本的隔离端到端验收；无法得到可验证匹配则停止该适配器交付，不降低 AC1 为全 unknown。
+
+### 3.4 Codex OTel 后台来源（内建）
+
+来源为 scan-performance 已合入 main 的 `telemetry_sessions`。这是 AgentDeck 自己的 core 事实；分类规则不读 Codex
+文件、配置、memories 状态库、OTel journal 或接收器配置，也不需要数据根配置；因此是内建来源，不受 `origin-source set/disable`
+管理，分类可用性只取决于 core 可读。未开启 OTel 时没有标记行，结果为“无证据”，不是 unavailable。
+（来源状态展示为区分“未开启”与“已开启但无记录”只读接收器开关，见 §7，不参与分类。）
+
+规则 `codex-otel-background-v1`：client=codex + 精确 session_id 命中 `telemetry_sessions` +
+`source_kind='codex-otel-background'` + `support_entry` 属于规则版本列出的支持表条目 → 维护来源证据，
+reason_code=`maintenance_origin`（规则由 rule_version 标识，见 §3.3 枚举）。首版条目按 `SupportEntry.Name()`
+精确字符串列出 scan-performance 支持表现有的全部两条，均经 2026-10-29 隔离实验证明其无 rollout 会话只承载后台请求
+（Memories 整理、TUI 标题生成；scan-performance `reviews/otel-capture-and-reconciliation.md` 支持表实验、
+`internal/telemetry/reconcile.go` supportTable 注释）：
+
+| support_entry | 后台请求 |
+| --- | --- |
+| `codex_exec/0.165.0/codex_exec/sse` | exec 模式下的 Memories 整理 |
+| `codex-app-server/0.165.0/codex-tui/sse` | TUI 下的 Memories 整理与线程标题生成 |
+
+支持表新增条目时，只有证明其无 rollout 会话属于后台维护才随新规则版本加入，
+否则该会话为 unknown/`origin_rule_unsupported`。不使用 originator、model、`otel:` 前缀、空项目或时间相似性。
+
+读取接口：本主题在 `internal/store/telemetry.go` **新增** `TelemetrySessionOriginMarkers(ctx, client, ids)`，
+返回 session_id → {source_kind, support_entry, settled_at}，沿用 200 个一批、参数化 `IN`、只读查询，不建表、不改 schema、
+不写任何行；空候选不查。scan-performance 已交付的 `TelemetrySessionSourceKinds` 保持签名与行为不变，不由本主题改写。
+来源状态另用同文件新增的只读计数 `TelemetryBackgroundSessionCount(ctx)`（`source_kind='codex-otel-background'` 行数）。
+两者均归属任务 1（store 层），规则调用归属任务 2。
+
+证据随标记存在而存在：晚到 JSONL 使 scan-performance 在同一事务删除标记后，该会话的此证据失效，按普通 Codex
+来源重新归约（当前为 unknown），不得以旧 auxiliary 隐藏 JSONL 会话。标记与明确工作证据并存时为
+unknown/conflicting_origin。规则不改变 OTel 贡献、usage 事件、token、金额或会话索引投影。
+查询经该接口在现有 scan/rebuild 协调阶段以候选 Codex canonical ID 批量执行，范围切换不调用它。
+
+`telemetry_sessions` 不在 serving trigger 清单中：标记写入/撤销总与 usage_events、usage_sessions 同事务，
+现有 trigger 已推进 usage_revision 并写入会话失效；本主题 migration 仍为 telemetry_sessions 安装同类
+serving revision 与会话失效 trigger，使分类依赖不靠“恰好同事务”的隐含前提。
+
+与 §3.2 不同，本来源不暂存外部 adapter evidence 副本：origin_evidence 只记录 rule、canonical key、
+标记的 support_entry 与 settled_at 作为 source token。该来源无父会话字段，不推断父子关系；
+Memories 记忆提取请求与其来源会话的关联不在本主题实现（deferred 候选 `ad-codex-memory-source-linkage`）。
 
 ## 4. 持久化、身份与迁移
 
@@ -119,12 +187,13 @@ content ID-only、synthetic ID、跨 client、重复副本、用户任务子代�
 | core | origin_mutations：request_id、payload_hash、result、revision、target key | 幂等回执；不含正文/路径；明确响应可按 request_id 查询 |
 | core | session_origins：canonical key、automatic、reason、rule_version、input_token、evidence_revision | 可重建派生；不复制项目名或正文 |
 | core | origin_evidence：adapter/rule、canonical key、source token、purpose、validated_version、observed_at | 可重建，失效时保守 unknown；本地源路径只通过现有 source registry 定位，不新增可导出路径列 |
-| core | scope_data_revision：singleton、epoch、revision | 新范围读取依赖的事务时钟，提交变化才可见；不能复用会合并 dirty 写入的旧 revision 作为每次写入序号 |
-| sessions | 元数据的 origin_input_token；session_index_generation 新增 revision | 同一源解析事务更新；revision 与现有 epoch 组合识别内容，不以 epoch 单独冒充每次更新版本 |
+| core | origin_adapter_runs：adapter（主键）、outcome（ok/partial/unavailable/unsupported）、safe reason、validated_version、finished_at | 每个外部适配器最近一次 scan/rebuild 协调阶段的结果摘要，与 origin_evidence 同事务写入；供 §7 来源状态只读展示，不含路径/计数明细；可重建派生，不进 portable backup |
+| core | 复用 serving_generation.revision | 不新增 scope_data_revision。migration 为 origin_preferences、origin_overrides、session_origins、origin_evidence 与 telemetry_sessions 安装 serving revision trigger；origin_mutations 只是回执，不安装，以保持 no_change 不触发发布；serving_generation 不合并 dirty，每次提交写入推进，满足原“每次写入序号”要求 |
+| sessions | 元数据的 origin_input_token；复用 sessions 侧 serving_generation.revision | 不给 session_index_generation 新增 revision；若最终范围 SQL 读取 FTS 输入等 trigger 清单外的表，同一 migration 补齐其 trigger |
 | 本机非导出配置 | origin-source 的明确数据根与禁用状态 | 只定位来源，不保存凭据；restore 后需重新确认 |
 
-表/索引通过 core 与 session 各自 append-only migration 注册。schema 30 只是本基线；
-具体下一个版本号在实施入口依据当时集成 migration 清单分配，不与 scan-performance 尚未合并的 schema 抢号。
+表/索引通过 core 与 session 各自 append-only migration 注册。当前工作树与 main 均为 schema 33；
+具体下一个版本号在实施入口依据当时 main 的 migration 清单分配，不与并行主题抢号。
 禁止把语义变更伪装成无版本的 CREATE IF NOT EXISTS；旧二进制保持 schema-ahead 拒绝，不提供静默降级写。
 rollback 使用升级前备份，不删除新增表让旧版继续写。
 
@@ -189,13 +258,18 @@ work=work+unknown，auxiliary=auxiliary，all=并集；缺失关联归 unknown�
 先应用原有 exclusions 和 canonical 去重，再 scope，再排序/分页/聚合。
 会话数可相加；项目用集合并集；均值/区间并集/比例从所选集合重新算。usage 总事件与金额始终全量。
 
-core 分类与 sessions 索引不假定跨 WAL 数据库原子提交。定义读向量
-`(core_epoch, scope_data_revision, session_epoch, session_revision)`，另加规则版本和默认/覆盖版本。
-scope_data_revision 在 core 的新增 triggers 中覆盖分类/覆盖/偏好，以及被范围信号查询读取的
-usage_events、usage_sessions、usage_work_signals 和其查询依赖；按实际最终 SQL 形成依赖清单，
-每个依赖的 INSERT/UPDATE/DELETE（含直接 SQL）都须推进时钟。旧 dirty 位不能替代这一保障。
-session revision 的 triggers 覆盖 session_metadata、session_sources、session_exclusions 与 FTS 输入；
+core 分类与 sessions 索引不假定跨 WAL 数据库原子提交。读向量复用 main 的 `ServingGeneration`
+`(core_epoch, usage_revision, session_epoch, session_revision)` 及其读者，另加规则版本和默认/覆盖版本；不另建第二套向量。
+usage_revision 已覆盖 usage_events、usage_sessions、usage_work_signals；§4 的 migration 把分类/覆盖/偏好/证据与
+telemetry_sessions 加入 core trigger 清单。按实际最终 SQL 形成依赖清单并逐项对照 trigger，
+每个依赖的 INSERT/UPDATE/DELETE（含直接 SQL）都须推进 revision；旧 dirty 位不能替代这一保障。
+sessions 侧已覆盖 session_metadata、session_sources、session_exclusions，FTS 输入如被读取则补齐；
 递增在同一事务内提交，回滚不产生可见新版本。额外写放大纳入性能验收，不跳过交易计时。
+
+分类或覆盖变化对受影响 canonical key 写入既有 `usage_derived_invalidations(kind='session', client, key)`，
+由 scan-performance 的分区归约只 dirty 对应 (client, model, day) 分区；范围维度作为分区 payload 内的
+scoped membership/refcount，而不是新的分区键或第二套失效表。All 由全集直接得到，不把 work/auxiliary 分组相加。
+`session_scope_view` 在 desktop serving cache 的同一发布中生成，与旧 sessions 字段同代。
 origin_input_token 是共享归约器对 canonical key、当前有效来源身份/代次、用途证据和 parser/rule 版本
 排序后编码的 SHA-256；两端使用同一规范编码，不从路径名或未确认内容猜测 token。
 解析事务先提交带 input_token 的 sessions 元数据，分类事务再提交对应 token 的证据；
@@ -245,6 +319,52 @@ Settings 通过 Go JSON 命令读/写，Swift 不直连 SQLite；origin-source �
 Settings 显示适配器状态/安全原因与只读查询提示，不展示/编辑本机绝对路径。
 此状态字段需 final-surface 明确加入说明区；不在 framework 已通过的截图中假称它已实现。
 
+来源状态只读入口 `session origin-source status`（JSON command `session.origin_source.status`），CLI 与 Settings 共用。
+它不扫描、不打开外部插件库、不启动监听器、不读 token 或 Codex 配置，也不写任何状态。
+data 为 `sources` 数组，固定两项、顺序固定，每项字段白名单如下：
+
+| 字段 | claude-mem（kind=adapter） | codex-otel-background（kind=builtin） |
+| --- | --- | --- |
+| source、kind | `claude-mem`、`adapter` | `codex-otel-background`、`builtin` |
+| configured、enabled | 来自本机非导出配置；读取失败为 null | 恒为 null（内建，无配置/开关） |
+| available | 仅当配置可读、已配置且启用、core 可读，且最近一次 origin_adapter_runs.outcome 为 ok/partial 时 true；其余（含停用后残留的旧运行摘要）一律 false | core 可读时 true |
+| supported_version | 运行结果的 validated_version，未知为 null | null |
+| rule_version | `claude-mem-sdk-map-v1` | `codex-otel-background-v1` |
+| receiver | 不出现 | `enabled`/`disabled`/`unknown`：只用 `telemetry.LoadConfig` 读 receiver.json 的 enabled，读取或解析失败为 unknown |
+| background_sessions | 不出现 | `TelemetryBackgroundSessionCount`；core 不可读为 null |
+| reason_code | 安全原因或 null | 安全原因或 null |
+| last_run_at | origin_adapter_runs.finished_at，未运行为 null | 不出现 |
+
+reason_code 封闭枚举（与 §3.3 的分类原因码是两套，不混用）：
+
+| source | reason_code | 判定 |
+| --- | --- | --- |
+| claude-mem | `source_not_configured` | 配置读取成功且无数据根 |
+| claude-mem | `source_disabled` | 已配置但被 disable |
+| claude-mem | `source_not_yet_read` | 已配置启用、尚无 origin_adapter_runs 行 |
+| claude-mem | `source_unavailable` | 最近运行 unavailable（无权限、只读不满足、超时、根冲突） |
+| claude-mem | `source_version_unsupported` | 最近运行 unsupported |
+| claude-mem | `source_config_unreadable` | 本机配置读取失败；configured/enabled 为 null |
+| codex-otel-background | null | background_sessions > 0 |
+| codex-otel-background | `otel_receiver_disabled` | 无记录且 receiver=disabled（未开启采集） |
+| codex-otel-background | `no_background_sessions` | 无记录且 receiver=enabled（已开启，尚无带标记会话） |
+| codex-otel-background | `otel_receiver_unknown` | 无记录且 receiver=unknown |
+| 两者 | `core_unavailable` | core 不可读；available=false，依赖 core 的字段为 null |
+
+判定顺序：claude-mem 先看配置（config_unreadable → not_configured → disabled），再看 core（core_unavailable），
+最后看运行结果（not_yet_read → unavailable/version_unsupported → null）；Codex 先看 core，再看计数，最后看 receiver。
+有记录时即使 receiver=disabled 也报 available 与计数（历史标记仍有效），receiver 字段如实给出。
+claude-mem 的 available 按原因取值：source_config_unreadable、source_not_configured、source_disabled、core_unavailable、
+source_not_yet_read、source_unavailable、source_version_unsupported 均为 false；reason=null 时为 true。
+disable 不删除 origin_adapter_runs 摘要，但停用后 available 由配置判定为 false，摘要只保留 last_run_at/supported_version 供查看。
+
+“单项读取失败”恰为三种：core 不可读（core_unavailable）、本机来源配置不可读（source_config_unreadable）、
+receiver.json 读取或解析失败（receiver=unknown，无论是否有记录、reason 是否为 otel_receiver_unknown）。出现任一种时
+envelope partial=true，命令仍 exit0；未配置、停用、尚未读取、来源不可用/版本不支持、无记录等是已确认状态，partial=false。
+只有参数错误为 exit2。
+新增 reason_code 属于合同变更；消费者遇到不认识的码显示通用“状态原因暂不可显示”，不推断为可用。
+状态读的是已提交结果，不代表本机插件当前运行状态，也不证明映射覆盖率。
+
 App Group 新增 `session_scope_summary`，只含 available、scope、count、unknown_count、client/period、
 publication identity/time、安全 reason；绝不含 ID、project、model、父子关系、override 列表或源路径。
 既有 sessions.total 不改名。Magnitude small/large 消费各自窗口的 summary，中号不新增 count。
@@ -276,6 +396,9 @@ purge-index 仅删除派生 sessions 与相应 checkpoint；core 用户默认/�
 | publication | 两库交错写入、token mismatch、向量重试、迟到响应、epoch 切换；禁止旧辅助分类误隐藏 |
 | compatibility | 旧 JSON 数组和 wire v1 不变，新消费者缺字段安全降级，App Group 字段白名单与三个 Widget 尺寸 |
 | durability | schema-ahead、backup/include-sessions、purge-index、恢复绑定与未匹配覆盖；没有源数据修改 |
+| codex-otel-source | 两条支持条目（exec、TUI）的标记各自→auxiliary/maintenance_origin；晚到 JSONL 撤销后非 auxiliary；支持表外条目→origin_rule_unsupported；无标记 `otel:` 来源、跨 client 同 ID 不误判；新读取接口 200 批次边界与空候选不查；OTel 贡献与金额前后不变 |
+| source-status | 两项固定顺序与字段白名单；claude-mem 六种原因与 Codex 三种无记录原因、core 不可读；各原因下 available 取值（停用残留摘要仍 false）；仅三种读取失败（含 receiver=unknown）置 partial；命令不写状态、不读 token/Codex 配置；输出无路径 |
+| reason-code | 分类原因码封闭枚举；未知码的 CLI/Settings/菜单栏通用回退不推断 auxiliary |
 | performance | 适配器有界查询、范围切换零额外采集；按最终 scan-performance 矩阵验证实际分区/投影成本 |
 
 L0 验文档；L2 覆盖规则/查询/协议；持久化、迁移、并发、恢复和跨进程发布走 L3，Go 测试使用项目 wrapper。
