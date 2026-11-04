@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-27
-updated: 2026-10-27
+updated: 2026-11-04
 ---
 
 # 辅助会话隔离：Settings 最终表面
@@ -15,7 +15,8 @@ Round 2 PASS/VERIFIED（blob `5b5a3b5694827900a9380e3879058a6baca4919a`）。本
 
 复用 [共享原型](../../../../prototype/README.md) 的 SettingsWindow，新增“会话范围与分类 / Session scope and origin”组。
 入口 `?settings=1&auxSettings=normal`；合成舞台支持 normal/loading/loadFailed/saving/saveFailed/
-saveUnknown/receiptMissing/conflict/pending/replayed/permissionWarning，以及独立来源状态 sourceUnconfigured/sourceUnavailable/sourceUnsupported。
+saveUnknown/receiptMissing/conflict/pending/replayed/permissionWarning，以及独立来源状态 sourceUnconfigured/sourceUnavailable/sourceUnsupported
+（claude-mem 行）与 codexReceiverOff/codexNoRecords/codexReceiverUnknown（内建 Codex 行）；loadFailed 同时展示两行 core_unavailable。
 顶栏 Scenario、Open settings、Complete pending 明确标 stage，
 不是产品设置或用户恢复按钮。状态由 App 级模型持有，关闭 Settings 不丢失已接受的操作。
 源码为 `AuxiliarySettings.jsx`、`auxiliarySettingsModel.js`、`auxiliarySettings.css`，
@@ -82,11 +83,31 @@ user override 与 override revision。有效/自动分类的 work、auxiliary、
 ## 来源适配器状态（只读）
 
 显示 source 名、configured/enabled/available、已支持版本或安全 reason，不显示数据根、数据库路径、
-认证字段或原始映射。未配置、不可读、不支持版本三种原因分别展示；它们不等于默认偏好读取失败。
+认证字段或原始映射。未配置、不可读、不支持版本三种原因分别展示（source_not_configured/source_unavailable/
+source_version_unsupported，对应三个 source* 标本）；source_disabled、source_not_yet_read、source_config_unreadable
+分别显示“已停用”“尚未读取”“本机来源配置不可读”，原型不另设场景。它们不等于默认偏好读取失败。
 该来源不可用时，自动分类按架构为 unknown；用户已确认覆盖继续有效，允许对可见目标设置/撤销覆盖。
 单会话分类查询显示安全原因；明确来源定位只能通过 CLI origin-source 命令配置，Settings 不执行命令、
 不提供路径编辑器、不自动探测 HOME 或启动插件。配置存在也不宣称映射覆盖已验证。
 标本 normal 的可用状态是合成元数据快照，source* 三态均降为 unknown；不表示实际插件运行状态。
+
+来源列表固定两行：claude-mem（上述可配置适配器）与内建 Codex background（OTel）。两行数据都来自只读命令
+`session origin-source status` 的 JSON（字段与 reason_code 枚举见[架构](../architecture.md) §7），Settings 不自行读库或配置文件。
+后者无 configured/enabled 控件，只显示 available、背景会话记录数与安全 reason，完整状态如下：
+
+| 状态 | 数据字段 | 安全文案（中文 / English） |
+| --- | --- | --- |
+| 可用·有记录 | available=true、background_sessions>0、reason=null | 可用 · N 条后台会话记录 / available · N background session records |
+| 无记录·未开启 | available=true、0、reason=otel_receiver_disabled | 无后台会话记录：尚未开启 OTel 采集 / no records: OTel capture is off |
+| 无记录·已开启 | available=true、0、reason=no_background_sessions | 无后台会话记录：采集已开启，尚无带标记会话 / no records: capture is on, no marked session yet |
+| 无记录·开关未知 | available=true、0、reason=otel_receiver_unknown | 无后台会话记录：采集状态未知 / no records: capture state unknown |
+| core 不可读 | available=false、background_sessions=null、reason=core_unavailable | 不可用：本机用量库不可读，自动分类为未知 / unavailable: local usage database unreadable |
+
+三种“无记录”都不是错误，也不是 sourceUnavailable；有记录时即使接收器已关闭也显示可用与计数（历史标记仍有效）。
+core 不可读时 claude-mem 行同样为 core_unavailable（配置仍可读则 configured/enabled 照实显示），本组默认/覆盖处于 loadFailed。
+未知 reason_code 显示“状态原因暂不可显示”，不显示为可用。采集开关仍在 scan-performance 的 Codex 记忆联动区域，
+本区只做说明，不提供控制。原型标本 `data-as-source-codex` 以 `data-state` 区分 records/receiverOff/noRecords/
+receiverUnknown/coreUnavailable，由上列 stage 场景切换（合成文案）；不代表真实采集状态或原生验收。
 
 ## 保存状态机与窗口生命周期
 

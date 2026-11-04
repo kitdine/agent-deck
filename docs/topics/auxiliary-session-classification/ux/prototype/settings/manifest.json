@@ -1,10 +1,10 @@
 {
-  "stage": "final-surface-repair-r3",
-  "date": "2026-10-27",
-  "architecture_blob": "5b5a3b5694827900a9380e3879058a6baca4919a",
+  "stage": "integration-repair-r5",
+  "date": "2026-11-04",
+  "architecture_blob": "d7c63db9b0933e7641564ff0a9711b31c7318d2f",
   "retention": "Repository-owned design artifacts retained with topic review history.",
   "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
-  "previous_manifest_sha256": "078e780ea02880fa375a801a496f08dd634ad76da92d601c7df9585eafa4479f",
+  "previous_manifest_sha256": "8be1d4a4e253f737f7029c29092127312b02aa28adbfd892bad96d855c293f32",
   "historical_manifest": {
     "stage": "framework-repair-r1",
     "date": "2026-10-27",
@@ -143,23 +143,29 @@
     "model_contract_checks": 14,
     "browser": {
       "combinations": [
-        "en/dark/320",
-        "zh/light/320"
+        "default"
       ],
       "checks_each": 70,
-      "assertions": 140,
-      "failures": 0
+      "assertions": 70,
+      "failures": 0,
+      "codex_source_states": [
+        "records",
+        "receiverOff",
+        "noRecords",
+        "receiverUnknown",
+        "coreUnavailable"
+      ]
     },
-    "limits": "Synthetic model only; prior full matrix and axe remain historical, no new native or persistence acceptance."
+    "limits": "Synthetic model only; codex source row states are synthetic copy, not real receiver or core reads; no native or persistence acceptance."
   },
   "files": [
     {
       "path": "prototype/src/AuxiliarySettings.jsx",
-      "sha256": "3d67450c20b47bf94a83eeeb76c80b01101a0e5a3bd3f5e42334ccfe1c3d9ee6"
+      "sha256": "b4ff27892e7e6fa3e3fd137fcc44d7a152dcbe2c647f2411a420d84afed54b1f"
     },
     {
       "path": "prototype/src/auxiliarySettingsModel.js",
-      "sha256": "65a28c9b8b0103299e1d30ba61ec8e2cc9c7c35ec891c60b4e50de045fe30110"
+      "sha256": "9dcef346076426b07dc6f584887207f5dc61fffde83d49c40dfb8cbea8413fb5"
     },
     {
       "path": "prototype/src/auxiliarySettings.css",
@@ -167,19 +173,19 @@
     },
     {
       "path": "prototype/src/Settings.jsx",
-      "sha256": "4756d6a610a9c5cb0608fca3c72d1fa44590da87913e4a7b8017d18b38bfa054"
+      "sha256": "0099179801dfd3e879b34fd71b271a901ab0945b999e848f129cc3bf0845b697"
     },
     {
       "path": "prototype/src/App.jsx",
-      "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+      "sha256": "f6e05330477d540a4b22c1ba9eeaa90ea0468b75b2f581ca25597a60338ad8f6"
     },
     {
       "path": "prototype/src/Popover.jsx",
-      "sha256": "1e6c6c10ddb40f9f24abfeacbd768b1a622d7408ed5998300cde11005edb32df"
+      "sha256": "92fdaeb5552be142ad24cd694723e16dea4c33549f3567288aa765ff4635d3c5"
     },
     {
       "path": "prototype/src/styles.css",
-      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+      "sha256": "538a829ff8f51723b50633cba18ca347c63dea14bf921936eb056418fa865933"
     },
     {
       "path": "prototype/tools/check-auxiliary-settings.js",
@@ -208,6 +214,10 @@
     {
       "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r3fix-receipt-retry-zh-320.png",
       "sha256": "023e1e26f44f8f9f683c69bef82ce05cd8db04b77eb71cde6519e32dd0b0680f"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r5-codex-receiver-off-zh-320.png",
+      "sha256": "08a4407b452fd442332d24fae563e7e214b849662df519afdcabc69b0d0c581a"
     }
   ],
   "previous_final_checks": {

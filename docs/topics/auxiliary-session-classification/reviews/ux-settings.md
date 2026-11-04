@@ -263,3 +263,92 @@ retry 得 saved、默认 auxiliary、回执 request_id 与原 `fixture-request-1
 - Completion gate: VERIFIED
 - Disposition: ASC-SET-R1-F1 CLOSED；ASC-SET-R3-F1 CLOSED。
 - Residual uncertainty: 真实 Go 事务与跨重启回执读回、native AX/Dynamic Type 仍属实现验收。
+
+## Round 5 — 2026-11-03
+
+## 📋 Settings 集成修订评审（批量评审：所有文档）
+
+📊 总体评分: 7/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+以下是本轮开放发现，PASS 前必须关闭。
+
+**ASC-SET-R5-F1**（P2）[ux/settings.md:90-94] 内建来源行的状态集合不完整，且数据来源未定义。
+- 行为风险: 只定义“core 可读即可用”和“尚未开启 OTel 采集→无后台会话记录”。未定义 core 不可读时该行显示什么（是否沿用 sourceUnavailable），
+  也未区分“已开启但尚无记录”；状态清单（第 18 行 sourceUnconfigured/sourceUnavailable/sourceUnsupported）没有加入内建行的状态。
+  “是否开启 OTel”需要读取 telemetry 设置，而架构 §3.4 声明该来源不读配置，判定数据无合同（见 ASC-ARCH-R3-F5）。
+- 证据: 原型 `prototype/src/AuxiliarySettings.jsx` 第 80 行（blob `3987616a953310e03956477cfe102cfabd94d82b`）在所有场景中都把内建行渲染为“可用”，没有对应状态标本。
+💡 修复: 列出内建行的完整状态（可用/无记录·未开启/无记录·已开启/core 不可读）及各自安全文案与数据字段，按 ASC-ARCH-R3-F5 的 DTO 对齐，并在原型中给出至少一个非默认状态标本。
+
+### 🟢 优点
+
+- 内建行不提供控件、把采集开关留在既有 OTel 区域（`apps/macos/AgentDeckApp/SettingsWindowView.swift:46-62` 已存在 OTel 开关），避免重复控制点。
+- 明确标本为合成文案、不代表真实采集状态或原生验收。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），独立评审会话。
+- Method: 单评审者；读 diff、来源状态章节与原型改动；未重新渲染原型（修订者会话记录了原型检查通过，本轮不把它当作本评审证据）。
+- Scope: ux/settings.md 全文与 `prototype/src/AuxiliarySettings.jsx` 改动；依赖 architecture.md（Round 3 FAIL）。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/settings.md blob `23ab1149b5a74770ef064d071bf897bac608386d`；原型源 blob `3987616a953310e03956477cfe102cfabd94d82b`（均未提交）。
+- Fingerprint: `6fd65e74619902de7794cd99abad786485e27f8543016be197a0d7b2cbcb457a`；SHA-256(`head=<HEAD>;document=<blob>`)，不含原型 manifest。
+- Evidence: `python3 scripts/check-docs.py` 通过；`scripts/check-whitespace.sh` 无输出。
+- Disposition: ASC-SET-R5-F1 开放。
+- WorkUnit: `auxiliary-session-classification:ux/settings.md`；本内容状态未记录 pass 证据。
+- Completion gate: NOT_VERIFIED
+
+## Repair candidate — 2026-11-04（Round 5 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-SET-R5-F1，未委派。
+- ASC-SET-R5-F1 → repaired in candidate。来源状态区改为读取 `session origin-source status`；内建行列出五种状态（有记录、无记录·未开启、无记录·已开启、无记录·开关未知、core 不可读）及数据字段与中英安全文案；claude-mem 六种原因对应文案；状态清单加入 codexReceiverOff/codexNoRecords/codexReceiverUnknown，loadFailed 两行均 core_unavailable。
+- 原型：`AuxiliarySettings.jsx` 以 `data-state` 渲染五态，`auxiliarySettingsModel.js` 增三个 stage 场景；新增截图 `ux/prototype/settings/r5-codex-receiver-off-zh-320.png`；manifest 刷新为 integration-repair-r5（旧 manifest SHA-256 `8be1d4a4e253f737f7029c29092127312b02aa28adbfd892bad96d855c293f32`）。合成文案，不代表真实采集或原生验收。
+- Candidate identity：HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/settings.md blob `bb96bb3d65d8ce625bf7250ee4e741f2286a9e03`；原型 AuxiliarySettings.jsx blob `66d1825797e80d11838d862f400f112b9526d704`、auxiliarySettingsModel.js blob `468c44fffe204344152772019079008c0c64d6f9`、manifest blob `cb5ae69ee4ee80b5614a9c23cdb005e96c1ddd75`。
+- 验证：`npm run build` 通过；auxiliary CLI/Settings/Widget final 契约脚本 exit0（14/14/39 项）；浏览器 Settings 脚本 70 项、菜单栏 176 项 0 失败；Settings 五种 Codex 行状态逐一渲染核对。`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh`、`scripts/check-whitespace.sh` 见修复交接。未运行产品测试（无产品代码变更）。
+- 原 FAIL/OPEN 与 NOT_VERIFIED 保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 6 — 2026-11-04
+
+## 📋 Settings 集成修复复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-SET-R5-F1 — CLOSED**：
+  - 内建 Codex 行定义了五种状态：有记录、未开启、已开启无记录、开关未知、core 不可读。
+  - 数据来源限定为 `session origin-source status` 的 JSON。
+  - 三种“无记录”都不算错误；有记录时，即使接收器已关闭也显示可用。
+  - 原型 `AuxiliarySettings.jsx` 用 `data-as-source-codex data-state` 渲染这五态，新增三个 stage 场景；loadFailed 下两行均为 core_unavailable。
+- 新截图 `r5-codex-receiver-off-zh-320.png` 的 SHA-256（`08a4407b…c581a`）与 manifest 一致。目视确认：320 宽下显示 receiverOff 文案，无溢出。
+- claude-mem 行补全了 source_disabled、source_not_yet_read、source_config_unreadable 三种文案，与架构 §7 的枚举对应。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 5 评审会话；未参与修复。
+- Method: 单评审者。读文档与原型 diff；重跑 `node prototype/tools/check-auxiliary-settings-final.mjs`，14 项 0 失败（仅检查合成模型）；目视检查新截图。未重跑浏览器脚本。
+- Scope: ASC-SET-R5-F1，以及来源状态段落、原型和 manifest 的变更。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；ux/settings.md blob `bb96bb3d65d8ce625bf7250ee4e741f2286a9e03`（未提交）；原型 AuxiliarySettings.jsx blob `66d1825797e80d11838d862f400f112b9526d704`。
+- Fingerprint: `4b3a36b280aba0028a9c71dbc10bfef723504ff7c64b989249ad75c9bca91ba3`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Dependency: 如果 ASC-ARCH-R4-F1 把已停用 claude-mem 的 available 定为 false，与本文的“已停用”文案相容。原型中 sourceAvailable 只在三个 source* 场景和 loadFailed 下为 false，没有 disabled 场景，因此不冲突。
+- Disposition: ASC-SET-R5-F1 CLOSED。
+- WorkUnit: `auxiliary-session-classification:ux/settings.md`；ContentState: `auxiliary-session-classification:set-r6-4b3a36b280aba002`。
+- Completion gate: VERIFIED
+- Gate scope: 本文档及其合成原型标本的独立复评；不认证原生 Settings 实现。

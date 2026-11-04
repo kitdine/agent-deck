@@ -1,5 +1,5 @@
 // Memory-only interaction fixture. No product IO, persistence or real CAS execution.
-export const SETTINGS_SCENARIOS=['normal','loading','loadFailed','saving','saveFailed','saveUnknown','receiptMissing','conflict','pending','replayed','permissionWarning','sourceUnconfigured','sourceUnavailable','sourceUnsupported'];
+export const SETTINGS_SCENARIOS=['normal','loading','loadFailed','saving','saveFailed','saveUnknown','receiptMissing','conflict','pending','replayed','permissionWarning','sourceUnconfigured','sourceUnavailable','sourceUnsupported','codexReceiverOff','codexNoRecords','codexReceiverUnknown'];
 export const SETTING_SESSIONS=[
   {client:'codex',id:'task-01',project:'demo',automatic:'unknown',reason:'origin_metadata_missing'},
   {client:'claude',id:'old-01',project:'research',automatic:'unknown',reason:'origin_metadata_missing'},
