@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-10-08
+updated: 2026-11-01
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,20 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- Partial v0.7.0 assembly: [PR #61](https://github.com/kitdine/agent-deck/pull/61)
+  integrated scan-performance into remote main at
+  `6fff208ac852b191c0a62df1f5be34c937601cfe`. Its tree
+  `b4211bf442304e85c2dfbd4bdc480bff1ca77150` equals the independently reviewed
+  integration candidate; source `d0bd36ea` and target `d78c3458` remain its
+  parents. Further PR review iterations were stopped by explicit operator
+  decision. Post-merge CI `41321169520` completed successfully in all four jobs,
+  verified on 2026-11-03. GitHub verified the server-created merge's PGP signature.
+  The agent's SSH-only blocking interpretation was explicitly rejected by the
+  operator and corrected; no signature exception or history rewrite is needed.
+  The exact-merge batch integration gate is VERIFIED 4/4.
+  Pricing, auxiliary isolation and combined acceptance
+  remain required. This records integration, not v0.7.0 completion or release.
 
 - Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](archive/topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
 
