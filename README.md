@@ -511,4 +511,4 @@ for repository-specific development and authorization rules.
 
 ## License
 
-This repository does not currently include a license file.
+This project is licensed under the [MIT License](LICENSE).

@@ -60,7 +60,7 @@ final class DesktopPreferencesTests: XCTestCase {
 	func testDefaultsOnACleanDomainAreTheQuietChoice() {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 
-		XCTAssertFalse(preferences.periodicRefreshEnabled)
+		XCTAssertTrue(preferences.automaticUpdateEnabled, "absent value keeps the file watching earlier builds ran")
 		XCTAssertEqual(preferences.menuBarValue, .cost)
 		XCTAssertEqual(preferences.menuBarScope, .allClients)
 		XCTAssertEqual(preferences.loginItem, .disabled)
@@ -71,29 +71,38 @@ final class DesktopPreferencesTests: XCTestCase {
 	func testPreferencesPersistAcrossARelaunch() {
 		let defaults = isolatedDefaults()
 		let first = DesktopPreferences(defaults: defaults, registrar: StubLoginItemRegistrar())
-		first.periodicRefreshEnabled = true
+		first.automaticUpdateEnabled = false
 		first.menuBarValue = .tokens
 		first.menuBarScope = .followPanel
 		first.quotaProbeEnabled = true
 		first.quotaProbeInterval = .thirtyMinutes
 
 		let second = DesktopPreferences(defaults: defaults, registrar: StubLoginItemRegistrar())
-		XCTAssertTrue(second.periodicRefreshEnabled)
+		XCTAssertFalse(second.automaticUpdateEnabled)
 		XCTAssertEqual(second.menuBarValue, .tokens)
 		XCTAssertEqual(second.menuBarScope, .followPanel)
 		XCTAssertTrue(second.quotaProbeEnabled)
 		XCTAssertEqual(second.quotaProbeInterval, .thirtyMinutes)
 	}
 
-	func testPeriodicPreferenceNotifiesSchedulerInBothDirections() {
+	func testAutomaticUpdatePreferenceNotifiesInBothDirections() {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 		var observed = [Bool]()
-		preferences.periodicRefreshDidChange = { observed.append($0) }
+		preferences.automaticUpdateDidChange = { observed.append($0) }
 
-		preferences.periodicRefreshEnabled = true
-		preferences.periodicRefreshEnabled = false
+		preferences.automaticUpdateEnabled = false
+		preferences.automaticUpdateEnabled = true
 
-		XCTAssertEqual(observed, [true, false])
+		XCTAssertEqual(observed, [false, true])
+	}
+
+	func testStoredPeriodicRefreshValueCarriesOverIncludingExplicitOff() {
+		for stored in [false, true] {
+			let defaults = isolatedDefaults()
+			defaults.set(stored, forKey: "desktop.periodicRefresh")
+			let preferences = DesktopPreferences(defaults: defaults, registrar: StubLoginItemRegistrar())
+			XCTAssertEqual(preferences.automaticUpdateEnabled, stored)
+		}
 	}
 
 	func testQuotaProbeIntervalFallsBackToFiveMinutesForAnUnrecognizedStoredValue() {

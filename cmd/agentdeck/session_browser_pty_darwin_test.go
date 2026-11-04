@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -22,12 +23,24 @@ func TestSessionBrowserCommandReleasesStateLockWhileWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	stateDir := t.TempDir()
+	core, err := store.Open(context.Background(), stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	index, err := store.OpenSessions(context.Background(), stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Close(); err != nil {
+		t.Fatal(err)
+	}
 	command := newRootCommand(slave, slave)
 	command.SetArgs([]string{"--state-dir", stateDir, "session", "--interactive"})
-	done := make(chan error, 1)
-	go func() {
-		done <- command.ExecuteContext(context.Background())
-	}()
+	done, stop := startSessionBrowserPTYOwner(command.ExecuteContext)
+	defer stop()
 	output := readSessionBrowserPTYUntil(t, master, "agentdeck session scan")
 	if !strings.Contains(output, terminalEnterScreen) || !strings.Contains(output, "No indexed sessions.") {
 		t.Fatalf("browser startup output incomplete: %q", output)
@@ -79,10 +92,10 @@ func TestSessionBrowserPTYOpensNavigatesAndReturnsFromStructuredDetail(t *testin
 		}
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		done <- runSessionBrowser(context.Background(), slave, slave, items, load)
-	}()
+	done, stop := startSessionBrowserPTYOwner(func(ctx context.Context) error {
+		return runSessionBrowser(ctx, slave, slave, items, load)
+	})
+	defer stop()
 	root := readSessionBrowserPTYUntil(t, master, "SELECTED")
 	for _, want := range []string{"MODEL", "PROJECT", "claude-opus", "agent-deck"} {
 		if !strings.Contains(root, want) {
@@ -127,6 +140,39 @@ func TestSessionBrowserPTYOpensNavigatesAndReturnsFromStructuredDetail(t *testin
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("session browser did not exit after q")
+	}
+}
+
+func TestSessionBrowserPTYOwnerCanBeStoppedBeforeTheFirstFrame(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	master, slave := openSessionViewerPTY(t)
+	defer master.Close()
+	defer slave.Close()
+	done, stop := startSessionBrowserPTYOwner(func(ctx context.Context) error {
+		return runSessionBrowser(ctx, slave, slave, nil, nil)
+	})
+	defer stop()
+	stop()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("early browser cancellation = %v", err)
+	}
+	// Closing is safe only after the browser's terminal operations have ended.
+	if err := slave.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func startSessionBrowserPTYOwner(run func(context.Context) error) (<-chan error, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		done <- run(ctx)
+	}()
+	return done, func() {
+		cancel()
+		<-stopped
 	}
 }
 

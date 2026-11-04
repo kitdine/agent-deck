@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import WidgetKit
 
-#if DEBUG
+#if DEBUG || AGENTDECK_PERF
 enum DebugTestIsolationError: Error, Equatable {
 	case unsafeHome
 }
@@ -16,6 +16,8 @@ func debugTestHome(environment: [String: String]) throws -> URL? {
 			"/private/tmp/agentdeck-menubar-acceptance.",
 			"/tmp/agentdeck-macos-xctest.",
 			"/private/tmp/agentdeck-macos-xctest.",
+			"/tmp/agentdeck-perf.",
+			"/private/tmp/agentdeck-perf.",
 		]
 		guard acceptedPrefixes.contains(where: testHome.path.hasPrefix) else {
 			throw DebugTestIsolationError.unsafeHome
@@ -91,14 +93,20 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let switchController: SwitchController
 	private let model: MenuBarViewModel
 	private let quotaSettings: QuotaSettingsController
+	private let telemetrySettings: TelemetrySettingsController
 	private let settingsController: SettingsWindowController
-	private let refreshScheduler: DesktopRefreshScheduler
 	private let periodicDriver: DesktopRefreshPeriodicDriver
 	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
-	private var periodicRefresh: Task<Void, Never>?
+	private var quotaSchedule: Task<Void, Never>?
 	private var wakeObserver: NSObjectProtocol?
 	private var acceptanceWindow: NSWindow?
+	private let sourceHome: URL
+	private var sourceMonitor: DesktopSourceChangeMonitor?
+	private var automaticUpdates: DesktopAutomaticUpdates?
+	#if AGENTDECK_PERF
+	private var perfDriver: PerfDriver?
+	#endif
 
 	override init() {
 		var runner = EmbeddedHelperRunner()
@@ -114,7 +122,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			.appendingPathComponent(".claude", isDirectory: true)
 			.appendingPathComponent("settings.json", isDirectory: false)
 		var automaticRefreshEnabled = true
-		#if DEBUG
+		var sourceHome = FileManager.default.homeDirectoryForCurrentUser
+		#if DEBUG || AGENTDECK_PERF
 		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
 		// starts this application delegate, including its initial helper refresh.
 		// resolveDebugHome is the single fail-closed decision for every
@@ -129,16 +138,25 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
 		switch resolveDebugHome(environment: ProcessInfo.processInfo.environment) {
 		case .real:
+			#if AGENTDECK_PERF
+			// A measurement build never reads or writes real AgentDeck state.
+			preconditionFailure("Perf builds require an isolated AGENTDECK_TEST_HOME")
+			#else
 			break
+			#endif
 		case .isolated(let testHome):
+			sourceHome = testHome
+			var isolatedEnvironment = [
+				"HOME": testHome.path, "LANG": "en_US_POSIX", "LC_ALL": "en_US_POSIX", "PATH": "/usr/bin:/bin",
+			]
+			if PerfTrace.isEnabled {
+				// App and helpers run in the batch's timezone (anchor date).
+				isolatedEnvironment["TZ"] = ProcessInfo.processInfo.environment["TZ"] ?? "America/New_York"
+				isolatedEnvironment["TMPDIR"] = ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory()
+			}
 			runner = EmbeddedHelperRunner(
 				appBundleURL: Bundle.main.bundleURL,
-				environment: [
-					"HOME": testHome.path,
-					"LANG": "en_US_POSIX",
-					"LC_ALL": "en_US_POSIX",
-					"PATH": "/usr/bin:/bin",
-				]
+				environment: isolatedEnvironment
 			)
 			snapshotStore = AppGroupSnapshotStore(
 				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
@@ -161,19 +179,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
 			snapshotStore: snapshotStore
 		)
-		let scheduler = DesktopRefreshScheduler(enabled: preferences.periodicRefreshEnabled) { [weak coordinator] trigger in
-			Task { @MainActor in
-				await coordinator?.requestFullRefresh(trigger: trigger)
-			}
-		}
-		let periodicDriver = DesktopRefreshPeriodicDriver(scheduler: scheduler) { [weak coordinator] in
+		let periodicDriver = DesktopRefreshPeriodicDriver { [weak coordinator] in
 			await coordinator?.requestQuotaRefresh(manual: false)
-		}
-		coordinator.setFullAttemptTerminalHandler { [weak scheduler] in
-			scheduler?.fullAttemptCompleted()
-		}
-		preferences.periodicRefreshDidChange = { [weak scheduler] enabled in
-			scheduler?.updateEnabled(enabled)
 		}
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
 		let quotaSettings = QuotaSettingsController(
@@ -186,23 +193,44 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			}
 		)
 		self.preferences = preferences
-		refreshScheduler = scheduler
 		self.periodicDriver = periodicDriver
 		self.automaticRefreshEnabled = automaticRefreshEnabled
+		self.sourceHome = sourceHome
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		self.quotaSettings = quotaSettings
+		let telemetrySettings = TelemetrySettingsController(
+			transport: runner,
+			supervisor: TelemetryListenerSupervisor(
+				command: { [runner] in try runner.telemetryListenerCommand() },
+				// Counted background usage changed: a finite round settles and
+				// publishes it like any other source change.
+				publicationNeeded: { [weak coordinator] in
+					Task { @MainActor in await coordinator?.requestFullRefresh(trigger: .sourceChange) }
+				}
+			),
+			// With no listener running, nothing else notices `telemetry enable`.
+			configurationURLs: [
+				sourceHome.appendingPathComponent(".codex/config.toml"),
+				sourceHome.appendingPathComponent(".agentdeck/telemetry/receiver.json")
+			]
+		)
+		self.telemetrySettings = telemetrySettings
 		model = MenuBarViewModel(
 			coordinator: coordinator,
 			switchController: switchController,
 			preferences: preferences
 		)
-		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
 		super.init()
 	}
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
-		#if !DEBUG
+		if PerfTrace.isEnabled {
+			PerfTrace.mark(.processStart, at: PerfTrace.processStartUptime())
+			PerfTrace.mark(.appReady)
+		}
+		#if !DEBUG && !AGENTDECK_PERF
 		// Homebrew's install-step sandbox cannot contact PlugInKit. Register only
 		// this signed host's own nested extension, after normal App launch.
 		let extensionURL = Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/AgentDeckWidget.appex")
@@ -232,17 +260,55 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		itemController = MenuBarItemController(model: model) { [weak self] in
 			self?.settingsController.show()
 		}
+		itemController?.warmsWindowAfterPreparation = true
 		if automaticRefreshEnabled {
+			let monitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
+				Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: .sourceChange) }
+			}
+			let updates = DesktopAutomaticUpdates(
+				enabled: preferences.automaticUpdateEnabled,
+				startWatching: { [weak monitor] in monitor?.start() ?? false },
+				stopWatching: { [weak monitor] in monitor?.stop() },
+				request: { [weak refreshCoordinator] trigger in
+					Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: trigger) }
+				}
+			)
+			sourceMonitor = monitor
+			automaticUpdates = updates
+			preferences.automaticUpdateDidChange = { [weak updates] enabled in
+				updates?.setEnabled(enabled)
+			}
 			refreshCoordinator.startInitialRefresh()
-			startPeriodicRefresh()
+			// Restore first: watching and quota work start after it, like the
+			// startup refresh (architecture, startup order).
+			Task { @MainActor [weak self] in
+				await self?.refreshCoordinator.waitForStartupSettled()
+				guard let self else { return }
+				self.automaticUpdates?.start()
+				self.startBackgroundSchedules()
+				// An enabled receiver listens while the App runs; restore
+				// never waits for it (ux/settings.md).
+				await self.telemetrySettings.load()
+			}
 		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
 		#endif
+		#if AGENTDECK_PERF
+		if let itemController {
+			perfDriver = PerfDriver(model: model, itemController: itemController)
+			perfDriver?.start()
+		}
+		#endif
 	}
 
-	func applicationWillTerminate(_ notification: Notification) {
-		periodicRefresh?.cancel()
+		func applicationWillTerminate(_ notification: Notification) {
+			preferences.automaticUpdateDidChange = nil
+			automaticUpdates?.stop()
+			refreshCoordinator.stopAppWork()
+			telemetrySettings.stop()
+			PerfTrace.flush()
+		quotaSchedule?.cancel()
 		periodicDriver.cancel()
 		if let wakeObserver {
 			NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
@@ -271,41 +337,34 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		settingsController.show()
 	}
 
-	/// The full snapshot refresh is opt-in and completion-based. The scheduler
-	/// uses monotonic deadlines; the wire's `next_refresh_at` remains a
-	/// compatibility hint and never owns this app deadline.
+	/// Wake asks automatic updates for one finite reconciliation (a no-op
+	/// while they are off); data never refreshes on a period.
 	///
 	/// Codex PR #5 tenth review, P1: quota alert evaluation must not depend
-	/// on that same opt-in preference -- a user can turn on quota reading and
-	/// alerts while leaving "Periodic refresh" off, and still expects
-	/// threshold/reset notifications. `refreshQuotaAlertsOnly` runs
-	/// independently of `periodicRefreshEnabled`, gated instead on the
-	/// mirrored reading/alerts preferences so it does not wait on
+	/// on the local-data update preference -- a user can turn on quota reading
+	/// and alerts while leaving automatic updates off, and still expects
+	/// threshold/reset notifications. The quota tick runs on its own schedule,
+	/// gated on the mirrored reading preference so it does not wait on
 	/// `QuotaSettingsController.load()`'s async round trip either.
-	private func startPeriodicRefresh() {
+	private func startBackgroundSchedules() {
 		wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
 			forName: NSWorkspace.didWakeNotification,
 			object: nil,
 			queue: .main
 		) { [weak self] _ in
-			Task { @MainActor in
-				guard let self else { return }
-				self.refreshScheduler.updateEnabled(self.preferences.periodicRefreshEnabled)
-				self.refreshScheduler.evaluate(.wake)
-			}
+			Task { @MainActor in self?.automaticUpdates?.didWake() }
 		}
-		periodicRefresh = Task { [weak self] in
+		quotaSchedule = Task { [weak self] in
 			while !Task.isCancelled {
-				try? await Task.sleep(for: DesktopRefreshScheduler.evaluatorInterval)
+				try? await Task.sleep(for: DesktopRefreshPeriodicDriver.evaluatorInterval)
 				guard let self else { continue }
-				// Codex PR #5 twelfth review, P1: refreshQuotaAlertsOnly is this
-				// app's only recurring caller into the quota probe itself, not
-				// merely alert evaluation -- gating it on alerts too meant a
-				// user with reading on but alerts off (both defaults: alerts
-				// starts off) never got a single background probe after
-				// startup. The helper already no-ops alert delivery on its own
-				// when alerts are disabled; gate this call on reading alone.
-				self.refreshScheduler.updateEnabled(self.preferences.periodicRefreshEnabled)
+				// Codex PR #5 twelfth review, P1: this tick is this app's only
+				// recurring caller into the quota probe itself, not merely alert
+				// evaluation -- gating it on alerts too meant a user with reading
+				// on but alerts off (both defaults: alerts starts off) never got a
+				// single background probe after startup. The helper already no-ops
+				// alert delivery on its own when alerts are disabled; gate this
+				// call on reading alone.
 				await self.periodicDriver.tick(quotaEnabled: self.preferences.quotaProbeEnabled)
 			}
 		}

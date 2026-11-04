@@ -182,7 +182,14 @@ if ! command -v brew >/dev/null 2>&1; then
   echo "here that the rendered cask cannot restate about itself" >&2
   exit 1
 fi
-homebrew_taps="$(brew --repository)/Library/Taps"
+homebrew_fixture_config="$temporary/homebrew-config"
+mkdir -p "$homebrew_fixture_config"
+fixture_brew() {
+  env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
+    HOMEBREW_DEVELOPER=1 XDG_CONFIG_HOME="$homebrew_fixture_config" \
+    HOMEBREW_USER_CONFIG_HOME="$homebrew_fixture_config/homebrew" brew "$@"
+}
+homebrew_taps="$(fixture_brew --repository)/Library/Taps"
 candidate_fixture_root="$homebrew_taps/agentdeck-fixture"
 if [[ -e $candidate_fixture_root ]]; then
   echo "a previous run left $candidate_fixture_root behind; remove it before retrying" >&2
@@ -196,11 +203,15 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   token=${pair%%:*}
   rendered=${pair##*:}
   cp "$rendered" "$fixture_tap/Casks/$token.rb"
-  env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
-    brew ruby "$root/scripts/test-cask-widget-registration.rb" "$fixture_tap/Casks/$token.rb"
+  qualified_cask="agentdeck-fixture/cask-fixture/$token"
+  # New Homebrew versions require explicit trust even for our generated local
+  # fixture. Trust only this cask, in this run's disposable configuration.
+  if fixture_brew command trust >/dev/null 2>&1; then
+    fixture_brew trust --cask "$qualified_cask" >/dev/null
+  fi
+  fixture_brew ruby "$root/scripts/test-cask-widget-registration.rb" "$fixture_tap/Casks/$token.rb"
   load_log="$temporary/brew-info-$token.log"
-  if ! env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
-       brew info --cask "agentdeck-fixture/cask-fixture/$token" >"$load_log" 2>&1; then
+  if ! fixture_brew info --cask "$qualified_cask" >"$load_log" 2>&1; then
     echo "Homebrew rejected the rendered $token cask:" >&2
     cat "$load_log" >&2
     exit 1

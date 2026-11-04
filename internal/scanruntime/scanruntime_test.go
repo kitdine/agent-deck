@@ -736,9 +736,23 @@ func TestFailedResultsDoNotExposeRawErrors(t *testing.T) {
 	}
 }
 
+func initializeWorkerDatabases(t *testing.T, state string) {
+	t.Helper()
+	for _, open := range []func(context.Context, string) (*store.Store, error){store.Open, store.OpenSessions} {
+		db, err := open(context.Background(), state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestUnixWorkerServesAClientRound(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()
+	initializeWorkerDatabases(t, state)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	served := make(chan error, 1)
@@ -1032,6 +1046,7 @@ func TestDetachedWorkerStartupReportsLegacyScanLock(t *testing.T) {
 func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()
+	initializeWorkerDatabases(t, state)
 	var worker *exec.Cmd
 	requestCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1045,7 +1060,17 @@ func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 			worker.Stdin = nil
 			worker.Stdout = io.Discard
 			worker.Stderr = io.Discard
-			return worker.Start()
+			if err := worker.Start(); err != nil {
+				return err
+			}
+			started := worker
+			t.Cleanup(func() {
+				if started.ProcessState == nil {
+					_ = started.Process.Kill()
+					_ = started.Wait()
+				}
+			})
+			return nil
 		},
 	}).RequestWithProgress(requestCtx, ScopeBoth, func(value Progress) {
 		progress = append(progress, value)
@@ -1069,5 +1094,24 @@ func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 	}
 	if err := worker.Wait(); err != nil {
 		t.Fatalf("worker exit: %v", err)
+	}
+}
+
+// Only a background launch asks the worker to lower its priority; a first
+// import or a CLI launch keeps the inherited environment.
+func TestWorkerCommandMarksOnlyBackgroundLaunches(t *testing.T) {
+	marked := func(cmd *exec.Cmd) bool {
+		for _, entry := range cmd.Env {
+			if entry == workerBackgroundEnv+"=1" {
+				return true
+			}
+		}
+		return false
+	}
+	if cmd := workerCommand("/bin/agentdeck", "/state", true); !marked(cmd) || len(cmd.Env) <= 1 {
+		t.Fatalf("background worker env = %v", cmd.Env)
+	}
+	if cmd := workerCommand("/bin/agentdeck", "/state", false); cmd.Env != nil {
+		t.Fatalf("a foreground worker must inherit the environment unchanged: %v", cmd.Env)
 	}
 }

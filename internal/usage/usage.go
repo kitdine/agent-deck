@@ -21,10 +21,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -338,14 +340,19 @@ type Service struct {
 	// ClientProcesses is injectable so overlap handling has deterministic tests.
 	ClientProcesses         func(string) ([]int, error)
 	beforeSessionRouteWrite func()
+	eventsRangeReads        atomic.Int64 // stored-event range reads, for projection tests
 	Stat                    func(string) (os.FileInfo, error)
 	Open                    func(string) (SourceFile, error)
 	MachineIdentity         func(context.Context) (string, error)
 	Progress                ScanProgressReporter
 	PreparedSources         []ingest.Source
 	Coordinator             *ingest.Coordinator
-	machineIdentityOnce     sync.Once
-	machineIdentityValue    string
+	CoverageInventoryID     string
+	CoverageBatch           bool
+	// ReduceWorkers overrides ingest.ReduceWorkers when positive.
+	ReduceWorkers        int
+	machineIdentityOnce  sync.Once
+	machineIdentityValue string
 }
 type catalog struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -717,41 +724,64 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 			changed[path] = true
 		}
 	}
+	unchangedEntries := []InventoryEntry{}
+	for _, entry := range inventory.Entries {
+		if !recoveryCandidates[entry.Path] && !changed[entry.Path] {
+			unchangedEntries = append(unchangedEntries, entry)
+		}
+	}
+	if err := s.commitUnchangedSourcesCoverage(ctx, unchangedEntries); err != nil {
+		return nil, err
+	}
 	skipped := 0
-	for index, entry := range inventory.Entries {
-		candidate := recoveryCandidates[entry.Path]
-		if !candidate && !changed[entry.Path] {
+	work := make([]InventoryEntry, 0, len(inventory.Entries)-len(unchangedEntries))
+	for _, entry := range inventory.Entries {
+		if !recoveryCandidates[entry.Path] && !changed[entry.Path] {
 			if s.Coordinator != nil {
 				s.Coordinator.Skip(entry.Path, ingest.ConsumerUsage)
 			}
 			skipped++
 			if progress != nil {
-				progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
+				progress.Update(ScanProgress{Processed: skipped, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
 			}
 			continue
 		}
-		stats, err := s.scanFileMode(ctx, entry, candidate)
-		if err != nil {
-			return nil, err
-		}
+		work = append(work, entry)
+	}
+	processed := skipped
+	forceRebuild := func(entry InventoryEntry) bool { return recoveryCandidates[entry.Path] }
+	if err := s.scanSources(ctx, work, forceRebuild, func(stats map[string]int) {
+		processed++
 		if progress != nil {
-			progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
+			progress.Update(ScanProgress{Processed: processed, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
 		}
 		for key, value := range stats {
 			out[key] += value
 		}
+	}); err != nil {
+		return nil, err
 	}
-	if recovering {
+	if recovering && !s.CoverageBatch {
 		removed, cleanupErr := s.cleanupOrphanedEvents(ctx)
 		if cleanupErr != nil {
 			return nil, cleanupErr
 		}
 		out["removed"] += removed
 	}
-	if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
-		return nil, err
+	if !s.CoverageBatch {
+		if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+// FinalizeInventory runs global reconciliation only after every accepted batch.
+func (s *Service) FinalizeInventory(ctx context.Context, inventory Inventory) error {
+	if _, err := s.cleanupOrphanedEvents(ctx); err != nil {
+		return err
+	}
+	return s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint)
 }
 
 func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error) {
@@ -1038,27 +1068,168 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 }
 
 func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
-	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+	defer perftrace.Span(perftrace.UsageSource)()
+	prepared, err := s.prepareSource(ctx, entry, forceRebuild, s.Coordinator)
+	if err != nil {
+		return prepared.r, err
+	}
+	defer prepared.close()
+	if prepared.unchanged {
+		return prepared.r, s.commitUnchangedSourceCoverage(ctx, entry)
+	}
+	finishWait := perftrace.Span(perftrace.UsagePublicationWait)
+	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
+	finishWait()
+	if err != nil {
+		return prepared.r, err
+	}
+	defer release()
+	// Lock acquisition can wait while the source is rewritten or truncated.
+	// Validate after that wait, immediately before publishing the captured data.
+	if err = prepared.validate(); err != nil {
+		return prepared.r, err
+	}
+	if err = s.publishPrepared(ctx, tx, prepared); err != nil {
+		return prepared.r, err
+	}
+	finishCommit := perftrace.Span(perftrace.UsageCommit)
+	err = tx.Commit()
+	finishCommit()
+	return prepared.r, err
+}
+
+// preparedSource is one usage source's reduce result: everything parsed from
+// its captured range and the checkpoint snapshot the parse started from. It
+// holds no transaction; the writer publishes it in inventory order.
+type preparedSource struct {
+	entry        InventoryEntry
+	forceRebuild bool
+	r            map[string]int
+	// unchanged sources only commit coverage; nothing was read.
+	unchanged                   bool
+	checkpoint                  usageCheckpoint
+	found, reset, sourceMutated bool
+	state                       parseState
+	priorStarted                string
+	events                      []Event
+	tools                       []activity.Record
+	cursor                      int64
+	anchorHash                  string
+	file                        SourceFile
+	validateCaptured            func() error
+	readBytes                   int64
+}
+
+func newSourceStats() map[string]int {
+	return map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+}
+
+func (p *preparedSource) validate() error {
+	if p.validateCaptured == nil {
+		return nil
+	}
+	return p.validateCaptured()
+}
+
+func (p *preparedSource) close() {
+	if p != nil && p.file != nil {
+		_ = p.file.Close()
+		p.file = nil
+	}
+}
+
+// rows is the writer's work estimate for transaction sizing.
+func (p *preparedSource) rows() int {
+	return len(p.events) + len(p.tools) + len(p.state.signals) + 1
+}
+
+// weight estimates the result's resident bytes for the admission budget.
+func (p *preparedSource) weight() int64 {
+	return int64(len(p.events)+len(p.tools)+len(p.state.signals))*512 + p.readBytes
+}
+
+// usageCheckpoint is the committed per-source state a reduce starts from. The
+// writer re-reads it inside its transaction; a difference means another source
+// published first, and the result is recomputed from the committed state.
+type usageCheckpoint struct {
+	found                                         bool
+	cursor, size, modified, changed               int64
+	identity, hash, session, turn, model, started string
+	cumulative                                    string
+	parserVersion                                 int
+	turnIndexRead                                 bool
+	turnIndex                                     sql.NullInt64
+}
+
+type usageQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func loadUsageCheckpoint(ctx context.Context, q usageQueryer, path string) (usageCheckpoint, error) {
+	var c usageCheckpoint
+	err := q.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path).Scan(&c.cursor, &c.identity, &c.size, &c.modified, &c.changed, &c.hash, &c.session, &c.turn, &c.model, &c.started, &c.parserVersion, &c.cumulative)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, nil
+	}
+	c.found = err == nil
+	return c, err
+}
+
+// Only a classified row counts as a committed turn index. A pending row
+// carries the index its turn *will* commit to, so treating it as the high
+// water mark makes the next assistant entry advance past it and strands the
+// pending row forever — which is the scan boundary Decision 11 exists to
+// survive, failing in the one place it was written to protect.
+func loadPriorTurnIndex(ctx context.Context, q usageQueryer, path, client, session string) (sql.NullInt64, error) {
+	var index sql.NullInt64
+	err := q.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=? AND state='classified')`, path, path, client, session).Scan(&index)
+	return index, err
+}
+
+// checkpointCurrent reports whether the snapshot p was reduced from is still
+// the committed state seen by tx.
+func (s *Service) checkpointCurrent(ctx context.Context, tx *sql.Tx, p *preparedSource) (bool, error) {
+	current, err := loadUsageCheckpoint(ctx, tx, p.entry.Path)
+	if err != nil {
+		return false, err
+	}
+	if p.checkpoint.turnIndexRead {
+		current.turnIndexRead = true
+		if current.turnIndex, err = loadPriorTurnIndex(ctx, tx, p.entry.Path, p.entry.Client, current.session); err != nil {
+			return false, err
+		}
+	}
+	return current == p.checkpoint, nil
+}
+
+// prepareSource reads and reduces one source from its committed checkpoint. It
+// writes nothing; coordinator is nil to read the file directly.
+func (s *Service) prepareSource(ctx context.Context, entry InventoryEntry, forceRebuild bool, coordinator *ingest.Coordinator) (p *preparedSource, err error) {
+	finishPrepare := perftrace.Span(perftrace.UsagePrepare)
+	defer finishPrepare()
+	p = &preparedSource{entry: entry, forceRebuild: forceRebuild, r: newSourceStats()}
+	defer func() {
+		if err != nil {
+			p.close()
+		}
+	}()
+	r := p.r
 	path, client := entry.Path, entry.Client
-	var cursor, oldSize, oldModified, oldChanged int64
-	var oldIdentity, oldHash string
-	var cumulativeJSON string
-	var parserVersion int
-	state := parseState{codexCumulative: map[string]map[string]int64{}}
+	checkpoint, err := loadUsageCheckpoint(ctx, s.Store.DB, path)
+	if err != nil {
+		return p, err
+	}
+	cursor := checkpoint.cursor
+	state := parseState{codexCumulative: map[string]map[string]int64{}, session: checkpoint.session, turn: checkpoint.turn, model: checkpoint.model}
 	// priorStarted survives the reset below on purpose. A rewritten transcript
 	// has already dropped its earliest records, so the value captured before the
 	// rewrite is the better observation and the one that stays.
-	var priorStarted string
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
-	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldChanged, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
+	priorStarted := checkpoint.started
 	state.startedAt = priorStarted
-	found := loadErr == nil
-	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
-		return r, loadErr
-	}
+	found := checkpoint.found
 	if found && client == "codex" {
-		if err := json.Unmarshal([]byte(cumulativeJSON), &state.codexCumulative); err != nil {
-			return r, fmt.Errorf("invalid Codex cumulative usage cursor for %q: %w", path, err)
+		if err := json.Unmarshal([]byte(checkpoint.cumulative), &state.codexCumulative); err != nil {
+			return p, fmt.Errorf("invalid Codex cumulative usage cursor for %q: %w", path, err)
 		}
 	}
 	restoredCodexCursor := false
@@ -1066,7 +1237,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		var cursorErr error
 		restoredCodexCursor, cursorErr = restoreCodexSignalCursor(&state)
 		if cursorErr != nil {
-			return r, cursorErr
+			return p, cursorErr
 		}
 	}
 	activityParser := activity.NewParser(client, path)
@@ -1076,36 +1247,34 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		state.claudePending = true
 		activityParser.SetClaudePending(true)
 	}
-	// Only a classified row counts as a committed turn index. A pending row
-	// carries the index its turn *will* commit to, so treating it as the high
-	// water mark makes the next assistant entry advance past it and strands the
-	// pending row forever — which is the scan boundary Decision 11 exists to
-	// survive, failing in the one place it was written to protect.
-	var priorTurnIndex sql.NullInt64
 	if found && !restoredCodexCursor {
-		turnErr := s.Store.DB.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=? AND state='classified')`, path, path, client, state.session).Scan(&priorTurnIndex)
-		if turnErr != nil {
-			return r, turnErr
+		checkpoint.turnIndexRead = true
+		checkpoint.turnIndex, err = loadPriorTurnIndex(ctx, s.Store.DB, path, client, state.session)
+		if err != nil {
+			return p, err
 		}
-		if priorTurnIndex.Valid {
-			state.turnIndex = int(priorTurnIndex.Int64)
+		if checkpoint.turnIndex.Valid {
+			state.turnIndex = int(checkpoint.turnIndex.Int64)
 			activityParser.SetTurnIndex(state.turnIndex)
 		}
 	}
+	p.checkpoint = checkpoint
+	oldIdentity, oldSize, oldModified, oldChanged, oldHash := checkpoint.identity, checkpoint.size, checkpoint.modified, checkpoint.changed, checkpoint.hash
 	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
-	parserOutdated := found && usageParserOutdated(client, parserVersion)
+	parserOutdated := found && usageParserOutdated(client, checkpoint.parserVersion)
 	stableMetadata := found && !parserOutdated && entry.Stable && oldChanged != 0 && oldChanged == entry.ChangedAt && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
-		if s.Coordinator != nil {
-			s.Coordinator.Skip(path, ingest.ConsumerUsage)
+		if coordinator != nil {
+			coordinator.Skip(path, ingest.ConsumerUsage)
 		}
-		return r, nil
+		p.unchanged = true
+		return p, nil
 	}
 	file, err := s.open(path)
 	if err != nil {
-		return r, err
+		return p, err
 	}
-	defer file.Close()
+	p.file = file
 	appendOnly := found && oldIdentity == entry.Identity && entry.Size >= cursor
 	// An unchanged length with changed/unknown ctime is a rewrite candidate,
 	// even when the suffix anchor and restored mtime happen to match.
@@ -1118,7 +1287,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		previousAnchorStart = max(int64(0), cursor-4096)
 		previousAnchor = make([]byte, cursor-previousAnchorStart)
 		if _, err = io.ReadFull(io.NewSectionReader(file, previousAnchorStart, int64(len(previousAnchor))), previousAnchor); err != nil {
-			return r, err
+			return p, err
 		}
 		appendOnly = hash(previousAnchor) == oldHash
 	}
@@ -1136,17 +1305,17 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	var data []byte
 	var sharedStream *ingest.Stream
-	if s.Coordinator != nil {
-		stream, shared, streamErr := s.Coordinator.Stream(ctx, path, ingest.ConsumerUsage)
+	if coordinator != nil {
+		stream, shared, streamErr := coordinator.Stream(ctx, path, ingest.ConsumerUsage)
 		if streamErr != nil {
 			if errors.Is(streamErr, ingest.ErrSourceChanged) {
-				return r, errUsageSourceChanged
+				return p, errUsageSourceChanged
 			}
-			return r, streamErr
+			return p, streamErr
 		}
 		if shared {
 			if cursor < 0 || stream.Source.Size != entry.Size || cursor > entry.Size {
-				return r, errUsageSourceChanged
+				return p, errUsageSourceChanged
 			}
 			sharedStream = &stream
 		}
@@ -1154,8 +1323,9 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if sharedStream == nil {
 		data, err = io.ReadAll(io.NewSectionReader(file, cursor, entry.Size-cursor))
 		if err != nil {
-			return r, err
+			return p, err
 		}
+		p.readBytes = int64(len(data))
 	}
 	events := make([]Event, 0)
 	toolActivities := make([]activity.Record, 0)
@@ -1198,7 +1368,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			}
 		}
 		if _, err = sharedStream.Wait(ctx); err != nil {
-			return r, err
+			return p, err
 		}
 	} else {
 		line := data
@@ -1215,7 +1385,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 	}
 	capturedCursor := cursor
-	validateCaptured := func() error {
+	p.validateCaptured = func() error {
 		if sharedStream != nil {
 			if err := sharedStream.ValidateCapturedRange(); err != nil {
 				return errUsageSourceChanged
@@ -1224,8 +1394,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 		return s.validateSnapshot(path, file, entry, capturedCursor, data, previousAnchorStart, previousAnchor)
 	}
-	if err = validateCaptured(); err != nil {
-		return r, err
+	if err = p.validateCaptured(); err != nil {
+		return p, err
 	}
 	// A cursor is always the end of a complete record.  The unfinished suffix is
 	// deliberately re-read next time, so an interrupted write cannot be skipped.
@@ -1234,36 +1404,80 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	anchor := make([]byte, cursor-anchorStart)
 	if len(anchor) > 0 {
 		if _, err = io.ReadFull(io.NewSectionReader(file, anchorStart, int64(len(anchor))), anchor); err != nil {
-			return r, err
+			return p, err
 		}
 	}
-	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
+	p.found, p.reset, p.sourceMutated = found, reset, sourceMutated
+	p.state, p.priorStarted, p.events, p.tools = state, priorStarted, events, toolActivities
+	p.cursor, p.anchorHash = cursor, hash(anchor)
+	return p, nil
+}
+
+// publishFacts writes events and tool calls of one source, through the cold
+// bulk path when cold allows it, and adds their logical changes to r.
+func publishFacts(ctx context.Context, tx *sql.Tx, path string, cold bool, events []Event, tools []activity.Record, r map[string]int) error {
+	if cold {
+		handled, imported, updated, err := publishColdSource(ctx, tx, path, events, tools)
+		if err != nil {
+			return err
+		}
+		if handled {
+			r["imported"] += imported
+			r["updated"] += updated
+			r["replaced"] += updated
+			return nil
+		}
+	}
+	prepared, err := prepareIngestion(ctx, tx)
 	if err != nil {
-		return r, err
+		return err
 	}
-	defer release()
-	// Lock acquisition can wait while the source is rewritten or truncated.
-	// Validate after that wait, immediately before publishing the captured data.
-	if err = validateCaptured(); err != nil {
-		return r, err
+	defer prepared.Close()
+	for _, event := range events {
+		inserted, changed, upsertErr := upsertTx(ctx, prepared, event)
+		if upsertErr != nil {
+			return upsertErr
+		}
+		if changed {
+			if inserted {
+				r["imported"]++
+			} else {
+				r["updated"]++
+				r["replaced"]++
+			}
+		}
 	}
+	for _, item := range tools {
+		if err = upsertToolActivityTx(ctx, prepared, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// publishPrepared writes one reduced source and its checkpoint in tx. The
+// caller has validated the captured range and owns the commit.
+func (s *Service) publishPrepared(ctx context.Context, tx *sql.Tx, p *preparedSource) error {
+	defer perftrace.Span(perftrace.UsagePublication)()
+	r, path, client, entry, state := p.r, p.entry.Path, p.entry.Client, p.entry, p.state
+	reset, sourceMutated, found, cursor := p.reset, p.sourceMutated, p.found, p.cursor
 	affected, err := affectedSessions(ctx, tx, path)
 	if err != nil {
-		return r, err
+		return err
 	}
 	var preservedBindings []eventRunBinding
 	if reset && !sourceMutated {
 		preservedBindings, err = eventRunBindingsForSource(ctx, tx, path)
 		if err != nil {
-			return r, err
+			return err
 		}
 	}
 	if reset {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
-			return r, err
+			return err
 		}
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_tool_calls WHERE source_path=?", path); err != nil {
-			return r, err
+			return err
 		}
 		// Decision 11: signals join the reset path the other two usage tables
 		// already have. Deleting by source_path is also what removes orphans —
@@ -1272,90 +1486,99 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		// no tool by definition and such a sweep would delete every chat-only
 		// turn in the store.
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_work_signals WHERE source_path=?", path); err != nil {
-			return r, err
+			return err
 		}
 		if sourceMutated {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
-				return r, err
+				return err
 			}
 		}
 	}
-	for _, event := range events {
+	for _, event := range p.events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
 	}
-	cold := false
-	if !found {
-		var imported, updated int
-		cold, imported, updated, err = publishColdSource(ctx, tx, path, events, toolActivities)
-		if err != nil {
-			return r, err
-		}
-		if cold {
-			r["imported"], r["updated"], r["replaced"] = imported, updated, updated
-		}
-	}
-	if !cold {
-		prepared, prepareErr := prepareIngestion(ctx, tx)
-		if prepareErr != nil {
-			return r, prepareErr
-		}
-		defer prepared.Close()
-		for _, event := range events {
-			inserted, changed, upsertErr := upsertTx(ctx, prepared, event)
-			if upsertErr != nil {
-				return r, upsertErr
-			}
-			if changed {
-				if inserted {
-					r["imported"]++
-				} else {
-					r["updated"]++
-					r["replaced"]++
-				}
-			}
-		}
-		for _, item := range toolActivities {
-			if err = upsertToolActivityTx(ctx, prepared, item); err != nil {
-				return r, err
-			}
-		}
+	if err = publishFacts(ctx, tx, path, !found, p.events, p.tools, r); err != nil {
+		return err
 	}
 	for _, signal := range state.signals {
 		if err = upsertWorkSignalTx(ctx, tx, signal, path); err != nil {
-			return r, err
+			return err
 		}
 	}
 	if err = classifySourceTurns(ctx, tx, path); err != nil {
-		return r, err
+		return err
 	}
 	if err = restoreEventRunBindings(ctx, tx, path, preservedBindings); err != nil {
-		return r, err
+		return err
 	}
 	if reset && !sourceMutated {
 		if err = restoreEventRunBindingsForSourceRange(ctx, tx, path); err != nil {
-			return r, err
+			return err
 		}
 	}
 	cumulativeBytes, err := json.Marshal(state.codexCumulative)
 	if err != nil {
-		return r, err
+		return err
 	}
 	// The stored start is a lower bound: whichever observation is earlier wins,
 	// so a rewrite that lost the opening records cannot move a session's start
 	// later and widen its span into a segment the process never ran in.
-	startedAt := earlierSessionStart(priorStarted, state.startedAt)
+	startedAt := earlierSessionStart(p.priorStarted, state.startedAt)
 	storedTurn := state.turn
 	if client == "codex" {
 		storedTurn = storedCodexTurn(state)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, storedTurn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, p.anchorHash, state.session, storedTurn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
 	if err != nil {
-		return r, err
+		return err
 	}
-	if err = rebuildSessions(ctx, tx, affected); err != nil {
-		return r, err
+	finishSessions := perftrace.Span(perftrace.UsageSessionRebuild)
+	err = rebuildSessions(ctx, tx, affected)
+	finishSessions()
+	if err != nil {
+		return err
 	}
-	return r, tx.Commit()
+	return store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, path, entry.Identity, entry.Size, cursor)
+}
+
+func (s *Service) commitUnchangedSourceCoverage(ctx context.Context, entry InventoryEntry) error {
+	return s.commitUnchangedSourcesCoverage(ctx, []InventoryEntry{entry})
+}
+
+// commitUnchangedSourcesCoverage commits in transactions of at most
+// writeTxRows sources. Each row is independent; the inventory stays pending
+// until every source has committed, so a split commit exposes nothing early.
+func (s *Service) commitUnchangedSourcesCoverage(ctx context.Context, entries []InventoryEntry) error {
+	if s.CoverageInventoryID == "" {
+		return nil
+	}
+	for len(entries) > writeTxRows {
+		if err := s.commitUnchangedCoverageBlock(ctx, entries[:writeTxRows]); err != nil {
+			return err
+		}
+		entries = entries[writeTxRows:]
+	}
+	return s.commitUnchangedCoverageBlock(ctx, entries)
+}
+
+func (s *Service) commitUnchangedCoverageBlock(ctx context.Context, entries []InventoryEntry) error {
+	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
+	if err != nil {
+		return err
+	}
+	defer release()
+	for _, entry := range entries {
+		var cursor int64
+		if err = tx.QueryRowContext(ctx, `SELECT cursor FROM usage_source_files WHERE path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, entry.Path, entry.Identity, entry.Size, ParserVersion, entry.ModifiedAt, entry.ChangedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
+			return errUsageSourceChanged
+		} else if err != nil {
+			return err
+		}
+		if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, entry.Path, entry.Identity, entry.Size, cursor); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) validateSnapshot(path string, file SourceFile, entry InventoryEntry, cursor int64, data []byte, previousAnchorStart int64, previousAnchor []byte) error {
@@ -1432,7 +1655,6 @@ type turnSignal struct {
 	startedAt       string
 	messageClass    string
 	intentSub       string
-	brainstorming   bool
 }
 
 // note records a turn-opening message's reduction against the index that turn
@@ -1443,13 +1665,12 @@ type turnSignal struct {
 func (state *parseState) note(client, startedAt, text string, turnIndex int) {
 	messageClass, intentSub := activity.ScanMessage(text)
 	signal := turnSignal{
-		client:        client,
-		session:       state.session,
-		turnIndex:     turnIndex,
-		startedAt:     startedAt,
-		messageClass:  messageClass,
-		intentSub:     intentSub,
-		brainstorming: activity.BrainstormingApplies(text),
+		client:       client,
+		session:      state.session,
+		turnIndex:    turnIndex,
+		startedAt:    startedAt,
+		messageClass: messageClass,
+		intentSub:    intentSub,
 	}
 	for i := range state.signals {
 		if state.signals[i].session == signal.session && state.signals[i].turnIndex == turnIndex {
@@ -1774,14 +1995,25 @@ func affectedSessions(ctx context.Context, tx *sql.Tx, path string) (map[string]
 
 func rebuildSessions(ctx context.Context, tx *sql.Tx, affected map[string][2]string) error {
 	for _, pair := range affected {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM usage_sessions WHERE client=? AND session_id=?", pair[0], pair[1]); err != nil {
-			return err
-		}
 		// A session can span several transcripts — subagent files carry the same
 		// session id — and every one of them opens after the session did, so the
 		// earliest observation is the session's own start.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at,started_at) SELECT client,session_id,MIN(event_at),MAX(event_at),COALESCE((SELECT MIN(f.session_started_at) FROM usage_source_files f WHERE f.session_id=? AND f.session_started_at<>''),'') FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, pair[1], pair[0], pair[1]); err != nil {
+		result, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at,started_at) SELECT client,session_id,MIN(event_at),MAX(event_at),COALESCE((SELECT MIN(f.session_started_at) FROM usage_source_files f WHERE f.session_id=? AND f.session_started_at<>''),'') FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id
+ON CONFLICT(client,session_id) DO UPDATE SET first_at=excluded.first_at,last_at=excluded.last_at,started_at=excluded.started_at
+WHERE (usage_sessions.first_at,usage_sessions.last_at,usage_sessions.started_at) IS NOT (excluded.first_at,excluded.last_at,excluded.started_at)`, pair[1], pair[0], pair[1])
+		if err != nil {
 			return err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		// No aggregate row means either an unchanged session or no remaining
+		// events. Only the latter removes the prior row and invalidates views.
+		if changed == 0 {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM usage_sessions WHERE client=? AND session_id=? AND NOT EXISTS(SELECT 1 FROM usage_events WHERE client=? AND session_id=?)`, pair[0], pair[1], pair[0], pair[1]); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1803,6 +2035,7 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
+	defer perftrace.Span(perftrace.UsageOrphanScan)()
 	// Subtract registered paths using the covering source indexes first. The
 	// usual no-orphan case then avoids joining every event/tool row to the
 	// registry twice per scan. Only orphan paths need their logical session IDs.
@@ -1857,39 +2090,42 @@ SELECT a.client,a.session_id FROM usage_tool_calls a WHERE a.source_path IN (
 }
 
 func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
+	defer perftrace.Span(perftrace.UsageOrphanCleanup)()
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
+	// Discover paths through the covering source indexes. In the common case
+	// there are no orphans: avoid visiting every event/tool row for a DELETE.
+	paths, err := orphanUsagePaths(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
 	affected := map[string][2]string{}
-	for rows.Next() {
-		var client, sessionID string
-		if err = rows.Scan(&client, &sessionID); err != nil {
-			rows.Close()
+	var removed int64
+	for _, path := range paths {
+		keys, err := affectedSessions(ctx, tx, path)
+		if err != nil {
 			return 0, err
 		}
-		affected[client+"\x00"+sessionID] = [2]string{client, sessionID}
-	}
-	if err = rows.Close(); err != nil {
-		return 0, err
-	}
-	deleted, err := tx.ExecContext(ctx, `DELETE FROM usage_events WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_events.source_path)`)
-	if err != nil {
-		return 0, err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_calls WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_tool_calls.source_path)`); err != nil {
-		return 0, err
+		for key, pair := range keys {
+			affected[key] = pair
+		}
+		deleted, err := tx.ExecContext(ctx, `DELETE FROM usage_events WHERE source_path=?`, path)
+		if err != nil {
+			return 0, err
+		}
+		n, err := deleted.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		removed += n
+		if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_calls WHERE source_path=?`, path); err != nil {
+			return 0, err
+		}
 	}
 	if err = rebuildSessions(ctx, tx, affected); err != nil {
-		return 0, err
-	}
-	removed, err := deleted.RowsAffected()
-	if err != nil {
 		return 0, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -2845,6 +3081,7 @@ type readPriceResolver struct {
 }
 
 func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
+	defer perftrace.Span(perftrace.UsagePriceResolver)()
 	timeline, err := s.Store.LoadProviderTimeline(ctx)
 	if err != nil {
 		return readPriceResolver{}, err
@@ -3956,13 +4193,19 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
+	return s.eventsRangeFiltered(ctx, from, to, client, model, false)
+}
+
+func (s *Service) eventsRangeFiltered(ctx context.Context, from, to time.Time, client, model string, exact bool) ([]storedEvent, error) {
+	defer perftrace.Span(perftrace.UsageEventsRange)()
+	s.eventsRangeReads.Add(1)
 	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
-	if client != "" {
+	if client != "" || exact {
 		query += ` AND e.client=?`
 		args = append(args, client)
 	}
-	if model != "" {
+	if model != "" || exact {
 		query += ` AND e.model=?`
 		args = append(args, model)
 	}

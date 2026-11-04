@@ -318,6 +318,11 @@ var migrations = []migration{
 	{version: 30, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
 	}},
+	{version: 31, apply: initializeServingStorage},
+	{version: 32, apply: initializeUsagePartitions},
+	// Migration 33 adds sanitized OTel observations, the journal cursor and
+	// receiver coverage. It changes no canonical usage fact.
+	{version: 33, apply: initializeTelemetryStorage},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (

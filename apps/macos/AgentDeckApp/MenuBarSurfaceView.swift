@@ -213,6 +213,7 @@ struct MenuBarSurfaceView: View {
 			FooterView(model: model)
 		}
 		.background(DesktopVisualTheme.background)
+		.perfDataFrame(model.perfDataFrame)
 	}
 
 	private var scanProgressStatus: some View {
@@ -265,11 +266,14 @@ struct MenuBarSurfaceView: View {
 		}
 	}
 
+	/// Loaded once: a new NSImage on every evaluation made each frame read and
+	/// decode the PNG again.
+	private static let brandImage: NSImage? = Bundle.main.url(forResource: "AgentDeckAppIcon", withExtension: "png")
+		.flatMap { NSImage(contentsOf: $0) }
+
 	@ViewBuilder
 	private var brandIcon: some View {
-		if let url = Bundle.main.url(forResource: "AgentDeckAppIcon", withExtension: "png"),
-			let image = NSImage(contentsOf: url)
-		{
+		if let image = Self.brandImage {
 			Image(nsImage: image)
 				.resizable()
 				.interpolation(.high)
@@ -283,7 +287,7 @@ struct MenuBarSurfaceView: View {
 	}
 
 	private var clientTabs: some View {
-		Picker(t(DesktopCopy.clientFilter), selection: $model.selectedClient) {
+		Picker(t(DesktopCopy.clientFilter), selection: Binding(get: { model.selectedClient }, set: { model.selectClient($0) })) {
 			ForEach(model.clientTabs) { tab in
 				Text(verbatim: "\(tab.label) \(tab.value ?? "")").tag(tab.id)
 			}
@@ -335,7 +339,7 @@ struct MenuBarSurfaceView: View {
 		HStack(spacing: 2) {
 			ForEach(model.periodOptions) { option in
 				Button {
-					model.selectedPeriod = option.id
+					model.selectPeriod(option.id)
 				} label: {
 					Text(option.label)
 						.frame(maxWidth: .infinity, minHeight: 26)
@@ -359,7 +363,7 @@ struct MenuBarSurfaceView: View {
 		HStack(spacing: MenuBarGeometry.withinRow) {
 			ForEach(model.panelTabs) { tab in
 				Button {
-					model.selectedPanel = tab.id
+					model.selectPanel(tab.id)
 				} label: {
 					HStack(spacing: MenuBarGeometry.withinRow) {
 						Image(systemName: tab.symbol)

@@ -8,6 +8,7 @@
 package scanruntime
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -28,16 +29,19 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
 const (
 	// ProtocolVersion prevents a client from treating an incompatible worker as
 	// an accepted scan.  It is intentionally small and private to this runtime.
-	ProtocolVersion = 2
+	ProtocolVersion = 3
 
 	defaultStartupTimeout = 5 * time.Second
 	defaultIdleTimeout    = time.Second
@@ -184,7 +188,18 @@ type Client struct {
 	// Now is carried only by ForceLocal test callers so a test's scan and
 	// snapshot observe one business clock. Detached workers use their own clock.
 	Now func() time.Time
+	// AppOwned work pauses when its final owner disconnects, unless a CLI has
+	// durably accepted the same round. Ordinary requests remain subscriber-only.
+	AppOwned      bool
+	OnPublication func(desktop.ServingSnapshot)
+	// Background launches a missing worker at lowered scheduling priority, for
+	// an App startup that already shows valid data: its scan must not compete
+	// with the menu-bar surface (architecture, startup contention).
+	Background bool
 }
+
+// workerBackgroundEnv asks a launched worker to lower its own priority.
+const workerBackgroundEnv = "AGENTDECK_SCAN_WORKER_BACKGROUND"
 
 type wireRequest struct {
 	Protocol int    `json:"protocol"`
@@ -194,15 +209,18 @@ type wireRequest struct {
 	Scope    Scope  `json:"scope"`
 	Events   bool   `json:"events,omitempty"`
 	CacheNow string `json:"cache_now,omitempty"`
+	AppOwned bool   `json:"app_owned,omitempty"`
+	Serving  bool   `json:"serving,omitempty"`
 }
 
 type wireResponse struct {
-	Type     string    `json:"type"`
-	WorkerID string    `json:"worker_id,omitempty"`
-	RoundID  string    `json:"round_id,omitempty"`
-	Result   *Result   `json:"result,omitempty"`
-	Progress *Progress `json:"progress,omitempty"`
-	Error    string    `json:"error,omitempty"`
+	Type        string                   `json:"type"`
+	WorkerID    string                   `json:"worker_id,omitempty"`
+	RoundID     string                   `json:"round_id,omitempty"`
+	Result      *Result                  `json:"result,omitempty"`
+	Progress    *Progress                `json:"progress,omitempty"`
+	Error       string                   `json:"error,omitempty"`
+	Publication *desktop.ServingSnapshot `json:"publication,omitempty"`
 }
 
 // Request joins a covered running round or starts one finite follow-up round.
@@ -227,7 +245,7 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, err
 	}
 	if c.ForceLocal {
-		return localRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress)
+		return localServingRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress, c.AppOwned, c.OnPublication)
 	}
 	endpoint, err := socketPath(stateRoot, stateID)
 	if err != nil {
@@ -237,7 +255,7 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 	if requestID == "" {
 		requestID = newID()
 	}
-	request := wireRequest{Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope, Events: onProgress != nil}
+	request := wireRequest{Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope, Events: onProgress != nil || c.OnPublication != nil, AppOwned: c.AppOwned, Serving: c.OnPublication != nil}
 	if c.Executable != "" && c.Now != nil {
 		request.CacheNow = c.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -250,7 +268,17 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, err
 	}
 	decoder := json.NewDecoder(io.LimitReader(conn, 8<<20))
-	first, err := decodeResponse(ctx, conn, decoder)
+	var servingReader *bufio.Reader
+	if c.OnPublication != nil {
+		servingReader = bufio.NewReader(conn)
+	}
+	decode := func() (wireResponse, error) {
+		if servingReader != nil {
+			return decodeServingResponse(ctx, conn, servingReader)
+		}
+		return decodeResponse(ctx, conn, decoder)
+	}
+	first, err := decode()
 	if err != nil {
 		return Result{}, err
 	}
@@ -261,7 +289,7 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, errors.New("scan worker did not acknowledge request")
 	}
 	for {
-		response, decodeErr := decodeResponse(ctx, conn, decoder)
+		response, decodeErr := decode()
 		if decodeErr != nil {
 			return Result{}, decodeErr
 		}
@@ -270,10 +298,17 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		}
 		switch response.Type {
 		case "progress":
-			if response.Progress == nil || onProgress == nil {
+			if response.Progress == nil || (onProgress == nil && c.OnPublication == nil) {
 				return Result{}, errors.New("scan worker returned an invalid progress response")
 			}
-			onProgress(*response.Progress)
+			if onProgress != nil {
+				onProgress(*response.Progress)
+			}
+		case "publication":
+			if response.Publication == nil || c.OnPublication == nil {
+				return Result{}, errors.New("scan worker returned an invalid publication")
+			}
+			c.OnPublication(*response.Publication)
 		case "terminal":
 			if response.Result == nil {
 				return Result{}, errors.New("scan worker returned an invalid terminal response")
@@ -296,7 +331,7 @@ func (c Client) connectOrLaunch(ctx context.Context, endpoint, stateRoot string)
 		if err := c.Launch(ctx, stateRoot); err != nil {
 			return nil, err
 		}
-	} else if err := launchWorker(ctx, c.Executable, stateRoot); err != nil {
+	} else if err := launchWorker(ctx, c.Executable, stateRoot, c.Background); err != nil {
 		return nil, err
 	}
 	startupCtx, cancel := context.WithTimeout(ctx, defaultStartupTimeout)
@@ -324,7 +359,17 @@ func dial(endpoint string) (net.Conn, error) {
 	return net.DialTimeout("unix", endpoint, 150*time.Millisecond)
 }
 
-func launchWorker(ctx context.Context, executable, stateRoot string) error {
+// workerCommand is the detached worker's command; a background worker gets
+// the environment flag that makes it lower its own priority.
+func workerCommand(executable, stateRoot string, background bool) *exec.Cmd {
+	cmd := exec.CommandContext(context.Background(), executable, "--state-dir", stateRoot, "scan-worker")
+	if background {
+		cmd.Env = append(os.Environ(), workerBackgroundEnv+"=1")
+	}
+	return cmd
+}
+
+func launchWorker(ctx context.Context, executable, stateRoot string, background bool) error {
 	if executable == "" {
 		var err error
 		executable, err = os.Executable()
@@ -336,7 +381,7 @@ func launchWorker(ctx context.Context, executable, stateRoot string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(context.Background(), executable, "--state-dir", stateRoot, "scan-worker")
+	cmd := workerCommand(executable, stateRoot, background)
 	cmd.Stdin = devNull
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
@@ -371,9 +416,54 @@ func decodeResponse(ctx context.Context, conn net.Conn, decoder *json.Decoder) (
 	}
 }
 
+// decodeServingResponse bounds each private Unix-socket message independently;
+// a long finite job cannot exhaust one cumulative stream-size allowance.
+func decodeServingResponse(ctx context.Context, conn net.Conn, reader *bufio.Reader) (wireResponse, error) {
+	type decoded struct {
+		value wireResponse
+		err   error
+	}
+	ready := make(chan decoded, 1)
+	go func() {
+		var line []byte
+		for {
+			part, err := reader.ReadSlice('\n')
+			if len(line)+len(part) > 8<<20 {
+				ready <- decoded{err: errors.New("serving response exceeds size limit")}
+				return
+			}
+			line = append(line, part...)
+			if errors.Is(err, bufio.ErrBufferFull) {
+				continue
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					err = io.ErrUnexpectedEOF
+				}
+				ready <- decoded{err: err}
+				return
+			}
+			var value wireResponse
+			err = json.Unmarshal(line, &value)
+			ready <- decoded{value: value, err: err}
+			return
+		}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = conn.Close()
+		return wireResponse{}, ctx.Err()
+	case result := <-ready:
+		return result.value, result.err
+	}
+}
+
 // Serve runs the hidden detached worker.  It holds the scan lock for its whole
 // lifetime, which makes socket cleanup and election authority inseparable.
 func Serve(ctx context.Context, stateRoot string) error {
+	if os.Getenv(workerBackgroundEnv) == "1" {
+		lowerProcessPriority()
+	}
 	stateRoot, stateID, err := prepareStateRoot(stateRoot)
 	if err != nil {
 		return err
@@ -482,6 +572,11 @@ func (s *server) handle(conn *net.UnixConn) {
 		_ = encoder.Encode(wireResponse{Type: "rejected", Error: err.Error()})
 		return
 	}
+	var releaseOnce sync.Once
+	releaseOwner := func() {
+		releaseOnce.Do(func() { s.mu.Lock(); defer s.mu.Unlock(); round.releaseAppOwner(request.Request) })
+	}
+	defer releaseOwner()
 	if err := encoder.Encode(wireResponse{Type: "accepted", WorkerID: s.nonce, RoundID: round.id}); err != nil {
 		return
 	}
@@ -489,13 +584,32 @@ func (s *server) handle(conn *net.UnixConn) {
 		_ = encoder.Encode(wireResponse{Type: "terminal", WorkerID: s.nonce, RoundID: round.id, Result: terminal})
 		return
 	}
+	subscriberCtx, cancelSubscriber := context.WithCancel(s.ctx)
+	defer cancelSubscriber()
+	go func() {
+		_, _ = io.Copy(io.Discard, conn)
+		releaseOwner()
+		cancelSubscriber()
+	}()
 	var result Result
+	lastPublication := ""
 	if request.Events {
-		result, err = round.waitWithProgress(s.ctx, request.Scope, func(progress Progress) error {
+		result, err = round.waitWithProgress(subscriberCtx, request.Scope, func(progress Progress) error {
+			if request.Serving {
+				round.mu.RLock()
+				publication := round.publication
+				round.mu.RUnlock()
+				if publication != nil && publication.Header.PublicationID != lastPublication {
+					if err := encoder.Encode(wireResponse{Type: "publication", WorkerID: s.nonce, RoundID: round.id, Publication: publication}); err != nil {
+						return err
+					}
+					lastPublication = publication.Header.PublicationID
+				}
+			}
 			return encoder.Encode(wireResponse{Type: "progress", WorkerID: s.nonce, RoundID: round.id, Progress: &progress})
 		})
 	} else {
-		result, err = round.wait(s.ctx, request.Scope)
+		result, err = round.wait(subscriberCtx, request.Scope)
 	}
 	if err != nil {
 		return
@@ -527,7 +641,7 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 	defer s.mu.Unlock()
 	if s.journal != nil {
 		if receipt, found := s.journal.get(request.Request); found {
-			if receipt.StateID != request.StateID || receipt.Home != request.Home || receipt.Scope != request.Scope {
+			if receipt.StateID != request.StateID || receipt.Home != request.Home || receipt.Scope != request.Scope || receipt.AppOwned != request.AppOwned {
 				return nil, nil, errors.New("scan request id conflicts with a different requirement")
 			}
 			if receipt.State == receiptTerminal && receipt.Result != nil {
@@ -538,12 +652,13 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 				return nil, nil, errors.New("scan request receipt expired; re-evaluate required")
 			}
 			if round := s.rounds[receipt.RoundID]; round != nil {
+				round.registerOwner(request.Request, request.AppOwned)
 				return round, nil, nil
 			}
 			return nil, nil, errors.New("accepted scan request has no recoverable round")
 		}
 	}
-	round, start, err := s.selectRoundLocked(request.Home, request.Scope)
+	round, start, err := s.selectRoundLocked(request.Home, request.Scope, request.Serving)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -565,9 +680,11 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 		receipt := scanReceipt{
 			ID: request.Request, StateID: request.StateID, Home: request.Home, Scope: request.Scope,
 			RoundID: round.id, Observation: round.observation,
+			AppOwned: request.AppOwned,
 		}
 		if err = s.journal.accept(receipt); err != nil {
 			if receiptWasInstalled(err) {
+				round.registerOwner(request.Request, request.AppOwned)
 				if start {
 					s.launchRoundLocked(round)
 				}
@@ -578,6 +695,7 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 			return nil, nil, err
 		}
 	}
+	round.registerOwner(request.Request, request.AppOwned)
 	if start {
 		s.launchRoundLocked(round)
 	}
@@ -585,30 +703,41 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 	return round, nil, nil
 }
 
-func (s *server) selectRoundLocked(home string, scope Scope) (*round, bool, error) {
+func (s *server) selectRoundLocked(home string, scope Scope, servingRequest ...bool) (*round, bool, error) {
+	serving := len(servingRequest) > 0 && servingRequest[0]
 	if s.round == nil {
 		round := s.newRoundLocked(home, nil)
+		round.serving = serving
 		s.round = round
 		return round, true, nil
 	}
 	if !s.round.completed() && s.round.home != home {
 		return nil, false, errors.New("incompatible scan worker configuration")
 	}
-	if !s.round.observedInventory() && s.round.covers(scope) {
+	s.round.mu.Lock()
+	if !s.round.pausing && !s.round.observedInventory() && s.round.covers(scope) {
+		s.round.serving = s.round.serving || serving
+		s.round.mu.Unlock()
 		return s.round, false, nil
 	}
+	s.round.mu.Unlock()
 	if s.pending != nil {
 		if s.pending.home != home {
 			return nil, false, errors.New("incompatible scan worker configuration")
 		}
+		s.pending.mu.Lock()
+		s.pending.serving = s.pending.serving || serving
+		s.pending.mu.Unlock()
 		return s.pending, false, nil
 	}
 	if s.round.completed() {
 		round := s.newRoundLocked(home, nil)
+		round.serving = serving
 		s.round = round
 		return round, true, nil
 	}
 	followUp := s.newRoundLocked(home, s.round)
+	followUp.serving = serving
 	s.pending = followUp
 	return followUp, true, nil
 }
@@ -640,11 +769,16 @@ func (s *server) rollbackSelectedRoundLocked(round *round, started bool) {
 
 func (s *server) launchRoundLocked(round *round) {
 	round.onTerminal = func(result Result) error { return s.completeRound(round, result) }
+	workCtx, cancel := context.WithCancel(s.ctx)
+	round.mu.Lock()
+	round.cancelWork = cancel
+	round.mu.Unlock()
 	go func() {
+		defer cancel()
 		if round.predecessor != nil {
 			<-round.predecessor.done
 		}
-		round.executeWith(s.ctx, s.stateRoot, true, s.run)
+		round.executeWith(workCtx, s.stateRoot, true, s.run)
 	}()
 }
 
@@ -688,9 +822,22 @@ func (s *server) recoverReceipts() error {
 	}
 	var previous *round
 	seen := map[string]bool{}
-	for _, receipt := range s.journal.recoverable() {
+	recoverable := s.journal.recoverable()
+	cliRounds := map[string]bool{}
+	for _, receipt := range recoverable {
+		if !receipt.AppOwned {
+			cliRounds[receipt.RoundID] = true
+		}
+	}
+	for _, receipt := range recoverable {
 		if receipt.StateID != s.stateID {
 			return errors.New("scan receipt journal belongs to another state root")
+		}
+		if !cliRounds[receipt.RoundID] {
+			if err := s.journal.terminal(receipt.RoundID, Result{RoundID: receipt.RoundID, Usage: failedUsage(context.Canceled, 0), Session: failedSession(context.Canceled, 0)}); err != nil {
+				return err
+			}
+			continue
 		}
 		if seen[receipt.RoundID] {
 			continue
@@ -703,6 +850,7 @@ func (s *server) recoverReceipts() error {
 			return errors.New("too many unfinished scan receipt rounds")
 		}
 		round := newRoundWithID(receipt.Home, receipt.RoundID, receipt.Observation)
+		round.cliObligation = true
 		round.predecessor = previous
 		s.rounds[round.id] = round
 		if previous == nil {
@@ -736,27 +884,38 @@ func (s *server) idle() bool {
 type round struct {
 	id          string
 	home        string
+	metrics     *ingest.Metrics // set only while measurement recording is on
 	observation uint64
 	predecessor *round
 	onTerminal  func(Result) error
 
-	done              chan struct{}
-	usageDone         chan struct{}
-	sessionDone       chan struct{}
-	once              sync.Once
-	usageOnce         sync.Once
-	sessionOnce       sync.Once
-	mu                sync.RWMutex
-	result            Result
-	progress          Progress
-	progressSeq       uint64
-	terminalErr       error
-	cacheNow          func() time.Time
-	openCore          func(context.Context, string) (*store.Store, error)
-	openSessions      func(context.Context, string) (*store.Store, error)
-	afterDiscovery    func([]ingest.Source)
-	inventoryObserved chan struct{}
-	inventoryOnce     sync.Once
+	done               chan struct{}
+	usageDone          chan struct{}
+	sessionDone        chan struct{}
+	once               sync.Once
+	usageOnce          sync.Once
+	sessionOnce        sync.Once
+	mu                 sync.RWMutex
+	result             Result
+	progress           Progress
+	progressSeq        uint64
+	terminalErr        error
+	cacheNow           func() time.Time
+	servingVault       provider.CredentialVault
+	openCore           func(context.Context, string) (*store.Store, error)
+	openSessions       func(context.Context, string) (*store.Store, error)
+	beforeDiscovery    func()
+	afterDiscovery     func([]ingest.Source)
+	beforeServingBatch func(int)
+	publishFullServing func(context.Context, string) (desktop.ServingSnapshot, error)
+	inventoryObserved  chan struct{}
+	inventoryOnce      sync.Once
+	serving            bool
+	publication        *desktop.ServingSnapshot
+	appOwners          map[string]int
+	cliObligation      bool
+	pausing            bool
+	cancelWork         context.CancelFunc
 }
 
 type roundRunner func(context.Context, string, string, string, bool) Result
@@ -806,6 +965,10 @@ func (r *round) execute(ctx context.Context, stateRoot string, lockHeld bool) {
 
 func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool, run roundRunner) {
 	r.once.Do(func() {
+		perftrace.Mark(perftrace.JobStart)
+		if perftrace.Enabled() {
+			r.metrics = &ingest.Metrics{}
+		}
 		resourcesBefore := currentProcessResources()
 		if run == nil {
 			r.executeProduction(ctx, stateRoot, lockHeld)
@@ -813,6 +976,9 @@ func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool
 			r.setResult(run(ctx, stateRoot, r.home, r.id, lockHeld))
 		}
 		r.setProcessResources(resourcesBefore, currentProcessResources())
+		// scan.end is recorded before the result is published: a caller that
+		// stops tracing as soon as its request returns must still see it.
+		r.markEnd()
 		r.complete()
 	})
 }
@@ -835,9 +1001,19 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		defer lock.Release()
 	}
 	discoverStarted := time.Now()
+	if r.beforeDiscovery != nil {
+		r.beforeDiscovery()
+	}
+	finishDiscovery := perftrace.Span(perftrace.ScanDiscovery)
 	sources, discoverErr := ingest.Discover(r.home)
+	finishDiscovery(perftrace.Count{Key: "sources", Value: int64(len(sources))})
 	r.setDiscovery(time.Since(discoverStarted).Milliseconds())
+	// Admission and capability selection share this boundary. A serving request
+	// accepted during discovery upgrades this round before any consumer starts.
+	r.mu.Lock()
+	serving := r.serving
 	r.inventoryOnce.Do(func() { close(r.inventoryObserved) })
+	r.mu.Unlock()
 	if discoverErr != nil {
 		r.setUsage(failedUsage(discoverErr, 0))
 		r.setSession(failedSession(discoverErr, 0))
@@ -845,6 +1021,10 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	}
 	if r.afterDiscovery != nil {
 		r.afterDiscovery(sources)
+	}
+	if serving && !servingSettled(ctx, stateRoot, r.home, r.cacheNow) {
+		r.executeServingDiscovered(ctx, stateRoot, started, sources)
+		return
 	}
 
 	openCore := r.openCore
@@ -863,14 +1043,21 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if sessionsErr == nil {
 		defer sessions.Close()
 	}
+	if coreErr == nil {
+		coreErr = acceptDomainInventory(ctx, core, r.id, sources, false, started)
+	}
+	if sessionsErr == nil {
+		sessionsErr = acceptDomainInventory(ctx, sessions, r.id, sources, true, started)
+	}
 
-	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: r.metrics})
 	defer coordinator.Close()
 	var usageService *usage.Service
 	var usageInventory usage.Inventory
 	usagePlanErr := coreErr
 	if coreErr == nil {
 		usageService = usage.New(core, r.home)
+		usageService.CoverageInventoryID = r.id
 		usageService.PreparedSources = sources
 		usageService.Coordinator = coordinator
 		usageInventory, usagePlanErr = usageService.PlanForCoordinator(ctx, coordinator)
@@ -913,6 +1100,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		coordinator.ConsumerDone(ingest.ConsumerSession)
 	}
 	r.setProgressStage("importing")
+	finishIngest := perftrace.Span(perftrace.IngestRead)
 	coordinator.Start(ctx)
 	var wait sync.WaitGroup
 	wait.Add(1)
@@ -922,10 +1110,16 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerUsage)
+			defer perftrace.Span(perftrace.ScanUsage)()
 			started := time.Now()
 			changes, err := usageService.ScanInventory(ctx, usageInventory)
 			duration := time.Since(started).Milliseconds()
 			if err != nil {
+				finishDomainInventory(core, r.id, err)
+				r.setUsage(failedUsage(err, duration))
+				return
+			}
+			if err = finishAcceptedInventory(ctx, core, r.id); err != nil {
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
@@ -945,9 +1139,16 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		// Cache publication is best effort and remains independent from the
 		// durable usage outcome. Scope-specific callers have already observed
 		// their terminal domain result before this derived work completes.
+		defer perftrace.Span(perftrace.ScanDerive)()
 		started := time.Now()
 		r.setProgressStage("statistics")
-		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
+		// The inventory this round accepted can settle OTel ownership; settle
+		// first so the publication below already counts background usage.
+		if sessionsErr == nil {
+			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
+		}
+		_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
+		r.publishFinalServing(ctx, stateRoot)
 		r.setDerivedCache(time.Since(started).Milliseconds())
 	}()
 	if sessionPlanErr == nil {
@@ -955,9 +1156,17 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		go func() {
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerSession)
+			// Ends when the scan returns, before the wait for usage below.
+			finishSession := perftrace.Span(perftrace.ScanSession)
 			started := time.Now()
-			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}})
+			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}, CoverageInventoryID: r.id})
+			finishSession()
 			if err != nil {
+				finishDomainInventory(sessions, r.id, err)
+				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+				return
+			}
+			if err = finishAcceptedInventory(ctx, sessions, r.id); err != nil {
 				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 				return
 			}
@@ -985,6 +1194,10 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		}()
 	}
 	wait.Wait()
+	if r.metrics != nil {
+		coordinator.Close()
+		finishIngest(r.metrics.Counts()...)
+	}
 }
 
 func sealSkippedSources(coordinator *ingest.Coordinator, sources []ingest.Source, consumer string) error {
@@ -1069,6 +1282,7 @@ func (r *round) setSession(result SessionResult) {
 }
 
 func (r *round) setDerivedCache(duration int64) {
+	perftrace.Mark(perftrace.ProjectionDone)
 	r.mu.Lock()
 	r.result.Stages.DerivedCacheMS = duration
 	r.mu.Unlock()
@@ -1081,6 +1295,25 @@ func (r *round) setProcessResources(before, after processResources) {
 	}
 	r.result.Stages.WorkerPeakRSSBytes = after.peakRSS
 	r.mu.Unlock()
+}
+
+// markEnd records the round outcome counters used by P08: ingest work plus
+// the usage events and session documents the round imported.
+func (r *round) markEnd() {
+	if !perftrace.Enabled() {
+		return
+	}
+	r.mu.Lock()
+	counts := []perftrace.Count{
+		{Key: "usage_imported", Value: int64(r.result.Usage.Changes["imported"])},
+		{Key: "session_documents", Value: int64(r.result.Session.Scan.Documents)},
+		{Key: "session_sources", Value: int64(r.result.Session.Scan.Sources)},
+	}
+	r.mu.Unlock()
+	if r.metrics != nil {
+		counts = append(counts, r.metrics.Counts()...)
+	}
+	perftrace.Mark(perftrace.ScanEnd, counts...)
 }
 
 func (r *round) complete() {
@@ -1290,12 +1523,19 @@ var localRounds = struct {
 func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time, onProgress func(Progress)) (Result, error) {
 	localRounds.Lock()
 	round := localRounds.byState[stateRoot]
-	if round == nil || round.completed() {
+	pausing := false
+	if round != nil {
+		round.mu.RLock()
+		pausing = round.pausing
+		round.mu.RUnlock()
+	}
+	if round == nil || round.completed() || pausing {
 		round = newRound(home)
 		round.cacheNow = now
 		localRounds.byState[stateRoot] = round
 		go round.execute(context.Background(), stateRoot, false)
 	}
+	round.registerOwner(newID(), false)
 	localRounds.Unlock()
 	if onProgress != nil {
 		return round.waitWithProgress(ctx, scope, func(progress Progress) error {

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,12 +36,14 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/usagehook"
 	"github.com/kitdine/agent-deck/internal/watch"
@@ -383,7 +386,69 @@ func (e *inputError) Unwrap() error {
 }
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
+	if os.Getenv(perftrace.EnvOut) != "" && !slices.Contains(os.Args[1:], "watch") {
+		traceReady := make(chan struct{})
+		flushTraceOnTermination(traceReady)
+		stdout, stderr = tracePipeOutputs()
+		perftrace.Start(perfRole(os.Args[1:]))
+		close(traceReady)
+	} else {
+		perftrace.Start(perfRole(os.Args[1:]))
+	}
+	code := execute(os.Args[1:], os.Stdin, stdout, stderr)
+	_ = store.CloseReadPools()
+	_ = perftrace.Close()
+	os.Exit(code)
+}
+
+// Arm before creating the trace file. A startup SIGTERM waits for the recorder
+// before flushing, then retains the original signal termination semantics.
+func flushTraceOnTermination(traceReady <-chan struct{}) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	go func() {
+		received := <-signals
+		<-traceReady
+		_ = perftrace.Close()
+		signal.Reset(received)
+		_ = syscall.Kill(os.Getpid(), received.(syscall.Signal))
+	}()
+}
+
+// Go normally exits immediately on EPIPE from stdout/stderr. During recording,
+// let that write return its error so the recorder can close first. Retrying the
+// failed write after Reset invokes Go's normal SIGPIPE exit (sending SIGPIPE via
+// Kill alone is ignored by Go and cannot preserve the original exit signal).
+func tracePipeOutputs() (io.Writer, io.Writer) {
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
+	return tracePipeWriter{os.Stdout}, tracePipeWriter{os.Stderr}
+}
+
+type tracePipeWriter struct{ file *os.File }
+
+func (w tracePipeWriter) Write(data []byte) (int, error) {
+	n, err := w.file.Write(data)
+	if errors.Is(err, syscall.EPIPE) {
+		_ = perftrace.Close()
+		signal.Reset(syscall.SIGPIPE)
+		return w.file.Write(data)
+	}
+	return n, err
+}
+
+// perfRole names this process in measurement traces: the scan worker is the
+// collector, App helper invocations run under desktop, the rest is CLI.
+func perfRole(args []string) perftrace.Role {
+	for _, arg := range args {
+		switch arg {
+		case "scan-worker":
+			return perftrace.RoleCollector
+		case "desktop":
+			return perftrace.RoleHelper
+		}
+	}
+	return perftrace.RoleCLI
 }
 
 func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -463,6 +528,10 @@ func errorDetails(err error) any {
 }
 
 func errorMessage(err error) string {
+	var codexConfig *telemetryCodexError
+	if errors.As(err, &codexConfig) {
+		return codexConfig.text
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		switch contention.Resource {
@@ -575,7 +644,12 @@ func errorCode(err error) string {
 	var scanDomain *scanruntime.DomainError
 	var syncIncomplete *extension.ErrExtensionSyncIncomplete
 	var inventoryUnreadable *extension.ErrExtensionInventoryUnreadable
+	var codexConfig *telemetryCodexError
 	switch {
+	case errors.As(err, &codexConfig):
+		return codexConfig.code
+	case errors.Is(err, errTelemetryImportUnsupported):
+		return errTelemetryImportUnsupported.Error()
 	case errors.As(err, &syncIncomplete):
 		return "extension_sync_incomplete"
 	case errors.As(err, &inventoryUnreadable):
@@ -725,7 +799,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 				return err
 			}
 			commandPath := command.CommandPath()
-			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" {
+			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" && commandPath != "agentdeck desktop bootstrap" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
 			return nil
@@ -749,7 +823,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts), newTelemetryCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -1655,10 +1729,13 @@ func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, sco
 		Executable: scanRuntimeExecutable(),
 		ForceLocal: scanRuntimeForceLocal(),
 	}
+	var result scanruntime.Result
 	if onProgress != nil {
-		return client.RequestWithProgress(ctx, scope, onProgress)
+		result, err = client.RequestWithProgress(ctx, scope, onProgress)
+	} else {
+		result, err = client.Request(ctx, scope)
 	}
-	return client.Request(ctx, scope)
+	return result, err
 }
 
 func scanRuntimeLocalTestMode() bool {
@@ -2781,11 +2858,15 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			return nil, &inputError{err: pageErr}
 		}
 		result := session.Result{Metadata: metadata, Documents: documents}
-		_, sourceErr := os.Stat(metadata.SourcePath)
+		// A projected OTel source is not a file: never stale, no activity.
+		var sourceErr error
+		if !session.IsTelemetrySource(metadata.SourcePath) {
+			_, sourceErr = os.Stat(metadata.SourcePath)
+		}
 		sourceStale := errors.Is(sourceErr, os.ErrNotExist)
 		activityWarning := ""
 		var activityPagination session.Pagination
-		if showActivity {
+		if showActivity && !session.IsTelemetrySource(metadata.SourcePath) {
 			activityPage, activityErr := activity.ReadDetailsPage(metadata.SourcePath, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
 			if activityErr != nil {
 				activityWarning = "Activity source is unavailable."
@@ -2923,6 +3004,10 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 					return err
 				}
 				defer core.Close()
+				// The rebuild cleared the index; regenerate the OTel projection.
+				if err := telemetry.ProjectSessionIndex(ctx, core, sessions); err != nil {
+					return err
+				}
 				return core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
 			})
 			if err != nil {
@@ -3243,6 +3328,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 				if scanErr != nil {
 					return 0, scanErr
 				}
+				_, _ = telemetry.SettleAndProject(ctx, database, sessions, time.Now())
 				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
 				if checkpointErr == nil {
 					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
@@ -3813,7 +3899,18 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 					return &inputError{err: err}
 				}
 			}
-			database, _, err := opts.openStore(command.Context())
+			storedOnly, _ := command.Flags().GetBool("no-scan")
+			var database *store.Store
+			var err error
+			if storedOnly {
+				root, rootErr := opts.stateRoot()
+				if rootErr != nil {
+					return rootErr
+				}
+				database, err = store.OpenReadOnly(command.Context(), root)
+			} else {
+				database, _, err = opts.openStore(command.Context())
+			}
 			if err != nil {
 				return err
 			}
@@ -3827,6 +3924,21 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, partial, warnings, err := run(command.Context(), service, database, args)
 			if err != nil {
 				return err
+			}
+			if storedOnly {
+				coverage, err := database.ReadSourceCoverage(command.Context())
+				if err != nil {
+					return err
+				}
+				if code := sourceCoverageWarning(coverage.State); code != "" {
+					partial = true
+					warnings = append(warnings, code)
+					if opts.format == "text" {
+						if _, err = fmt.Fprintf(opts.stderr, "%s: committed source coverage %s; observed through %s\n", code, coverage.State, coverage.ObservedAt); err != nil {
+							return err
+						}
+					}
+				}
 			}
 			renderOptions := newUsageTextRenderOptions(opts.stdout, opts.noColor)
 			if command.Name() == "stats" && command.Flags().Changed("top") {

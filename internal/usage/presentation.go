@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/perftrace"
 )
 
 const (
@@ -241,6 +243,27 @@ func EmptyPresentationReport() PresentationReport {
 // for every menu-bar and Widget presentation dimension. Callers select already
 // computed scopes and periods; they never regroup the daily series.
 func (s *Service) Presentation(ctx context.Context, now time.Time, location *time.Location) (PresentationReport, error) {
+	return s.presentation(ctx, now, location, false)
+}
+
+// ProjectedPresentation reuses unchanged day/client/model pricing contributions.
+// The ordinary Presentation method remains the full-fact oracle.
+func (s *Service) ProjectedPresentation(ctx context.Context, now time.Time, location *time.Location) (PresentationReport, error) {
+	return s.presentationProjected(ctx, now, location, false, true)
+}
+
+// TodayPresentation supplies the startup window without first reading or
+// preparing ninety days. It shares the full oracle's pricing and reducers.
+func (s *Service) TodayPresentation(ctx context.Context, now time.Time, location *time.Location) (PresentationReport, error) {
+	return s.presentation(ctx, now, location, true)
+}
+
+func (s *Service) presentation(ctx context.Context, now time.Time, location *time.Location, todayOnly bool) (PresentationReport, error) {
+	return s.presentationProjected(ctx, now, location, todayOnly, false)
+}
+
+func (s *Service) presentationProjected(ctx context.Context, now time.Time, location *time.Location, todayOnly, incremental bool) (PresentationReport, error) {
+	defer perftrace.Span(perftrace.UsagePresentation)()
 	if location == nil {
 		location = time.Local
 	}
@@ -253,12 +276,12 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 		{name: "7d", days: 7, start: today.AddDate(0, 0, -6)},
 		{name: "30d", days: 30, start: today.AddDate(0, 0, -29)},
 	}
-
-	events, err := s.eventsRange(ctx, start90, end, "", "")
-	if err != nil {
-		return PresentationReport{}, err
+	if todayOnly {
+		start90 = today
+		periods = periods[:1]
 	}
-	resolver, err := s.loadReadPriceResolver(ctx, now.UTC())
+
+	events, pricing, err := s.presentationInputs(ctx, start90, end, now, incremental)
 	if err != nil {
 		return PresentationReport{}, err
 	}
@@ -273,11 +296,7 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 			return PresentationReport{}, parseErr
 		}
 		at = at.In(location)
-		attribution, attributionErr := resolver.priceForEvent(event)
-		if attributionErr != nil {
-			return PresentationReport{}, attributionErr
-		}
-		calculated, calculateErr := calculateAttributedEvent(event, attribution)
+		attribution, calculated, calculateErr := pricing(event)
 		if calculateErr != nil {
 			return PresentationReport{}, calculateErr
 		}
@@ -315,7 +334,7 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 				}
 			}
 
-			if !at.Before(periods[2].start) {
+			if !todayOnly && !at.Before(periods[2].start) {
 				key := [2]int{(int(at.Weekday()) + 6) % 7, at.Hour()}
 				if scope.rhythm[key] == nil {
 					scope.rhythm[key] = newPresentationAccumulator()
@@ -450,7 +469,10 @@ func buildPresentationScope(name string, value *presentationScopeAccumulator, pe
 		Hourly:  PresentationHourly{Available: true, ThroughHour: currentHour, Items: []PresentationHourlyItem{}},
 		Quality: PresentationQuality{Available: true, Items: []PresentationQualityItem{}},
 		Pricing: presentationPricing(value, periods),
-		Rhythm:  presentationRhythm(value, periods[2].start),
+		Rhythm:  unavailablePresentationScope(name, currentHour).Rhythm,
+	}
+	if len(periods) >= 3 {
+		scope.Rhythm = presentationRhythm(value, periods[2].start)
 	}
 	for _, period := range periods {
 		periodValue := value.periods[period.name]
@@ -462,8 +484,7 @@ func buildPresentationScope(name string, value *presentationScopeAccumulator, pe
 			Models:        presentationModels(name, periodValue),
 		})
 	}
-	for offset := 0; offset < presentationDailyLimit; offset++ {
-		date := start90.AddDate(0, 0, offset)
+	for date := start90; !date.After(today); date = date.AddDate(0, 0, 1) {
 		item := value.daily[date.Format("2006-01-02")]
 		if item == nil {
 			item = newPresentationAccumulator()

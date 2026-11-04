@@ -216,6 +216,15 @@ Do not infer that an evaluator closing a Gate grants broader business authority.
 For a work-product task, review PASS alone does not mean delivered. Its authorized
 commit must exist before it closes. A required NOT_VERIFIED, FAILED, or BLOCKED
 evidence gate keeps the task in `in_review`.
+Task 2 local-acceptance exception (2026-10-20): the user explicitly authorized
+completion of `ad-scan-performance-serving-snapshot-and-bootstrap` with revised
+acceptance standards. Its authorized final boundary is the accepted local
+worktree, with R33 review PASS, the scoped waiver recorded, and the revised
+exact-state gate VERIFIED. Once those conditions hold, this task may close
+without a Git commit. Record `local acceptance; no Git delivery` in its closure
+comment. This exception supersedes the commit prerequisite only for this task;
+it grants no commit, push, integration, release, Topic closure, or Tasks3–7 work.
+
 When review and required gates pass, follow the Skill's Task checkpoint and move
 to `awaiting_commit`. Every work-product task gets that checkpoint, including tasks whose
 work product is a document; recommendations do not authorize commit or push.

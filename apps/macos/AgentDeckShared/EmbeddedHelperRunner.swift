@@ -226,6 +226,7 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
         let running = RunningProcess(process)
         do {
             try process.run()
+			PerfTrace.mark(.helperStart)
         } catch {
             try? stdoutPipe.fileHandleForWriting.close()
             try? stderrPipe.fileHandleForWriting.close()
@@ -320,6 +321,7 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		let running = RunningProcess(process)
 		do {
 			try process.run()
+			PerfTrace.mark(.helperStart)
 		} catch {
 			try? stdoutPipe.fileHandleForWriting.close()
 			try? stderrPipe.fileHandleForWriting.close()
@@ -475,6 +477,10 @@ public struct EmbeddedHelperRunner: Sendable {
         timeout: Duration = Self.defaultTimeout
     ) {
         var resolvedEnvironment = environment ?? Self.defaultEnvironment()
+		// Helpers record into the App's measurement directory, never their own.
+		if PerfTrace.isEnabled, let traceDirectory = ProcessInfo.processInfo.environment[PerfTrace.environmentKey] {
+			resolvedEnvironment[PerfTrace.environmentKey] = traceDirectory
+		}
         if resolvedEnvironment["HOME"] == nil {
             resolvedEnvironment["HOME"] = Self.defaultEnvironment()["HOME"]
         }
@@ -520,8 +526,13 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
 			throw error
 		}
+		let scanStarted = PerfTrace.begin()
 		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
+		PerfTrace.end(.scanRequest, since: scanStarted)
+		let drainStarted = PerfTrace.begin()
 		try await waitForCompletedScanWorkerToReleaseLock()
+		PerfTrace.end(.workerDrain, since: drainStarted)
+		let requestStarted = PerfTrace.begin()
 		let requestStartedAt = Date()
 		let output: HelperProcessLinesOutput
         do {
@@ -565,6 +576,7 @@ public struct EmbeddedHelperRunner: Sendable {
 			stderrTruncated: output.stderrTruncated,
 			errorCode: desktopHelperErrorCode(stderr: output.stderr)
 		)
+		PerfTrace.end(.snapshotRequest, since: requestStarted)
 		guard !output.stdoutLineTruncated, !output.stderrTruncated else {
 			DesktopLogger.recordRefreshFailure(
 				id: refreshID,
@@ -583,8 +595,10 @@ public struct EmbeddedHelperRunner: Sendable {
         }
 
 		do {
+			let decodeStarted = PerfTrace.begin()
 			let payload = try decodeDesktopSnapshotStream(output.stdoutLines)
 			let envelope = try decodeDesktopWireEnvelopeV1(payload)
+			PerfTrace.end(.snapshotDecode, since: decodeStarted)
 			DesktopLogger.recordRefreshFinish(
 				id: refreshID,
 				durationMilliseconds: elapsedMilliseconds(since: refreshStartedAt),
@@ -615,6 +629,79 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
             throw HelperExecutionError.malformedOutput
 		}
+	}
+
+	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		// An empty state root has neither a serving file nor committed facts to
+		// fall back to; the helper could only fail. Fail without launching it, so
+		// a first import's bootstrap does not wait behind it.
+		let root = URL(fileURLWithPath: stateRoot, isDirectory: true)
+		let files = FileManager.default
+		guard files.fileExists(atPath: root.appendingPathComponent("desktop-serving-snapshot.json").path)
+			|| files.fileExists(atPath: root.appendingPathComponent("agentdeck.sqlite3").path)
+		else { throw HelperExecutionError.nonZeroExit(1) }
+		// The helper verifies the cache identity before it prints the snapshot.
+		let identityStarted = PerfTrace.begin()
+		let output = try await process.runLines(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(["--format", "json", "desktop", "snapshot", "--wire-version", "2"]),
+			environment: environment, timeout: timeout,
+			maximumLineBytes: 8 * 1024 * 1024, maximumLines: 1
+		)
+		guard output.exitStatus == 0, !output.stdoutLineTruncated, !output.stderrTruncated,
+			output.stdoutLines.count == 1
+		else { throw HelperExecutionError.malformedOutput }
+		PerfTrace.end(.restoreIdentity, since: identityStarted)
+		let decodeStarted = PerfTrace.begin()
+		let envelope = try JSONDecoder().decode(DesktopServingOutput.self, from: output.stdoutLines[0])
+		guard envelope.schemaVersion == 1, envelope.command == "desktop.serving" else {
+			throw HelperExecutionError.malformedOutput
+		}
+		try envelope.data.validate()
+		PerfTrace.end(.restoreDecode, since: decodeStarted)
+		return envelope.data
+	}
+
+	public func bootstrapServingSnapshot(
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void
+	) async throws -> DesktopServingSnapshotV2? {
+		let capture = DesktopBootstrapCapture()
+		let output = try await process.runLines(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(["--format", "ndjson", "desktop", "bootstrap"]),
+			environment: environment,
+			// This is a lifetime-bound background job, not the legacy 120s UI
+			// request. Cancellation closes its owner connection at App exit.
+			timeout: .seconds(24 * 60 * 60),
+			maximumLineBytes: 8 * 1024 * 1024, maximumLines: 0,
+			onLine: { line in
+				do {
+					let probe = try JSONDecoder().decode(DesktopBootstrapProbe.self, from: line)
+					guard probe.schemaVersion == 2, probe.command == "desktop.bootstrap" else {
+						throw HelperExecutionError.malformedOutput
+					}
+					switch probe.type {
+					case "publication":
+						let event = try JSONDecoder().decode(DesktopBootstrapPublication.self, from: line)
+						try event.data.validate()
+						capture.install(event.data)
+						publication(event.data)
+					case "progress":
+						let event = try JSONDecoder().decode(DesktopBootstrapProgress.self, from: line)
+						progress(event.data)
+					case "terminal": capture.finish()
+					default: throw HelperExecutionError.malformedOutput
+					}
+				} catch { capture.fail() }
+			}
+		)
+		guard output.exitStatus == 0 else { throw HelperExecutionError.nonZeroExit(output.exitStatus) }
+		guard !output.stdoutLineTruncated, !output.stderrTruncated, capture.isComplete else {
+			throw HelperExecutionError.malformedOutput
+		}
+		guard let latest = capture.latest else { throw HelperExecutionError.malformedOutput }
+		return latest
 	}
 
 	private func scanIndexes(
@@ -654,6 +741,9 @@ public struct EmbeddedHelperRunner: Sendable {
 				throw HelperExecutionError.outputLimitExceeded
 			}
 			guard output.exitStatus == 0 else {
+				// Only counts enter the trace; raw helper output stays private.
+				PerfTrace.mark(.helperExit, PerfCount("exit_status", Int64(output.exitStatus)),
+					PerfCount("stdout_bytes", Int64(output.stdoutBytes)), PerfCount("stderr_bytes", Int64(output.stderr.count)))
 				throw HelperExecutionError.nonZeroExit(output.exitStatus)
 			}
 			_ = try decodeDesktopScanEventStream(output.stdoutLines)
@@ -1073,6 +1163,49 @@ public final class DesktopHost {
 	}
 }
 
+private struct DesktopServingOutput: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let data: DesktopServingSnapshotV2
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, data }
+}
+
+private struct DesktopBootstrapProbe: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let type: String
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, type }
+}
+private struct DesktopBootstrapPublication: Decodable { let data: DesktopServingSnapshotV2 }
+private struct DesktopBootstrapProgress: Decodable { let data: DesktopScanProgress }
+
+private final class DesktopBootstrapCapture: @unchecked Sendable {
+	private let lock = NSLock()
+	private var value: DesktopServingSnapshotV2?
+	private var terminal = false
+	private var failed = false
+	func install(_ value: DesktopServingSnapshotV2) { lock.lock(); defer { lock.unlock() }; self.value = value }
+	func finish() { lock.lock(); defer { lock.unlock() }; terminal = true }
+	func fail() { lock.lock(); defer { lock.unlock() }; failed = true }
+	var latest: DesktopServingSnapshotV2? { lock.lock(); defer { lock.unlock() }; return value }
+	var isComplete: Bool { lock.lock(); defer { lock.unlock() }; return terminal && !failed }
+}
+
+@MainActor
+public protocol DesktopSnapshotBootstrapping {
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2?
+}
+
+extension DesktopHost: DesktopSnapshotBootstrapping {
+	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 { try await runner.readServingSnapshot() }
+	public func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		try await runner.bootstrapServingSnapshot(progress: progress, publication: publication)
+	}
+}
+
 public struct ProviderSwitchTarget: Equatable, Sendable, Identifiable {
 	public var id: String {
 		[client, provider, credential ?? "", viaWrapper ? "via" : "direct"].joined(separator: "\u{0}")
@@ -1422,7 +1555,7 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 		await runQuotaCommand(["desktop", "quota-statusline", enabled ? "enable" : "disable"])
 	}
 
-	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(
+	func runQuotaCommand<Value: Codable & Equatable & Sendable>(
 		_ subcommand: [String],
 		requestTimeout: Duration? = nil
 	) async -> DesktopQuotaTransportOutcome<Value> {
@@ -1449,6 +1582,120 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 			return .undecodable
 		}
 		return .decoded(envelope.data)
+	}
+}
+
+/// telemetry.status as the App reads it (cmd/agentdeck telemetry status,
+/// field names from the reviewed CLI specimen). Preference, listener fact,
+/// last observation, metering capability and Codex configuration facts are
+/// separate fields; nil stays unknown and is never inferred from another.
+public struct DesktopTelemetryStatusV1: Codable, Equatable, Sendable {
+	public let receiver: String
+	public let listener: String
+	public let listenerReason: String?
+	public let port: Int
+	public let producerConfigured: String
+	public let lastReceivedAt: String?
+	public let lastRefusedAt: String?
+	public let metering: String
+	public let pendingObservations: Int
+	public let codexMemories: String
+	public let codexExporter: String
+
+	public init(
+		receiver: String, listener: String, listenerReason: String? = nil, port: Int = 4318, producerConfigured: String = "unknown",
+		lastReceivedAt: String? = nil, lastRefusedAt: String? = nil, metering: String, pendingObservations: Int = 0,
+		codexMemories: String = "unknown", codexExporter: String = "unknown"
+	) {
+		self.receiver = receiver
+		self.listener = listener
+		self.listenerReason = listenerReason
+		self.port = port
+		self.producerConfigured = producerConfigured
+		self.lastReceivedAt = lastReceivedAt
+		self.lastRefusedAt = lastRefusedAt
+		self.metering = metering
+		self.pendingObservations = pendingObservations
+		self.codexMemories = codexMemories
+		self.codexExporter = codexExporter
+	}
+
+	public var receiverEnabled: Bool { receiver == "enabled" }
+
+	enum CodingKeys: String, CodingKey {
+		case receiver, listener, metering, port
+		case listenerReason = "listener_reason"
+		case producerConfigured = "producer_configured"
+		case lastReceivedAt = "last_received_at"
+		case lastRefusedAt = "last_refused_at"
+		case pendingObservations = "pending_observations"
+		case codexMemories = "codex_memories"
+		case codexExporter = "codex_exporter"
+	}
+}
+
+/// telemetry.enable / telemetry.disable. codexConfig is written, removed,
+/// restore_incomplete or unchanged.
+public struct DesktopTelemetryReceiverResultV1: Codable, Equatable, Sendable {
+	public let receiver: String
+	public let codexConfig: String
+	public let codexExporter: String
+
+	public init(receiver: String, codexConfig: String = "unchanged", codexExporter: String = "unknown") {
+		self.receiver = receiver
+		self.codexConfig = codexConfig
+		self.codexExporter = codexExporter
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case receiver
+		case codexConfig = "codex_config"
+		case codexExporter = "codex_exporter"
+	}
+}
+
+/// telemetry.config-preview with the local token redacted. The App never
+/// asks for the token.
+public struct DesktopTelemetryPreviewV1: Codable, Equatable, Sendable {
+	public let snippet: String
+	public let applied: Bool
+
+	public init(snippet: String, applied: Bool = false) {
+		self.snippet = snippet
+		self.applied = applied
+	}
+}
+
+public protocol TelemetryTransport: Sendable {
+	func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1>
+	/// writeCodexConfig is the user's consent to append the managed Codex
+	/// block; a refused write changes nothing and is undecodable here.
+	func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1>
+	func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1>
+	func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1>
+}
+
+extension EmbeddedHelperRunner: TelemetryTransport {
+	public func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1> {
+		await runQuotaCommand(["telemetry", "status"])
+	}
+
+	public func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		await runQuotaCommand(["telemetry", "enable"] + (writeCodexConfig ? ["--write-codex-config"] : []))
+	}
+
+	public func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+		await runQuotaCommand(["telemetry", "disable"])
+	}
+
+	public func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1> {
+		await runQuotaCommand(["telemetry", "config-preview"])
+	}
+
+	/// The App-attached listener: `telemetry serve --owner app` exits when the
+	/// App closes its stdin, so it never outlives the App.
+	public func telemetryListenerCommand() throws -> (executableURL: URL, arguments: [String], environment: [String: String]) {
+		(try embeddedHelperURL(), ["telemetry", "serve", "--owner", "app"], environment)
 	}
 }
 
@@ -1533,7 +1780,7 @@ public struct DesktopPresentationState: Equatable, Sendable {
 			qualifiers.append(.stale)
 		}
 		if let snapshot,
-			let generatedAt = desktopTimestamp(snapshot.data.generatedAt),
+			let generatedAt = DesktopTimestamp.date(from: snapshot.data.generatedAt),
 			now.timeIntervalSince(generatedAt) > 15 * 60
 		{
 			qualifiers.append(.aged)
@@ -1563,17 +1810,6 @@ public struct DesktopPresentationState: Equatable, Sendable {
 		}
 		return DesktopPresentationState(surface: surface, qualifiers: qualifiers, snapshot: snapshot)
 	}
-}
-
-private func desktopTimestamp(_ value: String) -> Date? {
-	let fractional = ISO8601DateFormatter()
-	fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-	if let parsed = fractional.date(from: value) {
-		return parsed
-	}
-	let basic = ISO8601DateFormatter()
-	basic.formatOptions = [.withInternetDateTime]
-	return basic.date(from: value)
 }
 
 private func desktopSnapshotIsPartial(_ envelope: DesktopWireEnvelopeV1) -> Bool {
@@ -1717,10 +1953,13 @@ public enum DesktopFullRefreshTrigger: Int, Equatable, Sendable {
 	case startup
 	case periodic
 	case wake
+	case sourceChange
 	case manual
 	case providerSwitch
 
-	var requestsFollowUp: Bool { self == .manual || self == .providerSwitch }
+	// A running update may have frozen its inventory before the event, so each
+	// of these leaves exactly one follow-up; any burst of them merges into it.
+	var requestsFollowUp: Bool { self == .wake || self == .sourceChange || self == .manual || self == .providerSwitch }
 	var quotaIsManual: Bool { self == .manual || self == .providerSwitch }
 
 	static func merged(_ current: Self?, _ incoming: Self) -> Self? {
@@ -1773,6 +2012,7 @@ private struct QuotaOperationResult: Sendable {
 public final class DesktopRefreshCoordinator {
 	public private(set) var state: DesktopRefreshState = .uninitialized
 	public private(set) var latestSnapshot: DesktopWireEnvelopeV1?
+	public private(set) var servingHeader: DesktopServingHeaderV2?
 	public private(set) var scanProgress: DesktopScanProgress?
 	public private(set) var fullAttempt: DesktopFullAttemptState = .idle
 	public private(set) var widgetPublication: DesktopWidgetPublicationState = .neverPublished
@@ -1783,6 +2023,17 @@ public final class DesktopRefreshCoordinator {
 	private let snapshotPublisher: WidgetSnapshotPublisher?
 	@ObservationIgnored private let wallNow: @MainActor @Sendable () -> Date
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
+	@ObservationIgnored private var activeRestore: Task<Void, Never>?
+	@ObservationIgnored private var startupSettled = false
+	@ObservationIgnored private var startupWaiters: [CheckedContinuation<Void, Never>] = []
+	@ObservationIgnored private let restoreFirstFallback: Duration
+	@ObservationIgnored private var modelUsableMarked = false
+	@ObservationIgnored private var coverageCompleteMarked = false
+	/// While the menu-bar surface draws its first frame after opening, a new
+	/// publication of the same identity waits; swapping data under that frame
+	/// would lay the whole surface out again before anything is shown.
+	@ObservationIgnored private var publicationHolds = 0
+	@ObservationIgnored private var heldPublication: DesktopServingSnapshotV2?
 	@ObservationIgnored private var activeQuotaOperation: Task<QuotaOperationResult, Never>?
 	@ObservationIgnored private var activeQuotaID: QuotaOperationID?
 	@ObservationIgnored private var pendingFullTrigger: DesktopFullRefreshTrigger?
@@ -1800,9 +2051,11 @@ public final class DesktopRefreshCoordinator {
 		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
 		alertDeliverer: (any QuotaAlertDelivering)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore(),
-		wallNow: @escaping @MainActor @Sendable () -> Date = Date.init
+		wallNow: @escaping @MainActor @Sendable () -> Date = Date.init,
+		restoreFirstFallback: Duration = .milliseconds(750)
 	) {
 		self.host = host
+		self.restoreFirstFallback = restoreFirstFallback
 		self.quotaRefresher = quotaRefresher
 		self.alertDeliverer = alertDeliverer
 		self.wallNow = wallNow
@@ -1815,10 +2068,155 @@ public final class DesktopRefreshCoordinator {
 
 	// Starts startup work without making the application launch wait for the
 	// embedded helper. Later views use refresh() for an awaitable manual retry.
+	//
+	// Startup order (architecture): the restore runs first; the full refresh
+	// (bootstrap and quota) and the App's watcher and periodic work start once
+	// it has finished, or after the fallback, never later.
 	@discardableResult
 	public func startInitialRefresh() -> Task<Void, Never> {
+		if let bootstrap = host as? any DesktopSnapshotBootstrapping {
+			activeRestore = Task { [weak self] in
+				guard let self else { return }
+				if let prepared = try? await bootstrap.readServingSnapshot(), !Task.isCancelled {
+					let current = self.servingHeader
+					let prefersFullRestore = prepared.header.sessionPrepared && current?.sessionPrepared == false
+						&& current?.generation.stateIdentity == prepared.header.generation.stateIdentity
+						&& current?.generation.coreEpoch == prepared.header.generation.coreEpoch
+						&& current?.generation.sessionEpoch == prepared.header.generation.sessionEpoch
+					if self.latestSnapshot == nil || prefersFullRestore { self.installServingPublication(prepared) }
+				}
+			}
+		}
+		// Whichever comes first settles startup. A task group would also wait for
+		// a restore that never returns, so each side settles independently.
+		let restore = activeRestore
+		let fallback = restoreFirstFallback
 		Task { [weak self] in
+			await restore?.value
+			self?.settleStartup()
+		}
+		Task { [weak self] in
+			try? await Task.sleep(for: fallback)
+			self?.settleStartup()
+		}
+		return Task { [weak self] in
+			await self?.waitForStartupSettled()
 			await self?.requestFullRefresh(trigger: .startup)
+		}
+	}
+
+	/// Returns once the startup restore has finished or its fallback elapsed.
+	/// Observation invalidates every reader on each assignment, equal or not.
+	/// An unchanged value must not re-render the menu-bar surface, which costs
+	/// a full layout of the open popover.
+	private func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<DesktopRefreshCoordinator, Value>, _ value: Value) {
+		if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+	}
+
+	public func waitForStartupSettled() async {
+		guard !startupSettled else { return }
+		await withCheckedContinuation { startupWaiters.append($0) }
+	}
+
+	private func settleStartup() {
+		guard !startupSettled else { return }
+		startupSettled = true
+		let waiters = startupWaiters
+		startupWaiters = []
+		for waiter in waiters { waiter.resume() }
+	}
+
+	public func stopAppWork() {
+		activeRestore?.cancel()
+		activeRefresh?.cancel()
+		activeQuotaOperation?.cancel()
+		pendingFullTrigger = nil
+		pendingQuotaPriority = nil
+	}
+
+	/// The App has bound a publication; the first binding makes the model usable.
+	private func markPublicationBound() {
+		PerfTrace.mark(.publicationBound)
+		if !modelUsableMarked {
+			modelUsableMarked = true
+			PerfTrace.mark(.modelUsable)
+		}
+	}
+
+	/// Defers same-identity publications until every hold is released. An
+	/// identity change is never held: old data must not stay visible. Each
+	/// holdPublications() must be balanced by one releasePublications().
+	public func holdPublications() {
+		publicationHolds += 1
+	}
+
+	public func releasePublications() {
+		publicationHolds = max(0, publicationHolds - 1)
+		guard publicationHolds == 0, let prepared = heldPublication else { return }
+		heldPublication = nil
+		installServingPublication(prepared)
+		// A refresh that finished while held published its success and widget
+		// snapshot with the previous data; bring the widget up to date.
+		if case .succeeded = fullAttempt, let latestSnapshot {
+			Task { await publishWidgetSnapshot(latestSnapshot) }
+		}
+	}
+
+	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+		if publicationHolds > 0, let current = servingHeader?.generation {
+			let new = prepared.header.generation
+			if current.stateIdentity == new.stateIdentity, current.coreEpoch == new.coreEpoch,
+				current.sessionEpoch == new.sessionEpoch, current.coreSchema == new.coreSchema,
+				current.sessionSchema == new.sessionSchema {
+				heldPublication = prepared
+				return
+			}
+		}
+		// Anything that reaches install arrived after a held publication and
+		// supersedes it; releasing must never bring back an older identity.
+		heldPublication = nil
+		let installStarted = PerfTrace.begin()
+		if let previous = servingHeader {
+			let old = previous.generation
+			let new = prepared.header.generation
+			if old.stateIdentity != new.stateIdentity || old.coreEpoch != new.coreEpoch
+				|| old.sessionEpoch != new.sessionEpoch || !DesktopServingGenerationV2.compatibleCoreSchema(stored: old.coreSchema, current: new.coreSchema)
+				|| old.sessionSchema != new.sessionSchema {
+				// Identity invalidation precedes date/fullness checks: even an
+				// unusable replacement must not leave the old identity visible.
+				update(\.servingHeader, nil)
+				update(\.latestSnapshot, nil)
+				if case .running = fullAttempt {
+					update(\.state, .refreshing(previous: nil))
+				} else {
+					update(\.state, .uninitialized)
+				}
+			}
+		}
+		guard prepared.header.matchesCurrentDay(now: wallNow()) else {
+			PerfTrace.mark(.servingSkip, PerfCount("reason", 1))
+			return
+		}
+		if !prepared.header.sessionPrepared, let previous = servingHeader,
+			previous.sessionPrepared, previous.matchesCurrentDay(now: wallNow()) {
+			PerfTrace.mark(.servingSkip, PerfCount("reason", 2))
+			return
+		}
+		update(\.servingHeader, prepared.header)
+		update(\.latestSnapshot, prepared.payload)
+		if case .running = fullAttempt {
+			update(\.state, .refreshing(previous: prepared.payload))
+		} else {
+			update(\.state, .ready(prepared.payload))
+		}
+		PerfTrace.end(.servingInstall, since: installStarted)
+		markPublicationBound()
+		// P11's full-history end: the first bound publication whose usage and
+		// session coverage are both complete.
+		if PerfTrace.isEnabled, !coverageCompleteMarked, prepared.header.usageCoverage.state == "complete",
+			prepared.header.sessionCoverage.state == "complete" {
+			coverageCompleteMarked = true
+			PerfTrace.mark(.publicationComplete)
 		}
 	}
 
@@ -1867,6 +2265,7 @@ public final class DesktopRefreshCoordinator {
 		trigger: DesktopFullRefreshTrigger,
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit
 	) async {
+		if trigger == .sourceChange { PerfTrace.mark(.jobEnqueue) }
 		if let activeRefresh {
 			pendingFullTrigger = DesktopFullRefreshTrigger.merged(pendingFullTrigger, trigger)
 			await activeRefresh.value
@@ -1900,19 +2299,63 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func performFullRefresh(trigger: DesktopFullRefreshTrigger, recentLimit: Int) async {
+		if trigger == .sourceChange { PerfTrace.mark(.sourceProcessing) }
 		generation &+= 1
 		let currentGeneration = generation
 		activeFullGeneration = currentGeneration
 		fullQuotaPhaseCompleted = false
 		successResetToken &+= 1
-		fullAttempt = .running(generation: currentGeneration)
-		state = .refreshing(previous: latestSnapshot)
-		scanProgress = .waiting
+		update(\.fullAttempt, .running(generation: currentGeneration))
+		update(\.state, .refreshing(previous: latestSnapshot))
+		update(\.scanProgress, .waiting)
 
 		let defaultPriority: QuotaRequestPriority = trigger.quotaIsManual ? .manual : .periodic
 		let priority = QuotaRequestPriority.merged(pendingQuotaPriority, defaultPriority)
 		pendingQuotaPriority = nil
+		if let bootstrap = host as? any DesktopSnapshotBootstrapping {
+			let quotaTask = Task { [weak self] in
+				await self?.runQuotaOperation(priority: priority, mode: .standalone)
+			}
+			do {
+				let prepared = try await bootstrap.bootstrapServingSnapshot(
+					progress: { [weak self] progress in Task { @MainActor in self?.publishProgress(progress, generation: currentGeneration) } },
+					publication: { [weak self] prepared in Task { @MainActor in
+						guard let self, self.generation == currentGeneration else { return }
+						self.installServingPublication(prepared)
+					} }
+				)
+				guard currentGeneration == generation, !Task.isCancelled else { quotaTask.cancel(); return }
+				guard let prepared else { throw HelperExecutionError.malformedOutput }
+				installServingPublication(prepared)
+					if let envelope = latestSnapshot {
+						await publishSuccess(envelope, generation: currentGeneration)
+					} else {
+						update(\.scanProgress, nil)
+						publishFailure(.unavailable, generation: currentGeneration)
+					}
+			} catch {
+				if !Task.isCancelled {
+					publishFailure(.helper((error as? HelperExecutionError) ?? .malformedOutput), generation: currentGeneration)
+				}
+			}
+			fullQuotaPhaseCompleted = true
+			if let result = await quotaTask.value, let subscription = result.subscription,
+				currentGeneration == generation, !Task.isCancelled, let baseline = latestSnapshot {
+				let updated = baseline.replacingSubscription(subscription)
+				update(\.latestSnapshot, updated)
+				switch state {
+				case .ready: update(\.state, .ready(updated))
+				case let .degraded(_, issue): update(\.state, .degraded(previous: updated, issue: issue))
+				case .refreshing: update(\.state, .refreshing(previous: updated))
+				case .uninitialized: break
+				}
+				await publishWidgetSnapshot(updated)
+			}
+			return
+		}
+		let quotaStarted = PerfTrace.begin()
 		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
+		PerfTrace.end(.quota, since: quotaStarted)
 		fullQuotaPhaseCompleted = true
 		guard currentGeneration == generation, !Task.isCancelled else { return }
 
@@ -1992,14 +2435,14 @@ public final class DesktopRefreshCoordinator {
 			latestSnapshot == baseline
 		else { return }
 		let updated = baseline.replacingSubscription(subscription)
-		latestSnapshot = updated
+		update(\.latestSnapshot, updated)
 		switch state {
 		case .ready:
-			state = .ready(updated)
+			update(\.state, .ready(updated))
 		case let .degraded(_, issue):
-			state = .degraded(previous: updated, issue: issue)
+			update(\.state, .degraded(previous: updated, issue: issue))
 		case .refreshing:
-			state = .refreshing(previous: updated)
+			update(\.state, .refreshing(previous: updated))
 		case .uninitialized:
 			return
 		}
@@ -2038,7 +2481,7 @@ public final class DesktopRefreshCoordinator {
 		if let current = scanProgress, progress.sequence < current.sequence {
 			return
 		}
-		scanProgress = progress
+		update(\.scanProgress, progress)
 	}
 
 	private func publishSuccess(_ envelope: DesktopWireEnvelopeV1, generation: Int) async {
@@ -2046,10 +2489,11 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 
-		latestSnapshot = envelope
-		scanProgress = nil
-		state = .ready(envelope)
-		fullAttempt = .succeeded(generation: generation, completedAt: wallNow())
+		update(\.latestSnapshot, envelope)
+		update(\.scanProgress, nil)
+		update(\.state, .ready(envelope))
+		markPublicationBound()
+		update(\.fullAttempt, .succeeded(generation: generation, completedAt: wallNow()))
 		await publishWidgetSnapshot(envelope)
 		scheduleSuccessReset(generation: generation)
 	}
@@ -2081,14 +2525,39 @@ public final class DesktopRefreshCoordinator {
 		guard generation == self.generation else {
 			return
 		}
-		fullAttempt = .failed(generation: generation, issue: issue, completedAt: wallNow())
-		state = .degraded(previous: latestSnapshot, issue: issue)
+		if PerfTrace.isEnabled {
+			let code: Int64 = switch issue {
+			case .helper: 1
+			case .invalidWire: 2
+			case .storageUnavailable: 3
+			case .unavailable: 4
+			}
+			// Helper failures add their kind and exit status; integers only.
+			var helperKind: Int64 = 0
+			var exitStatus: Int64 = 0
+			if case let .helper(error) = issue {
+				switch error {
+				case .missingEmbeddedHelper: helperKind = 1
+				case .invalidRecentLimit: helperKind = 2
+				case .launchFailed: helperKind = 3
+				case .timedOut: helperKind = 4
+				case .cancelled: helperKind = 5
+				case let .nonZeroExit(status): helperKind = 6; exitStatus = Int64(status)
+				case .outputLimitExceeded: helperKind = 7
+				case .malformedOutput: helperKind = 8
+				}
+			}
+			PerfTrace.mark(.refreshFailed, PerfCount("issue", code), PerfCount("helper_kind", helperKind),
+				PerfCount("exit_status", exitStatus))
+		}
+		update(\.fullAttempt, .failed(generation: generation, issue: issue, completedAt: wallNow()))
+		update(\.state, .degraded(previous: latestSnapshot, issue: issue))
 		// A retained terminal progress report (e.g. completed with a domain
 		// marked failed) is meaningful and the menu bar displays it alongside
 		// the failure. Only the synthetic seed set at refresh start — meaning
 		// the helper never reported real progress before failing — is stale.
 		if scanProgress == .waiting {
-			scanProgress = nil
+			update(\.scanProgress, nil)
 		}
 	}
 
@@ -2100,7 +2569,7 @@ public final class DesktopRefreshCoordinator {
 			if case let .succeeded(currentGeneration, _) = self.fullAttempt,
 				currentGeneration == generation
 			{
-				self.fullAttempt = .idle
+				self.update(\.fullAttempt, .idle)
 			}
 		}
 	}
@@ -2249,6 +2718,9 @@ private final class BoundedLines: @unchecked Sendable {
 			discardingLine = false
 		}
 		guard !discardingLine, !current.isEmpty else { return }
+		// Zero opts into callback-only streaming. Long bootstrap jobs retain no
+		// historical publications or progress lines in this transport buffer.
+		if maximumLines == 0 { onLine(current); return }
 		guard storage.count < maximumLines else {
 			truncated = true
 			return

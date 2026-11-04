@@ -1,0 +1,279 @@
+{
+  "kind": "native-data-preparation-ab-v1",
+  "input": {
+    "files": 5328,
+    "bytes": 3453693095,
+    "corpus_digest": "80ec082591648c5d3f5a104ab1dc23caae4630c81403e1b44708961423d65246",
+    "corpus_digest_algorithm": "SHA256 of sorted size:content-SHA256 entries joined by LF, no final LF",
+    "stock_helper_sha256": "8e5baf400c8460ee213f591a21164ec15af8ec6944edeacff14a993ae1d07172",
+    "saved_envelope_sha256": "cb695a00e54bd6d06e015806ddf465a0346df96f2a7a558e4d5e94c46dba747c",
+    "saved_envelope_bytes": 93813,
+    "base_head": "32df0ae1223796f1e43bbd45a40f1efb9f7ff56e",
+    "corpus_is_frozen": true
+  },
+  "environment": {
+    "os": "macOS 26.7.1 (25G313)",
+    "architecture": "x86_64",
+    "xcode": "26.4 (17E192)",
+    "configuration": "Debug",
+    "page_cache": "warm; not purged",
+    "quota": "off; no network"
+  },
+  "native_frame_validation": {
+    "status": "not_verified",
+    "attempts": 2,
+    "attempt1": "performClick had non-mouse currentEvent; NSEvent.clickCount assertion; no valid samples",
+    "attempt2": "standard posted mouse events; proof-popover-not-visible; no valid samples",
+    "action": "stopped UI approach; no browser substitute"
+  },
+  "data_preparation": {
+    "status": "measured",
+    "summary": {
+      "A": {
+        "n": 12,
+        "min": 1837.532653,
+        "median": 1919.1852804999999,
+        "p95_nearest_rank": 2683.75731,
+        "max": 2683.75731
+      },
+      "B": {
+        "n": 12,
+        "min": 13.015221,
+        "median": 15.0885635,
+        "p95_nearest_rank": 25.794746,
+        "max": 25.794746
+      }
+    },
+    "page_cache": "warm; not purged",
+    "pairs": 12,
+    "quota": "off; no network",
+    "samples": [
+      {
+        "empty_memory_to_validated_model_ms": 2683.75731,
+        "hero_available": true,
+        "pair": 0,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 14.787262,
+        "hero_available": true,
+        "pair": 0,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 15.244689,
+        "hero_available": true,
+        "pair": 1,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1924.552276,
+        "hero_available": true,
+        "pair": 1,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1930.427359,
+        "hero_available": true,
+        "pair": 2,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 15.101532,
+        "hero_available": true,
+        "pair": 2,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 15.075595,
+        "hero_available": true,
+        "pair": 3,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1920.153691,
+        "hero_available": true,
+        "pair": 3,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1879.480723,
+        "hero_available": true,
+        "pair": 4,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 13.015221,
+        "hero_available": true,
+        "pair": 4,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 14.597533,
+        "hero_available": true,
+        "pair": 5,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1837.532653,
+        "hero_available": true,
+        "pair": 5,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1918.21687,
+        "hero_available": true,
+        "pair": 6,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 15.169862,
+        "hero_available": true,
+        "pair": 6,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 15.662575,
+        "hero_available": true,
+        "pair": 7,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1879.848843,
+        "hero_available": true,
+        "pair": 7,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1854.385425,
+        "hero_available": true,
+        "pair": 8,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 25.794746,
+        "hero_available": true,
+        "pair": 8,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 25.447169,
+        "hero_available": true,
+        "pair": 9,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 2035.494991,
+        "hero_available": true,
+        "pair": 9,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1917.253201,
+        "hero_available": true,
+        "pair": 10,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 14.897116,
+        "hero_available": true,
+        "pair": 10,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 14.929457,
+        "hero_available": true,
+        "pair": 11,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "B"
+      },
+      {
+        "empty_memory_to_validated_model_ms": 1946.22611,
+        "hero_available": true,
+        "pair": 11,
+        "session_periods_equal": true,
+        "usage_projection_equal": true,
+        "variant": "A"
+      }
+    ],
+    "scope": "native Swift coordinator + wire decoder + MenuBarViewModel; no popover/frame/OS launch measurement",
+    "warmup_pairs_excluded": 1
+  },
+  "limitations": [
+    "No icon-to-visible-frame or warm-click performance result",
+    "No full OS process launch/restart measurement",
+    "B restores saved data, not a new collection; inputs unchanged and usage/session projections equal",
+    "No real JSONL update A/B, OTel producer integration, quota network, all-tabs or resource-budget validation",
+    "12 pairs are pilot samples; p95 is the maximum, not final tail acceptance",
+    "Candidate omits full product restore permission/state UUID/cross-day/background IO validation"
+  ],
+  "instrumented_files": [
+    {
+      "path": "apps/macos/AgentDeckApp/MenuBarItemController.swift",
+      "sha256": "f89538c2cc2c72d7966c55d692725091da4c20c1cf1f8b8cce8c445a4148858c"
+    },
+    {
+      "path": "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift",
+      "sha256": "8491f8f55f8baae65b6f65eabaae26e380a8f10bba2e20543f7659c75454258a"
+    },
+    {
+      "path": "apps/macos/AgentDeckAppTests/MenuBarChromeTests.swift",
+      "sha256": "f4b65a1160006bf512d012706af6d1824927356264d4d53492eaa6b4bad76bc7"
+    }
+  ],
+  "harness_files": [
+    {
+      "path": "prototype/tools/scan-performance-native-ab.py",
+      "sha256": "47696f48731db062ad1bec91222fb3393b295414de909d6b2c093abf608a9a35"
+    },
+    {
+      "path": "prototype/tools/scan-performance-native-input.mjs",
+      "sha256": "c7429daf707adb7d9c1e1d4be86d3a7b99bc10beaf9eda7b6e1e15a1f5b7aeef"
+    }
+  ]
+}

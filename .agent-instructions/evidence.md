@@ -7,6 +7,14 @@ coordination do not by themselves create evidence work.
 
 ## Completion Evidence and Neo4j / 验收证据与 Neo4j
 
+Neo4j through the configured `completion-evidence/v1` provider is the sole
+active evidence authority, including v0.7.0. The user confirmed this authority
+switch on 2026-10-17 after migration reconciliation. Historical imported
+observations retain their original identities, outcomes and timestamps; they
+are audit provenance, not a second active provider. A past passing gate does
+not certify changed content. Verify the current subject against its recorded
+ContentState before querying its exact gate.
+
 The shared `completion-evidence/v1` profile owns canonical record semantics and
 provider operations. This file supplies AgentDeck's namespace and work-unit
 bindings. The workflow Skill owns phase execution; [Review Records](review-records.md)

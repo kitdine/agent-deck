@@ -1,3 +1,4 @@
+import AgentDeckShared
 import Foundation
 
 // Every user-visible string in the app target resolves through this file. The
@@ -56,6 +57,10 @@ enum DesktopCopy {
 	static let costIncomplete = "Cost incomplete · %lld unpriced"
 	static let costIncompleteAttribution = "Cost incomplete · attribution unavailable"
 	static let heroCounts = "%1$lld events · %2$lld sessions · %3$lld projects"
+	static let heroCountsUnknownProjects = "%1$lld events · %2$lld sessions · — projects"
+	static let sourceCoveragePartial = "Collected usage · source coverage is partial"
+	static let sourceCoverageUnknown = "Stored usage · source coverage is unknown"
+	static let sourceUpdatePending = "Stored usage · source updates are pending"
 
 	// Panels.
 	static let panelUsage = "Usage"
@@ -198,6 +203,7 @@ enum DesktopCopy {
 		"prices": "Price catalog",
 		"price_provenance": "Price provenance",
 		"unpriced_models": "Unpriced models",
+		"telemetry": "Some usage is not recorded",
 	]
 	static let healthNoticeStateLive = "AgentDeck state is busy"
 	static let healthNoticeScanLive = "AgentDeck scan is running"
@@ -314,9 +320,44 @@ enum DesktopCopy {
 	static let settingsLoginItemNote = "Registered as a system login item; no background daemon is installed"
 	static let settingsLoginItemRefused = "Could not change the login item"
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
-	static let settingsPeriodicRefresh = "Periodic refresh"
-	static let settingsPeriodicRefreshNote =
-		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
+	static let settingsAutomaticUpdate = "Automatically update local data"
+	static let settingsAutomaticUpdateNote =
+		"Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately."
+	static let settingsGroupLiveUsage = "Live usage"
+	static let settingsOTel = "Enable OTel usage collection"
+	static let settingsOTelHint = "Off by default. Receive live Codex usage without a refresh interval. Collected data is kept when disabled."
+	static let settingsOTelPrivacy = "Only usage, model and required identity fields are retained. Prompts, response text and tool output are not stored."
+	static let settingsOTelViewConfiguration = "View connection configuration"
+	static let settingsOTelHideConfiguration = "Hide configuration"
+	static let settingsOTelPreviewNote = "Not applied to Codex. Token is redacted. Review and merge with existing configuration."
+	static let settingsOTelOff = "Collection is off"
+	static let settingsOTelUnknown = "Receiver ready · Waiting for first event; connection unknown"
+	static let settingsOTelUnknownHint = "No verified configuration or reception observation yet. Silence does not mean unconfigured or disconnected."
+	static let settingsOTelUnconfigured = "Receiver enabled · Configuration check found no valid exporter"
+	static let settingsOTelSetup = "First-time setup requires checking Codex telemetry configuration. The switch changes Codex configuration only after you agree."
+	static let settingsOTelReady = "Receiving · Usage can be counted"
+	static let settingsOTelCaptureOnly = "Receiving · Usage is not counted yet"
+	static let settingsOTelCaptureHint = "Request identity is not verified. Observations are saved without adding them to totals."
+	static let settingsOTelDisconnected = "Confirmed reception failure · Previous data is retained"
+	static let settingsOTelMemoriesOff = "Codex Memories is off · Collection is not needed"
+	static let settingsOTelMemoriesOffHint = "Other Codex usage is already counted from local logs. Turn on Codex Memories to enable collection here."
+	static let settingsOTelMemoriesStopped = "Codex Memories turned off · Receiver stopped"
+	static let settingsOTelMemoriesStoppedHint = "Turn off collection to remove AgentDeck's block from the Codex configuration. If you leave it on, receiving resumes when Codex Memories is turned back on."
+	static let settingsOTelNotCounted = "Codex Memories background usage is not counted"
+	static let settingsOTelNotCountedHint = "Turn on collection and allow the Codex configuration change to count it."
+	static let settingsOTelConsentTitle = "Collection needs a Codex configuration change"
+	static let settingsOTelConsentFile = "File: ~/.codex/config.toml"
+	static let settingsOTelConsentBody = "Only this block is appended; nothing else changes. It is removed when collection is turned off. Takes effect after Codex restarts."
+	static let settingsOTelWriteAndOn = "Write and turn on"
+	static let settingsOTelSelfConfigure = "I'll configure it"
+	static let settingsOTelConflict = "Codex already has another OTel configuration. AgentDeck will not overwrite it. Merge the connection configuration yourself."
+	static let settingsOTelReceiverOnly = "Turn on receiver only"
+	static let settingsOTelWritten = "Codex configuration updated · Takes effect after Codex restarts"
+	static let settingsOTelRefused = "Could not update the Codex configuration; nothing was changed. Retry or configure it yourself."
+	static let settingsOTelSelfConfigured = "Connection configuration is shown below; merge it into your Codex configuration"
+	static let settingsOTelRemoved = "Removed AgentDeck's block from the Codex configuration · Codex stops exporting after restart"
+	static let settingsOTelRestoreIncomplete = "The Codex configuration was changed elsewhere; AgentDeck left it untouched. Check the [otel] section of ~/.codex/config.toml."
+	static let settingsOTelUserConfigKept = "Receiver turned off · Your own Codex OTel configuration was not changed"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -423,7 +464,8 @@ enum DesktopCopy {
 		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
-		costIncomplete, costIncompleteAttribution, heroCounts,
+		costIncomplete, costIncompleteAttribution, heroCounts, heroCountsUnknownProjects,
+		sourceCoveragePartial, sourceCoverageUnknown, sourceUpdatePending,
 		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,
 		quotaNotRead, quotaNotApplicable, quotaUnavailable,
 		quotaAttributionUnconfirmed, quotaNoWindows, quotaPlan, quotaOfficialResets,
@@ -484,8 +526,9 @@ enum DesktopCopy {
 		menuShows, menuSettings, menuAbout, menuQuit,
 		settingsTitle, settingsGroupGeneral, settingsGroupMenuBar,
 		settingsLoginItem, settingsLoginItemNote, settingsLoginItemRefused,
-		settingsLoginItemApproval, settingsPeriodicRefresh,
-		settingsPeriodicRefreshNote, settingsMenuBarValue,
+		settingsLoginItemApproval, settingsAutomaticUpdate,
+		settingsAutomaticUpdateNote, settingsGroupLiveUsage, settingsOTel, settingsOTelHint, settingsOTelPrivacy, settingsOTelViewConfiguration, settingsOTelHideConfiguration, settingsOTelPreviewNote, settingsOTelOff, settingsOTelUnknown, settingsOTelUnknownHint, settingsOTelUnconfigured, settingsOTelSetup, settingsOTelReady, settingsOTelCaptureOnly, settingsOTelCaptureHint, settingsOTelDisconnected, settingsOTelMemoriesOff, settingsOTelMemoriesOffHint, settingsOTelMemoriesStopped, settingsOTelMemoriesStoppedHint, settingsOTelNotCounted, settingsOTelNotCountedHint, settingsOTelConsentTitle, settingsOTelConsentFile, settingsOTelConsentBody, settingsOTelWriteAndOn, settingsOTelSelfConfigure, settingsOTelConflict, settingsOTelReceiverOnly, settingsOTelWritten, settingsOTelRefused, settingsOTelSelfConfigured, settingsOTelRemoved, settingsOTelRestoreIncomplete, settingsOTelUserConfigKept,
+		settingsMenuBarValue,
 		settingsMenuBarValueNote, settingsMenuBarValueCost,
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,
@@ -512,7 +555,9 @@ enum DesktopCopy {
 enum DesktopLocale {
 	static var override: String? {
 		#if DEBUG
-		let identifier = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		// Read the live override without copying the entire process environment
+		// for every formatted value in a native view.
+		let identifier = getenv("AGENTDECK_TEST_LOCALE").map { String(cString: $0) }
 		return identifier == "en" || identifier == "zh-Hans" ? identifier : nil
 		#else
 		return nil
@@ -525,14 +570,19 @@ enum DesktopLocale {
 	}
 
 	static var bundle: Bundle {
-		guard let override,
-			let path = Bundle.main.path(forResource: override, ofType: "lproj"),
-			let localized = Bundle(path: path)
-		else {
-			return .main
-		}
-		return localized
+		guard let override else { return .main }
+		return localizedBundles[override] ?? .main
 	}
+
+	// The shipped resources are immutable; the selected language remains live.
+	private static let localizedBundles: [String: Bundle] = {
+		var bundles = [String: Bundle]()
+		for identifier in ["en", "zh-Hans"] {
+			if let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
+				let bundle = Bundle(path: path) { bundles[identifier] = bundle }
+		}
+		return bundles
+	}()
 }
 
 /// Resolves one catalog key in the active bundle. The key doubles as the `en`
@@ -550,6 +600,60 @@ func t(_ key: String, _ arguments: any CVarArg...) -> String {
 /// Cost strings arrive as decimal text and are formatted without changing the
 /// value; an inexact total keeps the `≈` the hero explains underneath.
 enum DesktopFormat {
+	private static let calendarDayParser = CalendarDayParser()
+
+	// Local midnight of a "yyyy-MM-dd" day in the default timezone, as the
+	// strict en_US_POSIX DateFormatter returned, without its ICU parse (which
+	// clones its formatter on every call and dominated surface rebuilds).
+	// Out-of-range fields are rejected rather than rolled over; other widths
+	// (such as "2026-2-9") keep the DateFormatter. Serialize timezone updates
+	// and reads; the default timezone can change at run time.
+	private final class CalendarDayParser: @unchecked Sendable {
+		private let lock = NSLock()
+		private var calendar: Calendar = {
+			var calendar = Calendar(identifier: .gregorian)
+			calendar.timeZone = NSTimeZone.default
+			return calendar
+		}()
+		private let formatter: DateFormatter = {
+			let formatter = DateFormatter()
+			formatter.locale = Locale(identifier: "en_US_POSIX")
+			formatter.dateFormat = "yyyy-MM-dd"
+			formatter.timeZone = NSTimeZone.default
+			return formatter
+		}()
+
+		func date(from value: String) -> Date? {
+			let digits = Array(value.utf8)
+			guard digits.count == 10, digits[4] == 45, digits[7] == 45 else {
+				lock.lock()
+				defer { lock.unlock() }
+				let timezone = NSTimeZone.default
+				if formatter.timeZone != timezone { formatter.timeZone = timezone }
+				return formatter.date(from: value)
+			}
+			func number(_ range: Range<Int>) -> Int? {
+				var result = 0
+				for index in range {
+					guard (48 ... 57).contains(digits[index]) else { return nil }
+					result = result * 10 + Int(digits[index] - 48)
+				}
+				return result
+			}
+			guard let year = number(0 ..< 4), let month = number(5 ..< 7), let day = number(8 ..< 10),
+				(1 ... 12).contains(month), (1 ... 31).contains(day)
+			else { return nil }
+			lock.lock()
+			defer { lock.unlock() }
+			let timezone = NSTimeZone.default
+			if calendar.timeZone != timezone { calendar.timeZone = timezone }
+			guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+			let parsed = calendar.dateComponents([.year, .month, .day], from: date)
+			guard parsed.year == year, parsed.month == month, parsed.day == day else { return nil }
+			return date
+		}
+	}
+
 	static func cost(_ raw: String?, known: String, approximate: Bool) -> String {
 		let value = raw ?? known
 		guard let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")) else {
@@ -661,15 +765,12 @@ enum DesktopFormat {
 	}
 
 	static func timestamp(_ value: String) -> Date? {
-		let fractional = ISO8601DateFormatter()
-		fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-		if let parsed = fractional.date(from: value) { return parsed }
-		let basic = ISO8601DateFormatter()
-		basic.formatOptions = [.withInternetDateTime]
-		if let parsed = basic.date(from: value) { return parsed }
-		let day = DateFormatter()
-		day.locale = Locale(identifier: "en_US_POSIX")
-		day.dateFormat = "yyyy-MM-dd"
-		return day.date(from: value)
+		// Calendar buckets are dates, not timestamps. Avoid constructing the
+		// timestamp fallback formatters for every day in the rhythm calendar.
+		let isCalendarDay = value.utf8.count == 10 && value.utf8.enumerated().allSatisfy { index, byte in
+			index == 4 || index == 7 ? byte == 45 : (48 ... 57).contains(byte)
+		}
+		if !isCalendarDay, let parsed = DesktopTimestamp.date(from: value) { return parsed }
+		return calendarDayParser.date(from: value)
 	}
 }

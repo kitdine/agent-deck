@@ -70,6 +70,11 @@
     "session.search",
     "session.show",
     "state.migrate",
+    "telemetry.config-preview",
+    "telemetry.disable",
+    "telemetry.enable",
+    "telemetry.import",
+    "telemetry.status",
     "usage.diagnose",
     "usage.hook.event",
     "usage.hook.remove",
@@ -2408,6 +2413,91 @@
       },
       "error_code": "invalid_argument",
       "error_command": "state.migrate"
+    },
+    "telemetry.config-preview": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "telemetry.config-preview"
+    },
+    "telemetry.disable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "telemetry.disable"
+    },
+    "telemetry.enable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "telemetry.enable"
+    },
+    "telemetry.import": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "telemetry.import"
+    },
+    "telemetry.status": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "telemetry.status"
     },
     "usage.diagnose": {
       "success_schema": {
