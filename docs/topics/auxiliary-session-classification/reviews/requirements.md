@@ -138,3 +138,46 @@ Task checkpoint：ad-auxiliary-session-classification-doc-req；content_state `3
 推送建议：门禁 VERIFIED 后，经授权推送 feature/auxiliary-session-classification；前置同上，remote/upstream 尚未解析，提交对象与签名需在交付时核验。
 
 完成已声明的 ux/cli.md、ux/menubar.md、ux/settings.md、ux/widget.md 和 architecture.md，并通过文档完整性检查后重算本 WorkUnit 门禁；保留本轮 PASS。
+
+## Round 3 — 2026-11-03
+
+## 📋 需求集成修订评审（批量评审：所有文档）
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 2026-11-03 补充对 scan-performance 已合入事实的描述与代码一致：`internal/store/telemetry.go` 中
+  `telemetry_sessions(client, session_id, source_kind, model, first_at, last_at, support_entry, settled_at)`、
+  标记值 `codex-otel-background`、晚到 JSONL 的 `telemetry_jsonl_retracts_otel` trigger 在写 JSONL 事实的同一事务删除标记，
+  以及 scan-performance requirements 第 186–191 行“与 claude-mem 观察会话同属辅助会话、由本主题承接”的跨主题要求。
+- 新非目标（Memories 记忆提取与来源会话关联）有合格载体：`docs/roadmap.md` Backlog 条目与 deferred Beads
+  `ad-codex-memory-source-linkage`（已核实存在、状态 deferred），不是裸 follow-up。
+- 分类契约把标记限定为“支持表条目 + settle 后无 JSONL”的来源证据，并要求撤销即失效，没有以名称、模型或 `otel:` 前缀推断；
+  AC1/AC8 增补可直接验收。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），未参与 2026-11-03 修订的独立评审会话。
+- Method: 单评审者；读取修订 diff 与全文，对照 `internal/store/telemetry.go`、`internal/telemetry/reconcile.go`、
+  scan-performance requirements/architecture 及 Beads 接口请求评论；不委派，不改产品代码、测试或配置。
+- Scope: requirements.md 全文；批量评审中的依赖关系见 reviews/architecture.md、ux-cli.md、ux-settings.md、tasks.md Round 3+。
+  需求只要求“支持表条目”且不指定条目，架构对条目的错误收窄记在 ASC-ARCH-R3-F1，归属架构，不是本文件的缺陷。
+- Reviewed state: HEAD `3ec8709a00b516b7e624da329ae178de6a7cde6b`；requirements blob `50da36642b7db63fe8286893141a42b464a5559c`（未提交）。
+- Fingerprint: `02400f54ab2a9f2ebbe5ef940ff5cee16d671bfc74d9841cd172f8e893054e74`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` → “Document structural checks passed”；`bash scripts/check-topic-docs.sh auxiliary-session-classification` exit 0；
+  `bash scripts/check-whitespace.sh` 无输出。这些是结构检查，不是语义 PASS。
+- WorkUnit: `auxiliary-session-classification:requirements.md`；ContentState: `auxiliary-session-classification:req-r3-02400f54ab2a9f2e`。
+- Completion gate: VERIFIED
+- Gate scope: document-integrity 与 independent-review 两项准则在上述 ContentState 均有 pass 证据；不认证架构、UX、任务分解或实现。
+- Residual uncertainty: 真实 Codex 版本漂移后的支持表变化由 scan-performance 拥有；本文件只要求消费已写入标记。

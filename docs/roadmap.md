@@ -429,6 +429,15 @@ is selected into v0.6.0 with quota, reset information and reminders.
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
 
+- [ ] Link each Codex per-session memory-extraction (Memories stage1) request to
+  the source session it summarizes. scan-performance counts these OTel-only
+  requests as their own `codex-otel-background` sessions and leaves this link
+  to a later topic; `auxiliary-session-classification` classifies them as
+  auxiliary without it and explicitly does not take it on (2026-11-03). It
+  requires read-only access to the Codex memories state store, which needs its
+  own design, privacy review and format evidence. Coordination:
+  `ad-codex-memory-source-linkage`, deferred.
+
 - [x] Give `state_busy` cause-specific, safe recovery guidance. The selected
   `health-recovery` topic resolved the `state.lock`/`scan.lock`, read-only doctor
   and live-owner safety decisions. It was integrated through PR #9 at main

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-11-03
 ---
 
 # 辅助会话识别与工作视图隔离：需求
@@ -32,6 +32,15 @@ v0.7.0 版本契约选择默认隔离、提供切换、保留完整用量和费�
   不是可逆的查看范围；JSON 未分页时保留完整集合。desktop wire v1 的 sessions.total
   表示索引总会话数，不能静默重解释成过滤后的工作数量。
 
+2026-11-03 补充：scan-performance 已经 [PR #61](https://github.com/kitdine/agent-deck/pull/61) 合入远端 `main`
+`6fff208ac852b191c0a62df1f5be34c937601cfe`；本分支已于 2026-11-03 经授权合入 `main` `660c815`（合并提交 `3ec8709`）刷新基线。它为 Codex 只在 OTel 中出现、
+没有 JSONL rollout 的后台请求（已实验的 Memories 整理；另有 TUI 会话标题生成）建立以自身 conversation id 为
+session_id 的 Codex 会话，写入 core `telemetry_sessions(client, session_id, source_kind='codex-otel-background', support_entry, …)`，
+会话索引来源为 `otel:codex/<id>`、项目为空；只读分类接口为 `store.TelemetrySessionSourceKinds`。
+其已评审需求规定这些会话“与 claude-mem 观察会话同属辅助会话”，并在本主题 Beads 任务
+`ad-auxiliary-session-classification-origin-adapter-reducer` 登记了分类接口请求；在本主题采用前它们出现在工作视图，
+用量正确但会话数偏多。该依赖是 v0.7.0 装配中 Bug `ad-bug-codex-subagent-usage-attribution` 完整修复的一部分。
+
 起源记录中的 observer-sessions/claude-mem-cpa 是历史诊断线索，本轮未重读用户日志、
 生产数据库或验证当前安装的 claude-mem。路径名、模型名及旧观察都不是自动分类的充分证明。
 问题是维护会话与用户工作混合后，工作会话、项目和时长难以解释，而删除用量会损害消耗完整性。
@@ -48,6 +57,10 @@ v0.7.0 版本契约选择默认隔离、提供切换、保留完整用量和费�
 不重做模型定价、不按 worktree 合并项目、不定义生产力评分、不增加网络服务。
 不把子代理并入父会话或改写 canonical ID；是否为子代理与是否为后台维护是两个维度。
 本主题不实现项目级或路径级批量分类规则编辑器，不依据正文猜测用户意图。
+不实现 Codex 逐会话记忆提取请求与其来源会话的关联（需读取 Codex memories 状态库）；scan-performance 将其交由
+本主题或后续主题处理，本主题明确不承接；已登记为 roadmap Backlog 候选与 deferred 协调项
+`ad-codex-memory-source-linkage`，不得因此省略或静默关闭。
+OTel 采集的开关、支持表与漏计限制（如 Memories 关闭时的标题生成）仍归 scan-performance，本主题只消费已写入的标记。
 
 ## 分类契约
 
@@ -69,6 +82,12 @@ v0.7.0 版本契约选择默认隔离、提供切换、保留完整用量和费�
 可组合证据必须包含维护用途证据，不能把两个弱命名线索组合成确定判断。
 任务子代理跟随已证明的用户任务用途；维护来源的子代理只有在关系和维护用途可证明时才归辅助。
 不得通过模型名称映射价格来反推会话用途。
+
+AgentDeck 自身写入的 `codex-otel-background` 标记是第二个有来源依据的维护来源：它由经实验验证的支持表条目、
+会话级源所有权（settle 后仍无 JSONL 证据）产生，不是名称或模型猜测。带该标记的会话自动归 auxiliary；
+规则只覆盖标记记录的支持表条目，新增条目须证明其无 rollout 会话属于后台维护后才进入规则，否则 unknown。
+晚到 JSONL 使 scan-performance 撤销标记时，该自动证据同步失效，会话按普通 Codex 来源重新归约，不沿用旧 auxiliary。
+该来源不提供父会话关联；把 Memories 记忆提取请求关联到其来源会话不属于本主题（见非目标），不据此推断用途。
 
 架构设计必须为至少一种实际后台维护来源给出可验证的识别规则和支持边界，
 不能以“全部 unknown”或仅手工覆盖宣称自动隔离已交付。
@@ -130,21 +149,22 @@ JSON 未指定范围且未指定分页参数时仍返回完整集合；显式分
 规则变更可以修正分类，但不能重写事件、session ID、project、源文件或用户覆盖。
 
 与 scan-performance 的集成须在其最终选定内容状态上核验范围索引、重扫和查询成本，
-复用其数值预算而不自行豁免或另设替代目标；本工作树尚未包含该主题未合并实现。
+复用其数值预算而不自行豁免或另设替代目标。该主题已合入 `main` `6fff208`，本分支已刷新到包含它的 `660c815`；
+不得自建与其 serving 发布、分区失效重复的机制。
 与价格主题的集成只协调分类与消耗范围，不将其尚未批准的价格方案作为本主题既定事实。
 
 ## 验收矩阵
 
 | ID | 验收条件与证据 |
 | --- | --- |
-| AC1 分类 | 用户任务、任务子代理、维护源、维护子代理、unknown、伪装目录/模型、混合用途、冲突证据分别验证；至少一个有来源依据的维护适配器 |
+| AC1 分类 | 用户任务、任务子代理、维护源、维护子代理、unknown、伪装目录/模型、混合用途、冲突证据分别验证；至少一个有来源依据的维护适配器；`codex-otel-background` 会话为 auxiliary，晚到 JSONL 撤销标记后不再 auxiliary，无标记的 `otel:` 形状或支持表外条目不误判 |
 | AC2 身份 | 同一会话的重复/归档副本、相同 ID 不同 client、迟到元数据、append/rewrite、父关系缺失/环；增量与全量分类和规范身份等价 |
 | AC3 统计 | 同项目两类会话、不同窗口/client、跨天/DST/并发/缺失时间；过滤先于分页；会话分区相加、项目并集及非可加指标按独立 oracle 验证 |
 | AC4 消耗 | 切换/覆盖/撤销/重扫前后事件身份、token、全部费用不变；未知价不补零；synthetic 来源重复计量有明确证据或显式未确认状态 |
 | AC5 控制 | 首次默认、三范围、临时与持久选择、重启、覆盖/撤销、已有 exclude、详情直接打开及未知提示的 CLI/native 验收；同一窗口含 work、auxiliary、unknown 各一条时，JSON 显式 work 返回 work + unknown，auxiliary 仅返回 auxiliary，all 返回三条；分页及 total 基于所选集合 |
 | AC6 兼容 | 未指定范围的 JSON 保留原有完整集合与分页行为，文本仍默认工作；旧 JSON 与 wire v1 字段意义不变；新旧 producer/consumer、缺字段、索引无分类、Widget 聚合隐私与刷新一致性 |
 | AC7 恢复 | 重建、purge-index、backup/restore、规则升级、崩溃及发布失败；覆盖保留、源数据不变、旧快照可读，不错误标记完成 |
-| AC8 集成 | 与最终扫描实现及工作信号/价格范围联合验证；分类和切换不触发全量重扫，适用性能预算与完整/部分/不可用口径保持 |
+| AC8 集成 | 与最终扫描实现及工作信号/价格范围联合验证；分类和切换不触发全量重扫，适用性能预算与完整/部分/不可用口径保持；OTel 后台会话的 token/费用留在全部消耗，工作视图会话数不再包含它们 |
 
 需求和文档检查为 L0；分类/筛选/输出逻辑至少 L2，持久化迁移、恢复与并发投影为 L3。
 后续 tasks.md 分解具体测试及原生验收；本轮不运行产品测试，也不生成实现任务。
