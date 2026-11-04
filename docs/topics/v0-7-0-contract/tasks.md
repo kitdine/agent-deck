@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-08
-updated: 2026-10-09
+updated: 2026-11-01
 ---
 
 # v0.7.0 Contract — Tasks
@@ -311,6 +311,106 @@ authority. Record partial assembly without ticking the aggregate Task complete.
 These are contract-topic tasks for review. Create their implementation dispatch
 only after this matrix is approved and applicable evidence/checkpoint conditions
 are satisfied. The present document task is not either implementation task.
+
+### Pending scan-performance batch — 2026-10-31
+
+Implementation has started under dispatch `ad-v0-7-0-contract-assemble` and
+CEv1 WorkUnit `v0-7-0-contract:assemble`. This is batch preparation, not an
+integration result or an independent review. Both aggregate checkboxes remain
+unchecked. The recorded Codex batch above remains integrated.
+
+- Source: `feature/scan-performance` at
+  `3e07c892f34d775e60919774f49ae7c85afb755f`, tree
+  `f0121cb98e5f44a8025409fc9d2815cf134940b6`; the remote source ref matches.
+  All eight source task Dev/Review rows are checked. The delivered topic gate
+  for `scan-perf-delivered-3e07c89-state` was queried on 2026-10-31 and is
+  VERIFIED for all-task-gates, cross-task-acceptance and user-performance-acceptance,
+  with no missing, invalidated or unresolved evidence. Source document wording
+  that still says awaiting delivery is historical; the committed-target gate
+  records this signed topic-branch delivery, not main integration.
+- Intended target: remote `main` at
+  `d78c34583bf34175512c31765d4d4358b8049664`. Local `main` remains at
+  `b450704bc43807487a51a777a90dc4f8793d30dc`; it must not substitute for the
+  remote target. `git ls-remote` confirmed both refs; GitHub compare confirmed
+  common base `b450704bc43807487a51a777a90dc4f8793d30dc`, with 41 source-side
+  commits and two target-side commits.
+- Target-only changes are MIT `LICENSE` and license notices in `README.md`
+  and `README_zh.md` (PR #60). The source changes none of these three paths.
+  This rules out same-file overlap for the current target delta; it does not
+  certify a merge result. The expected operation is a three-way merge, with
+  actual conflict status, result commit/tree and independent integration review
+  still pending. No source code is merged into the contract branch.
+- Reuse the exact delivered source evidence for unchanged product behavior.
+  Preserve its accepted P04/RSS tradeoffs and exclusions: installed Widget/manual
+  UI and L4 release acceptance are not established by the source acceptance.
+  The isolated acceptance preference restoration limitation remains recorded in
+  the source Task 8 record. Do not repeat performance sampling merely for assembly.
+- The operator authorized member PR creation on 2026-10-31, explicitly excluding
+  merge. [PR #61](https://github.com/kitdine/agent-deck/pull/61) is open from
+  `feature/scan-performance` to `main`; its returned head/base identities match
+  the source/target above. No merge has occurred. Before integration, obtain
+  explicit merge authorization, revalidate identities, and inspect the result.
+  Preserve the target's license files, the complete reviewed source, and existing
+  dirty work in other workspaces. Reconcile integrated status at the authorized
+  integration boundary; record the independent result review in
+  `reviews/assemble.md` when that review occurs. PR creation adds no merge,
+  commit, push, release or installation authority.
+- Remaining membership: pricing redesign is still deferred; auxiliary-session
+  isolation has reviewed design documents but all nine implementation rows remain
+  unchecked. Their delivery and final combined acceptance remain required.
+  OpenCode remains the registration described above, without a membership change.
+
+The reviewed contract-document prerequisite was independently queried at delivered
+state `c51da1d19b814ebfe7588e30ceb5ba68b3665981eedf85f49593cc6986cd5fc9`:
+VERIFIED 3/3. That historical document evidence is not relabeled for this new
+batch record. The aggregate assemble gate stays open until its full criteria are
+met; readiness of one member cannot close the task or version contract.
+
+### Scan-performance batch review — 2026-11-01
+
+The preparation identities above remain historical. The current source is
+`d0bd36ea63bd65da21d5a3c6d18bca351cdc8e70` (tree
+`7d4b1e210b7b9c2e322c2b54b1b8bffd51161cd6`); target remains
+`d78c34583bf34175512c31765d4d4358b8049664`. GitHub's pre-merge candidate is
+`8be912c12e1c20ab4bb2b907dda7ac6ceef271ee`, tree
+`b4211bf442304e85c2dfbd4bdc480bff1ca77150`, with those exact target/source
+parents. [Assembly Round 1](reviews/assemble.md#round-1--2026-11-01) passes
+this batch's integration compatibility review only. Both aggregate matrix
+checkboxes remain unchecked; the other members and combined acceptance remain.
+
+The operator explicitly stopped further PR Code Review/P2 repair iterations on
+2026-11-01, then requested continuation of assembly review. This removes that
+additional review-loop prerequisite; it does not manufacture source acceptance,
+waive selected membership or authorize merge. The current eight CI checks pass.
+The older no-major-issues receipt covers `fa8fe4e3`, not this source's later
+publication-retry repair. That distinction remains in the batch review.
+
+The aggregate assemble evidence gate remains NOT_VERIFIED. PR #61 is open and
+unmerged; merging requires explicit authorization. After an authorized merge,
+verify the actual resulting identity, reconcile the batch's integration evidence
+and integrated status, and continue the remaining selected membership. This
+batch review does not close assemble or authorize a contract-wide PR.
+
+### Scan-performance batch merged — 2026-11-01
+
+Under explicit operator authorization, PR #61 merged into remote `main` at
+`6fff208ac852b191c0a62df1f5be34c937601cfe` on 2026-11-01 15:25:39 UTC.
+Its parents are target `d78c34583bf34175512c31765d4d4358b8049664` and source
+`d0bd36ea63bd65da21d5a3c6d18bca351cdc8e70`; tree
+`b4211bf442304e85c2dfbd4bdc480bff1ca77150` exactly matches the reviewed
+candidate. The pre-merge OPEN statements above are historical.
+
+Post-merge reconciliation is recorded in [Assembly Round 1](reviews/assemble.md#round-1--2026-11-01).
+GitHub verifies the server-created merge's PGP signature as valid. The operator
+explicitly rejected the agent's SSH-only blocking interpretation for this GitHub
+PR merge and instructed correction; no signature exception or rewrite is needed.
+Post-merge CI run `41321169520` was running at initial reconciliation;
+on 2026-11-03 all four jobs were verified successful and exact-merge evidence
+was appended. The erroneous signature blocker is superseded by that scope
+correction and the verified GitHub signature. The exact-merge integration gate
+is VERIFIED 4/4, with no missing criteria or unresolved candidate impacts; no
+aggregate task or source acceptance is newly certified. Local record updates
+are not committed or pushed by the merge authorization. No history is rewritten.
 
 ### 1. `assemble`
 
