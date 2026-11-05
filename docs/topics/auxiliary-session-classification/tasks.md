@@ -71,7 +71,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `origin-store` | [ ] | [ ] |
+| 1. `origin-store` | [x] | [x] |
 | 2. `origin-adapter-reducer` | [ ] | [ ] |
 | 3. `scope-projections` | [ ] | [ ] |
 | 4. `cli-contract` | [ ] | [ ] |
@@ -308,3 +308,50 @@ Backlog 与 deferred 协调项 `ad-codex-memory-source-linkage`。Settings 原�
 评审 PASS 不授权开发或提交。2026-11-04 起七份文档对当前内容均已复评 PASS（tasks.md Round 6），文档集重新 ratified；
 各文档尚未提交，提交须单独授权。实现任务的认领与开发须经单独的开发指令。
 未合并主题状态在本文件及 Beads 维护，不平行修改 main 的 docs/status.md。
+
+2026-11-04 任务 1 `origin-store` 开发（claude-code，未提交）：core migration 34（基于 origin/main 的 33；本地 `main` ref 落后于
+origin/main，非本主题问题）新增 origin_preferences、origin_overrides（tombstone、binding_state matched/unmatched、binding_limited）、
+origin_mutations、session_origins（reason_code 封闭枚举 CHECK）、origin_evidence、origin_adapter_runs；除 origin_mutations 外
+各表与 telemetry_sessions 以单一 trigger 族推进 serving revision、置 derived generation dirty，键控表另写
+`usage_derived_invalidations(kind='session')`。store 写路径为 `BEGIN IMMEDIATE` 短事务（回执→负载→CAS→no-change→写→回执→commit），
+新增 `TelemetrySessionOriginMarkers`/`TelemetryBackgroundSessionCount`，`TelemetrySessionSourceKinds` 未改；
+`internal/sessionorigin` 提供默认 DTO、覆盖列表、set/clear/scope 写服务与错误映射。schema 升 34 的连带修改：
+desktop 与原生 `DesktopWire.swift` 的 31/32/33→34 兼容规则及其测试、三份 desktop 金标与 snapshot-performance 金标（差异仅 schema 数字）、
+schema12 迁移测试。CEv1 WorkUnit `auxiliary-session-classification:origin-store`（7 项 required criteria）已建，证据待评审时按候选内容绑定。
+验证：store/sessionorigin 定向、`-race` store/sessionorigin/desktop、`scripts/run-go-test.sh ./...`、`make vet`、`make check-whitespace` 通过，
+`make test-macos-app`（隔离 HOME）：`DesktopWireTests` 的 supported schema 断言已随金标改为 34 并通过；
+`MenuBarViewModelTests.testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges` 两次运行均失败——它以设备 OCR 识别渲染文本，
+识别结果为乱码，fixture 固定 core_schema 31，不经过本任务改动；未在基线上复现，作为未解决的环境相关失败记录，不计为通过。
+`AgentDeckVerification/main.swift` 断言 maximumSupportedCoreSchema == 32，早于本任务已失效（当前为 33），未改动。
+
+2026-11-04 任务 1 `origin-store` 独立评审未通过，Review 保持未勾选；完整结论、候选身份与验证边界见
+[reviews/origin-store.md](reviews/origin-store.md)。本轮只更新评审和交接记录，产品代码、测试与配置未修改。
+Beads 连接曾失败；用户要求处理后读写恢复，任务状态、指派、轮次标签及评审指针已完成失败回交同步。
+
+2026-11-04 任务 1 `origin-store` 修复 ASC-OS-R1-F1（claude-code，未提交）：缺偏好行按已确认默认 Work/revision0
+参与 CAS 后同值判断，首次保存 Work 为 no_change；回归测试与验证见 [reviews/origin-store.md](reviews/origin-store.md)
+Repair 1。Review 保持未勾选，待复评。
+
+2026-11-04 任务 1 `origin-store` 独立复评 Round 2 PASS，Review 已勾选；完整处置与候选身份见
+[reviews/origin-store.md](reviews/origin-store.md)。必需 L3 回归仍未通过，任务证据门禁为 FAILED，
+Beads 保持 in_review，提交与推送建议均以门禁 VERIFIED 为前置；不进入 Topic 完成边界。
+
+2026-11-05 任务 1 `origin-store` L3 补齐（claude-code，未提交）：empty trace 确认为性能测试工具在 worker 不可见时
+提前读取未刷盘 trace，已在本分支修复（等待 `resource.lifetime`）；LaunchServices 超时未复现；新候选全量、全库 vet 与
+相关 race 通过。详见 [reviews/origin-store.md](reviews/origin-store.md) L3 补齐；工具改动待复评。
+
+2026-11-05 任务 1 `origin-store` 新候选独立复评 Round 3 FAIL，Review 恢复未勾选；
+完整处置、内容身份及门禁结果见 [reviews/origin-store.md](reviews/origin-store.md)。
+本轮回交工具变更的修复，任务尚未到达提交边界。
+
+2026-11-05 任务 1 `origin-store` 修复 ASC-OS-R3-F1（claude-code，未提交）：trace 完成屏障改为生产者 flock 释放 +
+lifetime，回归测试、全量/vet/相关 race 见 [reviews/origin-store.md](reviews/origin-store.md) Repair 2。Review 保持未勾选，待复评。
+
+2026-11-05 任务 1 `origin-store` 独立复评 Round 4 PASS，Review 已勾选；完整处置、候选身份与证据复用见
+[reviews/origin-store.md](reviews/origin-store.md)。当前候选 CEv1 已 VERIFIED（7/7），到达任务提交检查点；
+未执行 Git 交付，下一任务仍以本任务完成授权提交交付为前置。
+
+2026-11-05 本次本地提交交付任务 1 `origin-store`：包含 Round 4 已评审的 23 个候选文件及本文件、
+[评审记录](reviews/origin-store.md)，候选门禁 VERIFIED（7/7）。本提交的 Git 对象为交付原件；
+完整提交 ID、签名及提交态证据对账在对应 Beads 任务和 CEv1 保存。用户授权范围为本地提交，未推送。
+下一任务为 `origin-adapter-reducer`，本次提交核验并完成任务关闭后解除其前置依赖。

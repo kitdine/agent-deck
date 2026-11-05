@@ -36,16 +36,19 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
-	func testServingAcceptsTelemetrySchemaAndRejectsUnknownFutureSchema() throws {
-		let snapshot = try servingCoordinatorFixture(id: "telemetry-schema", full: true,
-			generationChanges: ["core_schema": 33])
-		XCTAssertEqual(snapshot.header.generation.coreSchema, 33)
+	func testServingAcceptsSessionOriginSchemaAndRejectsUnknownFutureSchema() throws {
+		let snapshot = try servingCoordinatorFixture(id: "session-origin-schema", full: true,
+			generationChanges: ["core_schema": 34])
+		XCTAssertEqual(snapshot.header.generation.coreSchema, 34)
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
-			generationChanges: ["core_schema": 34]))
+			generationChanges: ["core_schema": 35]))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 34))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 34))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 32))
-		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 34))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 34, current: 33))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 35))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {

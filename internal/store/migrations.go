@@ -323,6 +323,10 @@ var migrations = []migration{
 	// Migration 33 adds sanitized OTel observations, the journal cursor and
 	// receiver coverage. It changes no canonical usage fact.
 	{version: 33, apply: initializeTelemetryStorage},
+	// Migration 34 adds session-origin preferences, overrides, receipts and
+	// derived classifications (auxiliary-session-classification). It changes
+	// no canonical usage fact.
+	{version: 34, apply: initializeSessionOriginStorage},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (
