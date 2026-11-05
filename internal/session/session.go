@@ -1621,21 +1621,11 @@ func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, errors.New("search query is required")
 	}
-	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 AND session_documents MATCH ? ORDER BY CASE WHEN d.event_at='' THEN 1 ELSE 0 END,d.event_at DESC,d.client,d.session_id,d.rowid`, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]Document, 0)
-	for rows.Next() {
-		var d Document
-		if err := rows.Scan(&d.Client, &d.SessionID, &d.EventAt, &d.Kind, &d.Text); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, rows.Err()
+	return searchDocuments(ctx, db, query)
 }
+
+const searchSQL = `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 AND session_documents MATCH ? ORDER BY CASE WHEN d.event_at='' THEN 1 ELSE 0 END,d.event_at DESC,d.client,d.session_id,d.rowid`
+
 func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
 	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.*,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT client,session_id,project,source_path,model,first_at,last_at FROM visible WHERE n=1 ORDER BY last_at DESC,client,session_id`)
 	if err != nil {

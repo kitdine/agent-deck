@@ -887,12 +887,7 @@ func projectLabel(value string) string {
 }
 
 func sessionProjectGroup(value string) (identity, label string) {
-	identity = projectIdentity(value)
-	label = projectLabel(value)
-	if strings.HasPrefix(strings.ToLower(label), "referenced-chatgpt-conversation-") {
-		return "chatgpt-work://referenced-conversation", "ChatGPT Work"
-	}
-	return identity, label
+	return session.ProjectGroup(value)
 }
 
 func (s Service) loadHealth(ctx context.Context, result *Result) {

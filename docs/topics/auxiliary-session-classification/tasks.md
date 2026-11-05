@@ -73,7 +73,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | --- | --- | --- |
 | 1. `origin-store` | [x] | [x] |
 | 2. `origin-adapter-reducer` | [x] | [x] |
-| 3. `scope-projections` | [ ] | [ ] |
+| 3. `scope-projections` | [x] | [x] |
 | 4. `cli-contract` | [ ] | [ ] |
 | 5. `desktop-menubar` | [ ] | [ ] |
 | 6. `settings-control` | [ ] | [ ] |
@@ -406,3 +406,76 @@ synthetic/任务子代理/跨 client 不隐藏、源库与 WAL 字节不变、�
 [评审记录](reviews/origin-adapter-reducer.md)，候选门禁 VERIFIED（7/7）。本提交的 Git 对象为交付原件；
 实际提交 ID、签名和提交态证据对账在对应 Beads 任务及 CEv1 保存。用户仅授权本地提交，未推送。
 提交核验并关闭本任务后解除 `scope-projections` 的依赖；后续开发仍需单独授权。
+
+2026-11-05 任务 3 `scope-projections` 开发（claude-code，未提交）：`internal/sessionorigin` 新增 Selection 读取器与发布决策。
+sessions 侧 `session.ReadIndexSnapshot` 在一个只读事务内读 epoch/serving revision、与 List 相同的规范会话及全部副本身份，
+搜索时同事务读 FTS 命中；core 侧 `ReadOriginSelectionState` 同样在一个只读事务内读 epoch/revision、session_origins 与覆盖
+（schema < 34 视为无来源事实，全部 unknown）。组装顺序：规范去重/排除（索引已物理删除被排除行）→ 分类 → client/时间窗
+（last_at 半开区间）→ 范围 → 排序/分页/计数；work=work+unknown，auxiliary=auxiliary，all=并集；计数含会话、项目集合并集、
+已知时长与均值、缺失时长单列；搜索分别给出匹配文档与所选会话数。分类叠加：存储的 input_token 与当前副本按任务 2 共享
+`InputToken` 重算结果不一致即 unknown/origin_input_mismatch，缺行为 origin_metadata_missing；覆盖仅在 matched 且 binding digest
+等于当前出生绑定时生效，否则显示为 unmatched、不分类。读取后先运行同代附加读取（如工作信号），再用新连接
+`ReadServingGeneration` 核对四元向量，变化即丢弃、最多重试 2 次，仍变化返回 ErrSelectionStale；`Publish` 按选择键
+只接受同选择结果，同 epoch 拒绝较旧向量（含不可比较），epoch 变化直接替换且不比较大小，构建失败保留旧完整结果并标 stale，
+观察到 epoch 已变或无旧结果则 unavailable；sessions/core/向量不可读分别给出安全原因。工作信号新增 `usage.SessionFilter`
+（work=排除有效辅助键，故 unknown 与无索引的 usage-only 会话留在 Work；auxiliary=仅辅助键；all=不过滤），作用于
+activity/workflow/tooling 及共享批量、分区投影路径；usage 事件、token、费用合计不受范围影响。
+实现决定（供评审核对架构 §4 “sessions 元数据的 origin_input_token”）：未新增 sessions 列/迁移，而在同一 sessions 只读事务内
+由已提交的 identity/prefix_hash/parser_version 以同一规范编码重算 token；该值是这些列的纯函数，存成列需要在全部写路径
+维护且自身会过期，而这些列已在 sessions serving trigger 清单内。依赖清单：core 为 derived_snapshot_generation、
+serving_generation、schema_metadata、session_origins、origin_overrides 及信号读取的 usage_events/usage_work_signals/
+usage_tool_calls/usage_tool_files/定价表，均有 I/U/D revision trigger；sessions 为 session_index_generation、serving_generation、
+session_metadata、session_sources（session_exclusions 亦有 trigger），FTS5 的 session_documents 不能建 trigger，其全部写路径
+（新增、追加、重写、移动、删除、排除、重建、ReplaceDocuments）都在同一事务写 sources 或 metadata，已用测试锁定。
+桌面 `session_scope_view` 的接入与持久发布属任务 5，CLI 参数与 JSON 字段属任务 4；desktop 仅把项目分组改为调用共享的
+`session.ProjectGroup`（行为不变）。
+测试（隔离 fixture）：范围划分与 List 顺序 oracle、分页、非可加计数、DST 结束日 25 小时窗口与缺失/倒序时间、搜索计数、
+token 过渡窗口、覆盖绑定四态、usage-only 不造会话、两库交错写入重试与恒变失败、回滚不动向量、依赖 trigger 审计与直接 SQL、
+FTS 各写路径推进 revision、选择零写入、增量=全量、不可读与参数错误、覆盖只 dirty 受影响分区、发布规则；
+usage 侧以“只索引所选会话的独立库”为 oracle 验证过滤报告及批量/投影路径一致。写放大：两会话一次分类协调 core revision +4、
+2 个会话失效标记；无变化协调 +0；单条覆盖 +1、1 个标记（最终预算由任务 9 在集成内容上测量）。
+变异：去掉 token 核对、work 不含 unknown、去掉 binding digest 核对、跳过向量核对、去掉迟到拒绝、失败回退忽略 epoch、
+去掉旧发布选择键校验、去掉倒序时间判定、tooling/批量路径去掉会话过滤、副本归属错误，各使对应测试失败，已恢复。
+验证：`go vet ./...`、`scripts/run-go-test.sh ./...`（首轮仅 `internal/doctor` LaunchServices 超时，单独连续两次及全量重跑均通过）、
+`-race` sessionorigin/session/usage/store/desktop 通过。观察：`ActivityCostForScope` 把 `SignalScope.Session` 作为 model 传给
+eventsRange，生产路径不以 Session 调用它，属既有潜在缺陷，未在本任务修改。CEv1 WorkUnit
+`auxiliary-session-classification:scope-projections`（8 项 required criteria）已建，证据待评审时按候选内容绑定。
+
+2026-11-05 任务 3 `scope-projections` 独立评审 Round 1 FAIL，Review 保持未勾选；
+精确候选、反例、验证边界与修复范围见 [reviews/scope-projections.md](reviews/scope-projections.md)。
+本轮仅同步评审、证据与协调记录，任务回到修复，尚未到达提交检查点；后续任务不解除依赖。
+
+2026-11-05 任务 3 `scope-projections` 修复 ASC-SP-R1-F1（claude-code，未提交）：`Publish` 以发布边界读取的当前向量 `observed`
+为唯一可信的存活 epoch 身份；epoch 与之不同的成功候选视为已退役身份的迟到结果，不替换存活发布（无存活发布时 unavailable），
+退役 epoch 的旧发布不再作为替换比较对象或 stale 回退；缺少 observed 时，相对旧发布改变 epoch 的候选不展示、视图 unavailable。
+首次合法切换、同 epoch 迟到拒绝与失败保留完整旧结果的语义保留，不比较跨 epoch 的 revision，也不假设 epoch 单调。
+回归、评审反例重放、变异与验证见 [reviews/scope-projections.md](reviews/scope-projections.md) Repair 1。Review 保持未勾选，待复评。
+
+2026-11-05 任务 3 `scope-projections` 独立复评 Round 2 FAIL，Review 保持未勾选；
+原发现的部分修复与剩余边界、当前内容身份和验证结果见 [reviews/scope-projections.md](reviews/scope-projections.md)。
+本轮只更新复评、证据及交接记录，任务回交修复，尚未到达提交检查点。
+
+2026-11-05 任务 3 `scope-projections` 修复 Round 2 仍 OPEN 的 ASC-SP-R1-F1（claude-code，未提交）：缺少可信当前身份（observed）时，
+任何成功候选都不再作为新鲜结果展示——无旧发布或旧发布属另一 epoch 时 unavailable，同 epoch 的完整旧发布仅以 stale 保留待核验；
+有 observed 的切换、退役拒绝与同 epoch 迟到拒绝不变。回归、两轮评审反例重放、变异与验证见
+[reviews/scope-projections.md](reviews/scope-projections.md) Repair 2。Review 保持未勾选，待复评。
+
+2026-11-05 任务 3 `scope-projections` 独立复评 Round 3 FAIL，Review 保持未勾选；
+既有发现的关闭、新发现、候选身份和验证边界见 [reviews/scope-projections.md](reviews/scope-projections.md)。
+任务继续回交修复，本轮仅同步复评、证据与协调记录，未到达提交检查点。
+
+2026-11-05 任务 3 `scope-projections` 修复 ASC-SP-R3-F1（claude-code，未提交）：FTS5 的 `session_documents` 本身不能挂 trigger，
+改为在其内容影子表 `session_documents_content` 上安装与其他 sessions 依赖相同的 serving revision trigger（I/U/D），
+经既有的 `ensureSessionServingStorage` 在每次可写打开时幂等安装，已有索引升级后同样获得；直接 SQL 修改搜索文本
+在同一事务推进 sessions revision，回滚不推进。写放大：每条文档行的写入额外一次 revision 更新（扫描按批插入时随行数增加），
+交由任务 9 按集成预算测量。回归、评审探针重放、变异与验证见 [reviews/scope-projections.md](reviews/scope-projections.md)
+Repair 3。Review 保持未勾选，待复评。
+
+2026-11-05 任务 3 `scope-projections` 独立复评 Round 4 PASS，Review 已勾选；
+发现关闭、精确候选、验证复用与任务检查点见 [reviews/scope-projections.md](reviews/scope-projections.md)。
+本轮只更新复评、证据与协调记录，尚未执行 Git 交付；后续 `cli-contract` 仍以本任务完成授权提交交付为前置。
+
+2026-11-05 本次本地提交交付任务 3 `scope-projections`：包含 Round 4 已评审的 16 个产品/测试文件及本文件、
+[评审记录](reviews/scope-projections.md)，候选门禁 VERIFIED（8/8）。本提交的 Git 对象为交付原件；
+实际提交 ID、签名和提交态证据对账在对应 Beads 任务及 CEv1 保存。用户仅授权本地提交，未推送。
+提交核验并关闭本任务后解除 `cli-contract` 的前置依赖，后续开发仍需单独授权。
