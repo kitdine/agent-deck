@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # 辅助会话识别与工作视图隔离：实现分解
@@ -72,7 +72,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `origin-store` | [x] | [x] |
-| 2. `origin-adapter-reducer` | [ ] | [ ] |
+| 2. `origin-adapter-reducer` | [x] | [x] |
 | 3. `scope-projections` | [ ] | [ ] |
 | 4. `cli-contract` | [ ] | [ ] |
 | 5. `desktop-menubar` | [ ] | [ ] |
@@ -355,3 +355,54 @@ lifetime，回归测试、全量/vet/相关 race 见 [reviews/origin-store.md](r
 [评审记录](reviews/origin-store.md)，候选门禁 VERIFIED（7/7）。本提交的 Git 对象为交付原件；
 完整提交 ID、签名及提交态证据对账在对应 Beads 任务和 CEv1 保存。用户授权范围为本地提交，未推送。
 下一任务为 `origin-adapter-reducer`，本次提交核验并完成任务关闭后解除其前置依赖。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 开发（claude-code，未提交）：`internal/sessionorigin` 新增共享归约器
+（§3.3 封闭枚举固定顺序；只有绑定 matched 的覆盖参与 effective；稳定出生绑定 = client/session_id/最早起始时间，
+无起始时间为 binding_limited；`origin_input_token` 规范编码覆盖 key、各副本 identity/prefix_hash/parser_version、
+解析器证据及 reducer/规则版本，追加与移动不变、重写改变，供任务 3 的 sessions 侧共用）、内建
+`codex-otel-background-v1`（两条支持条目精确匹配，其余标记 origin_rule_unsupported）、只读 claude-mem 适配器
+`adapters/claudemem`（显式绝对根；mode=ro + query_only；仅 schema_versions 最大版本 68、sdk_sessions 列/唯一索引元数据
+与 id/memory_session_id；WAL 缺 sidecar 即 unavailable 而不创建；规范 UUID、200 一批、单读 250 ms、整轮 2 s，
+超限 partial 且未读候选 unknown）、本机非导出来源配置 `<state>/session-origin/sources.json`（0700/0600，
+set/disable 命令属任务 4）与 `Reconcile`：在三处现有 SettleAndProject 之后（scanruntime 两条路径、CLI watch）
+读索引身份列与 core 标记，只写分类或证据变化的行，claude-mem 运行摘要与证据同事务，离开索引的会话删除派生行、
+覆盖保留。store 新增只读 `SessionOriginSources(For)` 与 `OriginDerivedState`。
+测试为隔离 fixture：真实 OTel 导入→settle→投影→归约（exec/TUI 两条目 auxiliary、晚到 rollout 撤销、
+支持表外 unsupported、跨 client 不命中、usage 事件与 usage_sessions 前后一致）；按 claude-mem 15.2.1 源码
+（SessionStore.js SHA-256 已复核与架构 §3.1 一致）合成的忠实 WAL fixture 端到端（memory ID 命中、content-only/
+synthetic/任务子代理/跨 client 不隐藏、源库与 WAL 字节不变、查询白名单、0/1/200/201 批次、版本 67/69、无唯一索引、
+伪根、权限拒绝、超时 partial）；禁用/重启用、配置不可读、未配置、无变化不推进 serving revision、增量=全量。
+变异：去掉 TUI 条目、去掉“无变化不写”各使对应测试失败，已恢复。
+验证：`scripts/run-go-test.sh ./...`、`go vet ./...`、`-race` sessionorigin/scanruntime/store 通过。
+候选：HEAD `55dcf41` + 14 个路径，摘要 `a9e50e716877f4e843ad079e03bbb5a450857f72677b3923a7e12965704744de`
+（sha256 of `head=<HEAD>` 加按路径排序的 `path=blob` 行）。CEv1 WorkUnit
+`auxiliary-session-classification:origin-adapter-reducer`（7 项 required criteria）已建，证据待评审时绑定。
+残余：sessions 侧 origin_input_token 列与 token 不一致投影属任务 3；Reconcile 读与写分属两个事务，
+期间的标记撤销由下一协调阶段与任务 3 的 token 核对收敛；claude-mem 配置时每个协调阶段写一次运行摘要，
+会推进 serving revision，写放大由任务 9 按集成预算测量。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 独立评审 Round 1 FAIL，Review 保持未勾选；
+候选身份、反例与修复边界见 [reviews/origin-adapter-reducer.md](reviews/origin-adapter-reducer.md)。
+本轮只更新评审、证据与交接记录；尚未到达任务提交边界，后续任务保持依赖约束。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 修复 ASC-OAR-R1-F1（claude-code，未提交）：claude-mem 适配器先经扩展定位确认
+已安装 `claude-mem-plugin` 为已审查的 15.2.1，未知/更高/不能确认的版本 unsupported、不产生证据，已有自动证据失效、覆盖保留；
+回归、变异与全量/vet/race 见 [reviews/origin-adapter-reducer.md](reviews/origin-adapter-reducer.md) Repair 1。Review 保持未勾选，待复评。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 独立复评 Round 2 FAIL，Review 保持未勾选；
+原发现处置、当前候选及验证边界见 [reviews/origin-adapter-reducer.md](reviews/origin-adapter-reducer.md)。
+本轮只更新复评、证据与交接记录，任务尚未到达提交边界。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 修复 Round 2 仍 OPEN 的 ASC-OAR-R1-F1（claude-code，未提交）：插件确认改为统计全部
+作用域/marketplace 的 claude-mem 安装，仅唯一且为 user 15.2.1 时适配，混合安装保守拒绝并使已有证据失效、覆盖保留；
+回归、评审反例重放、变异与全量/vet/race 见 [reviews/origin-adapter-reducer.md](reviews/origin-adapter-reducer.md) Repair 2。Review 保持未勾选，待复评。
+
+2026-11-05 任务 2 `origin-adapter-reducer` 独立复评 Round 3 PASS，Review 已勾选；
+发现处置、精确候选、验证结果及任务提交检查点见 [reviews/origin-adapter-reducer.md](reviews/origin-adapter-reducer.md)。
+本候选 CEv1 VERIFIED（7/7），进入任务提交检查点，尚未提交或推送。
+后续 `scope-projections` 仍以前置任务完成授权提交交付为条件，未启动该任务或进入 Topic 完成边界。
+
+2026-11-05 本次本地提交交付任务 2 `origin-adapter-reducer`：包含 Round 3 已评审的 15 个候选文件及本文件、
+[评审记录](reviews/origin-adapter-reducer.md)，候选门禁 VERIFIED（7/7）。本提交的 Git 对象为交付原件；
+实际提交 ID、签名和提交态证据对账在对应 Beads 任务及 CEv1 保存。用户仅授权本地提交，未推送。
+提交核验并关闭本任务后解除 `scope-projections` 的依赖；后续开发仍需单独授权。

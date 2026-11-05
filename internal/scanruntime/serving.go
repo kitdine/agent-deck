@@ -13,6 +13,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -279,6 +280,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	if err == nil && !metadataOnly {
 		_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
+		_, _ = sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: r.home})
 	}
 	if err != nil {
 		finishDomainInventory(core, r.id, err)

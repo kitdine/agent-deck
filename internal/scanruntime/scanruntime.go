@@ -33,6 +33,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -1146,6 +1147,8 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		// first so the publication below already counts background usage.
 		if sessionsErr == nil {
 			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
+			// Classify after settling, so markers and projected sources agree.
+			_, _ = sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: r.home})
 		}
 		_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 		r.publishFinalServing(ctx, stateRoot)

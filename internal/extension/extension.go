@@ -709,8 +709,20 @@ func scanPluginDirectories(client, scope, path string) ([]nativeExtension, error
 	return values, nil
 }
 
-func scanClaudePlugins(home, workdir string) ([]nativeExtension, error) {
-	path := filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
+// ClaudePluginInstall is one entry of Claude Code's installed plugin catalog.
+type ClaudePluginInstall struct {
+	ID          string
+	Scope       string
+	ProjectPath string
+	Version     string
+	InstallPath string
+	Enabled     *bool
+}
+
+// ClaudePluginInstalls reads Claude Code's installed plugin catalog without
+// creating or changing anything. A missing catalog has no installs.
+func ClaudePluginInstalls(home string) ([]ClaudePluginInstall, error) {
+	path := ClaudePluginCatalogPath(home)
 	contents, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -723,39 +735,59 @@ func scanClaudePlugins(home, workdir string) ([]nativeExtension, error) {
 			Version     string `json:"version"`
 			Scope       string `json:"scope"`
 			ProjectPath string `json:"projectPath"`
+			InstallPath string `json:"installPath"`
 			Enabled     *bool  `json:"enabled"`
 		} `json:"plugins"`
 	}
 	if err = json.Unmarshal(contents, &catalog); err != nil {
 		return nil, fmt.Errorf("claude plugins invalid")
 	}
-	var values []nativeExtension
-	for id, installs := range catalog.Plugins {
-		for _, install := range installs {
-			scope := install.Scope
-			if scope == "" {
-				scope = "user"
-			}
-			if scope != "user" && scope != "project" {
-				continue
-			}
-			if scope == "project" && !samePath(install.ProjectPath, workdir) {
-				continue
-			}
-			version := install.Version
-			if version == "" {
-				version = unknown
-			}
-			enabled := unknown
-			if install.Enabled != nil {
-				if *install.Enabled {
-					enabled = "enabled"
-				} else {
-					enabled = "disabled"
-				}
-			}
-			values = append(values, nativeExtension{"claude", "plugin", scope, id, path, version, enabled})
+	var installs []ClaudePluginInstall
+	for id, entries := range catalog.Plugins {
+		for _, entry := range entries {
+			installs = append(installs, ClaudePluginInstall{ID: id, Scope: entry.Scope, ProjectPath: entry.ProjectPath,
+				Version: entry.Version, InstallPath: entry.InstallPath, Enabled: entry.Enabled})
 		}
+	}
+	return installs, nil
+}
+
+// ClaudePluginCatalogPath is Claude Code's installed plugin catalog.
+func ClaudePluginCatalogPath(home string) string {
+	return filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
+}
+
+func scanClaudePlugins(home, workdir string) ([]nativeExtension, error) {
+	path := ClaudePluginCatalogPath(home)
+	installs, err := ClaudePluginInstalls(home)
+	if err != nil {
+		return nil, err
+	}
+	var values []nativeExtension
+	for _, install := range installs {
+		scope := install.Scope
+		if scope == "" {
+			scope = "user"
+		}
+		if scope != "user" && scope != "project" {
+			continue
+		}
+		if scope == "project" && !samePath(install.ProjectPath, workdir) {
+			continue
+		}
+		version := install.Version
+		if version == "" {
+			version = unknown
+		}
+		enabled := unknown
+		if install.Enabled != nil {
+			if *install.Enabled {
+				enabled = "enabled"
+			} else {
+				enabled = "disabled"
+			}
+		}
+		values = append(values, nativeExtension{"claude", "plugin", scope, install.ID, path, version, enabled})
 	}
 	return values, nil
 }

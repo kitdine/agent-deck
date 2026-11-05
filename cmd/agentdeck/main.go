@@ -41,6 +41,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
@@ -3329,6 +3330,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 					return 0, scanErr
 				}
 				_, _ = telemetry.SettleAndProject(ctx, database, sessions, time.Now())
+				_, _ = sessionorigin.Reconcile(ctx, database, sessions, sessionorigin.ReconcileOptions{StateRoot: stateDir, Home: home})
 				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
 				if checkpointErr == nil {
 					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
