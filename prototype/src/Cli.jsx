@@ -6,6 +6,7 @@ import { WORK_SIGNALS } from "./data.js";
 import { catalogs } from "./i18n.js";
 import { CLI_HEALTH_RECOVERY } from "./healthRecovery.js";
 import { LAUNCHSERVICES } from "./launchservices.js";
+import { OWNERSHIP, OWNERSHIP_STATES } from "./ownership.js";
 
 // CLI 原型。终端里没有布局可调，能被设计的只有三件事：分节、对齐列、以及
 // 一个数字读不出来时写什么。所以这里渲染的是逐字符的真实输出，不是示意图。
@@ -205,7 +206,7 @@ export function CliSurface() {
   const stage = useStagePrefs();
   const { lang, theme } = stage;
   const dict = catalogs[lang];
-  const initialActive = new URLSearchParams(window.location.search).has("engine") ? "engine" : new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
+  const initialActive = new URLSearchParams(window.location.search).has("ownership") ? "ownership" : new URLSearchParams(window.location.search).has("engine") ? "engine" : new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
     ? "scan"
     : new URLSearchParams(window.location.search).has("health") ? "recovery" : SAMPLES[0].id;
   const [active, setActive] = useState(initialActive);
@@ -214,6 +215,9 @@ export function CliSurface() {
   const recovery = CLI_HEALTH_RECOVERY[recoveryKey];
   const [registrationState, setRegistrationState] = useState(new URLSearchParams(window.location.search).get("launchservices") || "conflict");
   const registration = LAUNCHSERVICES[registrationState] || LAUNCHSERVICES.unknown;
+  const requestedOwnership = new URLSearchParams(window.location.search).get("ownership");
+  const [ownershipState, setOwnershipState] = useState(OWNERSHIP[requestedOwnership] ? requestedOwnership : "refused_state");
+  const ownership = OWNERSHIP[ownershipState];
 
   return (
     <main className="stage" data-theme={theme}>
@@ -222,6 +226,7 @@ export function CliSurface() {
         <nav className="cli-tabs">
           <button type="button" className={active === "engine" ? "active" : ""} onClick={() => setActive("engine")}>engine</button>
           <button type="button" className={active === "launchservices" ? "active" : ""} onClick={() => setActive("launchservices")}>launchservices</button>
+          <button type="button" data-cli-ownership-tab className={active === "ownership" ? "active" : ""} onClick={() => setActive("ownership")}>ownership</button>
           <button type="button" data-cli-scan-tab className={active === "scan" ? "active" : ""} onClick={() => setActive("scan")}>scan</button>
           <button type="button" data-cli-recovery-tab className={active === "recovery" ? "active" : ""} onClick={() => setActive("recovery")}>recovery</button>
           {SAMPLES.map((item) => (
@@ -230,7 +235,12 @@ export function CliSurface() {
             </button>
           ))}
         </nav>
-        {active === "engine" ? <EngineCli stage={stage} /> : active === "launchservices" ? <>
+        {active === "ownership" ? <>
+          <label>Ownership state <select value={ownershipState} onChange={(event) => setOwnershipState(event.target.value)}>{OWNERSHIP_STATES.map((state) => <option key={state}>{state}</option>)}</select></label>
+          <p className="cli-note">installed-state-ownership candidate character specimens. {ownership.proves} Exit {ownership.exit}. No runtime behavior is proven.</p>
+          <div className="terminal" data-cli-ownership={ownershipState} data-cli-ownership-exit={ownership.exit}><div className="terminal-bar"><i /><i /><i /><span>text · stderr then stdout</span></div><pre tabIndex={0}><code><b>$ {ownership.command}</b>{"\n"}{ownership.stderr ? <em>{ownership.stderr}</em> : null}{ownership.stdout}</code></pre></div>
+          <div className="terminal"><div className="terminal-bar"><i /><i /><i /><span>--format json · {ownership.exit === 0 ? "stdout" : "stderr"}</span></div><pre tabIndex={0}><code>{ownership.json}</code></pre></div>
+        </> : active === "engine" ? <EngineCli stage={stage} /> : active === "launchservices" ? <>
           <label>Registration state <select value={registrationState} onChange={(event) => setRegistrationState(event.target.value)}>{Object.keys(LAUNCHSERVICES).map((state) => <option key={state}>{state}</option>)}</select></label>
           <p className="cli-note">Candidate character specimens. Existing checks abbreviated; no native health or recovery acceptance.</p>
           <div className="terminal" data-cli-launchservices={registrationState}><div className="terminal-bar"><i /><i /><i /><span>text</span></div><pre tabIndex={0}><code><b>$ agentdeck doctor</b>{"\n"}{registration.text}</code></pre></div>

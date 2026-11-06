@@ -328,3 +328,24 @@ axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检
 `?surface=cli&engine=stored_partial` / `engine=telemetry_unknown`：覆盖stored-only部分来源与未知producer。
 CLI标本公共envelope及JSON错误stderr已修正。合成检查为`tools/scan-performance-repair-check.mjs`，
 只做文案/状态/交互，不测浏览器性能，不代表native/provider运行验收。
+
+## 安装状态所有权标本（installed-state-ownership）
+
+CLI 页新增 `ownership` 页签，入口为 `?surface=cli&ownership=<state>`。数据来自 `src/ownership.js`，共 13 个状态：
+
+- 未安装提示：`notice`；
+- 普通拒绝：`refused_state`、`refused_client_config`、`revoked`；
+- doctor：`doctor_installed`、`doctor_not_installed`、`doctor_formula_unclaimed`、`doctor_refused`、`doctor_command_owner`；
+- 认领：`claim_ok`、`claim_owned_by_other`、`claim_owner_running`、`claim_not_current_keg`。
+
+每个状态都分开展示 stderr、stdout、退出码和 `--format json`。text 是单一英文的逐字符输出，doctor 部分沿用 `renderDoctorText` 的 `status/mode/warnings/errors` 头部和 `name: status (code)` 行格式；与本主题无关的现有检查做了省略。JSON 中不出现任何路径。
+
+结构检查为 `node tools/installed-state-ownership-check.mjs`，检查内容包括：
+
+- 状态集合完整；
+- envelope 字段齐全，JSON 中没有路径；
+- 退出码与 error 的有无一致，错误首行的格式正确；
+- doctor 文本中包含每个检查对应的行，`installation` 排在第一个；
+- doctor 报告是否为部分报告，由 `state` 检查的短路原因决定：`state_missing`（现有的缺失目录短路）和 `state_ownership_refused` 两种是部分报告，各自以对应的 `checks_skipped:` 行结尾；其余是完整报告，不出现 `checks_skipped`。
+
+这些标本只证明文案、行序、字段、退出码以及输出位置（stdout 或 stderr），不证明守卫、所有权锁、回执或任何运行时行为。设计说明见 [`ux/cli.md`](../docs/topics/installed-state-ownership/ux/cli.md)。
