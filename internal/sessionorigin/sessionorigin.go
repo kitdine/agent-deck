@@ -282,6 +282,10 @@ type ScopeRequest struct {
 	RequestID        string
 	Value            string
 	ExpectedRevision int64
+	// ImplicitExpected marks ExpectedRevision as read by the caller's own
+	// read-CAS rather than supplied by the user, so a retry under the same
+	// request ID replays its receipt even after the revision moved.
+	ImplicitExpected bool
 }
 
 // SetDefaultScope persists the default scope under CAS and idempotency.
@@ -293,7 +297,7 @@ func (s Service) SetDefaultScope(ctx context.Context, request ScopeRequest) (Rec
 		return Receipt{}, fmt.Errorf("%w: expected revision", ErrInvalidArgument)
 	}
 	expected := request.ExpectedRevision
-	return s.apply(ctx, store.OriginMutation{RequestID: request.RequestID, Kind: store.OriginMutationScopeSet, Value: request.Value, ExpectedRevision: expected}, &expected)
+	return s.apply(ctx, store.OriginMutation{RequestID: request.RequestID, Kind: store.OriginMutationScopeSet, Value: request.Value, ExpectedRevision: expected}, explicitRevision(expected, request.ImplicitExpected))
 }
 
 // OverrideSetRequest sets an override for a target whose binding the caller
@@ -305,6 +309,8 @@ type OverrideSetRequest struct {
 	Value            string
 	Binding          *store.OriginBinding
 	ExpectedRevision int64
+	// ImplicitExpected has the meaning documented on ScopeRequest.
+	ImplicitExpected bool
 }
 
 // SetOverride persists a work/auxiliary override bound to a verified identity.
@@ -323,7 +329,14 @@ func (s Service) SetOverride(ctx context.Context, request OverrideSetRequest) (R
 	}
 	expected := request.ExpectedRevision
 	return s.apply(ctx, store.OriginMutation{RequestID: request.RequestID, Kind: store.OriginMutationOverrideSet,
-		Client: request.Client, SessionID: request.SessionID, Value: request.Value, Binding: *request.Binding, ExpectedRevision: expected}, &expected)
+		Client: request.Client, SessionID: request.SessionID, Value: request.Value, Binding: *request.Binding, ExpectedRevision: expected}, explicitRevision(expected, request.ImplicitExpected))
+}
+
+func explicitRevision(expected int64, implicit bool) *int64 {
+	if implicit {
+		return nil
+	}
+	return &expected
 }
 
 // OverrideClearRequest withdraws an override by explicit core key. A nil

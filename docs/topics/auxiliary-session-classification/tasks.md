@@ -74,7 +74,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 1. `origin-store` | [x] | [x] |
 | 2. `origin-adapter-reducer` | [x] | [x] |
 | 3. `scope-projections` | [x] | [x] |
-| 4. `cli-contract` | [ ] | [ ] |
+| 4. `cli-contract` | [x] | [x] |
 | 5. `desktop-menubar` | [ ] | [ ] |
 | 6. `settings-control` | [ ] | [ ] |
 | 7. `widget-summary` | [ ] | [ ] |
@@ -479,3 +479,76 @@ Repair 3。Review 保持未勾选，待复评。
 [评审记录](reviews/scope-projections.md)，候选门禁 VERIFIED（8/8）。本提交的 Git 对象为交付原件；
 实际提交 ID、签名和提交态证据对账在对应 Beads 任务及 CEv1 保存。用户仅授权本地提交，未推送。
 提交核验并关闭本任务后解除 `cli-contract` 的前置依赖，后续开发仍需单独授权。
+
+2026-11-05 任务 4 `cli-contract` 开发完成（claude-code，未提交，待独立评审）：新增 `cmd/agentdeck/session_origin.go`
+承载 `--session-scope`、`session classify`（查询/--set/--clear/list/--request/--id）、`session scope get|set`、
+`session origin-source set|disable|status`；list/search/`session --interactive`、`usage signals` 与 `usage stats`
+的工作分析经共享 `sessionorigin.Reader` 读取同代选择，不另立分类。实现决定：
+（1）数据库**文件不存在**视为已确认空状态——从未创建的 core 无分类/覆盖，会话全为 unknown 留在 Work
+（新增 `Reader.SelectAbsentCore`，复用同一 `assemble`）；从未创建的索引中无可归为辅助的会话；文件存在但不可读仍为
+unavailable，work/auxiliary 报运行错误、all 保留旧集合并在 `session_selection.availability` 标 unavailable。
+（2）服务层 `OverrideSetRequest`/`ScopeRequest` 增加 `ImplicitExpected`，使 CLI 读-CAS 在同 request ID 重试时负载不变
+（与既有 `ClearOverride` 一致）；显式 `--expected-revision` 仍计入负载。
+（3）origin-source 组 JSON command 统一为 `session.origin_source.<action>`，错误 envelope 与成功一致。
+（4）`usage stats` 的范围只作用于 Activity/Workflow/Tooling 信号；`totals.sessions` 属消耗块（每会话平均值），保持 all 并标
+`Usage scope: all`。envelope 新增可加顶层 `session_selection`；GUI JSON 合同夹具登记 7 个新叶命令及可加字段。
+验证：`go vet ./...`；`scripts/run-go-test.sh ./cmd/... ./internal/...` 28 包全部通过；`-race` 覆盖 sessionorigin 与
+CLI 范围/分类/浏览器测试通过；三处变异（status partial、文本默认范围、隐式 expected）各被新测试检出。
+PTY 覆盖 80×24 下 `s` 菜单切换 auxiliary、q 退出恢复屏幕且状态字节不变；48×10 菜单与过滤空态由帧渲染测试覆盖。
+剩余边界：stable `docs/specs/cli-manual.md`/`cli-design.md` 按文档流程于主题收尾时对账；初次加载失败直接报错而非全屏错误页；
+CEv1 WorkUnit `auxiliary-session-classification:cli-contract`（8 项 required criteria）已建，证据于评审时按候选内容绑定。
+
+2026-11-05 任务 4 `cli-contract` 独立评审 Round 1 FAIL，Review 保持未勾选；
+完整发现、候选身份、PTY 反例与验证边界见 [reviews/cli-contract.md](reviews/cli-contract.md)。
+本轮仅更新评审、证据与协调记录，任务回交修复，未到达提交检查点。
+
+2026-11-05 任务 4 `cli-contract` 修复 ASC-CLI-R1-F1（claude-code，未提交）：交互浏览器的范围读取改为可取消的后台读取，
+加载期间 q 立即退出、Escape 取消并保留旧列表、resize 重绘；已取消请求的迟到结果被丢弃，退出前有界收束读取再恢复终端。
+回归、Round 1 探针重放与验证见 [reviews/cli-contract.md](reviews/cli-contract.md) Repair 1。Review 保持未勾选，待复评。
+
+2026-11-05 任务 4 的 ASC-CLI-R1-F1 限定复评 Round 2 PASS，该发现已关闭；范围与证据见
+[reviews/cli-contract.md](reviews/cli-contract.md)。本轮用户仅选择该 finding 及其影响路径，不代表任务整体评审通过。
+任务 Review 保持未勾选，Beads 保持 in_review；完整任务验收证据仍待补齐，未到达提交检查点。
+
+2026-11-05 任务 4 `cli-contract` 完整候选评审 Round 3 FAIL，Review 保持未勾选；
+任务级证据矩阵、四项新发现、原发现关闭结论及验证限制见
+[reviews/cli-contract.md](reviews/cli-contract.md#round-3--2026-11-05)。本轮复用同一候选的原始验证，
+仅完成中断的评审、证据和交接收尾；未修改产品、测试或配置，未到达提交检查点。
+
+2026-11-06 任务 4 `cli-contract` 修复 ASC-CLI-R3-F1–F4（claude-code，未提交）：usage 选择元数据纳入报告时间窗；
+可复制的分类命令对控制字符采用可还原原值的 `$'…'` 编码；重放回执按历史回执呈现；初次浏览器读取失败进入可退出错误页。
+回归与验证见 [reviews/cli-contract.md](reviews/cli-contract.md) Repair 2。Review 保持未勾选，待复评。
+
+2026-11-06 任务 4 `cli-contract` 指定发现复评 Round 4 FAIL，Review 保持未勾选；
+逐项处置、当前候选、原始失败及有界诊断对照见
+[reviews/cli-contract.md](reviews/cli-contract.md#round-4--2026-11-06)。任务回交修复，未到达提交检查点；
+本轮仅更新评审、证据与协调记录，未修改产品、测试或配置。
+
+2026-11-06 任务 4 `cli-contract` 修复 ASC-CLI-R3-F4、ASC-CLI-R4-F1/F2（claude-code，未提交）：交互浏览器的 sessions 索引打开失败
+也进入可退出错误页；初始阻塞测试改用不受 ANSI 影响的结果检查并覆盖有色/无色两种输出；时间窗回归在 `--no-scan` 前建立并确认 usage 状态。
+回归与验证见 [reviews/cli-contract.md](reviews/cli-contract.md) Repair 3。Review 保持未勾选，待复评。
+
+2026-11-06 任务 4 `cli-contract` 指定发现复评 Round 5 PASS，范围与逐项处置见
+[reviews/cli-contract.md](reviews/cli-contract.md#round-5--2026-11-06)。本次限定通过不替代完整任务验收；
+任务 Review 保持未勾选、Beads 保持 in_review，扫描部分结果验收和完整候选证据对账仍待补齐。
+本轮仅同步复评、证据与交接记录，未修改产品、测试或配置，未提交或推送。
+
+2026-11-06 任务 4 `cli-contract` 任务级验收与完整候选证据对账 Round 6 FAIL；
+扫描失败的 JSON 与 --no-scan 行为已取得确定证据，文本反馈仍不满足已批准合同。
+完整发现、复用矩阵及当前候选门禁见
+[reviews/cli-contract.md](reviews/cli-contract.md#round-6--2026-11-06)。Review 保持未勾选，任务回交修复；
+此前限定复评的通过与已关闭发现保持有效。本轮未修改产品、测试或配置。
+
+2026-11-06 任务 4 `cli-contract` 修复 ASC-CLI-R6-F1（claude-code，未提交）：扫描失败时 `usage signals`/`usage stats` 文本在报告前
+标出 `PARTIAL: scan_incomplete` 与 `Showing last committed data.`，stderr 给出 `Warning: scan_incomplete`；JSON、--no-scan 与退出码不变。
+回归与验证见 [reviews/cli-contract.md](reviews/cli-contract.md) Repair 4。Review 保持未勾选，待复评。
+
+2026-11-06 任务 4 `cli-contract` 复评 Round 7 PASS，全部已登记发现关闭，Review 已勾选；
+沿用 Round 6 完整候选评审与六项通过证据，补齐最后的扫描失败文本验收。
+最终候选、CEv1 结果和任务提交检查点见 [reviews/cli-contract.md](reviews/cli-contract.md#round-7--2026-11-06)。
+本轮仅更新复评、证据与交接记录，未执行 Git 交付；后续任务仍受本任务授权提交交付的依赖约束。
+
+2026-11-06 用户授权本地提交任务 4 `cli-contract`：完整边界为 Round 7 已评审的 15 个产品/测试/fixture 路径，
+加本文件及 [评审记录](reviews/cli-contract.md)，候选门禁 VERIFIED（8/8）。包含本说明的 Git 提交为交付原件；
+实际提交 ID、SSH 签名和提交态 CEv1 对账结果保存于对应 Beads 任务与证据记录。
+本次仅授权本地提交，未授权推送；核验并关闭本任务后解除 desktop-menubar 的相应依赖，后续开发仍需独立授权。

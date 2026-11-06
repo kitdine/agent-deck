@@ -62,11 +62,18 @@
     "quota.capture",
     "run",
     "scan",
+    "session.classify",
+    "session.classify.list",
     "session.exclude",
     "session.list",
+    "session.origin_source.disable",
+    "session.origin_source.set",
+    "session.origin_source.status",
     "session.purge-index",
     "session.rebuild",
     "session.scan",
+    "session.scope.get",
+    "session.scope.set",
     "session.search",
     "session.show",
     "state.migrate",
@@ -2171,6 +2178,73 @@
       "error_code": "invalid_argument",
       "error_command": "scan"
     },
+    "session.classify": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "classification_available": "boolean",
+          "origin": {
+            "automatic": "string",
+            "effective": "string",
+            "override": null,
+            "reason_code": "string",
+            "revision": "number",
+            "rule_version": "string"
+          },
+          "target": {
+            "client": "string",
+            "session_id": "string"
+          }
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.classify"
+    },
+    "session.classify.list": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "items": [],
+          "limit": "number",
+          "page": "number",
+          "total": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.classify.list"
+    },
     "session.exclude": {
       "success_schema": {
         "command": "string",
@@ -2206,11 +2280,63 @@
             "first_at": "string",
             "last_at": "string",
             "model": "string",
+            "origin": {
+              "automatic": "string",
+              "effective": "string",
+              "override": null,
+              "reason_code": "string",
+              "revision": "number",
+              "rule_version": "string"
+            },
             "project": "string",
             "session_id": "string",
             "source_path": "string"
           }
         ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "session_selection": {
+          "availability": "string",
+          "effective_scope": "string",
+          "publication_id": "string",
+          "read_vector": {
+            "core_epoch": "number",
+            "session_epoch": "number",
+            "session_revision": "number",
+            "usage_revision": "number"
+          },
+          "requested_scope": null,
+          "source_default": "string",
+          "unknown_count": "number"
+        },
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.list"
+    },
+    "session.origin_source.disable": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "configured": "boolean",
+          "enabled": "boolean",
+          "evidence_invalidated": "boolean",
+          "mapping_coverage": "string",
+          "source": "string"
+        },
         "generated_at": "string",
         "partial": "boolean",
         "schema_version": "number",
@@ -2229,7 +2355,86 @@
         "warnings": []
       },
       "error_code": "invalid_argument",
-      "error_command": "session.list"
+      "error_command": "session.origin_source.disable"
+    },
+    "session.origin_source.set": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "configured": "boolean",
+          "enabled": "boolean",
+          "mapping_coverage": "string",
+          "source": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.origin_source.set"
+    },
+    "session.origin_source.status": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "sources": [
+            {
+              "available": "boolean",
+              "background_sessions": "number",
+              "configured": null,
+              "enabled": null,
+              "kind": "string",
+              "reason_code": "string",
+              "receiver": "string",
+              "rule_version": "string",
+              "source": "string",
+              "supported_version": null
+            },
+            {
+              "available": "boolean",
+              "configured": "boolean",
+              "enabled": "boolean",
+              "kind": "string",
+              "last_run_at": null,
+              "reason_code": "string",
+              "rule_version": "string",
+              "source": "string",
+              "supported_version": null
+            }
+          ]
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.origin_source.status"
     },
     "session.purge-index": {
       "success_schema": {
@@ -2315,6 +2520,67 @@
       "error_code": "invalid_argument",
       "error_command": "session.scan"
     },
+    "session.scope.get": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "confirmed": "boolean",
+          "reason": null,
+          "revision": "number",
+          "value": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.scope.get"
+    },
+    "session.scope.set": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "kind": "string",
+          "outcome": "string",
+          "publication_pending": "boolean",
+          "replayed": "boolean",
+          "request_id": "string",
+          "revision": "number",
+          "value": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.scope.set"
+    },
     "session.search": {
       "success_schema": {
         "command": "string",
@@ -2323,6 +2589,14 @@
             "client": "string",
             "event_at": "string",
             "kind": "string",
+            "origin": {
+              "automatic": "string",
+              "effective": "string",
+              "override": null,
+              "reason_code": "string",
+              "revision": "number",
+              "rule_version": "string"
+            },
             "session_id": "string",
             "text": "string"
           }
@@ -2330,6 +2604,21 @@
         "generated_at": "string",
         "partial": "boolean",
         "schema_version": "number",
+        "session_selection": {
+          "availability": "string",
+          "effective_scope": "string",
+          "publication_id": "string",
+          "read_vector": {
+            "core_epoch": "number",
+            "session_epoch": "number",
+            "session_revision": "number",
+            "usage_revision": "number"
+          },
+          "requested_scope": null,
+          "selected_session_count": "number",
+          "source_default": "string",
+          "unknown_count": "number"
+        },
         "warnings": []
       },
       "error_schema": {
@@ -2767,6 +3056,20 @@
         "generated_at": "string",
         "partial": "boolean",
         "schema_version": "number",
+        "session_selection": {
+          "availability": "string",
+          "effective_scope": "string",
+          "publication_id": "string",
+          "read_vector": {
+            "core_epoch": "number",
+            "session_epoch": "number",
+            "session_revision": "number",
+            "usage_revision": "number"
+          },
+          "requested_scope": null,
+          "source_default": "string",
+          "unknown_count": "number"
+        },
         "warnings": []
       },
       "error_schema": {
@@ -2939,6 +3242,20 @@
         "generated_at": "string",
         "partial": "boolean",
         "schema_version": "number",
+        "session_selection": {
+          "availability": "string",
+          "effective_scope": "string",
+          "publication_id": "string",
+          "read_vector": {
+            "core_epoch": "number",
+            "session_epoch": "number",
+            "session_revision": "number",
+            "usage_revision": "number"
+          },
+          "requested_scope": null,
+          "source_default": "string",
+          "unknown_count": "number"
+        },
         "warnings": []
       },
       "error_schema": {

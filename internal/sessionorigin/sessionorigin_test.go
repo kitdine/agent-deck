@@ -222,3 +222,32 @@ func TestServiceClearAgainstCoreOnly(t *testing.T) {
 		t.Fatalf("default = %+v", scope)
 	}
 }
+
+// A CLI read-CAS retry under the same request ID must hash the same payload
+// even after the revision moved; an explicit expected revision stays part of it.
+func TestImplicitExpectedRevisionKeepsTheRetryPayload(t *testing.T) {
+	ctx := context.Background()
+	binding := &store.OriginBinding{Digest: "d"}
+	fake := &fakeStore{applyReceipt: store.OriginReceipt{Outcome: OutcomeSaved}}
+	service := Service{Store: fake}
+	for _, expected := range []int64{0, 4} {
+		if _, err := service.SetOverride(ctx, OverrideSetRequest{RequestID: "req-1", Client: "claude", SessionID: "s", Value: ClassWork, Binding: binding, ExpectedRevision: expected, ImplicitExpected: true}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.SetDefaultScope(ctx, ScopeRequest{RequestID: "req-2", Value: ScopeAll, ExpectedRevision: expected, ImplicitExpected: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if fake.applied[0].PayloadHash != fake.applied[2].PayloadHash || fake.applied[1].PayloadHash != fake.applied[3].PayloadHash {
+		t.Fatal("implicit read-CAS retry changed the payload")
+	}
+	if fake.applied[2].ExpectedRevision != 4 {
+		t.Fatal("implicit retry must still compare against the revision it read")
+	}
+	if _, err := service.SetOverride(ctx, OverrideSetRequest{RequestID: "req-1", Client: "claude", SessionID: "s", Value: ClassWork, Binding: binding, ExpectedRevision: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if fake.applied[4].PayloadHash == fake.applied[2].PayloadHash {
+		t.Fatal("an explicit expected revision must be part of the payload")
+	}
+}

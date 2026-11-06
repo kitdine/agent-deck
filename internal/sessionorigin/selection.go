@@ -195,6 +195,25 @@ func (r Reader) Select(ctx context.Context, selection Selection, attach func(con
 	return Snapshot{}, ErrSelectionStale
 }
 
+// SelectAbsentCore answers a selection when the core database file does not
+// exist. A core that was never created holds no origin, evidence, override or
+// preference, so every indexed session is unknown/origin_metadata_missing and
+// stays in Work. The index is read in one read transaction, so the result is
+// self-consistent without a cross-database vector check; the core half of
+// its vector is zero. It must never be used for a core that exists but cannot
+// be read: that remains ErrClassificationUnavailable.
+func (r Reader) SelectAbsentCore(ctx context.Context, selection Selection) (Snapshot, error) {
+	if err := selection.Validate(); err != nil {
+		return Snapshot{}, err
+	}
+	index, err := session.ReadIndexSnapshot(ctx, r.Sessions.DB, selection.Query)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("%w: %v", ErrSessionsUnavailable, err)
+	}
+	snapshot := Snapshot{Selection: selection, Vector: Vector{SessionEpoch: index.Epoch, SessionRevision: index.Revision}}
+	return assemble(snapshot, index, store.OriginSelectionState{}), nil
+}
+
 func (r Reader) read(ctx context.Context, selection Selection) (Snapshot, error) {
 	index, err := session.ReadIndexSnapshot(ctx, r.Sessions.DB, selection.Query)
 	if err != nil {

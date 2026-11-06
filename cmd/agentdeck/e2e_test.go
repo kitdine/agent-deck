@@ -195,6 +195,13 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")
 	search := runJSON("session.search", "", "session", "search", "phase7")
+	runJSON("session.classify", "", "session", "classify", "phase7-run")
+	runJSON("session.classify.list", "", "session", "classify", "list")
+	runJSON("session.scope.get", "", "session", "scope", "get")
+	runJSON("session.scope.set", "", "session", "scope", "set", "work")
+	runJSON("session.origin_source.status", "", "session", "origin-source", "status")
+	runJSON("session.origin_source.set", "", "session", "origin-source", "set", "claude-mem", "--data-dir", filepath.Join(t.TempDir(), "claude-mem"))
+	runJSON("session.origin_source.disable", "", "session", "origin-source", "disable", "claude-mem")
 	releaseScan, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
 	if err != nil {
 		t.Fatalf("wait for complete scan round before desktop snapshot: %v", err)

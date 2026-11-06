@@ -97,6 +97,10 @@ var scanRuntimeForceLocal = scanRuntimeLocalTestMode
 
 type sessionUsageContextKey struct{}
 
+// sessionIndexOpenErrorKey carries the session index open failure of the
+// interactive browser, which reports it inside its terminal owner.
+type sessionIndexOpenErrorKey struct{}
+
 func sessionUsageFromContext(ctx context.Context) (*usage.Service, bool) {
 	service, ok := ctx.Value(sessionUsageContextKey{}).(*usage.Service)
 	return service, ok
@@ -490,6 +494,9 @@ type commandExtensionInventoryErrorDetails struct {
 }
 
 func errorDetails(err error) any {
+	if _, _, details, _, ok := originErrorFields(err); ok {
+		return details
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		return &commandLockErrorDetails{
@@ -529,6 +536,9 @@ func errorDetails(err error) any {
 }
 
 func errorMessage(err error) string {
+	if _, message, _, _, ok := originErrorFields(err); ok {
+		return message
+	}
 	var codexConfig *telemetryCodexError
 	if errors.As(err, &codexConfig) {
 		return codexConfig.text
@@ -637,10 +647,19 @@ func commandOutputName(command *cobra.Command) string {
 	if path == "" {
 		return "agentdeck"
 	}
-	return strings.ReplaceAll(path, " ", ".")
+	name := strings.ReplaceAll(path, " ", ".")
+	// The origin-source group's JSON command names are fixed by the session
+	// classification contract as session.origin_source.<action>.
+	if strings.HasPrefix(name, "session.origin-source") {
+		name = "session.origin_source" + strings.TrimPrefix(name, "session.origin-source")
+	}
+	return name
 }
 
 func errorCode(err error) string {
+	if code, _, _, _, ok := originErrorFields(err); ok {
+		return code
+	}
 	var notFound *errdefs.NotFound
 	var scanDomain *scanruntime.DomainError
 	var syncIncomplete *extension.ErrExtensionSyncIncomplete
@@ -702,6 +721,9 @@ func errorCode(err error) string {
 }
 
 func errorExitCode(err error) int {
+	if _, _, _, exit, ok := originErrorFields(err); ok {
+		return exit
+	}
 	if isInputError(err) {
 		return 2
 	}
@@ -2634,6 +2656,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		Annotations: map[string]string{humanInteractiveSurfaceOnlyAnnotation: "true"},
 	}
 	var showTokens, showActivity, showInteractive, sessionInteractive bool
+	var interactiveScope sessionScopeFlag
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -2654,21 +2677,34 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				}
 			}()
 			sessions, err := store.OpenSessions(command.Context(), stateDir)
-			if err != nil {
+			switch {
+			case err == nil:
+				defer sessions.Close()
+			case command == cmd && sessionInteractive:
+				// The browser has no previous result yet: it reports the
+				// unreadable index on its exitable error page instead of the
+				// command failing before the terminal owner starts.
+				sessions = nil
+				command.SetContext(context.WithValue(command.Context(), sessionIndexOpenErrorKey{}, err))
+			default:
 				return err
 			}
-			defer sessions.Close()
 			home, err := userHomeDir()
 			if err != nil {
 				return err
 			}
 			if (command.Name() == "show" && (showTokens || showActivity || showInteractive)) || (command == cmd && sessionInteractive) {
 				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
-				if err != nil {
+				switch {
+				case err == nil:
+					defer core.Close()
+					command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
+				case command == cmd && sessionInteractive:
+					// The browser reports an unreadable core on its error page;
+					// without it the detail viewer shows usage as unavailable.
+				default:
 					return err
 				}
-				defer core.Close()
-				command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
 			}
 			if (command.Name() == "show" && showInteractive) || (command == cmd && sessionInteractive) {
 				if releaseErr := lock.Release(); releaseErr != nil {
@@ -2721,12 +2757,30 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if !inputOK || !outputOK {
 				return nil, errors.New("session --interactive requires TTY stdin and stdout")
 			}
-			items, err := session.List(ctx, s.DB)
+			stateRoot, err := opts.stateRoot()
 			if err != nil {
 				return nil, err
 			}
+			reader := openSessionSelectionReader(ctx, stateRoot, s)
+			if s == nil {
+				reader.sessionsErr, _ = ctx.Value(sessionIndexOpenErrorKey{}).(error)
+			}
+			defer reader.Close()
+			initialScope, _, _ := interactiveScope.resolve("text")
+			loadScope := func(ctx context.Context, scope string) (sessionBrowserPage, error) {
+				snapshot, err := reader.selectSessions(ctx, sessionorigin.Selection{Scope: scope}, nil)
+				if err != nil {
+					return sessionBrowserPage{}, &errSessionSelectionUnavailable{scope: scope, err: err}
+				}
+				page := newSessionBrowserPage(scope, snapshot)
+				page.indexEmpty = len(page.items) == 0 && sessionIndexEmpty(ctx, s)
+				return page, nil
+			}
+			// The first read happens inside the browser: it stays cancellable,
+			// and its failure is an exitable error page rather than an error
+			// returned before the terminal owner starts.
 			service, _ := sessionUsageFromContext(ctx)
-			err = runSessionBrowser(ctx, input, output, items, func(metadata session.Metadata) sessionViewerLoad {
+			err = runSessionBrowserLoadingFirst(ctx, input, output, initialScope, loadScope, func(metadata session.Metadata) sessionViewerLoad {
 				return newSessionViewerLoad(ctx, s, metadata, service)
 			}, opts.noColor)
 			if err != nil {
@@ -2736,34 +2790,36 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		})(command, args)
 	}
 	cmd.Flags().BoolVar(&sessionInteractive, "interactive", false, "Browse indexed sessions in the read-only viewer")
+	addSessionScopeFlag(cmd, &interactiveScope)
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
 	var listPage, listLimit, searchPage, searchLimit, showPage, showLimit int
 	var listAll, searchAll, showAll bool
 	var list, search *cobra.Command
+	var listScope, searchScope sessionScopeFlag
 	list = &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		if err := validateOptionalClient(listClient); err != nil {
 			return nil, err
 		}
-		items, err := session.List(ctx, s.DB)
+		scope, source, requested := listScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		out, indexEmpty, err := scopedSessionList(ctx, opts, s, scope, listClient, meta)
 		if err != nil {
 			return nil, err
 		}
-		out := items[:0]
-		for _, item := range items {
-			if listClient == "" || item.Client == listClient {
-				out = append(out, item)
-			}
-		}
 		explicit := list.Flags().Changed("page") || list.Flags().Changed("limit") || list.Flags().Changed("all")
 		if opts.format == "json" && !explicit {
-			return out, nil
+			return withSessionSelection{data: out, meta: meta}, nil
 		}
 		paged, pagination, pageErr := session.Paginate(out, listPage, listLimit, listAll)
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "list", listClient, "", false, false, pagination)}, nil
+		next := scopedNextCommand(sessionNextCommand(opts.stateDir, "list", listClient, "", false, false, pagination), scope, listScope.set)
+		page := sessionScopedListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: next,
+			hint: sessionListHint{meta: meta, indexEmpty: indexEmpty}}
+		return withSessionSelection{data: page, meta: meta}, nil
 	})}
+	addSessionScopeFlag(list, &listScope)
 	list.Flags().StringVar(&listClient, "client", "", "Filter by client")
 	list.Flags().IntVar(&listPage, "page", 1, "Page number")
 	list.Flags().IntVar(&listLimit, "limit", 20, "Rows per page")
@@ -2774,29 +2830,28 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if err := validateOptionalClient(searchClient); err != nil {
 			return nil, err
 		}
-		items, err := session.Search(ctx, s.DB, args[0])
+		if strings.TrimSpace(args[0]) == "" {
+			return nil, errors.New("search query is required")
+		}
+		scope, source, requested := searchScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		out, err := scopedSessionSearch(ctx, opts, s, scope, searchClient, args[0], meta)
 		if err != nil {
 			return nil, err
 		}
-		out := items
-		if searchClient != "" {
-			out = items[:0]
-			for _, item := range items {
-				if item.Client == searchClient {
-					out = append(out, item)
-				}
-			}
-		}
 		explicit := search.Flags().Changed("page") || search.Flags().Changed("limit") || search.Flags().Changed("all")
 		if opts.format == "json" && !explicit {
-			return out, nil
+			return withSessionSelection{data: out, meta: meta}, nil
 		}
 		paged, pagination, pageErr := session.Paginate(out, searchPage, searchLimit, searchAll)
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, false, pagination)}, nil
+		next := scopedNextCommand(sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, false, pagination), scope, searchScope.set)
+		page := sessionScopedSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: next, hint: sessionListHint{meta: meta}}
+		return withSessionSelection{data: page, meta: meta}, nil
 	})}
+	addSessionScopeFlag(search, &searchScope)
 	search.Flags().StringVar(&searchClient, "client", "", "Filter by client")
 	search.Flags().IntVar(&searchPage, "page", 1, "Page number")
 	search.Flags().IntVar(&searchLimit, "limit", 20, "Rows per page")
@@ -2971,6 +3026,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
 		}},
 		list, search, show, exclude,
+		newSessionClassifyCommand(opts), newSessionScopeCommand(opts), newSessionOriginSourceCommand(opts),
 		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
 			stateRoot, err := opts.stateRoot()
 			if err != nil {
@@ -3927,6 +3983,11 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if opts.format == "text" && !statsInteractive && usageScanIncomplete(commandOutputName(command), partial, warnings) {
+				if _, err = fmt.Fprintln(opts.stderr, "Warning: "+usageWarningScanIncomplete); err != nil {
+					return err
+				}
+			}
 			if storedOnly {
 				coverage, err := database.ReadSourceCoverage(command.Context())
 				if err != nil {
@@ -3987,7 +4048,8 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel, statsProvider string
 	var statsActivity, statsNoScan bool
 	var statsTop int
-	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+	var statsScope sessionScopeFlag
+	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
 		}
@@ -4018,8 +4080,16 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
 		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: displayTimezoneName(location, now), Location: location, Activity: statsActivity})
+		var meta *sessionSelectionMeta
 		if err == nil && !statsInteractive {
-			signals, signalErr := s.Signals(ctx, usage.SignalOptions{Period: statsPeriod, From: from, To: to, Client: statsClient})
+			// The scope selects only the work-analysis signals; totals,
+			// tokens and costs stay all and are labeled separately.
+			scope, source, requested := statsScope.resolve(opts.format)
+			meta = newSessionSelectionMeta(scope, source, requested)
+			meta.usageScope = sessionorigin.ScopeAll
+			signals, signalErr := scopedSignals(ctx, opts, database, scope, statsClient, usageSelectionWindow(statsPeriod, statsFrom, from, to), meta, func(ctx context.Context, sessions *usage.SessionFilter) (usage.SignalReport, error) {
+				return s.Signals(ctx, usage.SignalOptions{Period: statsPeriod, From: from, To: to, Client: statsClient, Sessions: sessions})
+			})
 			if signalErr != nil {
 				return nil, false, nil, signalErr
 			}
@@ -4027,8 +4097,12 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}
 		warnings := map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil]
 		warnings = append(warnings, data.Warnings...)
-		return data, scanErr != nil, warnings, err
+		if err != nil || meta == nil {
+			return data, scanErr != nil, warnings, err
+		}
+		return withSessionSelection{data: data, meta: meta}, scanErr != nil, warnings, nil
 	})}
+	addSessionScopeFlag(stats, &statsScope)
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
 	stats.Flags().StringVar(&statsFrom, "from", "", "Local start date in YYYY-MM-DD")
 	stats.Flags().StringVar(&statsTo, "to", "", "Inclusive local end date in YYYY-MM-DD")
@@ -4044,7 +4118,8 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	var signalsPeriod, signalsClient, signalsActivity string
 	var signalsKinds []string
 	var signalsSub bool
-	signals := &cobra.Command{Use: "signals", Short: "Show activity, workflow, and tooling signals", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+	var signalsScope sessionScopeFlag
+	signals := &cobra.Command{Use: "signals", Short: "Show activity, workflow, and tooling signals", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
 		if signalsClient != "" && signalsClient != "codex" && signalsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals client must be codex or claude")}
 		}
@@ -4057,12 +4132,20 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, false, nil, err
 		}
-		data, err := s.Signals(ctx, usage.SignalOptions{
-			Period: signalsPeriod, From: from, To: to, Client: signalsClient,
-			Kinds: signalsKinds, Activity: signalsActivity, IncludeSub: signalsSub || signalsActivity != "",
+		scope, source, requested := signalsScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		data, err := scopedSignals(ctx, opts, database, scope, signalsClient, usageSelectionWindow(signalsPeriod, "", from, to), meta, func(ctx context.Context, sessions *usage.SessionFilter) (usage.SignalReport, error) {
+			return s.Signals(ctx, usage.SignalOptions{
+				Period: signalsPeriod, From: from, To: to, Client: signalsClient,
+				Kinds: signalsKinds, Activity: signalsActivity, IncludeSub: signalsSub || signalsActivity != "", Sessions: sessions,
+			})
 		})
-		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+		if err != nil {
+			return nil, false, nil, err
+		}
+		return withSessionSelection{data: data, meta: meta}, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], nil
 	})}
+	addSessionScopeFlag(signals, &signalsScope)
 	signals.Flags().StringVar(&signalsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
 	signals.Flags().StringVar(&signalsClient, "client", "", "Filter by codex or claude")
 	signals.Flags().StringSliceVar(&signalsKinds, "kind", nil, "Section: activity, workflow, or tooling; repeat to select more than one")
@@ -4117,6 +4200,16 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}},
 	)
 	return cmd
+}
+
+// usageSelectionWindow is the session-selection time window of a usage
+// report: the already resolved [from, to) range, labeled with its period
+// unless explicit dates replaced it.
+func usageSelectionWindow(period, explicitFrom string, from, to time.Time) sessionorigin.Selection {
+	if explicitFrom != "" {
+		period = ""
+	}
+	return sessionorigin.Selection{Period: period, From: from, To: to}
 }
 
 func resolveUsageRange(ctx context.Context, service *usage.Service, period, fromText, toText string, now time.Time, location *time.Location) (time.Time, time.Time, error) {
@@ -4428,9 +4521,14 @@ func newRunCommand(opts *commandOptions) *cobra.Command {
 }
 
 func writeResult(w io.Writer, format, command string, data any, quiet ...bool) error {
+	data, selection := unwrapSessionSelection(data)
 	data, resource := unwrapTextResource(data)
 	if format == "json" {
-		return json.NewEncoder(w).Encode(output.New(command, data, time.Now()))
+		envelope := output.New(command, data, time.Now())
+		if selection != nil {
+			envelope.SessionSelection = selection
+		}
+		return json.NewEncoder(w).Encode(envelope)
 	}
 	if format == "ndjson" {
 		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
@@ -4479,7 +4577,17 @@ func writeEnvelope(w io.Writer, format, command string, data any, partial bool, 
 	return writeUsageEnvelope(w, format, command, data, partial, warnings, quietOutput, usageTextRenderOptions{})
 }
 
+const usageWarningScanIncomplete = "scan_incomplete"
+
+// usageScanIncomplete reports a usage signals or stats result whose
+// pre-report scan failed: the result is partial and holds the last committed
+// data, which text output must say as plainly as the JSON envelope does.
+func usageScanIncomplete(command string, partial bool, warnings []string) bool {
+	return partial && (command == "usage.signals" || command == "usage.stats") && slices.Contains(warnings, usageWarningScanIncomplete)
+}
+
 func writeUsageEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet bool, renderOptions usageTextRenderOptions) error {
+	data, selection := unwrapSessionSelection(data)
 	data, resource := unwrapTextResource(data)
 	if format == "json" {
 		if warnings == nil {
@@ -4487,7 +4595,21 @@ func writeUsageEnvelope(w io.Writer, format, command string, data any, partial b
 		}
 		envelope := output.New(command, data, time.Now())
 		envelope.Partial, envelope.Warnings = partial, warnings
+		if selection != nil {
+			envelope.SessionSelection = selection
+		}
 		return json.NewEncoder(w).Encode(envelope)
+	}
+	if selection != nil {
+		if err := renderUsageSelectionScope(w, selection); err != nil {
+			return err
+		}
+	}
+	if usageScanIncomplete(command, partial, warnings) {
+		// The report below is the last committed state, not this scan's.
+		if _, err := fmt.Fprintln(w, "PARTIAL: "+usageWarningScanIncomplete+"\nShowing last committed data."); err != nil {
+			return err
+		}
 	}
 	if isMutationCommand(command) {
 		if quiet && !partial && len(warnings) == 0 {
@@ -4745,6 +4867,8 @@ func renderCommandText(w io.Writer, command string, data any) error {
 				return err
 			}
 			return renderPagination(w, value.Pagination["sessions"], value.NextCommand)
+		case sessionScopedListPage:
+			return renderScopedSessionList(w, value)
 		default:
 			return fmt.Errorf("unexpected session.list result %T", data)
 		}
@@ -4757,6 +4881,8 @@ func renderCommandText(w io.Writer, command string, data any) error {
 				return err
 			}
 			return renderPagination(w, value.Pagination["search"], value.NextCommand)
+		case sessionScopedSearchPage:
+			return renderScopedSessionSearch(w, value)
 		default:
 			return fmt.Errorf("unexpected session.search result %T", data)
 		}

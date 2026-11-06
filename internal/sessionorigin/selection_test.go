@@ -703,3 +703,42 @@ func TestExistingIndexGainsTheSearchTextTriggers(t *testing.T) {
 		t.Fatalf("triggers=%d %v", triggers, err)
 	}
 }
+
+// A core that was never created holds no classification: every indexed
+// session is unknown in Work, with the same index order and canonical copies
+// as the full reader, and nothing is created.
+func TestSelectAbsentCoreKeepsEverySessionUnknownInWork(t *testing.T) {
+	s := openStores(t)
+	s.indexCopy(t, "claude", "c-1", "/c/c-1.jsonl", "c-1", "p1", "/w/alpha", "2026-10-29T08:00:00Z", "2026-10-29T09:00:00Z", 1)
+	s.indexCopy(t, "claude", "c-1", "/archive/c-1.jsonl", "c-1-archive", "p1a", "/w/alpha-archive", "2026-10-29T08:00:00Z", "2026-10-29T08:30:00Z", 0)
+	s.indexCopy(t, "codex", "x-1", "/x/x-1.jsonl", "x-1", "p3", "/w/alpha", "2026-10-29T06:00:00Z", "2026-10-29T06:45:00Z", 1)
+	full := s.selectScope(t, Selection{Scope: ScopeAll})
+	reader := Reader{Sessions: s.sessions}
+	for _, scope := range []string{ScopeWork, ScopeAuxiliary, ScopeAll} {
+		snapshot, err := reader.SelectAbsentCore(context.Background(), Selection{Scope: scope})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := keysOf(full.Sessions)
+		if scope == ScopeAuxiliary {
+			want = []string{}
+		}
+		if got := keysOf(snapshot.Sessions); !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s = %v, want %v", scope, got, want)
+		}
+		for _, item := range snapshot.Sessions {
+			if item.Origin.Effective != ClassUnknown || item.Origin.ReasonCode != ReasonOriginMetadataMissing {
+				t.Fatalf("%s origin = %+v", scope, item.Origin)
+			}
+		}
+		if snapshot.Vector.CoreEpoch != 0 || snapshot.Vector.SessionEpoch == 0 {
+			t.Fatalf("vector = %+v", snapshot.Vector)
+		}
+		if scope != ScopeAuxiliary && snapshot.UnknownCount != len(want) {
+			t.Fatalf("%s unknown = %d", scope, snapshot.UnknownCount)
+		}
+	}
+	if _, err := reader.SelectAbsentCore(context.Background(), Selection{Scope: "everything"}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("invalid scope = %v", err)
+	}
+}

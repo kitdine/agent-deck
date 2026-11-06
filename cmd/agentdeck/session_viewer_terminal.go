@@ -137,6 +137,8 @@ func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os
 		return "q", false, nil
 	case 'q':
 		return "q", false, nil
+	case 's':
+		return "s", false, nil
 	case '\r', '\n':
 		return "enter", false, nil
 	case '\t':
