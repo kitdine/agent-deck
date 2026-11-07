@@ -136,6 +136,13 @@ func Start(role Role) bool {
 	if err != nil {
 		return false
 	}
+	// Without the completion lock a reader could accept a partly flushed
+	// trace, so an unlockable trace is withdrawn rather than written.
+	if err := lockTrace(file); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return false
+	}
 	rec := &recorder{file: file, w: bufio.NewWriterSize(file, 64<<10)}
 	if err := json.NewEncoder(rec.w).Encode(header{V: FormatVersion, Role: role, Seq: seq, Clock: ClockName, Start: Now()}); err != nil {
 		_ = file.Close()

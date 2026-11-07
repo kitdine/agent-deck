@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-11-05
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Installed State Ownership — Tasks
@@ -31,13 +31,14 @@ updated: 2026-11-06
 当前文档评审结论：需求、CLI、架构、任务分解均 PASS。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-实现任务尚未进入开发；来源缺陷保持开放。
+`installation-identity` 已通过独立复评并补齐验证，交付状态以 Beads 为准；见
+[任务评审](reviews/installation-identity.md)。其余实现任务尚未进入开发。来源缺陷保持开放。
 
 ## Tasks
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `installation-identity` | [ ] | [ ] |
+| 1. `installation-identity` | [x] | [x] |
 | 2. `state-root-guard` | [ ] | [ ] |
 | 3. `client-config-guard` | [ ] | [ ] |
 | 4. `installation-diagnostics` | [ ] | [ ] |
@@ -68,6 +69,7 @@ updated: 2026-11-06
 - `internal/platform/state.go` 及测试：增加 Resolver 注入、真实账户主目录解析、物理解析 `walk` 和受保护集合 `P` 的计算、未导出且只在 `_test.go` 中替换的注入字段；
 - 新建 `internal/platform/ownership_lock.go` 及测试：所有权锁的共享和排他取得，各带 5 秒上限；
 - `cmd/agentdeck/main.go`：启动时注入 Resolver。
+- 验证工具补齐：`cmd/agentdeck-perf/run.go`、`run_test.go`，以及 `internal/perftrace` 的 `perftrace.go`、`perftrace_test.go`、`lock_unix.go`、`lock_other.go`；复用仓库既有的 trace 完成屏障，范围与来源见任务评审记录。
 
 **要求**：
 - 按[架构](architecture.md#安装身份判定)实现判定步骤：只认唯一的用户回执，没有 keg 回执；回执登记不可变的真实路径，判定时直接与 `self` 比较，**不解析任何链接**；`Lstat` 报告不存在就视为过期。
@@ -81,6 +83,12 @@ updated: 2026-11-06
 - 按[所有权锁与交接](architecture.md#所有权锁与交接)实现锁。测试覆盖：共享锁之间不互斥；共享锁和排他锁互斥；进程退出后锁自动释放；两种锁各自超时时返回 `ownership_busy` 或 `owner_running`。
 
 **验证：L2**。targeted 测试，以及 `scripts/run-go-test.sh ./...`。
+
+开发交接（2026-11-06）：已提供 `installation.Resolver`、严格回执读写及锁内 formula 续登；`platform` 提供 Resolver 注入、物理路径解析和共享/排他锁，CLI 仅接入启动注入。真实状态访问守卫及其调用点仍由任务 2 实现。
+
+使用 Go 1.27.3，installation/platform 定向及 `-race` 测试、验收 tag 隔离测试、`make vet build-all check-install` 均通过。`check-install` 已包含普通构建的 `go tool nm` 验收 Resolver 缺席检查，并用带 tag 构建作符号存在的正向对照。路径测试验证物理解析与拒绝前的调用顺序，不代替任务 2 的操作系统访问屏障验收。
+
+2026-11-07 已补齐验证：原阻断用例、全量 Go 回归（28 个包）、相关 race、vet、双架构 build-all 与 check-install 均通过。诊断、验证工具同步范围、精确目标门禁及交付状态见[任务评审记录](reviews/installation-identity.md#validation-follow-up--2026-11-07)。历史失败及其原始证据保留在该记录和 CEv1 中。
 
 ### 2. `state-root-guard`
 

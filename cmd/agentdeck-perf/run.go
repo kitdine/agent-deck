@@ -760,6 +760,12 @@ func runCLIWith(binary, home, stateDir, traceDir, tz, label string, env []string
 	if waitErr := waitForWorkers(stateDir, 60*time.Second); err == nil {
 		err = waitErr
 	}
+	// The process listing can be blind to the worker (a sandbox may hide
+	// other processes' arguments), so the trace itself is the authority:
+	// see waitForTraces for its completion barrier.
+	if traceDir != "" && err == nil {
+		err = waitForTraces(traceDir, 60*time.Second)
+	}
 	if err != nil {
 		return run, fmt.Errorf("%s: %w", label, err)
 	}
@@ -778,6 +784,53 @@ func waitForWorkers(stateDir string, timeout time.Duration) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return nil
+}
+
+// waitForTraces waits until every trace in dir is complete: its producer has
+// released the trace lock, which happens only when Close has flushed every
+// record and closed the file, and it holds a resource.lifetime record. The
+// lifetime record alone is no barrier: Close writes it before its tail
+// (trace.invalid), and a buffer boundary can expose it while the tail is
+// still unwritten.
+func waitForTraces(dir string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		pending, err := unflushedTrace(dir)
+		if err != nil || pending == "" {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s: trace not flushed after the run", pending)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// unflushedTrace returns the first trace in dir that is not yet complete.
+func unflushedTrace(dir string) (string, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		released, err := perftrace.Released(path)
+		if err != nil {
+			return "", err
+		}
+		if !released {
+			return filepath.Base(path), nil
+		}
+		file, err := readTraceFile(path)
+		if err != nil {
+			// An empty or partially flushed file is still being written.
+			return filepath.Base(path), nil
+		}
+		if _, ok := file.end(); !ok {
+			return filepath.Base(path), nil
+		}
+	}
+	return "", nil
 }
 
 func workerRunning(stateDir string) bool {

@@ -125,6 +125,7 @@ uninstall:
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" bash scripts/manage-install.sh uninstall
 
 check-install:
+	bash scripts/check-installation-resolver.sh
 	bash scripts/test-install.sh
 	bash scripts/test-completion-install.sh
 	bash scripts/test-shell-integration-acceptance.sh

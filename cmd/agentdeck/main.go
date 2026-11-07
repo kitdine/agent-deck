@@ -35,6 +35,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/installation"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -386,6 +387,7 @@ func (e *inputError) Unwrap() error {
 }
 
 func main() {
+	platform.SetInstallationResolver(installation.DefaultResolver())
 	stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
 	if os.Getenv(perftrace.EnvOut) != "" && !slices.Contains(os.Args[1:], "watch") {
 		traceReady := make(chan struct{})
