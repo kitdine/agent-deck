@@ -26,13 +26,10 @@ updated: 2026-11-07
 - **小组件**：Debug 配置改用独立的扩展身份，这是构建身份的变化，界面不变。
 - **Settings**：不涉及。
 
-文档集共四份，都已写成初稿。四份可以作为一批，由一次独立评审覆盖，但要分别给出结论。
-
-当前文档评审结论：需求、CLI、架构、任务分解均 PASS。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
+当前需求、CLI、架构保持已通过状态；任务分解的 2026-11-07 重写稿已通过 Round 10 独立复评。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评并补齐验证，交付状态以 Beads 为准；见
-[任务评审](reviews/installation-identity.md)。其余实现任务尚未进入开发。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。其余实现任务尚未开发；调度按本稿依赖重绑定，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -48,7 +45,36 @@ updated: 2026-11-07
 | 8. `ownership-acceptance` | [ ] | [ ] |
 | 9. `contract-reconciliation` | [ ] | [ ] |
 
-任务分解已通过评审，实现任务按本矩阵在 Beads 中登记。每个任务开工前还需要用户下达开发指令。多个任务会改到同一个文件，比如 `cmd/agentdeck/main.go`，这些任务按顺序进行，不并行。
+### 分解原则与开工条件
+
+本稿以已交付任务 1 为基线，保留九个任务锚点。重写改变的是剩余工作的交付边界与验收归属，产品行为仍以需求、CLI 和架构为准。历史 Round 8 评审不覆盖本稿。
+
+- 每项任务的实现、测试和完成条件，只消费已交付前置任务或本任务产生的能力。安装命令、App 或客户端守卫尚未实现时，不得以替身测试宣称它们已经通过验收。
+- 一个功能由一个任务实现；跨任务组合由任务 8 验收。局部通过不等于 A1–A9 整体通过。任务 8 复用仍有效的局部证据，补齐组合路径和最终入口清单。
+- 守卫上线即会改变 doctor 的错误路径，因此其部分报告与基础 `installation` 检查归任务 2 同时交付。任务 4 只扩展受管命令诊断和 helper 路径查询。
+- 接管发布、暂停、崩溃、旧清理与新安装的交错测试归实现安装协议的任务 5；任务 2 只验证状态访问会话与已存在的锁/续登接口。
+- 任务 2 必须覆盖其候选上已有的全部 Cobra 叶子命令，不能按实现者认定“是否消费状态”缩小清单；任务 3 的真实客户端配置拒绝、任务 4/5 尚未新增的命令归各自产出任务。任务 8 在最终叶子集上复跑完整矩阵，并组合所有安装方式与 App。
+- 本稿评审通过前，既有未开始的实现任务均由文档任务阻塞；不得把草稿范围写成已批准调度。通过后由评审交接核对下表，更新原任务及依赖，不另建一批重复任务。任务 2 此前的开发指令已由用户撤回；恢复开发需要新指令。
+
+### 依赖与执行顺序
+
+下表只列直接能力依赖；所有未开始任务另有“本稿通过评审及对应开发授权”的共同前提。编号是稳定身份，不等于必须按编号连续执行。
+
+| 任务 | 直接能力依赖 | 本任务完成时可独立检查的产物 |
+| --- | --- | --- |
+| 1 `installation-identity` | 已交付基线 | Resolver、回执、物理路径解析、所有权锁、续登函数 |
+| 2 `state-root-guard` | 1 | Go 状态访问边界、会话生命期、CLI 拒绝/静默路径、doctor 短路报告 |
+| 3 `client-config-guard` | 2 | 各客户端配置写入边界及 `client_config` 错误 |
+| 4 `installation-diagnostics` | 2 | 受管命令归属诊断、`desktop state-location` |
+| 5 `installer-receipts` | 2 | 真正的安装/认领/卸载协议及其完整交错测试 |
+| 6 `app-state-location` | 4、7 | App 使用 helper 路径、原生共享会话和 Health 文案 |
+| 7 `debug-app-identity` | 无代码前置；签名/注册验收需操作员登记 Debug App Group | 独立构建身份、签名与静态隔离证据、现有宿主测试回归 |
+| 8 `ownership-acceptance` | 3、5、6（传递包含 1、2、4、7） | 最终命令集合、真实安装协议与 App 的跨面 A1–A9 验收 |
+| 9 `contract-reconciliation` | 8 | 与已验收行为一致的稳定契约和用户说明 |
+
+建议执行序列：**1（已交付）→ 2 → 3 → 4 → 5 → 7 → 6 → 8 → 9**。任务 7 的操作员前提可提前办理，未满足时不阻塞任务 2–5，也不阻塞任务 7 已有的无签名宿主测试。任务 7 自己验证构建身份变更的原生回归；任务 6 再消费该身份实现并验证新的状态路径/会话行为。现有 `scripts/test-macos-app.sh` 已隔离 HOME 和宿主状态，不能以“等任务 6 隔离”为由延后任务 7 的回归。多个任务会修改 `main.go`、`platform/state.go`、telemetry 或原生构建，因此按序交接文件，不并行修改。
+
+### 共用验证边界
 
 所有测试一律使用临时 `HOME`、临时状态目录，并按[测试与验收的隔离](architecture.md#测试与验收的隔离)替换"真实账户主目录"，绝不触碰本机真实的 `~/.agentdeck`、`~/.claude`、`~/.codex` 或回执。
 
@@ -58,6 +84,10 @@ updated: 2026-11-07
 - 阴性对照：对目录内部访问一次，进程必须被终止。
 
 只断言文件清单、内容和 mtime 不变，不能作为"没有访问"的证据。屏障不可用（`sandbox-exec` 缺失，或者嵌套时 `sandbox_apply` 返回 exit 71）时测试失败，这类测试要在没有外层沙箱的环境中运行。
+
+任务 2 建立 Go 屏障/账户/进程夹具；任务 3、4、5、8 复用，任务 6 自己产出下文定义的原生夹具和验收 helper。任务 7 使用已有的隔离原生 harness。新测试文件的落点由对应包现有测试和验收脚本发现，新增后在任务评审记录中给出实际命令、输入、预期和覆盖边界。Go 账户替换只在 `agentdeck_acceptance` 二进制或包内私有测试缝生效；Swift 账户/锁路径仅由任务 6 的测试依赖注入替换。生产账户解析不接受环境或命令覆盖，App 构建/打包脚本不带验收 tag。
+
+Go 验证统一经 `scripts/run-go-test.sh`。L2 的 Go 核心变更要求定向测试及 `scripts/run-go-test.sh ./...`；L3 再补相应 race、vet、构建或安装检查。测试夹具可以直接使用任务 1 的持锁回执 API 建立身份，但这只证明状态消费方，不能替代任务 5 的安装命令证据。任何仍需后续任务实现的行为，都不能填进本任务的通过条件或以 skip 充数。
 
 ### 1. `installation-identity`
 
@@ -92,7 +122,7 @@ updated: 2026-11-07
 
 ### 2. `state-root-guard`
 
-**依赖**：任务 1。**结果**：未安装进程默认使用隔离目录，在任何入口都访问不到真实状态目录；失去所有权的进程在下一次访问前就停下来（需求 G2、G3、G9，验收 A1、A2、A9）。
+**依赖**：任务 1。**交付结果**：Go 的状态访问入口统一受保护，未安装进程默认隔离，拥有者以共享会话访问真实状态，长驻访问失效时停止；CLI 状态错误、Hook 静默和 doctor 短路同时可用。覆盖 G2/G3/G9 的 Go 边界及 G8 基础提示；完整 A1/A2/A9 在任务 8 汇总。
 
 **文件**：
 - `cmd/agentdeck/main.go`：`stateRoot`、`shellStateRoot`、错误码映射、文本渲染、TTY 提示；
@@ -100,30 +130,22 @@ updated: 2026-11-07
 - `internal/platform/state.go`：`GuardStateRoot`、`RevalidateOwnership`；
 - 在以下位置的打开和加锁入口加守卫：`internal/store`（`store.go`、sessions、lock）、`internal/credentialvault`、`internal/scanruntime`、`internal/hookrefusal`，以及 telemetry receiver 配置的读写；
 - 在长驻循环中加复核：`watch`、telemetry 监听、desktop bootstrap 流、scan worker 的每一轮；
+- `internal/doctor/doctor.go`、`newDoctorCommand` 和文本渲染：基础 `installation` 检查、状态缺失与拒绝的部分报告；
 - 上述包的测试，以及 `cmd/agentdeck` 的固定测试。
 
-**要求**：
+**输入/输出接口**：消费任务 1 的 Resolver、物理解析、共享/排他锁和 formula 续登；产出 `installation.StateRoot`、`GuardStateRoot`、`RevalidateOwnership`、状态拒绝类型及 CLI 映射。安装器不存在时，测试通过任务 1 的持锁回执 API 建立隔离身份。
+
+**实施顺序与验收**：
 - 按[状态目录解析](architecture.md#状态目录解析)实现默认目录，用任务 1 的 `walk` 判断"指向真实状态目录"。
 - `GuardStateRoot` 返回物理路径。所有调用者此后都只能使用这个返回值，不能再使用原始字符串；评审材料中要列出每个调用点，并说明它改用了返回值。
 - 已安装进程第一次访问真实状态前，按[所有权会话](architecture.md#所有权锁与交接)取共享锁，并在锁内判定身份；共享锁一直持有到对真实状态的访问全部结束。覆盖单次命令、Hook、`OpenReadOnly`、scan worker 和长驻循环。重新枚举所有"接收 `stateRoot` 参数、并会创建、打开、加锁、stat 或删除文件"的导出函数，以及所有长驻循环，最终清单记录在评审材料中。
 - **续登的两个入口（ISO-ARCH-R4-F2）**：按[状态目录解析](architecture.md#状态目录解析)，没传 `--state-dir` 时，`StateRoot` 在选择默认目录之前先检查续登条件，满足就续登，然后重新判定。续登成功就使用真实默认目录；续登失败返回 `state_ownership_refused`，不退回隔离目录。显式指向真实状态时，由守卫在拒绝之前尝试续登。显式指向非真实目录时不续登。两个入口调用任务 1 的同一个续登函数；续登过程只读写回执和所有权锁，不访问 `P`。
 - 新增错误码 `state_ownership_refused`，退出码 `1`，details 为 `resource` 和 `reason`。文本和 TTY 提示与原型 `?surface=cli&ownership=` 中 `notice`、`refused_state`、`revoked` 三个状态逐字一致（见 [ux/cli.md](ux/cli.md#标本)）。
 - Hook 和 statusline 遇到拒绝时保持静默失败开放：exit 0，不输出，也不写任何拒绝记录。
-- **结构性回归测试（ISO-TASKS-R7-F1）**：取 CLI 固定测试已枚举的全部 Cobra 叶子命令，逐一记录输入、目录分支、预期退出码/输出及其契约依据。每例使用独立夹具，初始身份为未安装且不满足 formula 续登条件；注入的真实账户目录与临时 `HOME` 均在夹具内，确认默认隔离根 `<临时 HOME>/.agentdeck-dev` 不命中保护集合 `P`。这里的“默认调用”只指不传 `--state-dir`，仍须提供命令所需的合法参数、stdin 和数据，不能用缺参或无效输入的提前退出代替守卫覆盖。按[状态目录解析](architecture.md#状态目录解析)和 [CLI 契约](ux/cli.md#状态矩阵)拆分断言：
-
-  | 输入 | 命令/目标 | 预期 |
-  | --- | --- | --- |
-  | 未传 `--state-dir` | 普通状态命令 | 使用隔离根并保留该命令在夹具中的既定结果，不因未安装而统一拒绝。空 provider 夹具下 `provider list` 必须 exit 0、stdout 为 `No providers.`；文本 TTY 的 stderr 为 `notice` 标本提示，JSON/NDJSON、非 TTY 或 `--quiet` 不增加提示 |
-  | 未传 `--state-dir` | `doctor` | 检查隔离根；隔离根缺失时按 `doctor_not_installed` 输出 `state_missing` 部分报告、exit 0，不能误报真实根被拒绝；其他隔离状态沿用对应 doctor 契约 |
-  | 未传 `--state-dir` | 要写入注入真实账户目录下的客户端配置 | 状态目录仍隔离，但配置写入按原契约拒绝：`state_ownership_refused`、`resource: client_config`、exit 1，配置逐字节不变。写入非真实账户目录的临时配置则保留原有结果 |
-  | 未传 `--state-dir` | Hook/statusline | 在隔离根上遵守原命令的处理与输出契约；只有遇到拒绝的场景才应用静默 fail-open，不能把正常隔离调用也设为安装拒绝 |
-  | `--state-dir` 指向注入真实根或其子路径 | 普通状态命令 | 在访问内容前返回 `state_ownership_refused`、`resource: state_root`、exit 1，文本/JSON 与 `refused_state` 契约一致 |
-  | 同上 | `doctor` | 按 `doctor_refused` 输出成功 envelope 的部分报告：`partial: true`、`warnings` 含 `checks_skipped`、exit 0，`state` 检查为拒绝；不把该目录交给后续诊断 |
-  | 同上 | Hook/statusline | 静默 fail-open：exit 0、stdout/stderr 均为空，不写拒绝记录；内部拒绝不变成对外错误输出 |
-
-  不解析状态目录的入口，以及 `install claim` 等有独立契约的命令，逐命令保留既定结果并注明依据，不强制套用普通状态命令的错误；枚举中不得有无预期或无依据跳过的条目。满足续登条件的新 keg 使用下面第 7、11 条的独立夹具，不混入默认隔离组。
-
-  两组共用前述访问屏障及正负对照，统一断言不访问 `P` 内部、没有进程被屏障终止，并保留真实目录文件不变的补充断言；**统一的是访问边界，不是退出码或输出**。显式真实根组覆盖直接路径、经符号链接、经 `..`、真实根本身为链接及其子路径。scan worker 子进程同样继承屏障，按其实际接收的隔离/真实根分别验证既定结果或访问前拒绝。受保护包的直接调用也在屏障下分别验证隔离路径可用、真实路径被拒绝，按包级错误契约断言，不套用 CLI 渲染例外。
+- **doctor 与守卫同批交付**：把 `installation` 放在第一个检查，字段和文本遵守 [CLI 契约](ux/cli.md#doctor-的-installation-检查)。隔离目录缺失时保持 `state_missing`、`partial: true`、`checks_skipped` 和 exit 0；显式真实根被拒绝时，在 `newDoctorCommand` 构造只有 `installation` 与 `state` 的部分报告，不把被拒绝路径交给 `doctor.Service`。两种结尾文案分别与 `doctor_not_installed` / `doctor_formula_unclaimed`、`doctor_refused` 标本一致。formula 恢复提示可以引用已批准但由任务 5 实现的命令，本任务不执行或宣称验证该命令。`managed_command_owner` 扩展归任务 4。
+- **现有 Cobra 叶子的结构性兜底（ISO-TASKS-R9-F1）**：从本候选的真实命令树和 `cmd/agentdeck/contract_test.go` 固定清单枚举全部已有叶子，逐项提供合法参数、stdin、有效数据、默认/显式非真实/显式真实路径分支、退出码/输出及契约依据。覆盖表与枚举结果必须相互校验，缺项或多余条目都失败；不能由实现者先判断“实际消费状态根”再选择被测命令。现有 `leafCommands` 为 JSON 固定契约排除的 shell 脚本、交互和内部 runtime 表面须单列其运行器、预期及依据，scan worker 也在清单中；这些排除不构成状态访问测试豁免。无状态入口仍在屏障下验证其既定结果，不能以缺参、非法输入、未知命令或无依据 skip 代替覆盖。
+- **包级与路径覆盖**：另行枚举接收状态根并访问文件的导出函数，与 CLI 清单分开核对；包级直接调用、worker 子进程和 doctor 拒绝路径都在屏障及正负对照下运行。路径组覆盖直接路径、符号链接、`..`、真实根为链接及子路径，并复用任务 1 的大小写/Unicode 别名反例。
+- **本任务输出断言**：空 provider 夹具默认 `provider list` 为 exit 0 / `No providers.`；默认 Hook/statusline 遵守正常隔离处理结果；显式真实根下普通命令 exit 1、doctor 成功部分报告 exit 0、Hook/statusline 静默 exit 0。文本 TTY 只提示一次，JSON/NDJSON、非 TTY、`--quiet` 无提示。客户端配置写入命令照常纳入，配置目标放在非真实账户的临时 HOME。任务 2 唯一不承担的后续行为是任务 3 的真实账户配置拒绝，以及任务 4/5 在本候选尚不存在的新命令；分别注明产出者，不从现有叶子集中删去配置命令。任务 8 在最终叶子集上复跑并加入这些后续行为。
 - **受控交错测试（ISO-ARCH-R1-F2）**：用测试钩子在指定位置暂停，逐一构造以下顺序，断言结果：
   1. A 已取得共享锁并打开真实状态 → B 尝试接管：B 等到上限后以 `owner_running` 失败，回执不变；A 正常完成。
   2. B 已取得排他锁 → Hook 启动 A：A 在取共享锁处等待；B 写入新回执并释放锁后，A 读到新回执，在访问之前被拒绝。这一步在访问屏障下运行，证明 A 没有访问。
@@ -132,54 +154,51 @@ updated: 2026-11-07
   5. 长驻进程逐轮持锁、在两轮之间释放 → B 在两轮之间接管：长驻进程在下一轮的复核处以 `state_ownership_refused` 退出，用轮次计数证明它没有开始新一轮。
   6. **评审 Round 3 反例**：旧 keg A 是登记的拥有者，持有共享锁、正在读或写会话中 → opt 从 A 切到 B → 启动 B：B 不是拥有者，不满足续登条件（A 仍存在），在访问之前被拒绝；A 的会话不受影响。
   7. 续登：A 持有共享锁时删除 keg A、opt 指向 B → 启动 B：B 尝试续登，排他锁一直等到 A 的会话结束（超过上限则以 `ownership_busy` 拒绝本次访问，回执不变）；A 结束后，B 在锁内续登并成为拥有者；此后 A 的残留进程在下一次过守卫时以 `executable_unresolved` 被拒绝。
-  8. 替换已登记的文件：A 持有共享锁时，安装方式执行带 `--source` 的 `install register`，以 `owner_running` 失败，目标文件和回执都不动；A 结束后，同一条命令在一次持锁内完成发布和登记。用测试钩子在"发布之后、写回执之前"暂停，断言此时其他进程取共享锁会等待，在锁外看不到任何中间状态。
-  9. **两个安装方式以相同 channel/目标竞争同一路径（ISO-ARCH-R4-F1 第五轮反例 1）**：A 和 B 都执行 `install register --channel make --executable P --source <各自的暂存文件> --cleanup-manifest <各自的新清单>`。用测试钩子让 A 停在锁内发布之前，同时启动 B：B 在取排他锁处等待，没有任何读写；A 完成发布和登记并释放锁之后，B 才进入，它看到的是 A 已完成的正式回执（同一路径、同一安装方式），在自己持锁、没有任何会话的状态下完成覆盖。断言任何时刻都不存在"P 被一方改写、同时另一方的会话正在使用 P"的情况。清单不授予提前进入锁或发布的资格；若两者误传同一个清单文件，后者独占创建失败，不能改写前者清单或目标。再用 A 已登记 P、B 的安装方式不同的组合，断言 B 以 `owned_by_other` 拒绝，且 P 未被改动。
-  10. **安装方式暂停跨越原先的过期时间（ISO-ARCH-R4-F1 第五轮反例 2）**：A 在锁内暂停（SIGSTOP），用虚拟时钟推进 601 秒以上 → B 尝试登记 P、B 的客户端尝试开启会话：都拿不到锁，分别以 `owner_running`、`ownership_busy` 失败，没有任何一方改动 P 或读到中间状态 → A 恢复，在同一次持锁内完成。另测 A 在锁外暂停（发布之前尚未取锁）：此时 B 正常完成并开启会话；A 恢复后要先取排他锁，会等到 B 的会话结束或超时失败，期间不改 P。最后测 A 崩溃：内核释放锁，P 保持旧内容或新内容之一（原子发布），B 随后可以正常登记。
-  11. **默认命令续登（ISO-ARCH-R4-F2）**：满足续登条件的新 keg，执行一条不带 `--state-dir` 的普通命令。断言：在选择目录之前完成续登，命令使用真实默认目录（注入的真实目录）中的原有数据，而不是空的隔离目录。续登取锁超时时，命令以 `state_ownership_refused`（`ownership_busy`）失败，不读写隔离目录。显式 `--state-dir <隔离目录>` 时不续登。
-  12. **完整卸载链与同路径新安装（ISO-ARCH-R4-F1 第六轮）**：A 的 helper 在排他锁内清理旧 App 后返回 → B 发布并登记同一路径 → B 取得共享会话 → 继续 A 的全部卸载/回滚步骤。断言 B 的 App、回执逐字节不变，B 的会话仍有效；A 不存在锁外最终路径删除。A 的条件清理重试在 B 持锁时必须超时，B 退出后须因原清单 ID 不匹配而跳过。B 分别使用 `local_app` 和与 A 相同的 `homebrew_cask`，同版本重装也不能被旧清单误删。完整 Homebrew 分派由任务 5 验证。
+  8. **默认命令续登（ISO-ARCH-R4-F2）**：满足续登条件的新 keg，执行一条不带 `--state-dir` 的普通命令。断言：在选择目录之前完成续登，命令使用真实默认目录（注入的真实目录）中的原有数据，而不是空的隔离目录。续登取锁超时时，命令以 `state_ownership_refused`（`ownership_busy`）失败，不读写隔离目录。显式 `--state-dir <隔离目录>` 时不续登。
 
-  `state.lock` 的现有语义不变，交错测试不依赖它。
+   这里的 B 是通过任务 1 的真实排他锁和回执 API 操作临时账户的测试进程，不是尚未实现的安装命令。测试须执行真实 `flock` 和状态消费路径，不能仅靠锁的 mock。`state.lock` 的现有语义不变，交错测试不依赖它。旧版第 8–10、12 条全部移到任务 5 的安装协议交错表，保留要求，变更验收归属。
 - 已安装身份下的现有测试全部通过，行为不变。
 
-**验证：L3**。需要 targeted 测试和 Go 全量测试；涉及锁和 worker 子进程，还要对 store 和 scanruntime 跑 `-race`，并跑 vet。
+**验证：L3**。定向覆盖 installation/platform/store/credentialvault/scanruntime/hookrefusal/telemetry/watch/doctor 和 `cmd/agentdeck`，以实现后的入口清单补充其他包；Go 全量回归，platform/store/scanruntime 及其他改动并发包的 `-race`，`make vet`，屏障下全部现有叶子及包级/验收二进制测试。评审材料必须同时给出叶子清单与逐项结果、守卫返回路径的调用点清单、会话释放时机、上述 8 种交错结果和 doctor 固定输出。该门禁只需要任务 1 与本任务产物。
 
 ### 3. `client-config-guard`
 
-**依赖**：任务 1，与任务 2 顺序进行，因为两者都要改 `main.go`。**结果**：未安装进程不能写真实客户端配置（需求 G4，验收 A4）。
+**依赖**：任务 2（传递包含任务 1）。**结果**：未安装进程不能写真实客户端配置（需求 G4，验收 A4）。任务 2 的错误类型与 CLI 映射在此复用并增加 `resource: client_config`。
 
 **文件**：
 - `internal/platform/state.go`：`GuardClientWrite`；
 - `internal/provider/config.go`、`internal/usagehook/config.go`、`internal/telemetry/codexconfig.go`、`internal/shellconfig/config.go` 及对应测试；
 - 如果重新枚举时发现其他写入者，也一并纳入。
 
-**要求**：
+**输入/输出接口**：消费身份/物理解析和状态守卫；产出 `GuardClientWrite` 及各客户端唯一写入汇合点的保护。实现时确认架构要求的“物理返回路径用于写入”如何贯通现有写入函数，不能只有一次检查却继续使用原始路径。
+
+**实施顺序与验收**：
 - 按[写入边界](architecture.md#真实客户端配置写入边界)在每个包唯一的写入入口加守卫。
 - 重新枚举 `internal/` 和 `cmd/` 下所有写入账户主目录的函数，结论记录在评审材料中。
 - 测试证明三点：目标位于注入的真实主目录时拒绝，且文件逐字节不变；目标位于临时 `HOME` 时允许；已安装身份下行为不变。
 - 覆盖 provider 切换、`telemetry enable/disable --write-codex-config`、usage Hook 和 statusline 的 setup/restore、`shell setup/remove`。
+- 默认隔离状态和显式非真实状态两组都覆盖“配置目标位于注入真实账户”：exit 1、`state_ownership_refused`、`resource: client_config`、真实配置逐字节不变；显式真实状态可能先被任务 2 拒绝，不能拿它冒充客户端守卫证据。模板、回滚、恢复、删除和临时文件写入都计入写入清单。
+- `refused_client_config` 文本与 JSON 固定测试在本任务完成；安装身份夹具仍使用任务 1 的 API，无须等待任务 5。只读会话扫描输入仍允许读取。
 
-**验证：L2**。targeted 测试和 Go 全量测试。
+**验证：L3**。因涉及真实客户端配置与凭据写入边界，运行 platform/provider/usagehook/telemetry/shellconfig/CLI 定向测试、Go 全量测试、`make vet`，并为改动中的并发写入路径选择对应 `-race` 包。记录客户端文件未变与状态访问屏障是不同的证明。
 
 ### 4. `installation-diagnostics`
 
-**依赖**：任务 2。**结果**：用户能看到安装身份和受管命令的归属，App 能从 helper 获得状态目录（需求 G6、G8，验收 A3）。
+**依赖**：任务 2。**结果**：在已有基础安装诊断上增加受管命令归属，App 能从 helper 获得状态目录（需求 G6、G8，验收 A3）。
 
 **文件**：
 - `internal/doctor/doctor.go` 及测试；
-- `cmd/agentdeck/main.go` 中的 `newDoctorCommand` 及测试：增加状态目录被拒绝时的部分报告路径；
+- `cmd/agentdeck/main.go` 的 doctor 渲染及固定测试：补完整报告中的受管命令检查；
 - `internal/desktop/desktop.go` 及测试，确认检查能传到 health 部分；
 - `cmd/agentdeck/desktop.go` 及测试：新增隐藏命令 `desktop state-location`；
 - `internal/usagehook` 中只读的受管命令枚举，如需导出；
 - JSON 固定测试。
 
-**要求**：
-- 把 `installation` 检查放在第一个；`managed_command_owner` 检查只在已安装程序中运行。字段与 [ux/cli.md](ux/cli.md#doctor-的-installation-检查) 一致，不包含路径。文本中新增的检查行和附加行，与原型中五个 `doctor_*` 状态逐字一致。
-- **部分报告的语义（ISO-UX-R3-F1）。** doctor 在状态目录上短路的两种情况都是部分报告，各自沿用自己的结尾一行：
-  - 状态目录缺失：沿用现有的 `doctor.Service` 行为，`state_missing`，结尾一行为 `checks_skipped: remaining diagnostics require a readable core database`；对应 `doctor_not_installed` 和 `doctor_formula_unclaimed`；
-  - 状态目录被拒绝：新的结尾一行，对应 `doctor_refused`。
+**输入/输出接口**：消费任务 2 的已守卫路径及基础 doctor 报告；产出 `managed_command_owner` 检查和隐藏的 `desktop state-location` JSON 契约供任务 6 消费。
 
-  两种情况都是 `partial: true`、`warnings: ["checks_skipped"]`，并且只包含 `installation` 和 `state` 两个检查。新增 `installation` 检查不能改变现有缺失目录短路的部分报告语义；固定测试要覆盖"未安装 + 状态目录缺失"这一组合。
-- 按[架构](architecture.md#doctor)实现 doctor 的部分报告：`stateRoot()` 返回 `ErrStateOwnershipRefused` 时，输出 `installation` 加上 `state` 的拒绝结果，`partial: true`、`checks_skipped`、exit 0，并且不把被拒绝的目录交给 `doctor.Service`。这条路径要在访问屏障下测试。
+**实施顺序与验收**：
+- 只读枚举受管 Hook/statusline 命令，在已安装且未因状态短路时执行 `managed_command_owner`。字段与 [CLI 契约](ux/cli.md#managed_command_owner-检查) 一致：匹配、PATH-only、不同绝对拥有者三类，JSON 不包含路径；不同拥有者给出重新登记命令。测试配置用固定夹具，证明的是枚举和诊断，不执行尚未实现的安装命令。
+- 任务 2 已交付的 `installation` 首行、缺失/拒绝部分报告及 Hook 拒绝不写记录继续保持；新增诊断不能穿透这两条短路。五个 `doctor_*` 标本作为完整固定测试集，在本任务补齐完整报告并回归部分报告。
 - `desktop state-location` 的输出按[架构](architecture.md#app-与小组件)定义；不是拥有者时，绝不返回真实路径。
 - 固定测试覆盖：已安装和未安装两种身份的 doctor 文本与 JSON、部分报告、`managed_command_owner` 的三种情况，以及 state-location 的输出。
 
@@ -189,7 +208,7 @@ updated: 2026-11-07
 
 ### 5. `installer-receipts`
 
-**依赖**：任务 1。**结果**：四种安装方式都通过唯一的用户回执取得所有权，并且只有在旧拥有者停止之后才允许接管（需求 G7、G9，验收 A2、A6、A7、A9）。
+**依赖**：任务 2（传递包含任务 1）。**结果**：四种安装方式都通过唯一的用户回执取得所有权，并且只有在旧拥有者停止之后才允许接管（需求 G7、G9，验收 A2、A6、A7、A9 的安装侧）。
 
 **文件**：
 - `packaging/homebrew/agentdeck-app.rb.tmpl`、`packaging/homebrew/agentdeck.rb.tmpl`（formula 只改 caveats，不写回执）；
@@ -201,8 +220,12 @@ updated: 2026-11-07
 - `internal/installation`：在所有权排他锁内写入和删除回执、生成安装 ID、写本次清理清单并校验清理归属；
 - `scripts/test-install.sh`、`scripts/test-cask-migration.sh` 及新增的本地 App 安装测试。
 
-**要求**：
-- 按[安装回执](architecture.md#安装回执)实现每种方式的写入、拒绝冲突和卸载清理。所有方式都调用暂存新程序的 `install register --source` 或 `install unregister --remove`。安装脚本自己既不写回执，也不把文件移到最终位置，也不写任何 keg 回执。
+**输入/输出接口**：消费任务 1 的回执/排他锁及任务 2 的真实状态共享会话；产出 `install claim/register/unregister`、清理清单、安装脚本和完整安装器测试。本任务用 CLI 会话证明 `owner_running`，不要求尚未完成的原生 App；App 与安装器的组合归任务 8。
+
+**实施顺序**：先完成 helper 安装协议及失败注入，再接入 make/local App/cask/formula，最后执行真实 Homebrew 完整分派与下表交错测试。脚本不能先上线一个锁外发布版本等待后续修复。
+
+**验收要求**：
+- 按[安装回执](architecture.md#安装回执)实现每种方式的写入、拒绝冲突和卸载清理。cask、make、本地 App 调用暂存新程序的 `install register --source` 或保留 helper 的 `install unregister --remove`；formula 保持由用户 claim、升级按任务 2 续登、删除 keg 后回执过期的独立契约。安装脚本自己既不写回执，也不把文件移到最终位置，也不写任何 keg 回执。
 - 按 [formula 认领](architecture.md#formula-认领)实现 `install claim`：只能认领当前 opt 指向的 keg；回执登记 keg 内的真实路径，**不登记 opt 链接**；文本和 JSON 与原型中 `claim_*` 四个状态逐字一致。测试覆盖：旧 keg、非 opt 指向的 keg、两个前缀、stable 与 rc、`--takeover` 的成功和拒绝。这些测试都放在临时目录搭建的 Cellar/opt 布局中进行。
 - 接管只以[所有权排他锁](architecture.md#所有权锁与交接)作为同步边界，不使用 `lsof`。测试中让一个替身进程持有共享锁来模拟旧拥有者的会话，断言 `TAKEOVER=1`、`install-macos-app` 和 `install claim --takeover` 都以 `owner_running` 拒绝，回执不变；替身释放锁之后，接管成功。
 - **在锁内发布**：按[安装回执](architecture.md#安装回执)，由 `install register --source` 在一次持锁内完成原子发布和回执写入。单个文件用 `rename(2)`；App bundle 用 `renamex_np(RENAME_SWAP)` 交换，再删除旧 bundle；任何失败都不改目标路径和回执。`manage-install.sh` 原有的暂存、校验和清单逻辑保留，只把最后的重命名交给这条命令。测试中，替身进程持有共享锁时，发布以 `owner_running` 失败，目标和回执都不动；替身释放锁之后，一次完成。在发布与写回执之间注入失败，断言目标路径仍为原内容、回执未变。
@@ -216,58 +239,103 @@ updated: 2026-11-07
   - `test-cask-widget-registration.rb` 的小组件注册仍然有效；
   - 真正卸载后不留回执，其他安装方式随后可以正常登记，不需要 `--takeover`。
   - 模板以及渲染后的 `uninstall`、`zap`、postflight、失败回滚中，没有能删除最终 App/父目录的 `delete`、`trash`、`rmdir` 或 shell 兜底。`binary` 仅删除链接本身，不跟随链接删 App。
-  - 沿真实 Homebrew 完整分派执行任务 2 第 12 条；不能在 helper 返回时就停止测试。观察所有后续文件操作，确认新 App 和回执保留；同时证明旧 ID 的延迟回滚不会删除同 channel 的新安装。
+  - 沿真实 Homebrew 完整分派执行下表 I4；不能在 helper 返回时就停止测试。观察所有后续文件操作，确认新 App 和回执保留；同时证明旧 ID 的延迟回滚不会删除同 channel 的新安装。
   - Caskroom 的本次清单和可执行清理 helper 保留至全部清理调用结束；破坏最终 App 内 helper 后仍可在锁内正常清理。缺少私有副本或清单时，即使 Homebrew 强制跳过脚本也不删除最终 App，验收须报告残余而非卸载成功。
 - 本地 App 安装沿用 ad-hoc 签名，不加 hardened runtime，并执行 `lsregister`。
 - 所有测试都在临时 `HOME`、`PREFIX`、`APPDIR` 下进行。
 
-**验证：L3**，因为改的是安装器行为。需要 `make check-install`、cask 真实 brew 回归测试、模板渲染测试，以及本地 App 安装测试。
+**安装协议交错表**：下面四项承接旧任务 2 第 8–10、12 条。它们必须运行本任务的真实 `register/unregister` 代码与命令，使用受控同步钩子，不能仅调用锁 API 或跑协议模型。
+
+| 编号 | 受控顺序 | 必须观察到的结果 |
+| --- | --- | --- |
+| I1 发布与登记 | A 的任务 2 真实读写会话持共享锁；安装方执行 `register --source`。释放 A 后重试，在发布后、写回执前暂停 | 首次 `owner_running`，目标与回执不变；重试在一次排他锁内发布/登记，中间任何共享会话都等待；失败注入恢复原内容与回执 |
+| I2 同路径竞争 | A/B 同 channel/目标、各自暂存源及新清单；暂停 A 的锁内发布，启动 B；另测共用同一清单和不同 channel | B 在取排他锁处等待，等待期间不读写安装对象；A 完成发布和登记、释放锁后，B 才在自己的排他锁内看到 A 的正式回执并覆盖；从无“改目标时还有另一方会话”；同清单独占创建失败且不改原清单/目标；不同 channel 无 takeover 时 `owned_by_other`，且目标 P 与原回执逐字节不变 |
+| I3 暂停与崩溃 | A 锁内 SIGSTOP，测试时钟推进超过旧方案的 601 秒；B 登记和访问同时尝试；再测 A 取锁前暂停、恢复，以及发布进程崩溃 | 锁内暂停时 B 的登记/访问分别 `owner_running`/`ownership_busy`，没有超时租约放行，暂停期间任何一方都不改 P、不读取发布中间状态；A 恢复后在同一次连续持锁内完成发布和登记。锁外暂停时 B 正常完成登记并开启会话；A 恢复后先取排他锁，等待 B 会话结束后成功，或达到上限以 `owner_running` 失败，等待/失败期间 P 和回执不变。崩溃由内核释放锁，目标是旧/新完整内容之一，B 随后可正常登记 |
+| I4 延迟完整清理 | A helper 锁内清理后返回；B 发布同路径并开启真实共享会话；继续 A 的全部卸载/失败回滚/重试，包括 Homebrew 后续分派 | B App/回执逐字节不变、会话有效；A 无锁外最终删除；条件清理在 B 持锁时超时，释放后因原 ID 不匹配跳过；B 分别为 local_app 与同 channel、同版本 homebrew_cask 重装 |
+
+**验证：L3**。安装 helper/CLI/installation 的定向与 Go 全量测试、相关并发包 `-race`、`make vet`、`make check-install`；扩展并运行 `scripts/test-cask-migration.sh`、模板/小组件注册测试及新本地 App 安装测试。先检查现有脚本的隔离方式，再选命令；触及系统 tap、签名、注册等真实环境的操作必须另外获得授权，不能由测试名推定安全。真实 brew 的已批准可行性条件任一失败，保持本任务未完成并返回相应设计决策，不把失败转交任务 8。
 
 ### 6. `app-state-location`
 
-**依赖**：任务 4。**结果**：App 不再自己推算状态目录；Health 面板显示安装检查（需求 G6）。
+**依赖**：任务 4、任务 7。**结果**：App 不再自己推算状态目录；Health 面板显示安装检查，已安装 App 具有原生所有权会话（需求 G6/G9）。
 
 **文件**：
 - `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift`；
 - `apps/macos/AgentDeckApp/AgentDeckApp.swift`；
 - `apps/macos/AgentDeckApp/DesktopCopy.swift`；
 - 对应的 `AgentDeckTests`、`AgentDeckAppTests`，以及 `AgentDeckVerification/main.swift` 中现有的参数断言。
+- `scripts/test-macos-app.sh`：只在测试夹具中构建验收 helper、传递临时账户/测试产物路径，并清理本次启动的进程；
+- 新增 `internal/installation/native_fixture_test.go`：原生测试使用的临时回执/排他锁驱动，只编译进 Go 测试二进制；
+- `EmbeddedHelperRunner.swift` 中的原生所有权会话及 `AgentDeckApp.swift` 的生命周期装配：增加内部账户解析依赖，默认读系统账户数据库，仅测试构造时替换；对应 Swift 测试通过 `@testable` 使用。
 
-**要求**：
+**输入/输出接口**：消费任务 4 的 `desktop state-location`、任务 1 的回执/锁 API 和任务 7 的独立 Debug 身份；产出本轮状态路径、原生共享锁生命期、Health 文案及本任务自己的原生验收夹具。任务 2 提供已守卫的 Go 行为，不提供原生 helper 产物。实际安装器与 App 交接归任务 8。
+
+**原生测试如何取得安装身份（ISO-TASKS-R9-F2）**：由任务 6 完成以下两层，不增加 `state-location` 线路字段，也不改变生产安装判定。
+
+1. **Swift 确定性测试**：经现有 `EmbeddedHelperProcess` 注入返回 `state-location` 结果的替身，覆盖持锁前后结果改变、查询失败和释放路径。原生会话的账户解析依赖在内部测试构造时指定临时账户；锁仍由真实 `flock` 实现，路径为该账户的 `Library/Application Support/AgentDeck/ownership.lock`，不能从 `HOME` 或 `state_root` 反推。生产装配固定使用系统账户数据库，不能接受环境变量、CLI 参数或线路字段覆盖；该替身结果只证明 Swift 消费/生命周期，不证明 Go Resolver。
+2. **Swift + 真实 Go helper 夹具**：`scripts/test-macos-app.sh` 在本次临时测试根内单独执行 `go build -mod=vendor -tags agentdeck_acceptance -o <fixture>/AgentDeck.app/Contents/Helpers/agentdeck ./cmd/agentdeck`。这里的 `AgentDeck.app` 是传给现有 `EmbeddedHelperRunner(appBundleURL:process:environment:)` 的临时 bundle 布局，使用 `FoundationEmbeddedHelperProcess` 真正启动其中的 helper；不替换正常 Debug/Release/Perf 产物，不修改 `scripts/build-macos-app.sh`、打包脚本或发布构建的 tag。
+3. **夹具身份与同一把锁**：新 Go 测试驱动在 `_test.go` 内给 Resolver 注入经过校验的临时账户，调用任务 1 的真实 `AcquireOwnershipLock` / `WriteReceipt` 登记临时 bundle 中 helper 的物理路径。它通过 `scripts/run-go-test.sh ./internal/installation -run '^TestNativeOwnershipFixture$'` 接受仅测试入口读取的夹具参数，提供登记、排他锁竞争、回执改写及模拟手工删除动作；所有输入须位于本次临时根，默认不能回退真实账户。helper 环境显式包含同一个 `AGENTDECK_ACCEPTANCE_ACCOUNT_HOME`，安装身份用例的 `HOME` 也设为该临时账户，使默认状态根命中注入的真实根；未安装组使用独立 HOME 和不匹配/缺失回执。Swift 测试构造注入同一个账户，因此 Go 与 Swift 确实竞争同一路径的锁，不是各测各的锁。
+4. **原生生命周期与证明边界**：XCTest/原生验证入口构造 App 实际使用的所有权会话及刷新/关闭回调，消费上述真实 helper；验证已安装判定、共享锁阻塞排他进程、下一轮复核及关闭后释放。App Group 存储和偏好沿用现有临时目录/测试域注入。缺少临时账户、helper 或注入入口时测试必须失败，不能启动生产默认路径补救。完整 App 进程与实际安装器的联合验收仍在任务 8，不能用替身响应宣称已经执行；生产产物仍只做 tag 缺席的静态检查。
+
+**实施顺序与验收**：
 - 按[架构](architecture.md#app-与小组件)实现：每一轮刷新前查询 `state_root`，本轮内使用，不跨轮缓存。**只有当 helper 是拥有者、并且 `state_root` 指向真实状态时**，App 才用 `flock(2)` 取所有权共享锁，并在锁内再查询一次确认，然后持有到退出；条件不成立时不取锁，之前持有的立即释放（ISO-ARCH-R3-F1）。删除显式传入的 `--state-dir`，删除 `HOME/.agentdeck` 的推算。
 - 读快照文件、等扫描锁、读 `receiver.json` 都改用本轮取得的路径；取锁超时或查询失败时，按 helper 不可用处理。测试覆盖以下几点：
-  - 已安装的 App 运行期间，接管方拿不到排他锁；App 退出后接管成功；
-  - **未安装的 App（例如 Debug App）单独运行时，安装、卸载、接管都能完成，不会出现 `owner_running`**；
+   - 已安装的 App 运行期间，任务 1 的排他锁测试进程拿不到锁；App 退出后可取锁并更新临时回执；
+   - **未安装的 App（例如 Debug App）单独运行时，排他锁测试进程仍能取锁、写入或撤销临时回执**。这里只证明 App 不阻塞锁；实际安装、卸载、接管命令的成功由任务 8 消费任务 5 后验证；
   - App 取锁前后所有权发生转移时，锁内的再次查询发现条件不成立，立即释放锁；
   - 回执被手工删除之后，下一轮改用隔离目录并释放锁。
 - 增加 `installation`、`managed_command_owner` 检查名，以及 `not_installed`、`managed_command_owner_mismatch` 说明的中英文文案。
 
-**验证：L2**。需要 `make test-macos-app` 和 AgentDeckVerification。
+**验证：L3**。由于新增跨进程锁与原生生命周期，运行 `make test-macos-app`、AgentDeckVerification 对应现有脚本，以及上面两层隔离的 Swift 会话/真实 helper/排他锁竞争测试；任务 7 的旧结果不能代替本任务改动后的回归。记录实际驱动命令、Go/Swift 解析出的同一临时锁路径、被测 helper 物理路径与回执身份；不能把构建成功或替身返回 installed 当成真实拥有者/锁生效。原生运行前确认临时 HOME、账户注入、App Group 和偏好域隔离；无法满足时报告该任务的验证阻塞。
 
 ### 7. `debug-app-identity`
 
-**结果**：Debug App 与安装版完全分开（需求 G5，验收 A5）。
+**结果**：提供独立 Debug 构建身份（需求 G5），供任务 6 安全运行原生夹具；实际双 App 数据与生命周期互不干扰的 A5 组合验收归任务 8。本任务没有 Go 功能前置依赖。
 
-**人工前提**：在开发者账号下注册 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`。这一步由操作员完成，在评审材料中记录。
+**人工前提**：签名/注册验收需要操作员在开发者账号下注册 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`，在评审材料中记录。下述现有无签名 XCTest 回归不依赖这个注册；它不能替代真实签名/注册结果。
 
 **文件**：
 - `apps/macos/AgentDeck.xcodeproj/project.pbxproj`：只改 Debug 配置的 bundle ID 和 `AGENTDECK_APP_GROUP`；
 - 检查小组件的 sandbox 校验脚本是否需要同步修改。
 
-**要求**：
+**输入/输出接口**：消费架构中已确定的 bundle ID/App Group 表和操作员注册结果；产出 Debug 的 App/Widget 标识、entitlements 与 Info.plist，Release/Perf 配置保持原值。
+
+**实施顺序与验收**：
 - 按[架构](architecture.md#app-与小组件)的表格修改，Release 和 Perf 配置逐项不变。
 - 证明 Debug 构建产物的 entitlements 和 Info.plist 中都是 Debug 的 App Group。
 - Release 构建的签名、`check-widget-sandbox` 都不变。
 
-**验证：L3**，因为改的是构建。需要 Debug 和 Release 两种配置的构建、`make check-widget-sandbox`、`make test-macos-app`。Debug App 与安装版同时运行时互不影响，这一点由操作员人工验收，或者明确记录为豁免。
+**验证：L3**。构建 Debug、Release 两种产物，对比 Release/Perf 配置，检查实际签名、Info.plist、entitlements 并运行 `make check-widget-sandbox`。按 `scripts/build-macos-app.sh` 的配置入口选择命令；若 sandbox 检查含固定 Release ID，同步成按构建配置校验，不削弱 Release 断言。**任务 7 必须在自己的候选上运行 `make test-macos-app`**：现有 `scripts/test-macos-app.sh` 为 Debug 宿主设置临时 `HOME`、`CFFIXED_USER_HOME`、`AGENTDECK_TEST_HOME` / `TEST_RUNNER_AGENTDECK_TEST_HOME`，使用 `CODE_SIGNING_ALLOWED=NO`；App 将 helper HOME、App Group 存储和偏好切至测试夹具，现有测试无需等任务 6。确认 `AgentDeckAppTests` 的 Debug `TEST_HOST` 能加载并完成回归；仅 Command Line Tools 下的 Foundation verifier 不覆盖宿主，缺完整 Xcode 时明确保留该项未完成。任务 6 为自己的行为变更再运行该门禁，不接收任务 7 未解决的宿主回归。真实签名/注册前提仍需单独满足，不能用无签名通过代替。
 
 ### 8. `ownership-acceptance`
 
-**依赖**：任务 2–7。**结果**：在隔离环境中，验证需求的验收条件 A1–A9 能端到端成立。
+**依赖**：任务 3、5、6，传递包含任务 1、2、4、7。**结果**：在完整实现上验证 A1–A9 的组合路径，查验最终入口清单，形成主题验收证据。
+
+**文件/发现入口**：复用 `cmd/agentdeck/contract_test.go`、现有 CLI/schema-signal 验收测试、任务 2 的屏障夹具、任务 5 的安装脚本测试，以及任务 6 的原生验证入口。新增集成用例落在对应验收套件内，实际文件与可重现命令必须写入评审材料，不另造脱离产品实现的协议模型。
+
+**输入/输出接口**：消费任务 1–7 已交付的真实能力和可复用证据，产出逐命令结果矩阵、跨进程与跨安装方式场景、生产静态验证及操作员事项。未完成的前置任务是开工阻塞，不是本任务隐含实现范围。
 
 **验收运行器**（ISO-TASKS-R1-F1）：按[测试与验收的隔离](architecture.md#测试与验收的隔离)使用验收二进制，构建命令为 `go build -tags agentdeck_acceptance -o <临时目录>/agentdeck ./cmd/agentdeck`。`AGENTDECK_ACCEPTANCE_ACCOUNT_HOME` 指向临时账户主目录，回执、注入的真实状态目录、客户端配置都在这个目录下；同时使用临时 `HOME`、`PREFIX`、`APPDIR`。scan worker 和 helper 是同一个可执行体，并继承这个环境变量。
 
-**要求**：
+**实施顺序与验收**：先确认全部前置能力与环境，再建立完整命令矩阵，随后运行安装/CLI/App 串联场景，最后汇总未覆盖项和静态产物证据。
+
+**完整 Cobra 结构性验收（承接 ISO-TASKS-R7-F1、ISO-TASKS-R9-F1）**：在最终候选重新枚举并执行全部叶子矩阵，包括任务 2 已覆盖的命令、任务 4/5 新增命令和任务 3 的真实配置拒绝；不能只复用任务 2 的旧清单或只测新增项。记录有效参数、stdin、数据、目录分支、预期退出码/输出及契约依据，固定契约因 shell/交互/内部表面而分组的入口也沿任务 2 的独立运行器承接。每例独立账户与 HOME，初始未安装且不满足续登；默认隔离根不命中 P。缺参、无效输入、未知命令均不能冒充覆盖；不解析状态的入口也必须记录既定结果及依据。
+
+| 输入 | 命令/目标 | 预期及能力来源 |
+| --- | --- | --- |
+| 不传 `--state-dir` | 普通状态命令 | 任务 2：正常使用隔离根；空 `provider list` exit 0、`No providers.`；仅文本 TTY 非 quiet 有 notice |
+| 同上 | doctor | 任务 2/4：隔离根缺失为 `state_missing` 部分报告、exit 0；其他夹具遵守对应 doctor 契约 |
+| 同上 | 写真实客户端配置 | 任务 3：`state_ownership_refused`、`resource: client_config`、exit 1、配置不变；非真实账户的临时配置保留正常结果 |
+| 同上 | Hook/statusline | 任务 2：保持隔离调用的正常处理与输出，不能统一断言安装拒绝 |
+| 显式真实根或子路径 | 普通状态命令 | 任务 2：内容访问前拒绝，`resource: state_root`、exit 1、refused_state 文本/JSON |
+| 同上 | doctor | 任务 2/4：成功 envelope、partial/checks_skipped、exit 0，仅 installation/state；后续诊断不运行 |
+| 同上 | Hook/statusline | 任务 2：stdout/stderr 为空、exit 0、不写拒绝记录 |
+| 任意状态参数 | 不解析状态的命令、install claim/register/unregister | 保持各自契约；任务 5 的安装命令只操作回执/锁/安装对象，不强制套用状态拒绝 |
+| helper 路径查询 | desktop state-location | 任务 4/6：未拥有真实状态时不返回真实路径；App 无路径时不自行推算 |
+
+默认与显式两组均使用屏障和正负对照：不访问 P 内部、不被屏障终止；文件清单/内容/mtime 不变仅为补充证据。显式路径覆盖直接、符号链接、`..`、真实根自身为链接及其子路径，worker/helper 继承屏障与账户注入。包级入口复用任务 2 的直接调用证据，并对最终新增/变更入口补测。满足 formula 续登条件的实例放在独立夹具，不能污染默认隔离组。**统一的是访问边界，不是所有命令的退出码。**
+
+**跨面场景**：
 - 按以下顺序走一遍：
   1. 未安装：在访问屏障下运行，确认没有访问真实目录、客户端配置的写入被拒绝；
   2. 用本地 App 安装方式把验收二进制装入临时 `APPDIR`：确认成为已安装，能迁移注入的真实目录；
@@ -275,21 +343,62 @@ updated: 2026-11-07
   4. 旧拥有者有一个会话正持有所有权共享锁（例如一个 `watch` 进程）时加 `TAKEOVER=1`：确认以 `owner_running` 拒绝，回执不变；
   5. 停止旧拥有者后加 `TAKEOVER=1` 接管：确认成功，旧可执行文件随后在屏障下被拒绝；
   6. 在临时 Cellar/opt 布局中执行 formula `install claim`、旧 keg 认领、`--takeover`；然后模拟一次升级：建立新 keg，把 opt 切到新 keg，删除旧 keg，然后用新 keg 执行一条**不带 `--state-dir` 的普通命令**，确认它在排他锁内续登，并读到注入真实目录中的原有数据；再模拟一次保留旧 keg 的升级，确认不续登、新 keg 按未安装处理；
-  6a. 用一个未安装的 App 替身持续运行（它的 helper 不是拥有者），确认此时安装、接管都能完成，不会出现 `owner_running`；
+   6a. 用一个未安装的 App 替身持续运行（它的 helper 不是拥有者），在临时安装目标上分别执行任务 5 的实际安装、接管、卸载完整命令链，确认均成功且不会出现 `owner_running`。卸载必须运行到 `install unregister --remove` 及安装方式的后续步骤完成，断言目标和匹配回执按契约清理；替身全过程保持运行。各场景重建独立安装夹具，不能仅以“排他锁可取得”代替命令成功；
   7. 卸载：确认回执被清理；
   8. 损坏回执：确认 `doctor` 给出原因；`doctor --state-dir <注入的真实目录>` 输出部分报告；
   9. 运行 schema-version-signal 的回归测试，确认仍然通过（A8）。
 - 生产产物只做有限的静态验证：`make build-all` 的产物中没有验收 Resolver 的符号，构建命令中没有 `agentdeck_acceptance`。它的运行时行为由验收二进制和包内测试覆盖，这一点在评审材料中明确写出，不能声称已用生产产物做过运行时验收。
+- 在上述串联之外逐项核对四种安装 channel 的当前拥有者能够读取/迁移注入状态；保留旧 keg、双前缀、stable/rc、过期回执、跨安装方式接管各有明确结果。只运行 local_app 和 formula 两条路径不能覆盖 A2/A6 全集；可复用任务 5 对同一候选已产生的有效证据。
+- A5 在任务 6、7 完成后验证：Debug 与安装身份 App 同时运行，状态目录、App Group、偏好域、小组件列表和元数据分别独立；未安装 App 持续运行期间，任务 5 的实际安装、接管和卸载（包含 `install unregister --remove` 完整清理链）均成功，卸载目标及匹配回执按契约清理；已安装 App 持锁时实际接管失败、退出后成功。隔离原生替身证据与真实双 App 运行必须分开记录；后者若需要本机注册/安装，由操作员执行或明确豁免，未执行且未豁免时 A5 保持未完成。
 - 用真实本机安装做验收会触碰真实状态，不在本任务内执行。在交付说明中列为操作员事项：用 `make install-macos-app` 重装本机；formula 用户需要执行一次 `install claim`。
 
-**验证：L3**。记录隔离证据，并区分三类：访问屏障下的证据、验收二进制的证据、生产产物的静态证据。
+**验证：L3**。执行最终 CLI/worker/helper 屏障矩阵、安装与 App 串联场景、A8 回归、`make build-all` 与验收符号静态检查；按实际新改的集成测试及消费者选择回归与 race 范围。复用同一内容态仍有效的任务 1–7 证据，不因进入任务 8 重跑所有组件测试；原生/真实 brew/屏障证据不能互相替代。每项 A1–A9 必须有可定位的实际结果或用户明确接受的豁免，不能仅由测试命令 exit 0 推定。
 
 ### 9. `contract-reconciliation`
 
-**依赖**：任务 1–8。**结果**：产品契约与实现一致。
+**依赖**：任务 8（传递包含任务 1–7）。**结果**：产品契约与已验收实现一致。
 
 **文件**：`docs/specs/cli-design.md`、`docs/specs/cli-manual.md`、`README.md`。
 
 **要求**：按[兼容性与契约同步](architecture.md#兼容性与契约同步)更新 Local State、Build Identity and Installation、Output and Errors、Doctor 这几节，以及安装和故障排查说明。
 
+**输入/输出接口与验收**：消费任务 8 的行为结果与限制，逐项对照 CLI 文本/JSON、安装方式、formula 首次 claim 与自动续登、App 路径、拒绝恢复、真实环境操作员步骤，产出稳定规范、手册和 README。说明回执/所有权锁/清理清单/helper 不属于便携状态；保留已安装兼容和 schema_ahead 契约，不把未执行验收写成支持保证。文档闭环不授权安装、提交、推送或发布。
+
 **验证：L0**。需要 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`。
+
+## 覆盖与交接核对
+
+### 需求归属
+
+| 需求/验收 | 实现责任 | 最终组合证据 |
+| --- | --- | --- |
+| G1，A3 身份判定 | 1 已交付；2 基础 installation 报告 | 8 的损坏/缺失/过期/其他拥有者矩阵 |
+| G2/G3，A1/A2 状态边界 | 2 Go 访问链；4 helper 路径；6 原生消费 | 8 的完整叶子命令、worker/helper/App 及四种安装身份 |
+| G4，A4 客户端配置 | 3 | 8 的默认隔离状态 + 真实配置写入组合 |
+| G5，A5 Debug 隔离 | 7 构建身份；6 原生状态路径 | 8 双 App 运行；操作员结果或明确豁免单列 |
+| G6 App 路径 | 4 生产方，6 消费方 | 8 真实 helper 与 App 串联 |
+| G7，A6/A7 唯一拥有者及升级 | 1 身份基础；2 自动续登入口；5 安装协议 | 8 从无回执到安装/升级/清理的完整路径 |
+| G8 可见性 | 2 提示/错误/基础诊断；3 配置拒绝；4 完整诊断；5 claim；6 Health | 8 固定输出矩阵，9 稳定契约 |
+| G9，A9 安全交接 | 2 Go 会话；5 发布清理；6 App 会话 | 8 实际安装器与长驻/原生消费者组合 |
+| A8 schema-version-signal | 2–6 保持各自受影响回归 | 8 完整兼容回归；9 保持契约 |
+
+### 本次验收归属与迁移核对
+
+| 来源与断言 | 当前归属/是否迁移 | 在该任务可完成的依据 |
+| --- | --- | --- |
+| 旧任务 2 的真实客户端配置拒绝 | 迁至 3 实现与定向验收，8 全叶子组合 | 3 同时交付所有写入守卫及错误渲染；现有配置命令的非真实 HOME 路径仍由 2 测试 |
+| 旧任务 4 实现、旧任务 2 验收的 doctor 部分报告 | 实现并入 2；4 只扩展完整诊断 | 拒绝与例外同批交付，不依赖后续 4 |
+| 旧任务 2 交错 8–10、12 | 迁至 5 I1–I4 | 5 具备 register/unregister/清理链，并依赖 2 的真实会话；I2/I3 保留目标不变及暂停恢复的完整结果 |
+| 旧任务 2 在当时候选上已有的全部 Cobra 叶子 | 保留在 2；8 在最终集合复跑 | 现有命令以非真实账户临时配置即可验证状态边界；不依赖未来命令或真实配置拒绝 |
+| 任务 4/5 后来新增的命令及最终组合 | 各任务定向验收，8 纳入最终叶子矩阵 | 8 的依赖闭包已包含生产者；不用于削弱任务 2 的现有清单 |
+| 旧任务 6：未安装 App 运行时实际安装、卸载、接管成功 | 6 证明真实原生会话不阻塞锁；实际命令链迁至 8 的 6a/A5 | 6 有自己产生的原生身份夹具；8 再消费 5 的安装命令与 6 的 App，两处均包含 unregister --remove 及后续卸载步骤 |
+| 旧任务 7：make test-macos-app 宿主回归 | 保留在 7；撤销重写稿迁至 6 的安排 | 现有临时 HOME/无签名 harness 已可运行；6 只对自己的新行为再跑，不承接 7 的回归缺口 |
+| 旧任务 7：Debug 与安装 App 的全数据共存 | 迁至 8；7 仍承担自身构建和宿主回归 | 8 同时具备 6 的路径隔离与 7 的身份隔离；真实运行/操作员豁免单列 |
+
+### 评审与风险边界
+
+下一次分解评审必须逐条执行：从验收断言反查实际被测入口 → 确认其实现任务 → 核对该任务是否在当前任务依赖闭包内。仅有需求覆盖表、无环的任务编号或 L0 通过都不足以证明可实施。逐项检查上面重新归属的测试没有丢失，且没有把不可验证的完成条件藏进“后续验收”。
+
+旧 Round 8 的具体遗漏与本次重写交接记在 [tasks 评审记录](reviews/tasks.md#重新分解--2026-11-07)。它的历史结论和已交付任务 1 的事实保留；本稿需新的独立评审，不由作者自签 PASS。
+
+仍有两个明确的环境前提：任务 5 的隔离真实 brew 能力、任务 7 的 Debug App Group 注册。屏障不可用阻塞需要屏障的任务；原生隔离不可用阻塞任务 6/8 对应证明。失败时保留准确结果并暂停该边界，不能降低验收标准。实现仅在临时状态上试验；不通过数据库降级、真实目录回滚或锁外文件删除来恢复测试/安装。可交付回退和残余清理按架构的锁内安装协议处理。

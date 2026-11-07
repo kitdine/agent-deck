@@ -634,3 +634,237 @@ Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership` exit 0。
 Task checkpoint：ad-installed-state-ownership-doc-tasks；content_state `cc877a837a9dc4c92bfbe654ea72333b63158cff3960cc8b9a52419973dc72fb`；gate VERIFIED。
 提交建议：经明确授权将四份已通过主题文档、相关共享 CLI 原型、各评审记录和状态作为一致的文档批次交付。本轮未提交。
 推送建议：目标 origin/feature/installed-state-ownership；需显式推送授权及对应提交对象、签名、范围检查。本轮未推送。
+
+## 重新分解 — 2026-11-07
+
+### 触发与核实
+
+用户在任务 2 开发前置检查发现验收循环后，明确停止该任务开发，要求“回退到重新编写 tasks 任务”。本节是重写记录，不是新的独立评审轮次。作者：OpenCode；workspace：`agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；基线 HEAD：`1425256d96b510e060a9bd0496df769b67495c33`。
+
+基线 tasks.md 的任务 2 强制要求：
+
+- 真实客户端配置拒绝，但实现属于任务 3，且任务 3 依赖任务 2；
+- doctor 部分报告，但实现属于依赖任务 2 的任务 4；当前 `newDoctorCommand` 在 `stateRoot()` 出错时直接返回，现有代码没有这个例外；
+- 第 8–10、12 条实际 `install register/unregister` 发布与完整清理交错，但这些命令与脚本属于任务 5，基线尚无安装命令实现；
+- 包含未来安装命令的全量叶子命令验收，却只允许本任务实现状态守卫。
+
+因此问题不只是依赖表漏了一条边。给任务 2 增加 3/4 的依赖会形成循环；以替身安装模型代替真实命令又会虚增验收结论。必须重新分配交付边界和测试归属。
+
+### 前次评审为什么没有拦住
+
+Round 8 的记录直接检查了默认隔离与显式拒绝的七类预期，并以功能覆盖表把 G4 分配给任务 3、诊断分配给任务 4、安装协议分配给任务 5；同时保留了任务 2 要验证这些行为的要求。记录没有逐项从验收断言反查实现任务、检查前置闭包。Repair 7 也只修正了预期分类，没有纠正这一分解问题。两者共同留下了“要求覆盖了，但当时不可执行”的缺口。
+
+这是对记录与基线源码的核实，不推测前次评审者的内部过程。结构检查和 CEv1 的历史 VERIFIED 只能证明当时声明的 review/L0 证据已入门禁，不能自动发现未被评审指出的任务依赖缺陷。历史 Round 8 与提交态证据保持原始内容；它们不作为新候选的批准。
+
+### 重写内容与兼容边界
+
+1. 保留九个任务锚点和任务 1 的交付范围、Dev/Review 勾选及已签名提交；任务 1 已提供 Resolver、回执、物理解析和锁基础，没有交付任务 2 的实际状态拦截。
+2. 任务 2 同时交付状态守卫、Go 会话、CLI 错误/静默路径与 doctor 基础安装检查/部分报告，解除 doctor 的反向依赖；会话交错仅消费任务 1 的真实锁/回执 API。
+3. 任务 3 完整承担客户端写入与对应拒绝；任务 4 专注受管命令归属与 helper 状态路径。
+4. 任务 5 增加任务 2 前置，完整承担旧第 8–10、12 条安装协议交错（I1–I4），包括实际 Homebrew 后续清理、同 channel 同版本新安装、暂停和崩溃；没有删除这些要求或用模型代替实现证据。
+5. 任务 7 先交付独立 Debug 身份；任务 6 再进行原生路径/会话运行验证；双 App 完整共存归任务 8。
+6. 任务 8 消费全部实现的依赖闭包，执行最终 Cobra 叶子矩阵与跨面 A1–A9；任务 9 才更新稳定产品契约。
+7. 每项待实施任务补充能力输入/输出、实施顺序、可观察验收和验证选择。新增依赖表、需求归属表、旧断言迁移表；评审需要反向核查每条验收的生产者在依赖闭包内。
+
+需求、CLI、架构和标本内容未改；本次没有改变产品行为、回执协议或安装方式。变更影响后续任务分解批准，不推翻任务 1 的已交付运行证据。其余实现任务维持未开始，来源缺陷保持开放。
+
+### 当前交接
+
+文档 Draft 已就绪、Review 未勾选，等待新的独立评审。复用原 Beads 文档任务 `ad-installed-state-ownership-doc-tasks`；未开始的实现任务阻塞于该文档任务。任务 2 的本次开发授权已撤回，不继承为修订后任务的开工授权。只有新分解通过评审后，才能将建议依赖和范围重绑定到原实现任务，并请求下一项开发。
+
+本轮只修改 tasks.md 和本记录，没有产品代码、测试、安装、提交或推送。L0 检查与候选身份在下方记录；它们不替代独立评审。
+
+- 候选 tasks.md blob：`dd1792235e414f388a7096f5df6c0208014fbf4d`；按既有 `SHA-256(head=<HEAD>;document=<blob>)` 配方得到 `c33a172e4d6a83ee2f280ad3cdb469f59d580ce348d61ebafca7af14d1f9ca13`。
+- 直接比较当前任务 1 小节与 HEAD：逐字相同。读取新依赖表作拓扑检查：无环；任务 2 的能力闭包仅含 1，任务 8 的闭包恰为 1–7。该检查只核对声明图，实际验收依赖仍需独立语义评审。
+- L0：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均通过。未运行产品测试；本轮文档修改不能产生产品运行证明。
+- CEv1 新候选标识：`installed-state-ownership:tasks:rewrite-20261107-c33a172e-state`。只登记本轮 L0 观察，不复用旧分解的语义批准；新候选尚需 `installed-state-ownership:tasks.md:criterion:review` 的独立证据。
+- 固定 `gate-status.cypher` 对该候选返回 `NOT_VERIFIED`：唯一缺项为上述 review criterion；本轮 L0 有效，invalidated/unresolved 为空。旧 Round 8 及提交态 review 均显示 target 不匹配，不适用于本候选。
+- 调度读回：任务 2–9 均为 open、无人认领，已阻塞于原文档任务；任务 1 仍 closed。新建议依赖在评审通过前不作为已批准调度落地。
+
+## Round 9 — 2026-11-07
+
+### 📋 任务分解评审报告
+
+📊 总体评分：6/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: Claude Code（Beads actor `claude-code`）；独立评审 OpenCode 的 2026-11-07 重新分解。冷上下文，未参与重写，未委派，未修复任务行为或产品内容。
+- Method: 按“重新分解”一节要求的反查方式，从每条验收断言反查实际被测入口、其实现任务，以及该任务是否在当前任务的依赖闭包内；逐条比对 HEAD 版（`1425256:docs/topics/installed-state-ownership/tasks.md`）任务 2–9 的断言，确认迁出的内容都有承接；对照现有代码与脚本核实分解中的前提。
+- Scope: tasks.md 的分解、依赖、验收归属与文档集合。需求、CLI、架构和标本作为未变输入复用，不重新签发其语义结论。
+- HEAD: `1425256d96b510e060a9bd0496df769b67495c33`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 重写候选 tasks.md blob `dd1792235e414f388a7096f5df6c0208014fbf4d`；fingerprint `c33a172e4d6a83ee2f280ad3cdb469f59d580ce348d61ebafca7af14d1f9ca13`。
+- Final state after status sync: blob `908a6f009d7ca8ab9e9f7eadab15418c9617c595`；fingerprint `add006c28f2ccab3ba9db052570e786f56ece533a04026a41c4f4147eae5c7f9`。只改了第 29 行一句状态说明（“等待独立评审”改为本轮 FAIL 待修复）；矩阵与全部任务定义未改。
+- Identity recipe: SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:tasks.md`；Beads: `ad-installed-state-ownership-doc-tasks`。
+- Target ContentState: `installed-state-ownership:tasks:review-r9-20261107-add006c2-final-state`。
+- 完成门禁：FAILED
+- Gate evidence: 用 provider 的固定 gate-status 查询（仅调整返回列以列出失败证据，判定逻辑未改）查询本轮精确目标，返回 FAILED。失败证据为 `installed-state-ownership:tasks:r9-20261107-add006c2:review`；L0 证据 `installed-state-ownership:tasks:r9-20261107-add006c2:l0` 有效；缺 review criterion；invalidated、unresolved 均为空。作者为候选态登记的 L0 证据保留不动。
+- L0 results: 状态同步后，`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0；结构通过不代表分解语义正确。
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-TASKS-R9-F1 — P2 — NEW / OPEN：任务 2 的入口覆盖改由实现者自判“实际消费状态根”，失去了对现有 Cobra 叶子命令的结构性兜底。**
+
+- 位置：[tasks.md](../tasks.md#2-state-root-guard) 第 146–147 行、第 56 行；迁移表第 381 行。
+- 行为风险：架构把“漏掉某个守卫调用点”列为首要风险，兜底手段就是对全部 Cobra 叶子做结构性验收（[architecture.md](../architecture.md#风险) 第 524 行）。现在任务 2 只覆盖实现者认定“实际消费状态根”的入口，而这正是兜底要检验的那个判断。某个不经 `stateRoot()` 和守卫就访问状态的现有命令，可以让任务 2 通过评审并提交，被任务 3–7 继承，直到任务 8 才暴露；修复时还得回到已交付的任务 2。
+- 证据：HEAD 版任务 2（`1425256:tasks.md` 第 112–126 行）把全部叶子矩阵作为任务 2 的完成条件；新稿第 56 行改为“全量 Cobra 叶子命令……归任务 8，不能提前成为任务 2 的完成条件”。重写记录给的理由是旧矩阵“包含未来安装命令”。但在任务 2 的候选上，现有叶子命令只需要任务 1/2 的能力：默认隔离、显式真实根拒绝、doctor 短路、Hook/statusline 静默都由任务 2 产出；客户端配置写入在非真实账户的临时 HOME 下照常执行，第 147 行本身已经这样要求。真正依赖后续任务的只有任务 4/5 新增的命令，以及真实账户下的客户端配置拒绝（任务 3）。所以迁移表第 381 行把整张矩阵列入“原任务 2 中不可独立完成的部分”，与事实不符。
+- 💡 限定修复建议：任务 2 以 CLI 固定测试在本候选上枚举出的全部 Cobra 叶子为准，不由实现者自判范围；逐项记录合法输入、目录分支、预期结果及契约依据，只把任务 3 的真实配置拒绝和任务 4/5 新增命令排除并注明归属。任务 8 在最终叶子集上复跑。相应修正第 56 行和迁移表第 381 行。
+- Disposition: OPEN。
+
+**ISO-TASKS-R9-F2 — P2 — NEW / OPEN：任务 6 的原生隔离输入指向不存在的“任务 2 的验收 helper”；App 及其内嵌 helper 如何取得临时安装身份没有定义，也没有文件归属。**
+
+- 位置：[tasks.md](../tasks.md#6-app-state-location) 第 267、278 行；对照第 66 行（任务 2 的产出）、第 127–134 行（任务 2 的文件）。
+- 行为风险：任务 6 的核心验收（已安装 App 持锁时排他锁拿不到、回执删除后释放锁）要求 App 的 helper 被判为已安装。现有原生测试嵌入的是不带验收 tag 的 helper：它按系统账户数据库解析真实账户，读取真实回执，并在真实账户目录下计算所有权锁；要让它“已安装”就只能写真实回执。实现者要么自行发明机制，可能违反架构对打包脚本的禁令，要么在真实账户状态上做实验。
+- 证据：任务 2 的产出（第 66 行）和文件清单（第 127–134 行）都没有 helper 或原生夹具；共用验证边界第 88 行所说的屏障/账户/进程夹具在 Go 侧。`scripts/build-macos-app.sh` 第 90 行用 `go build -mod=vendor -trimpath` 构建 Debug helper，不带 `agentdeck_acceptance`；`scripts/test-macos-app.sh` 第 16 行使用 Debug 产物里的这个 helper。[architecture.md](../architecture.md#测试与验收的隔离) 第 261 行规定 App 打包脚本不得带该 tag，第 256 行的验收层只涵盖 Go 可执行体。任务 6 的文件清单（第 261–265 行）不含 `scripts/test-macos-app.sh`，也没有 Swift 侧所有权锁/账户路径的测试缝；`state-location` 的输出（architecture.md 第 482 行）不带锁路径，App 只能自行算出真实账户下的锁。
+- 💡 限定修复建议：在任务 6 中写明原生测试取得临时安装身份的机制和产出者。例如：Swift 测试经现有的 `EmbeddedHelperProcess` 注入替身 helper，并增加只在测试中可替换的所有权锁/账户路径；如需真实 helper 进程，由原生测试 harness 在测试产物中换入带 tag 的验收 helper，`build-macos-app.sh` 保持无 tag。把涉及的文件加入任务 6，并把“任务 2 的验收 helper”改为实际产出者。若必须新增线路字段（例如锁路径），回到架构决定。
+- Disposition: OPEN。
+
+**ISO-TASKS-R9-F3 — P2 — NEW / OPEN：任务 7 以“状态路径尚未隔离”为由把 `make test-macos-app` 推给任务 6，但现有 harness 已经隔离；任务 7 可能在打坏自己 Debug 宿主测试的情况下通过。**
+
+- 位置：[tasks.md](../tasks.md#7-debug-app-identity) 第 297 行；任务 6 依赖理由第 75 行。
+- 行为风险：任务 7 修改 Debug 配置的 bundle ID 和 App Group，而 `AgentDeckAppTests` 的 `TEST_HOST` 就是 Debug 的 `AgentDeck.app`（`apps/macos/AgentDeck.xcodeproj/project.pbxproj` 第 882 行）。任务 7 不跑这套测试，就发现不了自己对现有原生测试的回归。回归会在任务 6 中和任务 6 自身的改动混在一起出现，这正是本次重写要消除的“完成条件依赖后续任务”。
+- 证据：`scripts/test-macos-app.sh` 第 50–63 行用临时 `HOME` 和 `CFFIXED_USER_HOME` 运行 `-configuration Debug`，并设 `CODE_SIGNING_ALLOWED=NO`，因此不需要已注册的 App Group。`EmbeddedHelperRunner.swift` 第 490–492 行从环境 `HOME` 推算状态目录，所以在这个 harness 下状态路径已经落在临时 HOME 内。HEAD 版任务 7 的验证（`1425256:tasks.md` 第 262 行）包含 `make test-macos-app`。第 75 行“避免用共享 Release 身份做 Debug 运行验证”的理由，在任务 7 变更之后已经满足，并不阻止任务 7 自己运行这套测试。
+- 💡 限定修复建议：任务 7 在构建身份变更后，用现有隔离 harness 运行 `make test-macos-app` 作为回归，任务 6 再为自己的改动运行一次。若认为该 harness 在任务 7 时点会访问真实状态，给出具体证据，并据此写明替代的回归手段。同步更新迁移说明。
+- Disposition: OPEN。
+
+**ISO-TASKS-R9-F4 — P3 — NEW / OPEN：任务 6 把“实际卸载成功”委托给任务 8，任务 8 只承接了安装和接管；迁移表也没有记录任务 6/7 的迁出。**
+
+- 位置：[tasks.md](../tasks.md#6-app-state-location) 第 273 行；第 335 行（6a）、第 341 行（A5）；迁移表第 374–382 行。
+- 行为风险：旧任务 6 要求未安装 App 运行时“安装、卸载、接管都能完成”（`1425256:tasks.md` 第 240 行）。新任务 6 只证明 App 不阻塞锁，并写明“实际安装、卸载、接管命令的成功由任务 8 消费任务 5 后验证”；但任务 8 的 6a 只写“安装、接管都能完成”，A5 只写“实际安装/接管”。卸载在两处都没人承接，正是第 386 行要求排查的“藏进后续验收”。迁移表标题限定“原任务 2”，却含一行任务 7 的内容，又没列出任务 7 的 `make test-macos-app` 和任务 6 的上述迁移，下一轮评审无法据此核对。
+- 💡 限定修复建议：在任务 8 的 6a 与 A5 中加入“未安装 App 运行期间，实际卸载（`install unregister --remove` 链）成功”；把迁移表扩为全部被移动的断言（包括来自任务 6、7 的），或改标题并补齐。
+- Disposition: OPEN。
+
+**ISO-TASKS-R9-F5 — P3 — NEW / OPEN：I2/I3 在压缩旧第 9、10 条时丢了几条明确断言，与“保留要求，变更验收归属”的声明不符。**
+
+- 位置：[tasks.md](../tasks.md#5-installer-receipts) 第 251–252 行；对照 `1425256:tasks.md` 第 136–137 行。
+- 证据：
+  - 旧第 9 条对不同安装方式要求“B 以 `owned_by_other` 拒绝，且 P 未被改动”；I2 只剩 `owned_by_other`。
+  - 旧第 10 条要求锁内暂停期间“没有任何一方改动 P 或读到中间状态”、“A 恢复，在同一次持锁内完成”；锁外暂停时“B 正常完成并开启会话”，A 恢复后“会等到 B 的会话结束或超时失败”。I3 只保留错误码、“没有超时租约放行”和“锁外恢复先等 B 会话，不能提前改文件”。
+- 行为风险：暂停后恢复的安装器是否真正完成、锁外暂停时 B 是否先正常完成，都不再被断言；跨安装方式拒绝时目标不变，只剩一般性要求。实现可以满足 I2/I3 的字面而漏掉这些结果。
+- 💡 限定修复建议：把上述断言补回 I2、I3 的结果列。
+- Disposition: OPEN。
+
+#### 🟡 改进建议 — 推荐
+
+无。本轮所有发现均为必须修复项，已列在上方。
+
+#### 🟢 做得好的部分
+
+- **依赖图正确。** 依赖表无环；任务 2 的闭包只含任务 1，任务 8 的闭包恰为任务 1–7；建议序列 1→2→3→4→5→7→6→8→9 是合法的拓扑序。任务 1 小节与 HEAD 逐字相同，已交付事实和勾选保持不变。
+- **重写的主要前提成立。** `cmd/agentdeck/main.go` 第 3503–3506 行的 `newDoctorCommand` 在 `stateRoot()` 出错时直接返回，所以 doctor 部分报告必须与守卫同批交付。任务 1 已导出持锁回执写入（`Resolver.WriteReceipt`）、`AcquireOwnershipLock` 和 `RenewFormula`，任务 2 的交错测试用真实锁和回执 API 是可行的。
+- **安装协议交错归位。** 旧第 8–10、12 条改由任务 5 的 I1–I4 用真实 `register/unregister` 执行，完整 Homebrew 分派也留在任务 5；任务 3 依赖任务 2 的错误映射，`refused_client_config` 在任务 3 完成。
+- **历史处置。** ISO-TASKS-R1-F1/F2 保持 CLOSED。ISO-TASKS-R7-F1 保持 CLOSED：按输入与命令拆分的预期已原样保留在任务 8 的矩阵（第 313–323 行），本轮 R9-F1 针对的是任务 2 失去兜底，是另一个缺陷。
+- 文档集合声明不变，与盘上主题文档一致；上游 requirements.md `2c4f3e37…`、ux/cli.md `5e427a11…`、architecture.md `9a5e5a34…`、ownership.js `b0d10010…` 都与 Round 8 通过时的 blob 相同。
+
+#### 📝 总结
+
+评审对象是重写候选 blob `dd179223…`（指纹 `c33a172e…`）。结论为 FAIL：新增 5 项发现，3 项 P2、2 项 P3，全部未关闭。依赖图本身无环、闭包正确，但有三处验收归属让任务的完成条件依赖未定义的输入或后续任务（R9-F1、F2、F3），另有两处迁移丢失了断言（R9-F4、F5）。
+
+需求、CLI、架构的既有 PASS 保留；任务 1 的交付不受影响；任务 2–9 继续阻塞于本文档任务，来源缺陷保持开放。残余不确定性：R9-F2 的机制可能只需在任务层写明，也可能需要架构补一个线路字段，交由修复判断并说明。
+
+Evidence: 内容身份与 L0 结果见上方字段。反查使用的代码与脚本事实（行号以 HEAD `1425256` 为准）：`internal/installation`、`internal/platform` 的导出函数；`cmd/agentdeck/main.go` 第 3500–3520 行；`internal/desktop/desktop.go` 第 898–907 行；`scripts/test-macos-app.sh`；`scripts/build-macos-app.sh` 第 85–91 行；`apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` 第 484–492 行；`project.pbxproj` 的 `TEST_HOST`。
+
+考虑过但不记为发现的一项：任务 2 把 `installation` 检查加入 `doctor.Service` 后，desktop 快照的 health 会随之出现这个检查，未安装进程的状态变为 degraded。这一传递不需要 desktop 代码改动，任务 4 已负责确认它传到 health 部分；App 对未知检查名有 “Other health check” 兜底（`DesktopCopy.swift` 第 182 行），中间状态不会出错。
+
+没有运行产品测试，也没有执行真实 brew、原生 App 或屏障；本轮只评审文档。
+
+修复范围：ISO-TASKS-R9-F1、ISO-TASKS-R9-F2、ISO-TASKS-R9-F3、ISO-TASKS-R9-F4、ISO-TASKS-R9-F5。
+
+## Repair 8 — 2026-11-07
+
+### 范围与内容身份
+
+- Repair author：OpenCode。用户明确授权修复 Round 9 的五项发现；本次修改任务定义及本修复交接记录，未实施任何产品任务。
+- Workspace：`agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD：`1425256d96b510e060a9bd0496df769b67495c33`。
+- 输入：Round 9 状态同步后的 tasks.md blob `908a6f009d7ca8ab9e9f7eadab15418c9617c595`、fingerprint `add006c28f2ccab3ba9db052570e786f56ece533a04026a41c4f4147eae5c7f9`。
+- 修复候选：tasks.md blob `2b07829fa03b225b70d993d4d9170d12bdc5ac1b`、fingerprint `fde5b6465d4746a8d56fb44cd1f7443ea3a566c1314060b30983028f37ee179a`；沿用 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit：`installed-state-ownership:tasks.md`；Beads：`ad-installed-state-ownership-doc-tasks`。
+
+### 逐项确认与修复
+
+| 发现 | 当前证据与修复 | 状态 |
+| --- | --- | --- |
+| ISO-TASKS-R9-F1 | 确认任务 2 原清单由实现者挑选“消费状态”的入口，不能检查漏接守卫。恢复候选上全部已有叶子与覆盖表双向校验；`contract_test.go:64–99` 的 `leafCommands` 对 shell/交互/内部 runtime 有契约过滤，修订要求这些入口另列运行器而非安全豁免。合法参数、数据、stdin、路径分支和独立预期都必须齐全。仅真实配置拒绝及尚未新增的命令由 3/4/5 产生；8 在最终集合复跑。原则、任务 2 门禁和迁移表已同步。 | repaired in candidate；待独立复评 |
+| ISO-TASKS-R9-F2 | 确认正常 Debug helper 不带验收 tag（`scripts/build-macos-app.sh:82–96`），不存在“任务 2 的原生验收 helper”交付。任务 6 明确负责原生夹具：Swift 内部账户依赖与真实 flock、`EmbeddedHelperProcess` 替身层、临时 bundle 中单独构建的真实验收 helper、只在 `_test.go` 编译的 Go 回执/锁驱动。用相同临时账户和 helper 物理路径关联两端；installed 用例 HOME 等于注入账户。增加测试脚本和 Go/Swift 测试文件归属，区分原生组件集成与完整 App/安装器验收。生产构建/打包无 tag，生产账户解析不可覆盖，不新增线路字段。 | repaired in candidate；待独立复评 |
+| ISO-TASKS-R9-F3 | 确认 `scripts/test-macos-app.sh:49–64` 已给 Debug XCTest 传临时 HOME/CFFIXED_USER_HOME/测试 HOME、关闭代码签名；`AgentDeckApp.swift:126–172` 对 helper 环境、App Group 存储与偏好使用测试路径，`project.pbxproj:882` 指定 Debug TEST_HOST。恢复任务 7 自己运行 `make test-macos-app`；任务 6 仅为自己的变更再跑。无签名宿主测试不等同于已注册/签名产物，CLT verifier 不替代宿主回归。依赖理由和迁移表同步纠正。 | repaired in candidate；待独立复评 |
+| ISO-TASKS-R9-F4 | 确认任务 6 迁出的“实际卸载”在旧 6a/A5 中缺失。任务 8 两处均补齐：未安装 App 持续运行时，实际安装、接管、`unregister --remove` 加安装方式后续卸载步骤成功；目标和匹配回执清理，不能只证明锁可取。迁移表扩大到所有迁出断言，明确任务 6 实际命令链、任务 7 双 App 共存及撤销宿主回归迁移的去向。 | repaired in candidate；待独立复评 |
+| ISO-TASKS-R9-F5 | 对照 HEAD 原任务 2 第 9/10 条，I2 补回不同 channel 被拒绝后目标 P/原回执不变及等待期间无安装对象访问；I3 补回锁内暂停不改 P/不读中间态、A 恢复后同一次持锁完成，以及锁外暂停时 B 先完成并开会话、A 等待后成功或上限失败且期间不改目标/回执。保留崩溃释放与原子目标断言。 | repaired in candidate；待独立复评 |
+
+F2 使用现有 `EmbeddedHelperRunner(appBundleURL:process:environment:)`（`EmbeddedHelperRunner.swift:473–502`）与 `FoundationEmbeddedHelperProcess` 的真实子进程环境传递（`:200–219`），以及任务 1 已有的 `Resolver.WriteReceipt`、`AcquireOwnershipLock`。新增的是测试装配和原生内部依赖，不需要扩大 `state-location` 的线路契约。新增夹具和测试驱动目前仍是任务 6 的实施义务；本次源码核对仅证明规划落点与现有接口匹配，不宣称这些未来测试已运行。
+
+### 验证与交接边界
+
+任务 1、3、4、9 小节与修复入口内容逐字一致；任务 1 的已交付勾选保持。声明依赖图仍无环，任务 2 的闭包为 `{1}`，任务 8 的闭包恰为 `{1,2,3,4,5,6,7}`。追加本节之前，整个既有评审记录与入口快照逐字相同（77,006 bytes，SHA-256 `8c45b332e6e86f02e93d42dd7d923c1eeb6227eab8d96344a01531f762732d39`）；历史 FAIL 和发现内容没有被覆盖。
+
+本轮是文档 Repair，采用源码对照、逐项断言回填及 L0 检查，不运行 Go/Swift 产品测试，也不运行屏障或真实安装。Documents 中 tasks.md Review 保持未勾选；五项仅声明候选已修复，不自签独立 PASS。Round 9 FAILED 属于其原目标内容，不能改写为新候选的通过证据；修复交接不跨 Task 完成门禁，新候选的独立复评与精确态门禁由后续复评执行。
+
+L0 结果：`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0。声明图与历史保留检查通过；它们不证明五项发现已通过独立复评，也不证明尚未实现的运行时行为。修复候选已可交接，文档任务转回 `in_review` 并释放认领；任务 2–9 的文档阻塞保持。
+
+## Round 10 — 2026-11-07
+
+### 📋 任务分解复评报告
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Claude Code（Beads actor `claude-code`）；独立复核 OpenCode 的 Repair 8，未委派，未修复任务行为或产品内容。
+- Method: 逐条对照 Round 9 的五项发现检查修复候选；重新执行依赖闭包反查（验收断言 → 被测入口 → 实现任务 → 是否在依赖闭包内）；对照现有代码和脚本核实修复引用的接口；确认任务 1、3、4、9 小节未被改动。
+- Scope: tasks.md 的分解、依赖、验收归属与文档集合。需求、CLI、架构和标本作为未变输入复用。
+- HEAD: `1425256d96b510e060a9bd0496df769b67495c33`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: Repair 8 候选 tasks.md blob `2b07829fa03b225b70d993d4d9170d12bdc5ac1b`；fingerprint `fde5b6465d4746a8d56fb44cd1f7443ea3a566c1314060b30983028f37ee179a`。
+- Final state after status sync: blob `148cb6e60b6e3866157796cca449403d5f007374`；fingerprint `c47933121f31148e364e8608ab74790db5763fbe1bf2f703576aeed031c03391`。同步只勾选了 Documents 矩阵中 tasks.md 的 Review，并改了第 29、32 行两句状态说明；任务定义未改。
+- Identity recipe: SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:tasks.md`；Beads: `ad-installed-state-ownership-doc-tasks`。
+- Target ContentState: `installed-state-ownership:tasks:rereview-r10-20261107-c4793312-final-state`。
+- 完成门禁：VERIFIED
+- Gate evidence: 固定 gate-status 查询（返回列同 Round 9 的调整，判定逻辑未改）对本轮精确目标返回 VERIFIED。review 证据 `installed-state-ownership:tasks:r10-20261107-c4793312:review` 和 L0 证据 `installed-state-ownership:tasks:r10-20261107-c4793312:l0` 都有效；review 证据经 `depends_on` 复用未变的需求 r2、CLI r4、架构 r7 通过证据，与 Round 8 的形状相同；missing、invalidated、unresolved 均为空。
+- L0 results: 状态同步后，`python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py` 均 exit 0。
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 改进建议 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+**ISO-TASKS-R9-F1 — CLOSED。** 第 56 行和第 146–148 行改为从真实命令树与 `cmd/agentdeck/contract_test.go` 的固定清单枚举全部已有叶子，并要求覆盖表与枚举结果双向校验，不再由实现者自判范围。核实 `contract_test.go` 第 64–83 行的 `leafCommands` 确实过滤了 shell 脚本、shell lifecycle、交互和内部 runtime 表面；修复要求这些表面单列运行器，而不是豁免。客户端配置命令在非真实账户的临时 HOME 下照常纳入。第 162 行的门禁和迁移表第 392–393 行同步了这一点，任务 8 第 322 行在最终集合上复跑。
+
+**ISO-TASKS-R9-F2 — CLOSED。** 任务 6 第 267–278 行由本任务产出原生夹具，并列出了文件：
+- Swift 确定性层：经现有 `EmbeddedHelperProcess` 注入替身，锁仍用真实 `flock`，账户只在测试构造时替换。
+- 真实 helper 层：`scripts/test-macos-app.sh` 只在临时测试根内用验收 tag 构建 helper，放入临时 bundle；`build-macos-app.sh` 和打包脚本不动，符合 architecture.md 第 261 行的禁令。
+- 两端共用一把锁：`_test.go` 内的 Go 驱动经包内测试缝注入同一个临时账户，调用任务 1 的 `AcquireOwnershipLock` / `WriteReceipt`，与 Swift 竞争同一路径。
+- 不新增线路字段，生产账户解析不接受覆盖。
+
+核实了引用的接口：`EmbeddedHelperRunner(appBundleURL:process:environment:timeout:)`（`EmbeddedHelperRunner.swift` 第 473–478 行）、`FoundationEmbeddedHelperProcess` 把 environment 传给子进程（第 218 行附近的 `process.environment = environment`），以及任务 1 导出的两个 API。第 88、271 行改正了“任务 2 的验收 helper”这一误指。
+
+**ISO-TASKS-R9-F3 — CLOSED。** 任务 7 第 308 行要求在自己的候选上运行 `make test-macos-app`，并点明 Debug `TEST_HOST`，以及只有 Command Line Tools 时如何处理；任务 6 第 289 行明确不接收任务 7 的回归缺口。依赖表第 71 行和第 75 行改正了理由。另外核实 `AgentDeckApp.swift` 第 126–172 行在测试 HOME 下把 helper 环境、`AppGroupSnapshotStore` 和偏好域都切到了测试路径，进一步确认现有 harness 不碰真实状态。
+
+**ISO-TASKS-R9-F4 — CLOSED。** 任务 8 的 6a（第 346 行）和 A5（第 352 行）都加入了未安装 App 运行期间实际卸载成功，要求跑完 `install unregister --remove` 及安装方式的后续步骤，并断言目标和匹配回执已清理。迁移表（第 385–396 行）改了标题，补齐了来自任务 2、4、6、7 的全部迁移。
+
+**ISO-TASKS-R9-F5 — CLOSED。** I2（第 252 行）补回：B 等待期间不读写安装对象、看到 A 的正式回执后再覆盖、不同 channel 被拒时 P 与原回执逐字节不变。I3（第 253 行）补回：锁内暂停期间不改 P、不读中间态，A 恢复后在同一次持锁内完成；锁外暂停时 B 正常完成并开启会话，A 等待后或成功、或以 `owner_running` 失败，期间不改文件。与 `1425256:tasks.md` 第 136–137 行逐项对得上。
+
+**依赖与历史。** 依赖图仍无环；任务 2 的闭包为 {1}，任务 8 的闭包为 {1–7}；任务 1 小节与 HEAD 逐字相同。ISO-TASKS-R1-F1/F2、R7-F1 保持 CLOSED。Round 9 记录完整保留（5 项发现，门禁 FAILED）。
+
+#### 📝 总结
+
+五项发现全部关闭，没有新增发现，结论 PASS，精确态门禁 VERIFIED。复评对象是 Repair 8 候选 blob `2b07829f…`（指纹 `fde5b646…`），最终态 blob `148cb6e6…`（指纹 `c4793312…`）。四份设计文档现在都已通过；主题还有任务 2–9 未实施，主题和来源缺陷都没有完成。
+
+考虑过但不记为发现的两点：
+- I3 锁外分支的“等待 B 会话结束后成功”，与并列的“以 `owner_running` 失败”对照，指的是取得排他锁；之后的登记结果按架构“安装回执”第 2 步判定，没有与架构冲突。
+- 任务 6 的 Go 驱动 `TestNativeOwnershipFixture` 在普通 `./...` 回归中没有夹具参数，按 Go helper-process 的惯用写法应直接返回；同一段已要求“默认不能回退真实账户”，不构成契约缺口。实现评审时应确认它不会让全量 Go 回归失败。
+
+Evidence: 内容身份、L0 与门禁见上方字段。核对的源码位置以 HEAD `1425256` 为准：`cmd/agentdeck/contract_test.go` 第 64–83 行，`apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` 第 198–222、470–492 行，`apps/macos/AgentDeckApp/AgentDeckApp.swift` 第 126–172 行，以及 `scripts/test-macos-app.sh`。没有运行产品测试，也没有执行原生、屏障或真实安装；这些仍是各实现任务的验证义务。
+
+调度同步：门禁 VERIFIED 后，文档任务转入 `awaiting_commit`。按第 57 行的要求，实现任务按新依赖表重绑定：新增 `installer-receipts` → `state-root-guard`、`app-state-location` → `debug-app-identity` 两条依赖；其余已有依赖都是传递依赖，保留不动。8 个实现任务的描述都改为指向本轮批准，任务 2、4、7 的摘要按新分解改正。读回确认 8 个任务都是 open、未指派，仍被本文档任务和各自的开发授权门阻塞。没有提交或推送。
+
+Task checkpoint：ad-installed-state-ownership-doc-tasks；content_state `c47933121f31148e364e8608ab74790db5763fbe1bf2f703576aeed031c03391`；gate VERIFIED。
+提交建议：经明确授权后，提交 `docs/topics/installed-state-ownership/tasks.md` 与 `docs/topics/installed-state-ownership/reviews/tasks.md`，作为一个“重写任务分解”的签名文档提交；不夹带其他文件。本轮未提交。
+推送建议：目标 origin/feature/installed-state-ownership；需显式推送授权，并先核对提交对象、签名和范围。本地分支还领先远端（含任务 1 的提交 `1425256` 等），推送前要一并确认。本轮未推送。
