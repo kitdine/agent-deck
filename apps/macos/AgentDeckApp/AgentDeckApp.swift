@@ -219,7 +219,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		model = MenuBarViewModel(
 			coordinator: coordinator,
 			switchController: switchController,
-			preferences: preferences
+			preferences: preferences,
+			sessionScopeReader: runner
 		)
 		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
 		super.init()

@@ -75,8 +75,22 @@ func firstDifference(existing, generated string) string {
 	return fmt.Sprintf("line %d: length %d vs %d", min(len(existingLines), len(generatedLines))+1, len(existingLines), len(generatedLines))
 }
 
+// fixtureSessionScopePublication replaces the session-scope view's
+// publication ID in canonical fixtures. That ID digests the selection and the
+// serving vector, whose epochs every new database mints at random, so no two
+// producer runs emit the same value. Every other byte stays producer output;
+// TestSessionScopeViewPartitionsTheSelectionWithoutTouchingLegacySessions
+// checks the real identity.
+const fixtureSessionScopePublication = "fixture-session-scope-publication"
+
 func encodeFixture(t *testing.T, result Result) string {
 	t.Helper()
+	if view := result.Snapshot.SessionScopeView; view != nil && view.PublicationID != nil {
+		normalized := *view
+		id := fixtureSessionScopePublication
+		normalized.PublicationID = &id
+		result.Snapshot.SessionScopeView = &normalized
+	}
 	envelope := output.New("desktop.snapshot", result.Snapshot, fixtureNow)
 	envelope.Partial, envelope.Warnings = result.Partial, result.Warnings
 	if envelope.Warnings == nil {

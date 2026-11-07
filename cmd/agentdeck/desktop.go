@@ -146,7 +146,53 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
 	}
-	command.AddCommand(snapshot, refreshIndexes, newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
+	command.AddCommand(snapshot, refreshIndexes, newDesktopSessionScopeCommand(opts), newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
+	return command
+}
+
+// newDesktopSessionScopeCommand reads one explicit session-scope selection
+// from committed state. It is the App's read path for a selection other than
+// the one a publication carries, and the explicit-selection read a consumer
+// such as the Widget publisher uses; it never scans or opens a source.
+func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
+	request := desktop.SessionScopeRequest{Client: "all", Period: "today", RecentLimit: desktop.DefaultRecentLimit}
+	command := &cobra.Command{
+		Use:     "session-scope",
+		Short:   "Read one session-scope view from committed state",
+		Long:    "Read the session-scope view for one explicit scope, client and period from committed state, without scanning sources, creating state, or using the network.",
+		Example: "  agentdeck --format json desktop session-scope --scope auxiliary --client all --period 7d",
+		Args:    exactArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.format != "json" {
+				return &inputError{err: errors.New("desktop session-scope requires --format json")}
+			}
+			if err := request.Validate(); err != nil {
+				return &inputError{err: err}
+			}
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			service := desktop.Service{StateRoot: stateRoot, Home: home, Now: desktopNow, Location: displayLocation()}
+			view, err := service.SessionScopeView(cmd.Context(), request)
+			if err != nil {
+				return err
+			}
+			warnings := []string{}
+			if view.Reason != nil {
+				warnings = append(warnings, *view.Reason)
+			}
+			return writeEnvelope(opts.stdout, opts.format, "desktop.session-scope", view, !view.Available, warnings)
+		},
+	}
+	command.Flags().StringVar(&request.Scope, "scope", "", "Session scope: work, auxiliary or all (required)")
+	command.Flags().StringVar(&request.Client, "client", request.Client, "Client: all, codex or claude")
+	command.Flags().StringVar(&request.Period, "period", request.Period, "Period: today, 7d or 30d")
+	command.Flags().IntVar(&request.RecentLimit, "recent-limit", request.RecentLimit, "Recent sessions to include (1-20)")
 	return command
 }
 

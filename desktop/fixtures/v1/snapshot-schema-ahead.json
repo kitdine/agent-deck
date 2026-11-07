@@ -97,6 +97,36 @@
       "available": false,
       "reading": true,
       "clients": []
+    },
+    "session_scope_view": {
+      "available": false,
+      "reason": "default_unconfirmed",
+      "default": {
+        "confirmed": false,
+        "value": null,
+        "revision": null,
+        "reason": "read_failed"
+      },
+      "selection": null,
+      "publication_id": null,
+      "generated_at": null,
+      "origin_coverage": null,
+      "counts": null,
+      "recent": [],
+      "work_signals": {
+        "activity": {
+          "available": false,
+          "items": []
+        },
+        "workflow": {
+          "available": false,
+          "items": []
+        },
+        "tooling": {
+          "available": false,
+          "items": []
+        }
+      }
     }
   },
   "warnings": [

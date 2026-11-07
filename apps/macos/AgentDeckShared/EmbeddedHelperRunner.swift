@@ -662,6 +662,43 @@ public struct EmbeddedHelperRunner: Sendable {
 		return envelope.data
 	}
 
+	/// Reads one explicit session-scope selection from committed state. It never
+	/// scans: the helper command opens state read-only. The answer must name
+	/// exactly the requested selection; anything else is malformed.
+	public func sessionScopeView(
+		_ selection: DesktopSessionScopeSelectionV1,
+		recentLimit: Int = Self.defaultRecentLimit
+	) async throws -> DesktopSessionScopeViewV1 {
+		guard (Self.minimumRecentLimit ... Self.maximumRecentLimit).contains(recentLimit) else {
+			throw HelperExecutionError.invalidRecentLimit(recentLimit)
+		}
+		let output = try await process.run(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(Self.sessionScopeArguments(selection, recentLimit: recentLimit)),
+			environment: environment,
+			timeout: timeout
+		)
+		guard output.exitStatus == 0, !output.stdoutTruncated, !output.stderrTruncated else {
+			throw HelperExecutionError.nonZeroExit(output.exitStatus)
+		}
+		let view: DesktopSessionScopeViewV1
+		do {
+			view = try decodeDesktopSessionScopeEnvelopeV1(output.stdout)
+		} catch {
+			throw HelperExecutionError.malformedOutput
+		}
+		guard view.selection == selection else { throw HelperExecutionError.malformedOutput }
+		return view
+	}
+
+	public static func sessionScopeArguments(_ selection: DesktopSessionScopeSelectionV1, recentLimit: Int) -> [String] {
+		[
+			"--format", "json", "desktop", "session-scope",
+			"--scope", selection.scope.rawValue, "--client", selection.client,
+			"--period", selection.period, "--recent-limit", String(recentLimit),
+		]
+	}
+
 	public func bootstrapServingSnapshot(
 		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
 		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void
@@ -1698,6 +1735,15 @@ extension EmbeddedHelperRunner: TelemetryTransport {
 		(try embeddedHelperURL(), ["telemetry", "serve", "--owner", "app"], environment)
 	}
 }
+
+/// Explicit session-scope reads. The Popover controller and any other consumer
+/// (such as a Widget publisher) name their own selection; nothing reads the
+/// Popover's current choice through this.
+public protocol DesktopSessionScopeReading: Sendable {
+	func sessionScopeView(_ selection: DesktopSessionScopeSelectionV1, recentLimit: Int) async throws -> DesktopSessionScopeViewV1
+}
+
+extension EmbeddedHelperRunner: DesktopSessionScopeReading {}
 
 @MainActor
 public protocol DesktopSnapshotRefreshing: AnyObject {

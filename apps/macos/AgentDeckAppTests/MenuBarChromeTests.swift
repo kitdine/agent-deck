@@ -4,6 +4,13 @@ import XCTest
 @testable import AgentDeck
 @testable import AgentDeckShared
 
+private final class ClientFilterBoundsCapture: @unchecked Sendable {
+	private let lock = NSLock()
+	private var stored: [String: CGRect] = [:]
+	func update(_ frames: [String: CGRect]) { lock.withLock { stored = frames } }
+	var frames: [String: CGRect] { lock.withLock { stored } }
+}
+
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
 	private static var retainedFocusWindows = [NSWindow]()
@@ -253,6 +260,7 @@ final class MenuBarChromeTests: XCTestCase {
 	func testInitialPopoverPreparationDoesNotShowAWindowOrMoveFocus() async throws {
 		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
 		let controller = MenuBarItemController(model: model, openSettings: {})
+		XCTAssertNil(controller.presentationPreparationWindow)
 		let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 120, height: 40),
 			styleMask: [.titled], backing: .buffered, defer: false)
 		let sentinel = NSButton(title: "Keep focus", target: nil, action: nil)
@@ -260,8 +268,7 @@ final class MenuBarChromeTests: XCTestCase {
 		window.makeKeyAndOrderFront(nil)
 		Self.retainedFocusWindows.append(window)
 		XCTAssertTrue(window.makeFirstResponder(sentinel))
-		let visibleWindowNumbers = Set(NSApp.windows.filter(\.isVisible).map(\.windowNumber))
-		let existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+		let keyWindowBefore = NSApp.keyWindow
 		await model.coordinator.refresh()
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(2))
@@ -269,11 +276,13 @@ final class MenuBarChromeTests: XCTestCase {
 			try await Task.sleep(for: .milliseconds(10))
 		}
 		XCTAssertTrue(controller.isInitialPresentationPrepared)
+		XCTAssertFalse(controller.popoverIsShown)
 		XCTAssertTrue(window.firstResponder === sentinel)
-		XCTAssertEqual(Set(NSApp.windows.filter(\.isVisible).map(\.windowNumber)), visibleWindowNumbers)
-		let preparationWindows = NSApp.windows.filter { !existingWindows.contains(ObjectIdentifier($0)) }
-		XCTAssertEqual(preparationWindows.count, 1)
-		let preparationWindow = try XCTUnwrap(preparationWindows.first)
+		XCTAssertTrue(NSApp.keyWindow === keyWindowBefore)
+		XCTAssertEqual(controller.presentationPreparationCount, 1)
+		// Status-bar scenes from other controllers can connect or retire during
+		// the await. Inspect this controller's actual preparation window.
+		let preparationWindow = try XCTUnwrap(controller.presentationPreparationWindow)
 		XCTAssertFalse(preparationWindow.isVisible)
 		XCTAssertFalse(preparationWindow.isKeyWindow)
 		XCTAssertFalse(preparationWindow.contentView?.subviews.isEmpty ?? true,
@@ -337,8 +346,24 @@ final class MenuBarChromeTests: XCTestCase {
 	}
 
 	func testFirstOpenRetiresPreparationWindowWithoutRemovingPopoverContent() async throws {
-		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let views = WireFixture.fixtureScopeViews()
+		let reader = StubSessionScopeReader { selection in
+			guard let view = views[selection] else { return .failure(.malformedOutput) }
+			return .view(view)
+		}
+		let model = await makeModel(host: host, sessionScopeReader: reader)
 		await model.coordinator.refresh()
+		model.selectedPanel = .sessions
+		@MainActor func waitForScope(_ scope: DesktopSessionScopeV1) async throws {
+			let clock = ContinuousClock()
+			let deadline = clock.now.advanced(by: .seconds(2))
+			while (model.sessionScope.accepted?.selection?.scope != scope || model.sessionScope.request != .idle), clock.now < deadline {
+				try await Task.sleep(for: .milliseconds(5))
+			}
+			XCTAssertEqual(model.sessionScope.accepted?.selection?.scope, scope)
+			XCTAssertEqual(model.sessionScope.request, .idle)
+		}
 		let existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
 		let controller = MenuBarItemController(model: model, openSettings: {})
 		defer { controller.closePopover() }
@@ -373,6 +398,39 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertFalse(visibleWindow === preparationWindow)
 		XCTAssertTrue(visibleWindow.isVisible, "teardown must not remove the transferred hosting view")
 		XCTAssertTrue(visibleWindow.firstResponder === visibleWindow)
+		try await waitForScope(.work)
+		model.chooseSessionScope(.all)
+		try await waitForScope(.all)
+
+		// A new confirmed default does not replace this open's temporary choice.
+		var nextView = WireFixture.sessionScopeView(scope: "auxiliary",
+			defaults: WireFixture.confirmedDefault("auxiliary", revision: 2), sessions: 0,
+			projects: 0, knownDurationMS: 0, unknownCount: 0, recent: [])
+		nextView["generated_at"] = "2026-08-13T10:01:00Z"
+		nextView["publication_id"] = "native-reopen-default-2"
+		host.behavior = .envelope(WireFixture.envelope(sessionScope: .custom(nextView), generatedAt: "2026-08-13T10:01:00Z"))
+		await model.coordinator.refresh()
+		let defaultClock = ContinuousClock()
+		let defaultDeadline = defaultClock.now.advanced(by: .seconds(2))
+		while model.sessionScopeField.view?.default.value != .auxiliary, defaultClock.now < defaultDeadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertEqual(model.sessionScopeField.view?.default.value, .auxiliary)
+		XCTAssertEqual(model.sessionScopeField.view?.default.revision, 2)
+		try await waitForScope(.all)
+		XCTAssertEqual(model.sessionScope.requestedScope, .all)
+
+		// Exercise the actual NSPopover close/show path twice, without key events.
+		for _ in 0 ..< 2 {
+			controller.closePopover()
+			XCTAssertFalse(controller.popoverIsShown)
+			button.performClick(nil)
+			XCTAssertTrue(controller.popoverIsShown)
+			try await waitForScope(.auxiliary)
+			XCTAssertEqual(model.sessionScope.requestedScope, .auxiliary)
+			XCTAssertTrue(preparedView.window?.isVisible == true)
+			XCTAssertEqual(controller.presentationPreparationCount, 1)
+		}
 	}
 
 	func testQuotaTabIsHiddenWhenReadingIsOffAndFallsBackToUsage() async throws {
@@ -748,6 +806,137 @@ final class MenuBarChromeTests: XCTestCase {
 		for (name, png) in renderings {
 			XCTAssertGreaterThan(png.count, 4_000, "\(name) should contain rendered surface content")
 			add(renderingAttachment(png, named: "Work signals narrow — \(name) — \(DesktopLocale.current.identifier) @2x"))
+		}
+	}
+
+	/// Native renderings of the final session-scope surface: every state that
+	/// changes layout, at the regular and narrow Popover widths, in both
+	/// themes. Each must lay out real content, and each is attached for review.
+	func testSessionScopeStatesRenderAtBothWidthsAndThemes() async throws {
+		let override: [String: Any] = ["value": "work", "binding_status": "matched", "binding_limited": false, "applied": true]
+		let rows = [
+			WireFixture.scopeRecent(id: "task-01", project: "agent-deck", effective: "work", override: override, revision: 2),
+			WireFixture.scopeRecent(id: "child-1", project: "a-project-name-long-enough-to-need-truncation", reason: "task_child_unconfirmed"),
+			WireFixture.scopeRecent(id: "old-01", project: "research", first: NSNull(), last: NSNull()),
+		]
+		let ready = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(sessionScope: .custom(
+			WireFixture.sessionScopeView(sessions: 3, projects: 2, knownDurationMS: 2_700_000, missing: 1, unknownCount: 2, recent: rows))))))
+		await ready.coordinator.refresh()
+		let views = WireFixture.fixtureScopeViews()
+		let failingReader = StubSessionScopeReader { $0.scope == .auxiliary ? .failure(.nonZeroExit(1)) : .view(views[$0]!) }
+		let failed = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())), sessionScopeReader: failingReader)
+		await failed.coordinator.refresh()
+		failed.beginSessionScopePresentation()
+		failed.chooseSessionScope(.auxiliary)
+		await failed.synchronizeSessionScope()
+		let legacy = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(sessionScope: .absent))))
+		await legacy.coordinator.refresh()
+		let unconfirmed = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(sessionScope: .custom(
+			WireFixture.unavailableSessionScopeView(reason: "default_unconfirmed", defaults: WireFixture.unconfirmedDefault, selection: nil))))))
+		await unconfirmed.coordinator.refresh()
+		XCTAssertEqual(ready.sessionsPanel.scope.state, .ready)
+		XCTAssertNotNil(failed.sessionsPanel.scope.retryLabel)
+		XCTAssertEqual(legacy.sessionsPanel.scope.state, .legacy)
+		XCTAssertEqual(unconfirmed.sessionsPanel.scope.state, .defaultUnknown)
+
+		let states: [(String, SessionsPanelModel, SessionScopeRow?, CGFloat, Int)] = [
+			("ready", ready.sessionsPanel, nil, 900, 12_000),
+			("detail", ready.sessionsPanel, ready.sessionsPanel.scope.rows.first, 760, 10_000),
+			("failed", failed.sessionsPanel, nil, 900, 10_000),
+			("legacy", legacy.sessionsPanel, nil, 200, 3_000),
+			("default-unknown", unconfirmed.sessionsPanel, nil, 200, 3_000),
+		]
+		for (name, panel, detail, height, minimum) in states {
+			for width in [CGFloat(280), 420] {
+				for scheme in [ColorScheme.light, .dark] {
+					let view = SessionsPanelView(panel: panel, initialOriginDetail: detail)
+						.padding(MenuBarGeometry.padding)
+						.environment(\.colorScheme, scheme)
+						.tint(DesktopVisualTheme.accent)
+						.foregroundStyle(DesktopVisualTheme.text)
+						.background(DesktopVisualTheme.background)
+					let png = try renderedViewPNG(view, size: NSSize(width: width, height: height))
+					XCTAssertGreaterThan(png.count, minimum, "\(name) \(Int(width)) \(scheme)")
+					add(renderingAttachment(png, named: "Session scope — \(name) — \(Int(width))pt — \(scheme) @2x"))
+				}
+			}
+		}
+	}
+
+	/// ASC-DM-R3-F1: the scope note, now naming both data domains, stays within
+	/// the native widths in both shipped languages. The selection lists no
+	/// session yet carries work signals — the state the note explains.
+	func testClientFiltersKeepEveryTargetInsideTheAvailableWidth() async throws {
+		for width: CGFloat in [280, 420] {
+			let available = width - 2 * MenuBarGeometry.padding
+			for language in ["en", "zh-Hans"] {
+				for largeValues in [false, true] {
+					for largeType in [false, true] {
+						let values = largeValues ? ["≈US$12,345.67", "≈US$6,234.56", "≈US$6,111.11"]
+							: language == "en" ? ["$1.44", "$1.44", "$0.10"] : ["US$1.44", "US$1.44", "US$0.10"]
+						let options = [
+							FilterOption(id: "all", label: language == "en" ? "All" : "全部", value: values[0]),
+							FilterOption(id: "codex", label: "Codex", value: values[1]),
+							FilterOption(id: "claude", label: "Claude", value: values[2]),
+						]
+						let capture = ClientFilterBoundsCapture()
+						let root = MenuBarClientFilters(options: options, selectedID: "all", select: { _ in })
+							.environment(\.dynamicTypeSize, largeType ? .accessibility3 : .large)
+							.frame(width: available)
+							.onPreferenceChange(ClientFilterFramesPreferenceKey.self) { capture.update($0) }
+						let hosting = NSHostingView(rootView: root)
+						hosting.frame = NSRect(x: 0, y: 0, width: available, height: 240)
+						hosting.layoutSubtreeIfNeeded()
+						_ = try renderedViewPNG(hosting)
+						let clock = ContinuousClock()
+						let deadline = clock.now.advanced(by: .seconds(2))
+						while capture.frames.count < options.count, clock.now < deadline {
+							try await Task.sleep(for: .milliseconds(5))
+							hosting.layoutSubtreeIfNeeded()
+						}
+						let label = "\(language), \(width)pt, large values \(largeValues), large type \(largeType)"
+						let frames = capture.frames
+						XCTAssertEqual(Set(frames.keys), Set(options.map(\.id)), label)
+						for option in options {
+							guard let frame = frames[option.id] else { continue }
+							XCTAssertGreaterThanOrEqual(frame.minX, -0.5, "\(option.id): \(label)")
+							XCTAssertLessThanOrEqual(frame.maxX, available + 0.5, "\(option.id): \(label)")
+							XCTAssertGreaterThan(frame.width, 0, label)
+							XCTAssertGreaterThanOrEqual(frame.height, MenuBarGeometry.rowMinimumHeight, label)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	func testSessionScopeNoteFitsNativeWidthsInBothLanguages() async throws {
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		let view = WireFixture.sessionScopeView(sessions: 0, projects: 0, knownDurationMS: 0, unknownCount: 0, recent: [])
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(sessionScope: .custom(view)))))
+				await model.coordinator.refresh()
+				model.selectedPanel = .sessions
+				XCTAssertEqual(model.sessionsPanel.scope.state, .ready, language)
+				XCTAssertTrue(model.sessionsPanel.scope.rows.isEmpty, language)
+				XCTAssertEqual(model.sessionsPanel.workSignals.state, .captured, language)
+				let hosting = NSHostingView(rootView: MenuBarSurfaceView(model: model))
+				hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 900)
+				hosting.layoutSubtreeIfNeeded()
+				hosting.displayIfNeeded()
+				XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1, "\(language) \(width)")
+				let png = try renderedViewPNG(hosting)
+				XCTAssertGreaterThan(png.count, 8_000, "\(language) \(width)")
+				add(renderingAttachment(png, named: "Session scope note — \(language) — \(width)pt"))
+			}
 		}
 	}
 

@@ -36,7 +36,7 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	private let openSettings: () -> Void
 	private var preparedHeight = MenuBarGeometry.maximumHeight
 	private var hasPresentedPopover = false
-	private var presentationPreparationWindow: NSWindow?
+    private(set) var presentationPreparationWindow: NSWindow?
 	private var presentationPreparationDisplayLink: CADisplayLink?
 	private(set) var isInitialPresentationPrepared = false
 	private(set) var presentationPreparationCount = 0
@@ -222,6 +222,9 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			closePopover()
 		} else {
 			hasPresentedPopover = true
+			// Each open starts the session area from the confirmed default; the
+			// previous open's temporary scope and pending answers do not carry over.
+			model.beginSessionScopePresentation()
 			PerfTrace.mark(.popoverShowBegin)
 			if PerfTrace.isEnabled { PerfFrameProbe.shared.rearm() }
 			configurePopoverGeometry(for: sender)

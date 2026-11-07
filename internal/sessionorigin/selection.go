@@ -128,7 +128,30 @@ type Snapshot struct {
 	SelectedSessionCount int
 	UnknownCount         int
 	Counts               Counts
-	auxiliary            []usage.SessionKey
+	// CoverageGaps counts, by reason, the sessions of the selection's client
+	// and time window — before the scope is applied — whose effective class is
+	// unknown only because classification input could not be read or no longer
+	// matches the indexed source (CoverageGapReasons). A scope that excludes
+	// unknown sessions, such as auxiliary, is incomplete exactly when this is
+	// not empty, even though none of those sessions is in its own set.
+	CoverageGaps map[string]int
+	auxiliary    []usage.SessionKey
+}
+
+// CoverageGapReasons are the unknown reasons that mean classification input
+// was missing or stale rather than confirmed: a session with one of them might
+// be auxiliary once its source is readable again. Confirmed unknown states
+// (metadata missing, unconfirmed task child, conflict, unsupported rule) are
+// not coverage gaps.
+var CoverageGapReasons = []string{ReasonOriginInputMismatch, ReasonOriginSourceUnavailable}
+
+func isCoverageGap(reason string) bool {
+	for _, gap := range CoverageGapReasons {
+		if reason == gap {
+			return true
+		}
+	}
+	return false
 }
 
 // SessionFilter restricts work signals to the snapshot's scope. Work keeps
@@ -243,6 +266,7 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 	}
 	selected := map[sessionKey]bool{}
 	snapshot.Sessions = []SelectedSession{}
+	snapshot.CoverageGaps = map[string]int{}
 	for _, indexed := range index.Sessions {
 		key := sessionKey{indexed.Client, indexed.SessionID}
 		var origin *store.SessionOrigin
@@ -257,7 +281,13 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 		if classified.Effective == ClassAuxiliary {
 			snapshot.auxiliary = append(snapshot.auxiliary, usage.SessionKey{Client: indexed.Client, SessionID: indexed.SessionID})
 		}
-		if !selection.includes(indexed.Metadata, classified.Effective) {
+		if !selection.inWindow(indexed.Metadata) {
+			continue
+		}
+		if classified.Effective == ClassUnknown && isCoverageGap(classified.ReasonCode) {
+			snapshot.CoverageGaps[classified.ReasonCode]++
+		}
+		if !InScope(selection.Scope, classified.Effective) {
 			continue
 		}
 		selected[key] = true
@@ -286,7 +316,9 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 	return snapshot
 }
 
-func (s Selection) includes(metadata session.Metadata, effective string) bool {
+// inWindow applies the selection's client and time window, which come before
+// the scope.
+func (s Selection) inWindow(metadata session.Metadata) bool {
 	if s.Client != "" && metadata.Client != s.Client {
 		return false
 	}
@@ -296,7 +328,7 @@ func (s Selection) includes(metadata session.Metadata, effective string) bool {
 			return false
 		}
 	}
-	return InScope(s.Scope, effective)
+	return true
 }
 
 // InScope reports whether an effective class belongs to a scope: Work holds

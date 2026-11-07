@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1033,6 +1034,19 @@ func captureSnapshotPerformanceReference(t *testing.T, state, home string) snaps
 	if result.Partial {
 		t.Fatalf("snapshot partial: warnings=%v snapshot=%#v", result.Warnings, result.Snapshot)
 	}
+	// The session-scope view's publication ID digests its selection and the
+	// committed serving vector. Epochs are minted at random per database, and
+	// even an unchanged refresh commits scan bookkeeping that advances the
+	// revisions, so the ID names a generation, not content. This contract
+	// guards content: check the identity is real, then fix it.
+	view := result.Snapshot.SessionScopeView
+	if view == nil || !view.Available || view.PublicationID == nil || !snapshotScopePublicationPattern.MatchString(`"publication_id":"`+*view.PublicationID+`"`) {
+		t.Fatalf("snapshot session-scope view lacks a publication identity: %+v", view)
+	}
+	normalized := *view
+	id := snapshotScopePublicationPlaceholder
+	normalized.PublicationID = &id
+	result.Snapshot.SessionScopeView = &normalized
 	var stream bytes.Buffer
 	if err = writeDesktopSnapshotStream(&stream, result); err != nil {
 		t.Fatalf("write stream: %v", err)
@@ -1224,6 +1238,13 @@ func snapshotPerformanceRowsDigest(ctx context.Context, state string) (string, e
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
 }
+
+// snapshotScopePublicationPattern matches a real session-scope publication ID,
+// a SHA-256 digest; captureSnapshotPerformanceReference replaces it with the
+// placeholder after checking it.
+var snapshotScopePublicationPattern = regexp.MustCompile(`^"publication_id":"[0-9a-f]{64}"$`)
+
+const snapshotScopePublicationPlaceholder = "normalized-session-scope-publication"
 
 func assertSnapshotPerformanceGolden(t *testing.T, payload []byte) {
 	t.Helper()

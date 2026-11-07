@@ -147,6 +147,66 @@ enum DesktopCopy {
 	static let sessionsSubagent = "Subagent"
 	static let sessionsSubWorkflow = "Skill / workflow"
 
+	// Session scope (auxiliary-session-classification final menu-bar surface).
+	static let sessionScopeTitle = "Session scope"
+	static let sessionScopeWork = "Work"
+	static let sessionScopeAuxiliary = "Auxiliary"
+	static let sessionClassUnknown = "Unknown"
+	static let sessionScopeNote = "Affects sessions and work analysis only. Session counts come from the session index; work analysis may include usage not linked to an indexed session. Usage and costs include all sessions."
+	static let sessionScopeUsageOverview = "Usage overview: all sessions · unaffected by session scope"
+	// Aliases of keys already in the inventory: one catalog key, one entry.
+	static let sessionScopeAllClients = settingsMenuBarScopeAll
+	static let sessionScopeSessions = panelSessions
+	static let sessionOriginUnavailable = quotaUnavailable
+	static let sessionOriginCopied = healthCopied
+	static let sessionScopeUnknownIncluded = "Includes %lld sessions with unknown origin."
+	static let sessionScopeUnknownUnavailable = "Unknown-origin count unavailable."
+	static let sessionScopeEmpty = "No sessions in this selection. Try All or another period."
+	static let sessionScopePartial = "Some origin metadata is missing; unknown sessions remain visible."
+	static let sessionScopeStale = "Showing last successful data; classification update pending."
+	static let sessionScopeLoading = "Loading %1$@; still showing previous %2$@ data."
+	static let sessionScopeLoadingFirst = "Loading %@…"
+	static let sessionScopeFailed = "%1$@ could not load; previous %2$@ data retained."
+	static let sessionScopeRetry = "Retry %@"
+	static let sessionScopeUnavailable = "Session data unavailable; counts cannot be reported."
+	static let sessionScopeUnavailableHint = "Retry using Refresh above; existing scan behavior is unchanged."
+	static let sessionScopeOverride = "Includes a user override; automatic classification retained."
+	static let sessionScopeSourceUnavailable = "Origin metadata unavailable; unconfirmed origins stay Unknown. User overrides remain effective."
+	static let sessionScopeInputMismatch = "Source generation mismatch; stale origin does not hide sessions."
+	static let sessionScopeLegacy = "Scope projection missing; session scope unavailable."
+	static let sessionScopeLegacyHint = "Legacy all-session totals cannot be used as Work counts. Update AgentDeck, then refresh."
+	static let sessionScopeDefaultUnknown = "Default session scope is unconfirmed; session view unavailable."
+	static let sessionScopeDefaultUnknownHint = "Open Settings (⌘,) to read the saved value. No Work default or counts are assumed."
+	static let sessionScopeSnapshotTime = "Session snapshot: %@"
+	static let sessionScopeKnownDuration = "Known duration"
+	static let sessionScopeMissingDuration = "%lld session durations unknown, not zero."
+	static let sessionScopeNoMatches = "No matching sessions"
+	static let sessionScopeProjectsNote = "Projects are distinct within the selection; Work and Auxiliary may overlap."
+	static let sessionScopeAnnouncement = "%1$@ · %2$lld sessions"
+	static let sessionOriginBack = "Back to sessions"
+	static let sessionOriginEffective = "Effective origin"
+	static let sessionOriginAutomatic = "Automatic origin"
+	static let sessionOriginReason = "Reason"
+	static let sessionOriginRuleVersion = "Rule version"
+	static let sessionOriginOverride = "Override"
+	static let sessionOriginOverrideRevision = "Override revision"
+	static let sessionOriginUserOverrideSuffix = " (user override)"
+	static let sessionOriginOverrideSuffix = " (override)"
+	static let sessionOriginOverrideApplied = "Applied · %@"
+	static let sessionOriginOverrideUnmatched = "Not applied · binding unmatched · %@"
+	static let sessionOriginOverrideNone = "None"
+	static let sessionOriginReadOnly = "Use the CLI to inspect or correct origin; this panel is read only."
+	static let sessionOriginCopyCommand = "Copy inspect command"
+	static let sessionOriginCopyFailed = "Copy failed; select the command above to copy manually."
+	static let sessionReasonMaintenance = "Recognized background maintenance origin"
+	static let sessionReasonMetadataMissing = "Origin metadata missing; purpose not inferred"
+	static let sessionReasonTaskChild = "Task agent: purpose unconfirmed, retained in Work as Unknown"
+	static let sessionReasonConflicting = "Conflicting or mixed origin evidence; purpose not inferred"
+	static let sessionReasonSourceUnavailable = "Origin source unavailable"
+	static let sessionReasonRuleUnsupported = "Origin marker not covered by the current rule version"
+	static let sessionReasonInputMismatch = "Origin evidence does not match source generation"
+	static let sessionReasonUnknown = "Reason cannot be shown"
+
 	// Rhythm block.
 	static let rhythmTitle = "Rhythm"
 	static let rhythmScope = "Last 30 days · not affected by the filters above"
@@ -498,6 +558,24 @@ enum DesktopCopy {
 		sessionsSubTesting, sessionsSubMaintenance, sessionsSubInvestigation,
 		sessionsSubRepair, sessionsSubExploration, sessionsSubBrainstorming,
 		sessionsSubPlanning, sessionsSubagent, sessionsSubWorkflow,
+		sessionScopeTitle, sessionScopeWork, sessionScopeAuxiliary, sessionClassUnknown,
+		sessionScopeNote, sessionScopeUsageOverview,
+		sessionScopeUnknownIncluded, sessionScopeUnknownUnavailable, sessionScopeEmpty,
+		sessionScopePartial, sessionScopeStale, sessionScopeLoading, sessionScopeLoadingFirst,
+		sessionScopeFailed, sessionScopeRetry, sessionScopeUnavailable, sessionScopeUnavailableHint,
+		sessionScopeOverride, sessionScopeSourceUnavailable, sessionScopeInputMismatch,
+		sessionScopeLegacy, sessionScopeLegacyHint, sessionScopeDefaultUnknown,
+		sessionScopeDefaultUnknownHint, sessionScopeSnapshotTime,
+		sessionScopeKnownDuration, sessionScopeMissingDuration, sessionScopeNoMatches,
+		sessionScopeProjectsNote, sessionScopeAnnouncement, sessionOriginBack,
+		sessionOriginEffective, sessionOriginAutomatic, sessionOriginReason,
+		sessionOriginRuleVersion, sessionOriginOverride, sessionOriginOverrideRevision,
+		sessionOriginUserOverrideSuffix, sessionOriginOverrideSuffix,
+		sessionOriginOverrideApplied, sessionOriginOverrideUnmatched, sessionOriginOverrideNone,
+		sessionOriginReadOnly, sessionOriginCopyCommand,
+		sessionOriginCopyFailed, sessionReasonMaintenance, sessionReasonMetadataMissing,
+		sessionReasonTaskChild, sessionReasonConflicting, sessionReasonSourceUnavailable,
+		sessionReasonRuleUnsupported, sessionReasonInputMismatch, sessionReasonUnknown,
 		rhythmTitle, rhythmScope, rhythmActive, rhythmBusiest, rhythmQuietest,
 		rhythmPeakWindow, rhythmHourOfWeek, rhythmActiveNote, rhythmBusiestNote,
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,

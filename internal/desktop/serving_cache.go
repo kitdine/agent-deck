@@ -114,6 +114,7 @@ func (s Service) BuildToday(ctx context.Context) (Result, error) {
 	}
 	s.loadProvider(ctx, core, &result)
 	s.loadSubscription(ctx, core, now, &result)
+	result.Snapshot.SessionScopeView = todaySessionScopeView(ctx, core)
 	result.warn("sessions_unavailable")
 	result.warn("work_signals_unavailable")
 	result.warn("health_unavailable")
@@ -158,6 +159,9 @@ func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Req
 	}
 	if snapshot, err := s.ReadServingSnapshot(ctx); err == nil {
 		sessions := &snapshot.Payload.Data.Sessions
+		if view := snapshot.Payload.Data.SessionScopeView; view != nil && request.RecentLimit < len(view.Recent) {
+			view.Recent = view.Recent[:request.RecentLimit]
+		}
 		if request.RecentLimit < len(sessions.Items) {
 			sessions.Items = sessions.Items[:request.RecentLimit]
 		} else if len(sessions.Items) < min(request.RecentLimit, sessions.Total) {

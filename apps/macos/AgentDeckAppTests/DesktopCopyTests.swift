@@ -139,6 +139,21 @@ final class DesktopCopyTests: XCTestCase {
 		}
 	}
 
+	/// ASC-DM-R3-F1: the scope note states both data domains — session counts
+	/// from the session index, work analysis from usage that may have no indexed
+	/// session — and keeps the all-session usage and cost statement. The scope
+	/// control's visible note and its accessibility hint read this one key.
+	func testSessionScopeNoteNamesBothDataDomainsInBothLanguages() throws {
+		let expected = [
+			"en": "Affects sessions and work analysis only. Session counts come from the session index; "
+				+ "work analysis may include usage not linked to an indexed session. Usage and costs include all sessions.",
+			"zh-Hans": "仅影响会话与工作分析。会话数来自会话索引；工作分析可能包含未关联到已索引会话的用量记录。总用量和费用保留全部。",
+		]
+		for (language, value) in expected {
+			XCTAssertEqual(try bundle(language).localizedString(forKey: DesktopCopy.sessionScopeNote, value: nil, table: nil), value, language)
+		}
+	}
+
 	func testRefreshPresentationCopyMatchesReviewedEnglishAndChinese() throws {
 		let expected: [String: [String: String]] = [
 			"en": [

@@ -243,3 +243,58 @@ func TestDesktopSnapshotRejectsTextOutput(t *testing.T) {
 		t.Fatalf("text invocation = exit %d, stdout %q, stderr %q", exit, stdout.String(), stderr.String())
 	}
 }
+
+// desktop session-scope reads one explicit selection: a valid request always
+// exits 0 with a typed view, an unavailable view is a partial envelope naming
+// its reason, and an invalid selection is an input error that reads nothing.
+func TestDesktopSessionScopeCommand(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	run := func(format string, args ...string) (int, []byte, []byte) {
+		var stdout, stderr bytes.Buffer
+		prefix := []string{"--state-dir", state}
+		if format != "" {
+			prefix = append(prefix, "--format", format)
+		}
+		exit := execute(append(append(prefix, "desktop", "session-scope"), args...), bytes.NewReader(nil), &stdout, &stderr)
+		return exit, stdout.Bytes(), stderr.Bytes()
+	}
+	exit, stdout, stderr := run("json", "--scope", "auxiliary", "--client", "codex", "--period", "7d", "--recent-limit", "3")
+	if exit != 0 || len(stderr) != 0 {
+		t.Fatalf("exit %d stderr %s", exit, stderr)
+	}
+	var envelope struct {
+		Command  string                   `json:"command"`
+		Data     desktop.SessionScopeView `json:"data"`
+		Warnings []string                 `json:"warnings"`
+		Partial  bool                     `json:"partial"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout)
+	}
+	view := envelope.Data
+	if envelope.Command != "desktop.session-scope" || !envelope.Partial || view.Available || view.Counts != nil ||
+		!reflect.DeepEqual(*view.Selection, desktop.SessionScopeSelection{Scope: "auxiliary", Client: "codex", Period: "7d"}) ||
+		!reflect.DeepEqual(envelope.Warnings, []string{"sessions_unavailable"}) || view.Default.Confirmed {
+		t.Fatalf("unavailable envelope %+v", envelope)
+	}
+	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
+		if _, err := os.Stat(filepath.Join(state, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("session-scope created %s: %v", name, err)
+		}
+	}
+	for _, args := range [][]string{
+		{},
+		{"--scope", "maintenance"},
+		{"--scope", "work", "--client", "gemini"},
+		{"--scope", "work", "--period", "1y"},
+		{"--scope", "work", "--recent-limit", "21"},
+	} {
+		if exit, _, stderr := run("json", args...); exit != 2 || !bytes.Contains(stderr, []byte(`"command":"desktop.session-scope"`)) {
+			t.Fatalf("%v: exit %d stderr %s", args, exit, stderr)
+		}
+	}
+	if exit, _, _ := run("", "--scope", "work"); exit != 2 {
+		t.Fatalf("text output must be rejected, exit %d", exit)
+	}
+}

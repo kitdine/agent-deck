@@ -33,6 +33,7 @@
     "desktop.quota-statusline.disable",
     "desktop.quota-statusline.enable",
     "desktop.refresh-indexes",
+    "desktop.session-scope",
     "desktop.snapshot",
     "doctor",
     "extension.adopt",
@@ -522,6 +523,23 @@
       "error_code": "invalid_argument",
       "error_command": "desktop.refresh-indexes"
     },
+    "desktop.session-scope": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.session-scope"
+    },
     "desktop.snapshot": {
       "success_schema": {
         "command": "string",
@@ -665,6 +683,49 @@
                 "via_wrapper": "boolean"
               }
             ]
+          },
+          "session_scope_view": {
+            "available": "boolean",
+            "counts": {
+              "known_duration_ms": "number",
+              "missing_duration_count": "number",
+              "projects": "number",
+              "sessions": "number"
+            },
+            "default": {
+              "confirmed": "boolean",
+              "reason": null,
+              "revision": "number",
+              "value": "string"
+            },
+            "generated_at": "string",
+            "origin_coverage": {
+              "complete": "boolean",
+              "reasons": [],
+              "unknown_count": "number"
+            },
+            "publication_id": "string",
+            "reason": null,
+            "recent": [],
+            "selection": {
+              "client": "string",
+              "period": "string",
+              "scope": "string"
+            },
+            "work_signals": {
+              "activity": {
+                "available": "boolean",
+                "items": []
+              },
+              "tooling": {
+                "available": "boolean",
+                "items": []
+              },
+              "workflow": {
+                "available": "boolean",
+                "items": []
+              }
+            }
           },
           "sessions": {
             "available": "boolean",

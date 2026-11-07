@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-11-05
+updated: 2026-11-07
 ---
 
 # 辅助会话识别与工作视图隔离：实现分解
@@ -75,7 +75,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 2. `origin-adapter-reducer` | [x] | [x] |
 | 3. `scope-projections` | [x] | [x] |
 | 4. `cli-contract` | [x] | [x] |
-| 5. `desktop-menubar` | [ ] | [ ] |
+| 5. `desktop-menubar` | [x] | [x] |
 | 6. `settings-control` | [ ] | [ ] |
 | 7. `widget-summary` | [ ] | [ ] |
 | 8. `durability` | [ ] | [ ] |
@@ -191,6 +191,8 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   用户 UTC/本地时区显示按最终菜单栏合同，标本时间不当运行期证据。
 - 验证 L3：Go/Swift DTO 兼容与控制器时序、受影响 macOS build/tests；原生 Popover 键盘、
   VoiceOver、窗口/分辨率/主题、session/client/period 联动验收，不以 React 断言替代。
+- 2026-11-07 本次验收范围记录：用户明确指示“不验证键盘与 VoiceOver 操作”。这两类操作检查从本次
+  native-acceptance 排除，未执行、不宣称通过；布局、范围联动及原生窗口生命周期检查仍保留。
 
 ### 6. settings-control
 
@@ -552,3 +554,96 @@ CEv1 WorkUnit `auxiliary-session-classification:cli-contract`（8 项 required c
 加本文件及 [评审记录](reviews/cli-contract.md)，候选门禁 VERIFIED（8/8）。包含本说明的 Git 提交为交付原件；
 实际提交 ID、SSH 签名和提交态 CEv1 对账结果保存于对应 Beads 任务与证据记录。
 本次仅授权本地提交，未授权推送；核验并关闭本任务后解除 desktop-menubar 的相应依赖，后续开发仍需独立授权。
+
+2026-11-06 任务 5 `desktop-menubar` 开发完成（claude-code，未提交，待独立评审）：
+Go：`internal/desktop/session_scope.go` 新增架构 §7 的可加 `session_scope_view`（available/reason/default/selection/publication_id/
+generated_at/origin_coverage/counts/recent/work_signals），经任务 3 的 `sessionorigin.Reader.Select` 同代读取，工作信号在同一
+attach 内按 `SessionFilter` 读取，失败只降级信号族；`Build` 为每次发布附带默认选择的视图（已确认默认 × all × today，与旧 sessions
+同一 serving 发布与代次核对），默认未确认时 reason=`default_unconfirmed`、无 selection、不推定 Work；today-only 引导发布带不可用视图；
+旧 `sessions.total/items/periods/work_signals` 原义不变。`counts.known_duration_ms` 仅在所选会话全部无可测时长时为 null，空集为可信 0。
+新只读命令 `desktop session-scope --scope --client --period --recent-limit`（JSON command `desktop.session-scope`，参数错误 exit2，
+状态不可用 exit0+partial+reason）供 Popover 与任务 7 按显式 Selection 读取，不扫描、不建库、不读外部来源。
+`sessionorigin.Snapshot.CoverageGaps` 在 client/时间窗内、范围之前统计 origin_input_mismatch/origin_source_unavailable 的 unknown 会话，
+使 Auxiliary 视图在来源缺口时同样标为不完整（已确认的 unknown 原因与已生效覆盖不计）。
+Swift：`DesktopWire` 新增视图 DTO，快照字段区分 absent（legacy）、invalid（仅会话区不可用）与 present，未知 scope/client/period、
+缺字段、越界计数、他选择的信号项均判 invalid；默认值未知即未确认。`EmbeddedHelperRunner.sessionScopeView` 与 `DesktopSessionScopeReading`
+为显式选择读取接口，答复选择不符即 malformed。App 新增窗口级 `SessionScopeController`：每次打开从已确认默认初始化，临时选择不写任何状态，
+请求按代次丢弃迟到答复，新打开丢弃旧答复，失败保留旧完整视图并仅重试失败选择，加载/失败期间范围按钮禁用；
+会话页按最终菜单栏表面重建（三段范围、说明、选择标签、状态提示、未知数、统计、分类列表、只读来源详情与复制查询命令、同范围工作信号），
+七个原因码各有文案、未知码通用回退且分类不变；hero 增加“用量总览：全部会话”。旧 by-project/recent 展示随旧字段停用。
+实现决定：（1）快照内嵌视图固定为默认 × all × today，其他组合走显式命令，不新增多组合 wire 字段；
+（2）publication_id 为选择与 serving 向量的摘要，epoch 随库随机铸造、无变化刷新也会推进修订（扫描簿记既有行为），
+两份金标（desktop canonical fixtures、snapshot-performance）在测试侧把该身份规范化为固定占位，真实身份由新单测单独断言；
+（3）列表行与详情按原型显示会话 ID（详情与复制命令所需），旧 recent 列表的会话 ID 仍不进入会话区。
+验证：`scripts/run-go-test.sh ./...`、`go vet ./...`、`-race` desktop/sessionorigin 与相关 CLI 测试、`make check-whitespace` 通过；
+`scripts/test-macos-app.sh`（隔离 HOME）TEST SUCCEEDED，含新控制器、wire 解码与 5 态 × 280/420pt × 深浅原生渲染测试，渲染已目视核对。
+变异：去掉信号会话过滤、覆盖缺口改在范围后统计、去掉迟到答复代次守卫、未确认默认回退 Work，各使对应测试失败，已恢复。
+候选：HEAD `de9d633` + 32 个路径，摘要 `4b617b19e721878b93d70ec6ecd0d17f13502c01d76140e98b3cc8499fa8bbea`
+（sha256 of `head=<HEAD>` 行加按路径字节序排列的 `path=blob` 行，每行以换行结尾）。CEv1 WorkUnit
+`auxiliary-session-classification:desktop-menubar`（9 项 required criteria）已建，证据待评审时按候选内容绑定。
+残余：原生 Popover 键盘焦点往返与 VoiceOver 播报需在隔离验收 App（`scripts/run-macos-acceptance-app.sh`，会团队签名并注册
+LaunchServices）上人工完成，本轮未执行，native-acceptance 判据保持未验证；`desktop/fixtures/v1/verify.swift` 对 schema-ahead 仍期望
+supported_count 30（HEAD 已为 34），为既有失效，未改动；`internal/desktop/serving_cache.go` 与 `cmd/agentdeck/usage_stats_viewer_test.go`
+的既有 gofmt 偏差不属本任务改动行，未修改。
+
+2026-11-06 任务 5 `desktop-menubar` 独立评审 Round 1 FAIL，Review 保持未勾选；
+完整发现、精确候选、隔离反例与验证边界见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md)。
+任务回交修复，未到达提交检查点；本轮仅更新评审、证据和协调记录，未修改产品、测试或配置。
+
+2026-11-06 任务 5 `desktop-menubar` 修复 ASC-DM-R1-F1、ASC-DM-R1-F2（claude-code，未提交）：
+`SessionScopeController` 回到已显示的选择时推进代次，使离开时发出的读取失效。答复只在代次与 `.loading(selection)` 都仍为当前时才被接受。
+同步不再对进行中读取去重，每次需要读取时都取代在途读取，被取消的旧读取不能吞掉替代它的同步。
+回归、修复前复现与验证见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md) Repair 1。
+新候选摘要 `18dffc5cc5db2db0219fe6c909e1355b09dcd7964285dc753e30ffa0694ae7d7`（HEAD `de9d633` + 同一 32 个路径）。
+Review 保持未勾选，待复评；native-acceptance 仍未验证。
+
+2026-11-06 任务 5 `desktop-menubar` 独立复评 Round 2 FAIL，Review 保持未勾选；
+逐项处置、新发现、当前候选与验证限制见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md#round-2--2026-11-06)。
+任务继续回交修复，本轮仅更新复评、证据和协调记录，未修改产品、测试或配置，未执行 Git 交付。
+
+2026-11-06 任务 5 `desktop-menubar` 修复 ASC-DM-R2-F1（claude-code，未提交）：工作信号区不再由会话数决定。
+`workSignalPanel` 去掉 `sessions` 参数与零会话 guard，三族按各自 available/item 呈现，无产生方的 `.empty` 信号状态随之删除。
+会话列表空态不变，不伪造会话，未新增文案。
+Go 固化 usage-only Work 信号的 producer 回归，Swift 覆盖零会话加三族信号、Activity 独立不可用，以及切换范围不改用量、费用和额度。
+复现、回归与验证见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md) Repair 2。
+新候选摘要 `f0dc2376dda30994c83fec4527e17fb8408b61c51ef143748b69d49a139aeb99`（HEAD `de9d633` + 同一 32 个路径）。
+Review 保持未勾选，待复评；native-acceptance 仍未验证。
+
+2026-11-06 任务 5 `desktop-menubar` 独立复评 Round 3 FAIL，Review 保持未勾选；
+逐项处置、当前候选、验证复用及剩余范围见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md#round-3--2026-11-06)。
+本轮仅更新复评、证据与交接记录，任务继续回交修复，未执行 Git 交付。
+
+2026-11-06 任务 5 `desktop-menubar` 修复 ASC-DM-R3-F1（claude-code，未提交）：范围说明中英文在原两句间加入数据域区别：
+会话数来自会话索引，工作分析可能包含未关联到已索引会话的用量记录；保留总用量与费用不变的说明。
+可见说明与无障碍 hint 共用同一 key。新增中英逐字文案测试，以及 en/zh-Hans × 280/420pt 原生宽度渲染检查。
+观察到 zh-Hans 280pt 下 Popover 顶部客户端标签区的横向截断，与会话页及本次文案无关，已记于评审记录待另行分诊。
+复现、回归与验证见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md) Repair 3。
+新候选摘要 `98f58af127182621bc2cedddab1bbad234ff31607efe69a355058fc2dae39e3d`（HEAD `de9d633` + 33 个路径）。
+Review 保持未勾选，待复评；native-acceptance 仍未验证。
+
+2026-11-06 任务 5 `desktop-menubar` 独立复评 Round 4 PASS，Review 已勾选；
+发现处置、完整候选、证据对账与条件式 Task 检查点见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md#round-4--2026-11-06)。
+原生验收门禁尚未通过，任务保持 in_review，交付边界开放；本轮未提交或推送，未解除后续任务的交付依赖。
+
+2026-11-06 用户明确要求完成任务 5 的 native-acceptance，并将共享顶部截断纳入处理范围。
+当前沿用本专题任务开展有界修复与隔离原生验收；生产控件已变化，Round 4 保留为原候选历史，Review 暂置回待评审。
+过程、验证及最终内容身份记录于 [reviews/desktop-menubar.md](reviews/desktop-menubar.md) 的原生验收工作段；未授权 Git 交付。
+
+2026-11-07 任务 5 的用户限定原生验收已完成：共享顶部截断修复、宽度/动态字号检查、原生窗口首次显示及关闭重开检查通过；
+键盘与 VoiceOver 操作按用户决定排除。最终 macOS 回归通过。新产品内容需独立复评，Review 保持未勾选；
+当前实现、验收范围、证据与交接见 [reviews/desktop-menubar.md](reviews/desktop-menubar.md) 的原生验收工作段。
+本轮未提交或推送，任务及关联缺陷进入待评审状态，不将原候选 Round 4 PASS 直接沿用到新候选。
+
+2026-11-07 任务 5 `desktop-menubar` 独立复评 Round 5 PASS，Review 已勾选；
+当前候选、逐项处置、原生结果复核及条件式 Task 检查点见
+[reviews/desktop-menubar.md](reviews/desktop-menubar.md#round-5--2026-11-07)。
+首次收尾时 CEv1 MCP 正式门禁查询发生传输故障，任务当时保持 in_review；复评 PASS 保留。
+
+2026-11-07 任务 5 Round 5 证据收口完成：同一候选的 CEv1 门禁 VERIFIED 9/9，任务及关联缺陷进入 awaiting_commit。
+证据登记、复用和查询结果见上述 Round 5 记录。未重复复评或未变内容的测试，未提交或推送；
+后续 settings-control 的交付依赖仍须本任务授权提交完成后解除。
+
+2026-11-07 用户授权任务 5 `desktop-menubar` 的本地提交。交付边界为 Round 5 已评审的 33 个产品/测试/fixture 路径，
+加本文件和 [评审记录](reviews/desktop-menubar.md)；候选门禁 VERIFIED 9/9，验收排除范围保持不变。
+包含本说明且完成提交对象核验的 Git 提交为交付原件；最终提交 ID、SSH 签名及提交态 CEv1 对账保存于该任务的 Beads 和证据记录。
+交付核验完成后关闭本任务及同一修复载体、解除 settings-control 的相应依赖；后续开发仍需独立授权。本次无推送授权。

@@ -226,6 +226,42 @@ func TestTokenMismatchNeverHidesASession(t *testing.T) {
 	}
 }
 
+// Coverage gaps are counted over the client and time window before the scope,
+// so a scope that excludes the affected unknown session still learns that its
+// own set may be incomplete. Confirmed unknown states are not gaps, and an
+// override that classifies the session closes its gap.
+func TestCoverageGapsAreCountedBeforeTheScope(t *testing.T) {
+	s := openStores(t)
+	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.indexCopy(t, "claude", "c-1", "/c/c-1.jsonl", "c-1", "p", "/w/a", "2026-10-29T08:00:00Z", "2026-10-29T09:00:00Z", 1)
+	s.reconcile(t, ReconcileOptions{})
+	for _, scope := range []string{ScopeWork, ScopeAuxiliary, ScopeAll} {
+		if gaps := s.selectScope(t, Selection{Scope: scope}).CoverageGaps; len(gaps) != 0 {
+			t.Fatalf("%s: metadata-missing unknown is not a gap: %v", scope, gaps)
+		}
+	}
+	// A new copy of the maintenance session leaves its stored token stale.
+	s.indexCopy(t, "codex", "bg-1", "/archive/bg-1.jsonl", "archive-bg-1", "a", "", "2026-10-29T12:00:00Z", "2026-10-29T12:00:00Z", 0)
+	want := map[string]int{ReasonOriginInputMismatch: 1}
+	for _, scope := range []string{ScopeWork, ScopeAuxiliary, ScopeAll} {
+		snapshot := s.selectScope(t, Selection{Scope: scope})
+		if !reflect.DeepEqual(snapshot.CoverageGaps, want) {
+			t.Fatalf("%s gaps %v, want %v", scope, snapshot.CoverageGaps, want)
+		}
+	}
+	// The window still comes first: another client's gap is not this one's.
+	if gaps := s.selectScope(t, Selection{Scope: ScopeAuxiliary, Client: "claude"}).CoverageGaps; len(gaps) != 0 {
+		t.Fatalf("claude window gaps %v", gaps)
+	}
+	// A matched user override decides the class; the gap no longer matters.
+	s.reconcile(t, ReconcileOptions{})
+	s.indexCopy(t, "codex", "bg-1", "/archive2/bg-1.jsonl", "archive2-bg-1", "b", "", "2026-10-29T12:00:00Z", "2026-10-29T12:00:00Z", 0)
+	s.override(t, "codex", "bg-1", ClassWork)
+	if gaps := s.selectScope(t, Selection{Scope: ScopeAuxiliary}).CoverageGaps; len(gaps) != 0 {
+		t.Fatalf("overridden session still a gap: %v", gaps)
+	}
+}
+
 func TestOverridesApplyOnlyToTheirCurrentBinding(t *testing.T) {
 	s := openStores(t)
 	s.indexCopy(t, "claude", "c-1", "/c/c-1.jsonl", "c-1", "p", "/w/a", "2026-10-29T08:00:00Z", "2026-10-29T09:00:00Z", 1)
