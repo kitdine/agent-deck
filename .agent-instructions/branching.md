@@ -10,7 +10,8 @@ execution, review presentation, and completion receipts.
 
 A feature topic owns one coherent behavior change and has no version segment in
 its name. A version-contract topic owns active membership; [Project Status](../docs/status.md)
-projects it, while [Roadmap](../docs/roadmap.md) owns later planning and backlog.
+projects it, while [Roadmap](../docs/roadmap.md) owns cross-version direction and
+planning decisions. [Beads](beads.md) owns live issue intake and deferral.
 Changing intended membership does not by itself change feature content, branch
 identity, or evidence validity.
 

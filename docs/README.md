@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-10-06
+updated: 2026-11-07
 ---
 
 # AgentDeck Documentation
@@ -16,7 +16,8 @@ the source of truth when they disagree with documentation.
 | --- | --- |
 | Integrated project and release state | [Project Status](status.md) |
 | Unmerged topic progress and cross-worktree handoff | The selected worktree's `docs/topics/<topic>/tasks.md` and [Beads](../.agent-instructions/beads.md) |
-| Version roadmap, backlog, and withdrawn candidates | [Roadmap and Backlog](roadmap.md) |
+| Issues, actionable candidates, and deferred work | [Beads](../.agent-instructions/beads.md#lane-b-and-lane-c-in-beads) |
+| Cross-version direction and planning decisions | [Roadmap](roadmap.md) |
 | Documentation naming, topic structure, and lifecycle | [Documentation Workflow](documentation-workflow.md) |
 | Product, persistence, security, compatibility, and distribution contract | [CLI Design](specs/cli-design.md) |
 | Implemented commands, flags, output, and interaction behavior | [CLI Manual](specs/cli-manual.md) |
@@ -32,7 +33,8 @@ changes.
 | Document | Status | Authority |
 | --- | --- | --- |
 | [Project Status](status.md) | Active | Integrated project/release state and version-assembly projection; unmerged topic progress remains in its worktree's `tasks.md`. |
-| [Roadmap and Backlog](roadmap.md) | Active | Later version direction, planning intake, and withdrawn candidates. |
+| [Roadmap](roadmap.md) | Active | Cross-version direction, significant tradeoffs, and withdrawal decisions; retained intake is historical provenance. |
+| [Beads](../.agent-instructions/beads.md) | Active | Issue intake, deferral, dispatch, dependency readiness, and handoff. |
 | [Product Prototype](../prototype/README.md) | Active | The design truth for every user-visible surface: menu-bar panel, widgets, settings, and CLI output. A document that disagrees with it is repaired. |
 | [CLI Design](specs/cli-design.md) | Active, version 32 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
@@ -68,5 +70,8 @@ anchors preserve navigation without copying dynamic content:
 <a id="known-residual-risk"></a>
 [Known residual risk](status.md#known-residual-risk)
 
-<a id="roadmap"></a><a id="backlog"></a><a id="withdrawn-candidates"></a>
-[Roadmap, backlog, and withdrawn candidates](roadmap.md)
+<a id="roadmap"></a><a id="withdrawn-candidates"></a>
+[Roadmap and planning decisions](roadmap.md)
+
+<a id="backlog"></a>
+[Issue intake and deferred work](../.agent-instructions/beads.md#lane-b-and-lane-c-in-beads)
