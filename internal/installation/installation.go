@@ -139,6 +139,16 @@ func (r *Resolver) CanRenewFormula() (bool, error) {
 	return eligible, err
 }
 
+// IsFormulaKeg is a diagnostic hint, not installation or claim authority.
+func (r *Resolver) IsFormulaKeg() bool {
+	self, err := r.self()
+	if err != nil {
+		return false
+	}
+	_, ok := parseFormulaKeg(self)
+	return ok
+}
+
 // RenewFormula is shared by default-root selection and explicit-root guards.
 // No state directory is accessed. False means conditions no longer hold; callers
 // must resolve again, including after a competing renewal won the lock.

@@ -67,19 +67,21 @@ func (s Scope) valid() bool {
 // UsageResult and SessionResult keep each domain's durable result independent.
 // A failure in one must not erase the committed outcome of the other.
 type UsageResult struct {
-	State      string         `json:"state"`
-	Changes    map[string]int `json:"changes,omitempty"`
-	ErrorCode  string         `json:"error_code,omitempty"`
-	Error      string         `json:"-"`
-	DurationMS int64          `json:"duration_ms"`
+	OwnershipRefusal *platform.ErrStateOwnershipRefused `json:"ownership_refusal,omitempty"`
+	State            string                             `json:"state"`
+	Changes          map[string]int                     `json:"changes,omitempty"`
+	ErrorCode        string                             `json:"error_code,omitempty"`
+	Error            string                             `json:"-"`
+	DurationMS       int64                              `json:"duration_ms"`
 }
 
 type SessionResult struct {
-	State      string             `json:"state"`
-	Scan       session.ScanResult `json:"scan,omitempty"`
-	ErrorCode  string             `json:"error_code,omitempty"`
-	Error      string             `json:"-"`
-	DurationMS int64              `json:"duration_ms"`
+	OwnershipRefusal *platform.ErrStateOwnershipRefused `json:"ownership_refusal,omitempty"`
+	State            string                             `json:"state"`
+	Scan             session.ScanResult                 `json:"scan,omitempty"`
+	ErrorCode        string                             `json:"error_code,omitempty"`
+	Error            string                             `json:"-"`
+	DurationMS       int64                              `json:"duration_ms"`
 }
 
 // StageProfile records the work actually performed by this round.  It is a
@@ -154,21 +156,28 @@ func (r Result) ErrorFor(scope Scope) error {
 	switch scope {
 	case ScopeUsage:
 		if r.Usage.State != "completed" {
-			return &DomainError{Domain: "usage", Code: r.Usage.ErrorCode}
+			return resultDomainError("usage", r.Usage.ErrorCode, r.Usage.OwnershipRefusal)
 		}
 	case ScopeSession:
 		if r.Session.State != "completed" {
-			return &DomainError{Domain: "session", Code: r.Session.ErrorCode}
+			return resultDomainError("session", r.Session.ErrorCode, r.Session.OwnershipRefusal)
 		}
 	default:
 		if r.Usage.State != "completed" {
-			return &DomainError{Domain: "usage", Code: r.Usage.ErrorCode}
+			return resultDomainError("usage", r.Usage.ErrorCode, r.Usage.OwnershipRefusal)
 		}
 		if r.Session.State != "completed" {
-			return &DomainError{Domain: "session", Code: r.Session.ErrorCode}
+			return resultDomainError("session", r.Session.ErrorCode, r.Session.OwnershipRefusal)
 		}
 	}
 	return nil
+}
+
+func resultDomainError(domain, code string, refused *platform.ErrStateOwnershipRefused) error {
+	if code == "state_ownership_refused" && refused != nil {
+		return refused
+	}
+	return &DomainError{Domain: domain, Code: code}
 }
 
 // Client requests a round from an existing worker or elects one by launching
@@ -214,13 +223,14 @@ type wireRequest struct {
 }
 
 type wireResponse struct {
-	Type        string                   `json:"type"`
-	WorkerID    string                   `json:"worker_id,omitempty"`
-	RoundID     string                   `json:"round_id,omitempty"`
-	Result      *Result                  `json:"result,omitempty"`
-	Progress    *Progress                `json:"progress,omitempty"`
-	Error       string                   `json:"error,omitempty"`
-	Publication *desktop.ServingSnapshot `json:"publication,omitempty"`
+	Type             string                             `json:"type"`
+	WorkerID         string                             `json:"worker_id,omitempty"`
+	RoundID          string                             `json:"round_id,omitempty"`
+	Result           *Result                            `json:"result,omitempty"`
+	Progress         *Progress                          `json:"progress,omitempty"`
+	Error            string                             `json:"error,omitempty"`
+	OwnershipRefusal *platform.ErrStateOwnershipRefused `json:"ownership_refusal,omitempty"`
+	Publication      *desktop.ServingSnapshot           `json:"publication,omitempty"`
 }
 
 // Request joins a covered running round or starts one finite follow-up round.
@@ -283,6 +293,9 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, err
 	}
 	if first.Type != "accepted" || first.WorkerID == "" {
+		if first.OwnershipRefusal != nil {
+			return Result{}, first.OwnershipRefusal
+		}
 		if first.Error != "" {
 			return Result{}, errors.New(first.Error)
 		}
@@ -461,6 +474,8 @@ func decodeServingResponse(ctx context.Context, conn net.Conn, reader *bufio.Rea
 // Serve runs the hidden detached worker.  It holds the scan lock for its whole
 // lifetime, which makes socket cleanup and election authority inseparable.
 func Serve(ctx context.Context, stateRoot string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if os.Getenv(workerBackgroundEnv) == "1" {
 		lowerProcessPriority()
 	}
@@ -511,11 +526,27 @@ func Serve(ctx context.Context, stateRoot string) error {
 		startedAt:    time.Now(),
 		lastActivity: time.Now(),
 	}
+	defer func() {
+		cancel()
+		_ = listener.Close()
+		worker.mu.Lock()
+		pending := make([]*round, 0, len(worker.rounds))
+		for _, round := range worker.rounds {
+			pending = append(pending, round)
+		}
+		worker.mu.Unlock()
+		for _, round := range pending {
+			<-round.done
+		}
+	}()
 	if err = worker.recoverReceipts(); err != nil {
 		return err
 	}
 	for {
 		if err = listener.SetDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+			return err
+		}
+		if err := platform.RevalidateOwnership(stateRoot); err != nil {
 			return err
 		}
 		conn, acceptErr := listener.AcceptUnix()
@@ -569,7 +600,9 @@ func (s *server) handle(conn *net.UnixConn) {
 	}
 	round, terminal, err := s.accept(request)
 	if err != nil {
-		_ = encoder.Encode(wireResponse{Type: "rejected", Error: err.Error()})
+		response := wireResponse{Type: "rejected", Error: err.Error()}
+		_ = errors.As(err, &response.OwnershipRefusal)
+		_ = encoder.Encode(response)
 		return
 	}
 	var releaseOnce sync.Once
@@ -637,6 +670,11 @@ func (s *server) startOrJoin(home string) (*round, error) {
 // accept persists a request receipt before the caller sees accepted. A replay
 // returns the original terminal result or attaches to the same recovered round.
 func (s *server) accept(request wireRequest) (*round, *Result, error) {
+	if s.stateRoot != "" {
+		if err := platform.RevalidateOwnership(s.stateRoot); err != nil {
+			return nil, nil, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.journal != nil {
@@ -786,7 +824,7 @@ func (s *server) completeRound(round *round, result Result) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var journalErr error
-	if s.journal != nil {
+	if s.journal != nil && platform.RevalidateOwnership(s.stateRoot) == nil {
 		journalErr = s.journal.terminal(round.id, result)
 	}
 	delete(s.rounds, round.id)
@@ -802,6 +840,9 @@ func (s *server) completeRound(round *round, result Result) error {
 func (s *server) terminalReceipt(id string, result Result) error {
 	if s.journal == nil {
 		return nil
+	}
+	if err := platform.RevalidateOwnership(s.stateRoot); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -991,6 +1032,11 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		Session: SessionResult{State: "pending"},
 	})
 	r.setProgressStage("checking")
+	if err := platform.RevalidateOwnership(stateRoot); err != nil {
+		r.setUsage(failedUsage(err, 0))
+		r.setSession(failedSession(err, 0))
+		return
+	}
 	if !lockHeld {
 		lock, err := store.AcquireScanLock(ctx, stateRoot, 5*time.Second)
 		if err != nil {
@@ -1464,14 +1510,27 @@ func (r *round) covers(scope Scope) bool {
 }
 
 func failedUsage(err error, duration int64) UsageResult {
-	return UsageResult{State: "failed", ErrorCode: failureCode(err), DurationMS: duration}
+	return UsageResult{State: "failed", ErrorCode: failureCode(err), OwnershipRefusal: ownershipFailure(err), DurationMS: duration}
 }
 
 func failedSession(err error, duration int64) SessionResult {
-	return SessionResult{State: "failed", ErrorCode: failureCode(err), DurationMS: duration}
+	return SessionResult{State: "failed", ErrorCode: failureCode(err), OwnershipRefusal: ownershipFailure(err), DurationMS: duration}
+}
+
+func ownershipFailure(err error) *platform.ErrStateOwnershipRefused {
+	var refused *platform.ErrStateOwnershipRefused
+	if !errors.As(err, &refused) {
+		return nil
+	}
+	copy := *refused
+	return &copy
 }
 
 func failureCode(err error) string {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		return "state_ownership_refused"
+	}
 	var stateErr *store.Error
 	if errors.As(err, &stateErr) && stateErr.Code != "" {
 		return stateErr.Code
@@ -1550,22 +1609,13 @@ func prepareStateRoot(stateRoot string) (string, string, error) {
 	if stateRoot == "" {
 		return "", "", errors.New("scan state root is required")
 	}
-	resolved, err := filepath.Abs(stateRoot)
+	resolved, err := platform.GuardStateRoot(stateRoot)
 	if err != nil {
 		return "", "", err
 	}
-	if evaluated, evalErr := filepath.EvalSymlinks(resolved); evalErr == nil {
-		resolved = evaluated
-	}
-	resolved = filepath.Clean(resolved)
 	if err = platform.EnsureStateRoot(resolved); err != nil {
 		return "", "", err
 	}
-	evaluated, err := filepath.EvalSymlinks(resolved)
-	if err != nil {
-		return "", "", err
-	}
-	resolved = filepath.Clean(evaluated)
 	digest := sha256.Sum256([]byte(resolved))
 	return resolved, hex.EncodeToString(digest[:]), nil
 }

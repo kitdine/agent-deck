@@ -91,6 +91,11 @@ type CredentialVault interface {
 }
 
 func (s Service) Create(ctx context.Context, destination, passphrase string, includeSessions bool) (Manifest, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return Manifest{}, err
+	}
+	s.StateRoot = root
 	if s.Core == nil || s.Vault == nil || passphrase == "" {
 		return Manifest{}, fmt.Errorf("%w: missing backup input", ErrInvalidArchive)
 	}
@@ -256,6 +261,10 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		}
 	}
 
+	targetRoot, err = platform.GuardStateRoot(targetRoot)
+	if err != nil {
+		return Manifest{}, err
+	}
 	createdRoot, originalMode, err := reserveEmptyTarget(targetRoot)
 	if err != nil {
 		return Manifest{}, err

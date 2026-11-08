@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/providermeta"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -829,6 +830,13 @@ func (s Service) Use(ctx context.Context, name string, client Client, configPath
 // otherwise. The selected credential alone decides the credential field in
 // both cases; a wrapper never changes which secret is written.
 func (s Service) UseCredential(ctx context.Context, name string, client Client, credentialName, configPath, backupPath string, via bool) error {
+	if s.StateRoot != "" {
+		root, err := platform.GuardStateRoot(s.StateRoot)
+		if err != nil {
+			return err
+		}
+		s.StateRoot = root
+	}
 	var (
 		definition             *store.Provider
 		credential             string
@@ -1060,6 +1068,10 @@ func defaultConfigPath(home string, client Client) (string, error) {
 func managedBackupPath(stateRoot string, client Client, operationID string) (string, error) {
 	if stateRoot == "" {
 		return "", fmt.Errorf("%w: state directory is unavailable", ErrInvalidProvider)
+	}
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return "", err
 	}
 	extension := ""
 	switch client {

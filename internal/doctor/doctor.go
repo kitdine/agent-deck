@@ -69,7 +69,16 @@ type Service struct {
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
-	report := Report{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "healthy", Healthy: true, Checks: []Check{}}
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		var refused *platform.ErrStateOwnershipRefused
+		if errors.As(err, &refused) {
+			return RefusedStateReport(full, refused.Reason), nil
+		}
+		return Report{}, err
+	}
+	s.StateRoot = root
+	report := newReport(full)
 	stateInfo, err := os.Stat(s.StateRoot)
 	if errors.Is(err, fs.ErrNotExist) {
 		report.Partial = true

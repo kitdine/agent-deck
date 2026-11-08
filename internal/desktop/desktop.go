@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -257,6 +258,11 @@ type Result struct {
 }
 
 func (s Service) Build(ctx context.Context, request Request) (Result, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	s.StateRoot = root
 	if err := request.Validate(); err != nil {
 		return Result{}, err
 	}

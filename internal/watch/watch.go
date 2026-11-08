@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -39,6 +40,7 @@ type Source struct {
 type LockFunc func(context.Context) (release func() error, err error)
 
 type Service struct {
+	StateRoot           string
 	Sources             SourceSet
 	Lock                LockFunc
 	Now                 func() time.Time
@@ -51,6 +53,11 @@ type Service struct {
 type SourceSet []Source
 
 func (s *Service) Poll(ctx context.Context) ([]Event, error) {
+	if s.StateRoot != "" {
+		if err := platform.RevalidateOwnership(s.StateRoot); err != nil {
+			return nil, err
+		}
+	}
 	if s.fingerprints == nil {
 		s.fingerprints = make(map[string]string)
 		for domain, fingerprint := range s.InitialFingerprints {

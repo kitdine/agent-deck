@@ -372,6 +372,11 @@ func cleanupDerivedSnapshotCacheTemps(directory string) error {
 // PublishDerivedSnapshotCache is the worker-only publisher. It never runs from
 // the read-only snapshot path and deliberately does not include session data.
 func (s Service) PublishDerivedSnapshotCache(ctx context.Context, wireVersion int) error {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return err
+	}
+	s.StateRoot = root
 	lock, err := store.AcquireDerivedSnapshotCacheLock(ctx, s.StateRoot, derivedSnapshotCacheLockWait)
 	if err != nil {
 		return err

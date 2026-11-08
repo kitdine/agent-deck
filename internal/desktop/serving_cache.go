@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/perftrace"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"golang.org/x/sys/unix"
@@ -79,6 +80,11 @@ type servingDocument struct {
 }
 
 func (s Service) BuildToday(ctx context.Context) (Result, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	s.StateRoot = root
 	now := s.now().UTC()
 	result := Result{Snapshot: Snapshot{
 		WireVersion: WireVersion, GeneratedAt: now.Format(time.RFC3339Nano), NextRefreshAt: now.Add(RefreshInterval).Format(time.RFC3339Nano),
@@ -153,6 +159,11 @@ func (s Service) PublishServingSnapshot(ctx context.Context, request Request, to
 // ReadOrBootstrapServingSnapshot never starts ingestion or creates state. A
 // damaged/missing serving file falls back only to committed today's facts.
 func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Request) (ServingSnapshot, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return ServingSnapshot{}, err
+	}
+	s.StateRoot = root
 	if err := request.Validate(); err != nil {
 		return ServingSnapshot{}, err
 	}
@@ -174,6 +185,11 @@ func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Req
 }
 
 func (s Service) prepareServingSnapshot(ctx context.Context, request Request, todayOnly, persist bool) (ServingSnapshot, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return ServingSnapshot{}, err
+	}
+	s.StateRoot = root
 	if err := request.Validate(); err != nil {
 		return ServingSnapshot{}, err
 	}
@@ -303,6 +319,11 @@ func encodeServingSnapshot(snapshot ServingSnapshot) ([]byte, error) {
 }
 
 func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return ServingSnapshot{}, err
+	}
+	s.StateRoot = root
 	reader, err := store.OpenServingGenerationReader(ctx, s.StateRoot)
 	if err != nil {
 		return ServingSnapshot{}, err
@@ -346,7 +367,7 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 	header := snapshot.Header
 	old := header.Generation
 	if header.FormatVersion != servingFormatVersion || header.WireVersion != ServingWireVersion || header.ProjectionVersion != servingProjectionVersion || header.PublicationID == "" ||
-		old.StateIdentity != identity.StateIdentity || old.CoreEpoch != identity.CoreEpoch || old.SessionEpoch != identity.SessionEpoch || !compatibleServingCoreSchema(old.CoreSchema,identity.CoreSchema) || old.SessionSchema != identity.SessionSchema ||
+		old.StateIdentity != identity.StateIdentity || old.CoreEpoch != identity.CoreEpoch || old.SessionEpoch != identity.SessionEpoch || !compatibleServingCoreSchema(old.CoreSchema, identity.CoreSchema) || old.SessionSchema != identity.SessionSchema ||
 		snapshot.Payload.SchemaVersion != 1 || snapshot.Payload.Command != "desktop.snapshot" || snapshot.Payload.Data.WireVersion != WireVersion || snapshot.Payload.Data.GeneratedAt != header.GeneratedAt {
 		return ServingSnapshot{}, ErrServingInvalid
 	}

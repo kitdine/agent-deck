@@ -5170,10 +5170,16 @@
       "available": true,
       "status": "degraded",
       "healthy": false,
-      "problems": 1,
-      "warnings": 1,
+      "problems": 2,
+      "warnings": 2,
       "errors": 0,
       "checks": [
+        {
+          "name": "installation",
+          "status": "warning",
+          "code": "not_installed",
+          "reason": "receipt_missing"
+        },
         {
           "name": "state_permissions",
           "status": "ok"

@@ -30,7 +30,7 @@ func doctorVault(stateRoot string) *credentialvault.Vault {
 func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing")
 	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: root}).Check(context.Background(), false)
-	if err != nil || !report.Partial || report.Healthy || report.Problems != 1 || report.Checks[0].Code != "state_missing" {
+	if err != nil || !report.Partial || report.Healthy || report.Problems != 1 || len(report.Checks) != 2 || report.Checks[0].Name != "installation" || report.Checks[1].Code != "state_missing" {
 		t.Fatalf("Check = %#v, %v", report, err)
 	}
 	if _, err = os.Stat(root); !os.IsNotExist(err) {
@@ -1262,7 +1262,7 @@ func TestCheckReportsBothLocksIndependentlyUnderContention(t *testing.T) {
 	if scanCheck.Status != "warning" || scanCheck.Code != "lock_legacy" || scanCheck.ActionKind != "manual_prerequisite" {
 		t.Fatalf("unexpected scanCheck: %#v", scanCheck)
 	}
-	if permIdx != 0 || stateIdx != 1 || scanIdx != 2 {
+	if permIdx != 1 || stateIdx != 2 || scanIdx != 3 {
 		t.Fatalf("unexpected check order: permIdx=%d, stateIdx=%d, scanIdx=%d", permIdx, stateIdx, scanIdx)
 	}
 }

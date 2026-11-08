@@ -172,6 +172,13 @@ func (v *Vault) InitializeNew(ctx context.Context) (bool, error) {
 }
 
 func (v *Vault) key(ctx context.Context, create bool) ([]byte, map[int]string, error) {
+	root, err := platform.GuardStateRoot(v.stateRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	guarded := *v
+	guarded.stateRoot = root
+	v = &guarded
 	seed, err := v.loadSeed()
 	if err == nil {
 		// Another process may have linked this key but not yet synced the directory.
@@ -257,6 +264,13 @@ func (v *Vault) createSeed() ([]byte, error) {
 }
 
 func (v *Vault) createSeedExclusive() ([]byte, error) {
+	root, err := platform.GuardStateRoot(v.stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	guarded := *v
+	guarded.stateRoot = root
+	v = &guarded
 	if err := platform.EnsureStateRoot(v.stateRoot); err != nil {
 		return nil, err
 	}

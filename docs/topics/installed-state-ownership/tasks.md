@@ -29,14 +29,14 @@ updated: 2026-11-07
 当前需求、CLI、架构保持已通过状态；任务分解的 2026-11-07 重写稿已通过 Round 10 独立复评。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。其余实现任务尚未开发；调度按本稿依赖重绑定，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。任务 3–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `installation-identity` | [x] | [x] |
-| 2. `state-root-guard` | [ ] | [ ] |
+| 2. `state-root-guard` | [x] | [x] |
 | 3. `client-config-guard` | [ ] | [ ] |
 | 4. `installation-diagnostics` | [ ] | [ ] |
 | 5. `installer-receipts` | [ ] | [ ] |
@@ -160,6 +160,210 @@ Go 验证统一经 `scripts/run-go-test.sh`。L2 的 Go 核心变更要求定向
 - 已安装身份下的现有测试全部通过，行为不变。
 
 **验证：L3**。定向覆盖 installation/platform/store/credentialvault/scanruntime/hookrefusal/telemetry/watch/doctor 和 `cmd/agentdeck`，以实现后的入口清单补充其他包；Go 全量回归，platform/store/scanruntime 及其他改动并发包的 `-race`，`make vet`，屏障下全部现有叶子及包级/验收二进制测试。评审材料必须同时给出叶子清单与逐项结果、守卫返回路径的调用点清单、会话释放时机、上述 8 种交错结果和 doctor 固定输出。该门禁只需要任务 1 与本任务产物。
+
+
+#### 开发交接 — 2026-11-07
+
+本节是 Task 2 的实现与验证材料，不是独立评审结论。Dev 已完成，Review 保持未勾选。候选基线为 `c2484dee09405f578bb39037a6c5eac717ec8ad2`；工作区 `agent-deck.installed-state-ownership`，分支 `feature/installed-state-ownership`。
+
+CEv1 WorkUnit 为 `installed-state-ownership:state-root-guard`，候选 ContentState 为 `installed-state-ownership:state-root-guard:dev-20261107-Gas5YUA6`。该记录保存最终 HEAD、逐路径 blob 清单、SHA-256 指纹、工具链和验证事实。指纹配方是 `head=<HEAD>\n` 后接按路径排序的 `<path>=<git-blob>\n`；状态文件不嵌入自己的指纹。独立评审是尚待满足的单独 criterion。
+
+**交付行为与会话生命期**
+
+- 未安装默认目录为 `$HOME/.agentdeck-dev`；显式非真实目录不续登；默认解析和显式真实根使用任务 1 的同一续登函数。续登取锁失败不会转入空隔离目录。
+- `GuardStateRoot` 在读取受保护内容之前判定、取共享锁并锁内重读身份，返回实际使用的物理路径。普通 CLI、Hook、只读池、worker 和跨轮句柄共用进程会话；单个 Store.Close 不提前释放它。生产 CLI 持锁直到内核完成进程退出。显式 `ReleaseStateOwnership` 只用于所有句柄、池、锁和后台工作均已结束的会话边界。
+- watch 每轮、telemetry 每个请求/事件、bootstrap 每次流输出以及 worker 接收/每轮执行均复核。失败退出前保留清理生命期；worker 的 JSON 往返保留 typed refusal，三种原因与三个 scope 的回归测试覆盖了原先丢失原因的路径。
+- CLI 错误、TTY 一次性提示、Hook/statusline 静默和 doctor 的缺失/拒绝部分报告均已接入。空隔离库存的文本按原型输出 `No providers.`，虚拟 official 定义仍保留在既有 JSON 合同中；已安装文本不变。
+- 触及 AgentDeck 状态的 18 个测试包通过私有 `_test.go` 初始化隔离 HOME/账户；platform 保留 nil Resolver 身份语义，只替换私有路径解析边界。两个旧的独立 CLI 运行夹具改用 `agentdeck_acceptance`。perf 工具的测试环境注入只用于注册的带 tag 夹具，生产环境白名单和生产账户解析没有环境覆盖开关。
+
+**Go 入口与物理路径使用清单**
+
+`TestOwnershipPackageEntrypointInventory` 独立枚举参数或接收者持有状态根的导出入口，并与直接调用清单核对。62 个入口逐个在操作系统访问屏障内运行。纯路径构造/惰性构造器，以及消费既有 Store、由下层已守卫锁/配置 API 承担文件边界的 quota 方法，均在测试清单中逐项说明，不充作访问屏障结果。
+
+| 包 | 直接验证的入口 | 返回路径的使用与拒绝行为 |
+| --- | --- | --- |
+| platform | `GuardStateRoot`、`RevalidateOwnership`、`EnsureStateRoot`、`EnsureStateRootWithFS` | Guard 返回物理路径；EnsureStateRootWithFS 将返回值交给 MkdirAll/Chmod；Revalidate 失败保留会话到调用者完成句柄清理。 |
+| installation | `StateRoot`、`StateRootWithHome` | 默认和显式入口都返回 Guard 的结果；HOME 和 override 的 link/.. 均保留到物理解析；两个续登入口复用同一 RenewFormula。 |
+| store | `Open`、`OpenExisting`、`OpenReadOnly`、`OpenWithLockHeld`、`OpenSessions`、`OpenSessionsReadOnly`、`AcquireLock`、`AcquireScanLock`、`AcquireQuotaRefreshLock`、`AcquireDerivedSnapshotCacheLock`、`AcquireServingSnapshotLock`、`InspectScanLockContention`、`OpenServingGenerationReader`、`ReadServingGeneration` | 各 open、read-only、sessions 和 serving reader 先替换 stateRoot；锁的最底层及 contention 包装均使用物理根；无 error 返回的 Inspect 拒绝后返回 nil。 |
+| credentialvault | `Vault.Seal`、`Vault.SealExisting`、`Vault.Open`、`Vault.InspectKey`、`Vault.InspectKeyIDs`、`Vault.InitializeNew` | key/createSeedExclusive 对 Vault 作局部副本并替换 stateRoot；读、创建、同步与 KeyPath 计算在副本上执行，避免共享 Vault 字段竞态。 |
+| hookrefusal | `Read`、`Live`、`Write`、`Clear` | Read/Live 拒绝后返回无记录；Write/Clear 返回拒绝错误；不增加安装拒绝记录。 |
+| telemetry | `LoadConfig`、`SaveConfig`、`EnsureToken`、`ReadToken`、`ReadListenerState`、`ReadStatus`、`WriteManagedBlock`、`RemoveManagedBlock`、`Serve`、`Receiver.ServeHTTP` | 配置、token、listener、managed record、status 和 Serve 先替换根；每个 HTTP 请求和监听循环事件先复核。 |
+| scanruntime | `Client.Request`、`Client.RequestWithProgress`、`Serve`、`WithMaintenance`、`AcquireMaintenance` | prepareStateRoot 替换旧的 Abs/Clean 链；Client、worker 和 maintenance 共用物理根；worker 接收/每轮执行复核，结果线路保留拒绝 resource/reason/revoked。 |
+| doctor | `Service.Check` | Service 入口先守卫；CLI 拒绝分支直接构造 installation/state 两行，拒绝路径不传给 Service。 |
+| session | `CheckHealth` | CheckHealth 在 stat/SQLite open 前替换 stateRoot。 |
+| extension | `DoctorFromStateRoot`、`DoctorFromStateRootWithDiscoverer` | 两个 DoctorFromStateRoot 入口汇入已替换根的实现，先守卫再 stat 核心库。 |
+| backup | `Service.Create`、`Restore` | Create 替换 Service.StateRoot；Restore 完成输入归档校验后、首次目标访问前替换 targetRoot。 |
+| desktop | `Service.Build`、`Service.BuildToday`、`Service.PublishDerivedSnapshotCache`、`Service.PublishServingSnapshot`、`Service.ReadServingSnapshot`、`Service.ReadOrBootstrapServingSnapshot` | Build、BuildToday、两种 publish、read/bootstrap 和 serving read 在目录/缓存/数据库访问前替换 Service.StateRoot。 |
+| provider | `Service.Use`、`Service.UseCredential`、`Service.ProjectAttributionGateStatus`、`Service.RefreshProjectAttributionGate` | Use/UseCredential、project attribution gate 和 managed backup path 在相应状态文件访问前使用物理根。 |
+| watch | `Service.Poll` | CLI 将已经守卫的物理根传给 Service；Poll 在任何 snapshot/scan callback 前复核。 |
+
+CLI 的 `stateRoot` 缓存已守卫结果；`shellStateRoot` 的显式根使用同一物理结果，未指定根时保持生成命令的可移植默认形式。所有权共享锁与原有 `state.lock`/扫描锁分别管理。
+
+**Cobra 入口与逐项结果**
+
+以下 80 行与当前真实声明命令树、`contract_test.go` 的固定 JSON leaf 清单双向校验。默认分支不传 `--state-dir`；显式非真实分支传临时隔离根；显式真实分支传注入账户的 `.agentdeck`。`$BASE` 是本次临时夹具根，`$EXT` 和 `$ALERT` 由真实扫描/刷新生成。JSON 字段合同来自现有固定 fixture；所有权错误、提示和 doctor 文案另与 `prototype/src/ownership.js` 的标本逐字/逐字段比较。
+
+普通行使用实际 CLI 命令树的子进程；runtime 行使用真实入口加有限 context；session 交互行使用真实 PTY，画面出现后发送 q。价格更新采用已有的注入 HTTP transport，输入为有效 direct-provider 价格；客户端配置始终指向临时 HOME。extension enable/disable 的既定 `extension_read_only` 是有效对象上的适配器合同，不是缺参或非法输入。
+
+| 入口与有效实参 | stdin / 特定数据 | 默认与显式非真实结果（各一次） | 显式真实结果 |
+| --- | --- | --- | --- |
+| `backup create $BASE/new.adb` | `passphrase\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `backup inspect $BASE/input.adb` | 真实加密的合成备份；`passphrase\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `backup list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `backup restore $BASE/input.adb` | 真实加密的合成备份；`passphrase\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `credential add p --credential second --endpoint https://example.invalid --clients codex` | `synthetic-secret\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `credential list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `credential remove p --credential second` | 临时 HOME / 状态夹具 | 0 / JSON 成功，data=null | 1 / state_ownership_refused |
+| `credential show p` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `credential update p --rotate` | `replacement-secret\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop quota-alerts ack --id $ALERT` | 合成 quota refresh 返回的合法 alert ID | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop quota-refresh` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop quota-settings --reading on` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop quota-statusline disable` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop quota-statusline enable` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop refresh-indexes` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `desktop snapshot` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `doctor` | 临时 HOME / 状态夹具 | 0 / JSON 部分报告 state_missing | 0 / 部分报告 state_ownership_refused |
+| `extension adopt $EXT` | 扫描后的临时 skill ID；需要时先 adopt | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `extension disable $EXT` | 扫描后的临时 skill ID；需要时先 adopt | 1 / `extension_read_only` | 1 / state_ownership_refused |
+| `extension doctor` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `extension enable $EXT` | 扫描后的临时 skill ID；需要时先 adopt | 1 / `extension_read_only` | 1 / state_ownership_refused |
+| `extension list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `extension release $EXT` | 扫描后的临时 skill ID；需要时先 adopt | 0 / JSON 成功，data=null | 1 / state_ownership_refused |
+| `extension scan` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `extension show $EXT` | 扫描后的临时 skill ID；需要时先 adopt | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `price history` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `price list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `price override --file $BASE/prices.json` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `price status` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `price update` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider add new --endpoint https://example.invalid --clients codex` | `synthetic-secret\n` | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider current` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider recover` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider remove p` | 临时 HOME / 状态夹具 | 0 / JSON 成功，data=null | 1 / state_ownership_refused |
+| `provider set-wrapper p --url https://wrapper.invalid` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider show p` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider status` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider update p --multiplier 1` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `provider use p --client codex --no-shell-setup` | 临时 HOME / 状态夹具 | 0 / JSON 成功，data=null | 1 / state_ownership_refused |
+| `quota` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `quota capture` | `{"session_id":"ownership-session","model":{"id":"claude-sonnet-4"}}` | 0 / 静默 | 0 / 静默 |
+| `run codex -- fixture` | 已选中的合成 provider；临时 codex 脚本 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `scan` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session exclude --kind session --value ownership-session` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session list` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session purge-index` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session rebuild` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session scan` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session search ownership` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `session show ownership-session` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `state migrate` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `telemetry config-preview` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `telemetry disable` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `telemetry enable --write-codex-config` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `telemetry import $BASE/otel.json` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `telemetry status` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage diagnose` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage hook event codex` | `{"hook_event_name":"SessionStart","session_id":"ownership-session"}` | 0 / 静默 | 0 / 静默 |
+| `usage hook remove --client all` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage hook setup --client all` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage hook status --client all` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage rebuild` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage scan` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage sessions` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage signals --period all` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage stats --from 2026-07-14 --to 2026-07-20` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `usage summary` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `version` | 临时 HOME / 状态夹具 | 0 / json 成功输出 | 1 / state_ownership_refused |
+| `watch --interval 20ms` | 临时 HOME / 状态夹具 | 0 / ndjson，实际入口运行后取消 context | 1 / state_ownership_refused |
+| `completion zsh` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `shell-init zsh` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `shell env codex` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `shell setup zsh` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `shell status zsh` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `shell remove zsh` | 临时 HOME / 状态夹具 | 0 / text 成功输出 | 1 / state_ownership_refused |
+| `session --interactive` | 临时 HOME / 状态夹具 | 0 / PTY 进入画面后 q 退出 | 1 / state_ownership_refused |
+| `scan-worker` | 临时 HOME / 状态夹具 | 0 / text，实际入口运行后取消 context | 1 / state_ownership_refused |
+| `desktop bootstrap` | 临时 HOME / 状态夹具 | 0 / ndjson 成功输出 | 1 / state_ownership_refused |
+| `telemetry serve` | 临时 HOME / 状态夹具 | 0 / text，实际入口运行后取消 context | 1 / state_ownership_refused |
+
+240 个分支均通过。Cobra 执行时另外加入的表面也在同一屏障下验证，未用固定 JSON 清单将其排除：
+
+| 框架表面 | 默认 / 显式非真实 | 显式真实 | 输出依据 |
+| --- | --- | --- | --- |
+| `help provider` | 0 / Usage | 1 / state_ownership_refused | 实际 help 命令经过公共 pre-run |
+| `--help` | 0 / Usage | 0 / Usage | Cobra 在 pre-run 前完成帮助 |
+| `--version` | 0 / 固定版本文本 | 1 / state_ownership_refused | 根命令经过公共 pre-run |
+| `__complete provider ""` | 0 / completion directive | 0 / completion directive | Cobra 内部补全协议 |
+| `__completeNoDesc provider ""` | 0 / completion directive | 0 / completion directive | 同一内部协议的无说明别名 |
+
+**访问屏障、输出与交错**
+
+每条屏障观察之前都运行真实 Guard 拒绝的正向对照（exit 1），以及对受保护子项 stat 的负向对照（SIGKILL）；不以 mtime 不变替代无访问证据，不跳过不可用屏障。目录、根链接链、目标/后代、祖先链接、link/..、大小写、NFC/NFD 与 31 个非起始字符的原生等价组均通过。Task 1 的字面 U+034F 区分及缺失目标反例在 Go 全量中保持通过。默认 HOME 的 link/.. 和缺失分量后 .. 另有回归，物理解析前不做词法清理。
+
+| 交错 | 观察结果 |
+| --- | --- |
+| I1 读写会话持锁后接管 | B 等待上限后 owner_running；回执逐字段不变；A 完成 |
+| I2 排他先到、Hook 后到 | A 先观察旧身份并等共享锁；B 锁内换回执后，A 在屏障下静默 exit 0 |
+| I3 只读会话持锁 | 与 I1 相同；只读池未提前放开交接 |
+| I4 跨轮持锁 | B 被拒绝；A 两轮完成并退出后 B 成功；旧 A 再访问被屏障内拒绝 |
+| I5 两轮之间释放 | B 成功接管；A 下一轮复核失败，callback 计数仍为 1 |
+| I6 opt 切换、旧 keg 仍在 | B receipt_other_executable；A 现有会话正常完成 |
+| I7 删除旧 keg 后续登 | A 活着持锁时 B ownership_busy，回执不变且无隔离目录回退；A 关闭/释放后 B 续登并读到原数据；A 残留进程下一次守卫 executable_unresolved |
+| I8 默认续登与显式隔离 | 显式隔离不改变回执；不带 override 的 B 续登并读取 existing-owner-data |
+
+A/B 为真实进程，使用真实 flock 及任务 1 的回执 API；不声称执行过尚未交付的安装命令。
+
+固定输出覆盖 `notice`、`refused_state`、`revoked`、`doctor_not_installed`、`doctor_formula_unclaimed`、`doctor_refused`。TTY 文本只提示一次；非 TTY、quiet、JSON/NDJSON 无提示。拒绝报告不执行其他诊断，不写 Hook 拒绝记录。
+
+**验证命令与范围**
+
+环境为 macOS 26.7.3、Go 1.27.3（darwin/amd64）；Go 命令均使用规定 runner。访问屏障套件在无外层客户端沙箱的执行环境运行。
+
+| 检查 | 结果 |
+| --- | --- |
+| `scripts/run-go-test.sh ./...` | 28 个包通过；触及状态的测试包使用隔离账户；既有手动性能场景的条件 skip 不计作本任务覆盖 |
+| `scripts/run-go-test.sh -tags agentdeck_acceptance ./cmd/agentdeck -run '^TestOwnership'` | 80×3 命令分支、5×3 框架表面、62 个包入口、路径组、原型/TTY 和 8 种交错通过；本任务套件无 skip |
+| `scripts/run-go-test.sh -race ./internal/platform ./internal/installation ./internal/store ./internal/credentialvault ./internal/scanruntime ./internal/telemetry ./internal/watch ./internal/desktop ./cmd/agentdeck-perf` | 相关并发包通过 |
+| `make vet build-all`；`go build -mod=vendor ./cmd/agentdeck-perf` | vet、macOS arm64/amd64 CLI 和验证工具构建通过；输出使用临时目录 |
+| `bash scripts/check-installation-resolver.sh` | 普通产物没有 acceptanceAccountHome 符号，带 tag 正向对照有该符号 |
+| `scripts/check-docs.py` 的 `scoped_errors`（本次 Markdown 变更及其入链/主题集合）；`make check-whitespace`；`git diff --check` | 限定检查通过；混合改动聚合检查的既有问题见下文 |
+
+本次构建的 SHA-256：arm64 CLI `09bd36d83773eef0249fe5f7ab9397275c8b2f0001bbbd75de5087c7f3c5e848`；amd64 CLI `2cd766d3623154bc08b493669db07dfda7c479994b63ce0002bc2b17f37886ae`；验证工具 `7231791d6ded148644075cb9a55672789f538d504f23fdbf9661862b4bee295d`。这些摘要标识本次验证产物，不是发布或安装声明。
+
+**原生兼容性与已知基线限制**
+
+当前四份桌面 fixture 的 installation 行经真实 `AgentDeckShared` 模块解码后，name/status/code/reason 分别保留为 installation/warning/not_installed/receipt_missing；第五份 legacy envelope 仍可解码。检查使用 `decodeDesktopWireEnvelopeV1`，逐份查找 installation 行并断言上述字段，输入是仓库中的五份真实 fixture，没有替换 schema 值。
+
+额外运行完整 `AgentDeckFoundationVerifier` 时，当前候选和未修改 HEAD 的五份 fixture 都在 `schema version pair` 失败：验证器 `apps/macos/AgentDeckVerification/main.swift:126` 期待 supportedCount=32，HEAD 的 schema-ahead fixture 已是 33。本次没有修改原生源码或这个版本对。该既有验证器/fixture 不一致已记录在 Beads `ad-bug-native-verifier-schema-pair-stale`（待用户分流，未修复）；完整原生验证器不记为通过，也不代替 Task 6/7 的原生验收。
+
+客户端真实配置写入保护、安装发布/卸载协议及 App 状态位置仍由任务 3–7 交付；A1/A2/A9 的全产品组合由任务 8 汇总。来源缺陷保持开放。本任务等待独立评审，尚未提交或推送。
+
+文档聚合器另有既有范围限制：`python3 scripts/check-docs.py` 对本次混合改动报告一条历史 `health-recovery/reviews/extension-inventory-recovery.md:72` 的嵌套 `file://` 链接不支持。该行在基线 HEAD 已存在且未修改；`link_errors` 在解析 URL scheme 之前用变更目标的 basename 匹配 unsupported 行，因此 `extension.go` 命中了旧工作树的外部 URI。聚合检查其余已解析链接没有诊断。使用原检查器 API `scoped_errors([('M', None, 'docs/topics/installed-state-ownership/tasks.md')], repository_root, 'HEAD')` 验证本次文档、其入链和完整主题集合通过。聚合命令不记为通过；该限制由 Beads `ad-bug-doc-check-historical-file-url-scope` 承接，历史评审未改写。
+
+
+#### 修复交接 — 2026-11-07
+
+本次只补齐 worker 接收拒绝的跨 socket 类型传递。拒绝响应可携带
+`ownership_refusal`，客户端恢复原有的 `resource`、`reason` 与 `revoked`；
+普通拒绝仍保留原始错误字符串。状态目录解析、共享锁生命期、扫描分派和终态
+`Result` 线路没有因本次修复改写。
+
+新增真实 Unix socket 回归在客户端完成守卫后、worker 开始处理前切换身份，
+覆盖三种原因、三个 scope 和普通/serving 两种读取方式共 18 例；每例同时核验
+没有启动扫描、没有返回 round ID、receipt journal 字节保持不变。有效拥有者
+完成扫描和普通拒绝保持非所有权错误作为对照。CLI 回归核验包装错误的错误码、
+exit 1、仅含 resource/reason 的 JSON details，以及已批准的 revoked 文本。
+
+候选 ContentState 使用 `installed-state-ownership:state-root-guard:repair-r1-f1-20261107-WxkADPnB`。
+Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 与 macOS
+双架构构建已通过；新增 CLI 回归在竞态检查中通过。CLI 全包竞态超时的限定
+核验和既有聚合文档检查限制见评审记录，不将其记作全包通过。未受本次传输
+修改影响的访问屏障、所有权会话、续登和八种交错按原观察作范围核验后复用。
+完整修复映射、验证及门禁状态见
+[任务评审](reviews/state-root-guard.md)。以上是修复交接时的验证边界；当前
+独立复评结论以该记录的 Round 2 为准，交付状态以本文件 Tasks 矩阵及 Beads 为准。
 
 ### 3. `client-config-guard`
 

@@ -7423,6 +7423,11 @@
       "errors": 0,
       "checks": [
         {
+          "name": "installation",
+          "status": "ok",
+          "reason": "make"
+        },
+        {
           "name": "state_permissions",
           "status": "ok"
         },

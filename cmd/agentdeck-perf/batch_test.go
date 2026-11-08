@@ -13,11 +13,17 @@ import (
 func buildAgentdeck(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "agentdeck")
-	command := exec.Command("go", "build", "-mod=vendor", "-o", binary, "github.com/kitdine/agent-deck/cmd/agentdeck")
+	command := exec.Command("go", "build", "-mod=vendor", "-tags", "agentdeck_acceptance", "-o", binary, "github.com/kitdine/agent-deck/cmd/agentdeck")
 	command.Env = append(os.Environ(), "GOFLAGS=")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build agentdeck: %v\n%s", err, output)
 	}
+	physical, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeCLIEnvironments.Store(physical, []string{"AGENTDECK_ACCEPTANCE_ACCOUNT_HOME=" + isolatedPerfAccount})
+	t.Cleanup(func() { runtimeCLIEnvironments.Delete(physical) })
 	return binary
 }
 

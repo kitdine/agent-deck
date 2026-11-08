@@ -737,11 +737,22 @@ func runCLI(binary, home, stateDir, traceDir, tz, label string, args ...string) 
 	return runCLIWith(binary, home, stateDir, traceDir, tz, label, nil, nil, args...)
 }
 
+// Nil in production. Package tests supply account injection only for their
+// registered, acceptance-tagged CLI fixtures; the normal whitelist is unchanged.
+var testCLIEnvironment func(string) []string
+
+func addTestCLIEnvironment(command *exec.Cmd, binary string) {
+	if testCLIEnvironment != nil {
+		command.Env = append(command.Env, testCLIEnvironment(binary)...)
+	}
+}
+
 // runCLIWith is runCLI with extra environment and the command's stderr, which
 // P09's B0 arm needs for its original opt-in scan profile.
 func runCLIWith(binary, home, stateDir, traceDir, tz, label string, env []string, stderr io.Writer, args ...string) (cliRun, error) {
 	command := exec.Command(binary, append([]string{"--state-dir", stateDir}, args...)...)
 	command.Env = append([]string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}, env...)
+	addTestCLIEnvironment(command, binary)
 	command.Stderr = stderr
 	if traceDir != "" {
 		command.Env = append(command.Env, perftrace.EnvOut+"="+traceDir)
@@ -1229,6 +1240,7 @@ func runRebuild(ctx context.Context, cfg runConfig, traceDir string) rebuildReco
 	defer os.RemoveAll(state)
 	command := exec.CommandContext(ctx, cfg.Agentdeck, "--state-dir", state, "scan")
 	command.Env = []string{"HOME=" + cfg.Batch.Home, "TZ=" + cfg.TZ, "PATH=/usr/bin:/bin", perftrace.EnvOut + "=" + traceDir}
+	addTestCLIEnvironment(command, cfg.Agentdeck)
 	record := rebuildRecord{StartNS: perftrace.Now()}
 	err = command.Start()
 	if err == nil {

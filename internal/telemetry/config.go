@@ -54,6 +54,10 @@ func JournalDir(stateRoot string) string { return filepath.Join(Dir(stateRoot), 
 // LoadConfig reads the receiver configuration. A missing file is the default:
 // disabled, with the default port and retention.
 func LoadConfig(stateRoot string) (Config, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return Config{}, err
+	}
 	config := Config{Port: DefaultPort, RetentionDays: DefaultRetentionDays}
 	data, err := os.ReadFile(configPath(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
@@ -83,6 +87,10 @@ func (c Config) validate() error {
 
 // SaveConfig writes the receiver configuration privately and atomically.
 func SaveConfig(stateRoot string, config Config) error {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return err
+	}
 	if err := config.validate(); err != nil {
 		return err
 	}
@@ -98,6 +106,10 @@ func SaveConfig(stateRoot string, config Config) error {
 
 // EnsureToken returns the local token, creating it on first use.
 func EnsureToken(stateRoot string) (string, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return "", err
+	}
 	token, err := ReadToken(stateRoot)
 	if err == nil {
 		return token, nil
@@ -133,6 +145,10 @@ func EnsureToken(stateRoot string) (string, error) {
 
 // ReadToken reads the local token without creating it.
 func ReadToken(stateRoot string) (string, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return "", err
+	}
 	info, err := os.Lstat(tokenPath(stateRoot))
 	if err != nil {
 		return "", err
@@ -156,6 +172,10 @@ func tokenMatches(want, got string) bool {
 }
 
 func ensureDir(stateRoot string) error {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return err
+	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
 		return err
 	}

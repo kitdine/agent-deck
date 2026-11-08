@@ -103,14 +103,17 @@ func sessionUsageFromContext(ctx context.Context) (*usage.Service, bool) {
 }
 
 type commandOptions struct {
-	stateDir string
-	format   string
-	quiet    bool
-	verbose  bool
-	noColor  bool
-	stdin    io.Reader
-	stdout   io.Writer
-	stderr   io.Writer
+	stateDir          string
+	format            string
+	quiet             bool
+	verbose           bool
+	noColor           bool
+	stdin             io.Reader
+	stdout            io.Writer
+	stderr            io.Writer
+	resolvedStateRoot string
+	stateRootError    error
+	stateRootResolved bool
 }
 
 type inputError struct {
@@ -401,6 +404,9 @@ func main() {
 	code := execute(os.Args[1:], os.Stdin, stdout, stderr)
 	_ = store.CloseReadPools()
 	_ = perftrace.Close()
+	// Keep the process ownership session through kernel teardown, including
+	// any final background callbacks. os.Exit releases its flock atomically
+	// with process termination; no state access can outlive that release.
 	os.Exit(code)
 }
 
@@ -491,6 +497,10 @@ type commandExtensionInventoryErrorDetails struct {
 }
 
 func errorDetails(err error) any {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		return map[string]string{"resource": refused.Resource, "reason": refused.Reason}
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		return &commandLockErrorDetails{
@@ -558,6 +568,11 @@ func errorMessage(err error) string {
 }
 
 func renderCommandErrorText(w io.Writer, err error) {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		renderStateOwnershipRefusal(w, refused)
+		return
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		switch contention.Resource {
@@ -642,6 +657,10 @@ func commandOutputName(command *cobra.Command) string {
 }
 
 func errorCode(err error) string {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		return "state_ownership_refused"
+	}
 	var notFound *errdefs.NotFound
 	var scanDomain *scanruntime.DomainError
 	var syncIncomplete *extension.ErrExtensionSyncIncomplete
@@ -804,7 +823,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" && commandPath != "agentdeck desktop bootstrap" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
-			return nil
+			return prepareOwnershipCommand(opts, command)
 		},
 		Args: exactArgs(0),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -1702,14 +1721,21 @@ func (o *commandOptions) stateRoot() (string, error) {
 	if err := o.validateFormat(); err != nil {
 		return "", err
 	}
+	if o.stateRootResolved {
+		return o.resolvedStateRoot, o.stateRootError
+	}
+	o.stateRootResolved = true
 	if o.stateDir != "" {
-		return o.stateDir, nil
+		o.resolvedStateRoot, o.stateRootError = installation.StateRoot(o.stateDir)
+	} else {
+		home, err := userHomeDir()
+		if err != nil {
+			o.stateRootError = err
+		} else {
+			o.resolvedStateRoot, o.stateRootError = installation.StateRootWithHome("", home)
+		}
 	}
-	home, err := userHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return platform.StateRoot("", home), nil
+	return o.resolvedStateRoot, o.stateRootError
 }
 
 func requestScanRound(ctx context.Context, opts *commandOptions, scope scanruntime.Scope) (scanruntime.Result, error) {
@@ -1994,7 +2020,14 @@ func newScanWorkerCommand(opts *commandOptions) *cobra.Command {
 }
 
 func (o *commandOptions) shellStateRoot() string {
-	return o.stateDir
+	// An omitted override stays omitted in generated shell commands, so the
+	// invoked installation selects its own default. Explicit paths were guarded
+	// by the common pre-run and must use the same physical spelling.
+	if o.stateDir == "" {
+		return ""
+	}
+	root, _ := o.stateRoot()
+	return root
 }
 
 func (o *commandOptions) validateFormat() error {
@@ -3350,6 +3383,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			}})
 		}
 		service := watch.Service{
+			StateRoot:           stateDir,
 			InitialFingerprints: initial,
 			Sources:             filtered,
 			Lock: func(ctx context.Context) (func() error, error) {
@@ -3502,6 +3536,10 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{Use: "doctor", Short: "Run read-only diagnostics", Args: exactArgs(0), RunE: func(command *cobra.Command, _ []string) error {
 		stateDir, err := opts.stateRoot()
 		if err != nil {
+			var refused *platform.ErrStateOwnershipRefused
+			if errors.As(err, &refused) {
+				return writeDoctorResult(opts.stdout, opts.format, doctor.RefusedStateReport(full, refused.Reason))
+			}
 			return err
 		}
 		home, err := userHomeDir()
@@ -4468,6 +4506,12 @@ func writeDoctorResult(w io.Writer, format string, report doctor.Report) error {
 		return err
 	}
 	if report.Partial {
+		for _, check := range report.Checks {
+			if check.Name == "state" && check.Code == "state_ownership_refused" {
+				_, err := fmt.Fprintln(w, "checks_skipped: the requested state directory was refused; no other diagnostics ran")
+				return err
+			}
+		}
 		_, err := fmt.Fprintln(w, "checks_skipped: remaining diagnostics require a readable core database")
 		return err
 	}
@@ -4649,6 +4693,12 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		value, ok := data.([]provider.DefinitionResult)
 		if !ok {
 			return fmt.Errorf("unexpected provider.list result %T", data)
+		}
+		// The virtual official definition does not make an empty isolated
+		// development state a configured provider inventory. JSON retains the
+		// existing definition contract; installed text output is unchanged.
+		if !platform.CurrentInstallation().Installed && len(value) == 1 && value[0].Definition.BuiltIn && value[0].Definition.CredentialCount == 0 {
+			value = nil
 		}
 		if len(value) == 0 {
 			_, err := fmt.Fprintln(w, "No providers.")
@@ -5254,6 +5304,9 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 			if err := doctor.WriteRegistrationText(w, check.RegistrationDetails, check.Code); err != nil {
 				return err
 			}
+		}
+		if err := renderOwnershipCheck(w, check); err != nil {
+			return err
 		}
 		if check.Code == store.ErrSchemaAhead.Code {
 			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 const Filename = "hook-refusals.json"
@@ -28,6 +30,10 @@ type Record struct {
 // Read ignores absent, incompatible and malformed diagnostics without repairing
 // them. A size limit also bounds reads of files not produced by this package.
 func Read(root string) (Record, bool) {
+	root, err := platform.GuardStateRoot(root)
+	if err != nil {
+		return Record{}, false
+	}
 	path := filepath.Join(root, Filename)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxRecordBytes {
@@ -64,6 +70,10 @@ func Live(root string, supported int) (Record, bool) {
 // Concurrent read-modify-replace operations may lose increments; this is a
 // diagnostic count, not an exact ledger. Callers deliberately ignore failures.
 func Write(root string, stored, supported int) error {
+	root, err := platform.GuardStateRoot(root)
+	if err != nil {
+		return err
+	}
 	if supported < 0 || stored <= supported {
 		return errors.New("invalid schema refusal")
 	}
@@ -101,7 +111,11 @@ func Write(root string, stored, supported int) error {
 }
 
 func Clear(root string) error {
-	err := os.Remove(filepath.Join(root, Filename))
+	root, err := platform.GuardStateRoot(root)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(filepath.Join(root, Filename))
 	if os.IsNotExist(err) {
 		return nil
 	}

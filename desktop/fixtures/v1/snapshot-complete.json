@@ -7844,10 +7844,16 @@
       "available": true,
       "status": "degraded",
       "healthy": false,
-      "problems": 3,
-      "warnings": 3,
+      "problems": 4,
+      "warnings": 4,
       "errors": 0,
       "checks": [
+        {
+          "name": "installation",
+          "status": "warning",
+          "code": "not_installed",
+          "reason": "receipt_missing"
+        },
         {
           "name": "state_permissions",
           "status": "ok"

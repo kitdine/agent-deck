@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/perftrace"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -22,8 +23,10 @@ import (
 // after its allowlisted records are fsync'd to the journal; it never answers
 // success before the write.
 type Receiver struct {
-	Token   string
-	Journal *Journal
+	StateRoot     string
+	OwnershipLost func(error)
+	Token         string
+	Journal       *Journal
 	// Persisted is signalled, without blocking, after each durable append.
 	Persisted chan<- struct{}
 	// Refused records a request that could not be persisted.
@@ -32,6 +35,15 @@ type Receiver struct {
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, request *http.Request) {
+	if r.StateRoot != "" {
+		if err := platform.RevalidateOwnership(r.StateRoot); err != nil {
+			if r.OwnershipLost != nil {
+				r.OwnershipLost(err)
+			}
+			writeStatus(w, http.StatusServiceUnavailable, "state_ownership_refused")
+			return
+		}
+	}
 	if request.URL.Path != LogsPath {
 		http.NotFound(w, request)
 		return
@@ -126,6 +138,10 @@ func writeListenerState(stateRoot string, state ListenerState) error {
 // ReadListenerState returns the listener's last self-description. A running
 // state whose process no longer exists is reported as stopped.
 func ReadListenerState(stateRoot string) (ListenerState, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return ListenerState{}, err
+	}
 	data, err := os.ReadFile(listenerPath(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
 		return ListenerState{State: "stopped"}, nil
@@ -184,6 +200,13 @@ var (
 // drains the journal at start (recovering after a crash) and after every
 // acknowledged request.
 func Serve(ctx context.Context, options ServeOptions) error {
+	root, err := platform.GuardStateRoot(options.StateRoot)
+	if err != nil {
+		return err
+	}
+	options.StateRoot = root
+	ctx, cancelInventory := context.WithCancel(ctx)
+	defer cancelInventory()
 	// Capture baselines before reading the settings or announcing readiness.
 	// A startup/Ready callback change must still be noticed by the first poll.
 	configStamp := configModTime(options.StateRoot)
@@ -233,7 +256,15 @@ func Serve(ctx context.Context, options ServeOptions) error {
 	}
 	persisted := make(chan struct{}, 1)
 	refusals := make(chan [2]string, 16)
+	ownershipLost := make(chan error, 1)
 	receiver := &Receiver{
+		StateRoot: options.StateRoot,
+		OwnershipLost: func(err error) {
+			select {
+			case ownershipLost <- err:
+			default:
+			}
+		},
 		Token: token, Journal: journal, Persisted: persisted, Now: now,
 		Refused: func(at time.Time, reason string) {
 			select {
@@ -337,32 +368,56 @@ func Serve(ctx context.Context, options ServeOptions) error {
 	defer ticker.Stop()
 	exitReason := "stopped"
 	var serveErr error
+	validateOwnership := func() bool {
+		if err := platform.RevalidateOwnership(options.StateRoot); err != nil {
+			serveErr = err
+			return false
+		}
+		return true
+	}
 loop:
 	for {
 		select {
+		case serveErr = <-ownershipLost:
+			break loop
 		case <-ctx.Done():
 			break loop
 		case serveErr = <-served:
 			exitReason = "listener_failed"
 			break loop
 		case <-persisted:
+			if !validateOwnership() {
+				break loop
+			}
 			drain()
 		case refusal := <-refusals:
+			if !validateOwnership() {
+				break loop
+			}
 			at, _ := time.Parse(time.RFC3339Nano, refusal[0])
 			_ = options.Store.RecordTelemetryGap(context.Background(), at, at, refusal[1])
 			state.LastRefusedAt, state.LastRefusal = refusal[0], refusal[1]
 			_ = writeListenerState(options.StateRoot, state)
 		case <-settleTicker.C:
+			if !validateOwnership() {
+				break loop
+			}
 			settle()
 			requestInventory()
 		case err := <-inventoryDone:
 			inventoryRunning = false
+			if !validateOwnership() {
+				break loop
+			}
 			if changed := settle(); err == nil && !changed && options.Published != nil {
 				// The scan can settle an old pending observation itself. Its
 				// publication still needs to reach an owner with no source event.
 				options.Published()
 			}
 		case <-ticker.C:
+			if !validateOwnership() {
+				break loop
+			}
 			// The configuration is AgentDeck's own file; a disable or a port
 			// change from the CLI or Settings arrives without a signal.
 			if stamp := configModTime(options.StateRoot); !stamp.Equal(configStamp) {
@@ -394,6 +449,14 @@ loop:
 		}
 	}
 	shutdownServer(server)
+	cancelInventory()
+	if inventoryRunning {
+		<-inventoryDone
+	}
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(serveErr, &refused) {
+		return serveErr
+	}
 	drain()
 	settle()
 	_ = options.Store.EndTelemetryListening(context.Background(), interval, now(), exitReason)

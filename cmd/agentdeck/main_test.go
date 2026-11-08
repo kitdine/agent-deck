@@ -28,6 +28,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -36,12 +37,45 @@ import (
 	"github.com/kitdine/agent-deck/internal/watch"
 )
 
+var ownershipAcceptanceProcess func() (bool, int)
+
 func TestMain(m *testing.M) {
+	if ownershipAcceptanceProcess != nil {
+		if handled, code := ownershipAcceptanceProcess(); handled {
+			os.Exit(code)
+		}
+	}
+	if physical, err := filepath.EvalSymlinks(os.TempDir()); err == nil {
+		_ = os.Setenv("TMPDIR", physical)
+	}
+	account, err := os.MkdirTemp("", "agentdeck-cli-account-")
+	if err != nil {
+		panic(err)
+	}
+	home, err := os.MkdirTemp("", "agentdeck-cli-home-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("AGENTDECK_ACCEPTANCE_ACCOUNT_HOME", account)
+	platform.SetInstallationResolver(installedCLIFixture{account})
 	doctorRegistrationProbe = func(context.Context, bool) doctor.RegistrationDetails {
 		return doctor.RegistrationDetails{Applicable: false, ApplicabilityReason: "canonical_host_absent"}
 	}
 	machineIdentity = func(context.Context) (string, error) { return "synthetic-machine", nil }
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = store.CloseReadPools()
+	_ = platform.ReleaseStateOwnership()
+	_ = os.RemoveAll(account)
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
+
+type installedCLIFixture struct{ account string }
+
+func (r installedCLIFixture) AccountHome() (string, error) { return r.account, nil }
+func (r installedCLIFixture) Resolve() platform.InstallationIdentity {
+	return platform.InstallationIdentity{Installed: true, Channel: "make"}
 }
 
 func TestRootCommandRegistersGlobalFlags(t *testing.T) {

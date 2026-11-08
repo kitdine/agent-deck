@@ -62,10 +62,16 @@
       "available": true,
       "status": "unhealthy",
       "healthy": false,
-      "problems": 1,
-      "warnings": 0,
+      "problems": 2,
+      "warnings": 1,
       "errors": 1,
       "checks": [
+        {
+          "name": "installation",
+          "status": "warning",
+          "code": "not_installed",
+          "reason": "receipt_missing"
+        },
         {
           "name": "state_permissions",
           "status": "ok"

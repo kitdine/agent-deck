@@ -163,6 +163,7 @@ func computeOracle(agentdeck, home, tz, anchor, scratch string) ([]heroSummary, 
 	env := []string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}
 	scan := exec.Command(agentdeck, "--state-dir", state, "scan")
 	scan.Env = env
+	addTestCLIEnvironment(scan, scan.Path)
 	if output, err := scan.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("oracle scan: %v: %.200s", err, output)
 	}
@@ -172,6 +173,7 @@ func computeOracle(agentdeck, home, tz, anchor, scratch string) ([]heroSummary, 
 	read := exec.Command(agentdeck, "--state-dir", state, "--format", "json", "desktop", "snapshot",
 		"--wire-version", "1", "--recent-limit", "1")
 	read.Env = env
+	addTestCLIEnvironment(read, read.Path)
 	raw, err := read.Output()
 	if err != nil {
 		return nil, fmt.Errorf("oracle snapshot: %w", err)
@@ -215,6 +217,7 @@ func computeBootstrapOracle(agentdeck, home, tz, anchor, scratch string, full []
 	defer os.RemoveAll(state)
 	command := exec.Command(agentdeck, "--state-dir", state, "--format", "ndjson", "desktop", "bootstrap")
 	command.Env = []string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}
+	addTestCLIEnvironment(command, command.Path)
 	raw, err := command.Output()
 	if waitErr := waitForWorkers(state, 60*time.Second); err == nil {
 		err = waitErr

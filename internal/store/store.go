@@ -37,6 +37,10 @@ const writablePragmas = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pra
 // deliberately not part of the core schema so deleting the index can never
 // delete providers, credentials, or usage data.
 func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
 		return nil, err
 	}
@@ -99,6 +103,10 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 // busy_timeout mirrors OpenReadOnly's own (see its doc): a detached scanner
 // can still hold a brief write lock on this index while this reads it.
 func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
 	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
@@ -287,6 +295,10 @@ func Open(ctx context.Context, stateRoot string) (*Store, error) {
 // missing root or database. Background derived-cache publication uses it so a
 // detached worker can never resurrect state that its owner has removed.
 func OpenExisting(ctx context.Context, stateRoot string) (*Store, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(stateRoot)
 	if err != nil {
 		return nil, err
@@ -329,6 +341,10 @@ func OpenWithLockHeld(ctx context.Context, stateRoot string) (*Store, error) {
 // SQLITE_BUSY instead of retrying, rather than blocking indefinitely --
 // mode=ro already refuses to create or migrate anything.
 func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
 	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
@@ -349,6 +365,10 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 // schemaAheadAtRest only probes after lock acquisition fails. It never creates
 // state, migrates the database, or changes its permissions.
 func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil
+	}
 	path, cleanup, err := schemaProbeSnapshot(ctx, stateRoot)
 	if err != nil {
 		return nil
@@ -367,6 +387,10 @@ func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
 }
 
 func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *Store, err error) {
+	stateRoot, err = platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
 		return nil, err
 	}
@@ -627,6 +651,10 @@ type Lock struct {
 }
 
 func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	lock, err := acquireNamedLock(ctx, stateRoot, "state.lock", timeout)
 	if err != nil && errors.Is(err, ErrStateBusy) {
 		return nil, wrapLockContention(stateRoot, "state.lock", "state", err)
@@ -637,6 +665,10 @@ func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (
 // AcquireScanLock serializes foreground scans without blocking state mutations
 // or read commands that use the short-lived state lock.
 func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	lock, err := acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
 	if err != nil && errors.Is(err, ErrStateBusy) {
 		return nil, wrapLockContention(stateRoot, "scan.lock", "scan", err)
@@ -661,6 +693,10 @@ func wrapLockContention(stateRoot, name, resource string, baseErr error) error {
 // InspectScanLockContention reports a contended scan lock after a detached
 // worker failed to expose its socket. It does not acquire or remove the lock.
 func InspectScanLockContention(stateRoot string) *ErrLockContention {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil
+	}
 	reason, err := ClassifyLock(filepath.Join(stateRoot, "scan.lock"), lockProcessAlive)
 	if errors.Is(err, fs.ErrNotExist) || reason == LockReasonReclaimable {
 		return nil
@@ -710,6 +746,10 @@ func acquireNamedLockWithProcessCheck(ctx context.Context, stateRoot, name strin
 type reclaimFileLock func(*os.File) (bool, error)
 
 func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (*Lock, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	path := filepath.Join(stateRoot, name)
 	token, err := newLockToken()
 	if err != nil {

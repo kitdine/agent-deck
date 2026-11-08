@@ -487,6 +487,10 @@ func EnsureStateRoot(path string) error {
 }
 
 func EnsureStateRootWithFS(filesystem FileSystem, path string) error {
+	path, err := GuardStateRoot(path)
+	if err != nil {
+		return err
+	}
 	if err := filesystem.MkdirAll(path, DirectoryMode); err != nil {
 		return err
 	}

@@ -1,0 +1,38 @@
+{
+  "notice": {
+    "stdout": "No providers.\n",
+    "stderr": "note: not the installed AgentDeck (receipt_missing); using isolated state ~/.agentdeck-dev\n",
+    "json": "(unchanged: --format json output is identical to the installed program's; the note never appears in JSON, NDJSON, pipes or --quiet)",
+    "exit": 0
+  },
+  "refused_state": {
+    "stdout": "",
+    "stderr": "state_ownership_refused: This AgentDeck is not the installed program and cannot use the real state directory.\n  resource: state_root\n  reason: receipt_other_executable\n  next: Omit --state-dir to use the isolated state, or run the installed agentdeck.\n  manual prerequisite: To work with real data, make an authorized SQLite backup copy and pass that copy's directory.\n  diagnose: agentdeck doctor\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"scan\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"state_ownership_refused\",\n    \"message\": \"This AgentDeck is not the installed program and cannot use the real state directory.\",\n    \"details\": {\n      \"resource\": \"state_root\",\n      \"reason\": \"receipt_other_executable\"\n    }\n  }\n}",
+    "exit": 1
+  },
+  "revoked": {
+    "stdout": "",
+    "stderr": "state_ownership_refused: This AgentDeck is not the installed program and cannot use the real state directory.\n  resource: state_root\n  reason: receipt_other_executable\n  next: Another installation now owns AgentDeck state. Run that installation's agentdeck.\n  diagnose: agentdeck doctor\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"watch\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"state_ownership_refused\",\n    \"message\": \"This AgentDeck is not the installed program and cannot use the real state directory.\",\n    \"details\": {\n      \"resource\": \"state_root\",\n      \"reason\": \"receipt_other_executable\"\n    }\n  }\n}",
+    "exit": 1
+  },
+  "doctor_not_installed": {
+    "stdout": "status: degraded\nmode: quick\nwarnings: 2\nerrors: 0\ninstallation: warning (not_installed)\n  reason: receipt_other_executable\n  state: isolated ~/.agentdeck-dev\n  next: Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app.\nstate: warning (state_missing)\nchecks_skipped: remaining diagnostics require a readable core database\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"degraded\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"warning\",\n        \"code\": \"not_installed\",\n        \"reason\": \"receipt_other_executable\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"warning\",\n        \"code\": \"state_missing\"\n      }\n    ],\n    \"problems\": 2,\n    \"warnings\": 2,\n    \"errors\": 0\n  },\n  \"warnings\": [\n    \"checks_skipped\"\n  ],\n  \"partial\": true\n}",
+    "exit": 0
+  },
+  "doctor_formula_unclaimed": {
+    "stdout": "status: degraded\nmode: quick\nwarnings: 2\nerrors: 0\ninstallation: warning (not_installed)\n  reason: receipt_missing\n  state: isolated ~/.agentdeck-dev\n  next: Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app.\n  recovery: agentdeck install claim\nstate: warning (state_missing)\nchecks_skipped: remaining diagnostics require a readable core database\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"degraded\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"warning\",\n        \"code\": \"not_installed\",\n        \"reason\": \"receipt_missing\",\n        \"recovery_command\": \"agentdeck install claim\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"warning\",\n        \"code\": \"state_missing\"\n      }\n    ],\n    \"problems\": 2,\n    \"warnings\": 2,\n    \"errors\": 0\n  },\n  \"warnings\": [\n    \"checks_skipped\"\n  ],\n  \"partial\": true\n}",
+    "exit": 0
+  },
+  "doctor_refused": {
+    "stdout": "status: unhealthy\nmode: quick\nwarnings: 1\nerrors: 1\ninstallation: warning (not_installed)\n  reason: receipt_other_executable\n  state: isolated ~/.agentdeck-dev\n  next: Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app.\nstate: error (state_ownership_refused)\n  reason: receipt_other_executable\n  next: Omit --state-dir to use the isolated state, or run the installed agentdeck.\nchecks_skipped: the requested state directory was refused; no other diagnostics ran\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"unhealthy\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"warning\",\n        \"code\": \"not_installed\",\n        \"reason\": \"receipt_other_executable\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"error\",\n        \"code\": \"state_ownership_refused\",\n        \"reason\": \"receipt_other_executable\"\n      }\n    ],\n    \"problems\": 2,\n    \"warnings\": 1,\n    \"errors\": 1\n  },\n  \"warnings\": [\n    \"checks_skipped\"\n  ],\n  \"partial\": true\n}",
+    "exit": 0
+  }
+}

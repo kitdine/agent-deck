@@ -131,6 +131,10 @@ func ManagedBlock(endpoint, token string) string {
 // byte, and keeps the original bytes when the file changed during the write
 // or the result does not parse as the managed exporter.
 func WriteManagedBlock(home, stateRoot string, port int, token string, now time.Time) error {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return err
+	}
 	path := CodexConfigPath(home)
 	original, err := os.ReadFile(path)
 	mode := fs.FileMode(platform.FileMode)
@@ -223,6 +227,10 @@ func restoreOriginal(path string, original, updated []byte, mode fs.FileMode) bo
 // left untouched and ErrCodexConfigRestoreIncomplete is returned. Having no
 // record means AgentDeck never wrote a block, which is not an error.
 func RemoveManagedBlock(home, stateRoot string) (bool, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return false, err
+	}
 	raw, err := os.ReadFile(managedRecordPath(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
