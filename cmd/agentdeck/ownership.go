@@ -15,6 +15,7 @@ import (
 )
 
 const isolatedStateNext = "Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app."
+const refusedClientConfigNext = "Run the installed agentdeck, or run this build with a temporary HOME for development."
 const refusedStateNext = "Omit --state-dir to use the isolated state, or run the installed agentdeck."
 
 func ownershipSilentCommand(command *cobra.Command) bool {
@@ -55,7 +56,9 @@ func prepareOwnershipCommand(opts *commandOptions, command *cobra.Command) error
 
 func renderStateOwnershipRefusal(w io.Writer, refused *platform.ErrStateOwnershipRefused) {
 	fmt.Fprintf(w, "state_ownership_refused: %s\n  resource: %s\n  reason: %s\n", refused.Error(), refused.Resource, refused.Reason)
-	if refused.Revoked {
+	if refused.Resource == "client_config" {
+		fmt.Fprintln(w, "  next: "+refusedClientConfigNext)
+	} else if refused.Revoked {
 		fmt.Fprintln(w, "  next: Another installation now owns AgentDeck state. Run that installation's agentdeck.")
 	} else {
 		fmt.Fprintln(w, "  next: "+refusedStateNext)

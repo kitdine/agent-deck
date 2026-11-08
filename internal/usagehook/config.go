@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 const (
@@ -228,6 +230,13 @@ func (m *Manager) mutate(request Request, remove bool) (Summary, error) {
 	clients, err := m.clients(request)
 	if err != nil {
 		return Summary{}, err
+	}
+	// Refuse the whole transaction before any client file is touched; a
+	// per-client result row would hide the ownership refusal behind exit 0.
+	for _, client := range clients {
+		if _, err := platform.GuardClientWrite(m.path(client)); err != nil {
+			return Summary{}, err
+		}
 	}
 	summary := Summary{Results: make([]Result, 0, len(clients))}
 	changes := make([]change, 0, len(clients))
@@ -1040,6 +1049,9 @@ func (m *Manager) SetupStatusLine() (Result, error) {
 	m.statusLineSetupPrevious = nil
 	path := m.path(ClientClaude)
 	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+	if _, err := platform.GuardClientWrite(path); err != nil {
+		return result, err
+	}
 
 	snap, err := m.readSnapshot(path)
 	if err != nil {
@@ -1122,6 +1134,9 @@ func (m *Manager) RollbackStatusLineSetup() (Result, error) {
 	}
 	path := m.path(ClientClaude)
 	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+	if _, err := platform.GuardClientWrite(path); err != nil {
+		return result, err
+	}
 	snap, err := m.readSnapshot(path)
 	if err != nil {
 		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
@@ -1181,6 +1196,9 @@ func (m *Manager) RestoreStatusLine() (Result, error) {
 	m.statusLineRestore = nil
 	path := m.path(ClientClaude)
 	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+	if _, err := platform.GuardClientWrite(path); err != nil {
+		return result, err
+	}
 
 	snap, err := m.readSnapshot(path)
 	if err != nil {
@@ -1281,6 +1299,9 @@ func (m *Manager) ReinstallRestoredStatusLine() (Result, error) {
 	receipt := m.statusLineRestore
 	if receipt == nil {
 		return result, nil
+	}
+	if _, err := platform.GuardClientWrite(path); err != nil {
+		return result, err
 	}
 	snap, err := m.readSnapshot(path)
 	if err != nil {
@@ -1444,7 +1465,9 @@ func (m *Manager) writeStatusLinePrior(record statusLinePriorRecord) error {
 	if err != nil {
 		return err
 	}
-	return m.writeAtomic(path, encoded, privateFileMode)
+	// The prior record lives in the state directory, which the state access
+	// guard owns; it is not a client file.
+	return m.writeFileAtomic(path, encoded, privateFileMode, nil)
 }
 
 // topLevelValueSpanRaw wraps topLevelValueSpan to return the located value's
@@ -1661,7 +1684,18 @@ func (m *Manager) writeAtomic(path string, contents []byte, mode fs.FileMode) er
 	return m.writeAtomicChecked(path, contents, mode, nil)
 }
 
+// writeAtomicChecked is the client-file write point of this package. The guard
+// runs before the directory, temporary file or replacement exists, and the
+// physical path it returns is the one written.
 func (m *Manager) writeAtomicChecked(path string, contents []byte, mode fs.FileMode, beforeReplace func() error) error {
+	path, err := platform.GuardClientWrite(path)
+	if err != nil {
+		return err
+	}
+	return m.writeFileAtomic(path, contents, mode, beforeReplace)
+}
+
+func (m *Manager) writeFileAtomic(path string, contents []byte, mode fs.FileMode, beforeReplace func() error) error {
 	directory := filepath.Dir(path)
 	if err := m.files.mkdirAll(directory, privateDirMode); err != nil {
 		return fmt.Errorf("create hook configuration directory: %w", err)
@@ -1707,6 +1741,10 @@ func (m *Manager) writeAtomicChecked(path string, contents []byte, mode fs.FileM
 }
 
 func (m *Manager) removePath(path string) error {
+	path, err := platform.GuardClientWrite(path)
+	if err != nil {
+		return err
+	}
 	info, err := m.files.lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

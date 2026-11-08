@@ -135,7 +135,12 @@ func WriteManagedBlock(home, stateRoot string, port int, token string, now time.
 	if err != nil {
 		return err
 	}
-	path := CodexConfigPath(home)
+	// The client guard runs before the digest record or any directory is
+	// written, and its physical path is used for every later operation.
+	path, err := platform.GuardClientWrite(CodexConfigPath(home))
+	if err != nil {
+		return err
+	}
 	original, err := os.ReadFile(path)
 	mode := fs.FileMode(platform.FileMode)
 	switch {
@@ -242,7 +247,10 @@ func RemoveManagedBlock(home, stateRoot string) (bool, error) {
 	if err := json.Unmarshal(raw, &record); err != nil {
 		return false, ErrCodexConfigRestoreIncomplete
 	}
-	path := CodexConfigPath(home)
+	path, err := platform.GuardClientWrite(CodexConfigPath(home))
+	if err != nil {
+		return false, err
+	}
 	original, err := os.ReadFile(path)
 	if err != nil || blockCount(original) != 1 || bytes.Count(original, []byte(managedBegin)) != 1 {
 		return false, ErrCodexConfigRestoreIncomplete

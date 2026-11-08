@@ -777,7 +777,22 @@ func WriteClaudeConfig(path string, config ClientConfig) error {
 	return atomicPrivateReplace(path, encoded)
 }
 
+// WriteRedactedBackup writes to a caller-chosen destination, which is a
+// client-side write like any other: it passes the client-configuration guard
+// before a directory or file exists and writes the guard's physical path.
 func WriteRedactedBackup(client Client, source, destination string) error {
+	destination, err := platform.GuardClientWrite(destination)
+	if err != nil {
+		return err
+	}
+	return writeRedactedBackup(client, source, destination)
+}
+
+// writeRedactedBackup is the unguarded writer. Only managed backups use it
+// directly: managedBackupPath places them under a state root that the state
+// guard already authorized, which may sit inside the account (the isolated
+// default) without being client configuration.
+func writeRedactedBackup(client Client, source, destination string) error {
 	contents, err := os.ReadFile(source)
 	if err != nil {
 		return err
@@ -835,7 +850,16 @@ func WriteRedactedBackup(client Client, source, destination string) error {
 	return os.Chmod(destination, platform.FileMode)
 }
 
+// atomicPrivateReplace is the single convergence point of the four
+// Write*Config functions. It is not the package's only client-side write: a
+// caller-chosen backup destination is guarded by WriteRedactedBackup and by
+// UseCredential's preflight. The guard runs before the temporary file exists,
+// and its physical path is the one stat'd, written beside and replaced.
 func atomicPrivateReplace(path string, contents []byte) error {
+	path, err := platform.GuardClientWrite(path)
+	if err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err

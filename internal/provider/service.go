@@ -957,7 +957,18 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 			return err
 		}
 	}
-	if backupPath == "" {
+	// Refuse before the backup or operation record exists; the writer
+	// checks again at the replacement itself.
+	if _, err := platform.GuardClientWrite(configPath); err != nil {
+		return err
+	}
+	// A caller-chosen backup destination is a client-side write and is
+	// refused here, before the operation record, exactly like configPath.
+	if backupPath != "" {
+		if backupPath, err = platform.GuardClientWrite(backupPath); err != nil {
+			return err
+		}
+	} else {
 		backupPath, err = managedBackupPath(s.StateRoot, client, opID)
 		if err != nil {
 			return err
@@ -979,7 +990,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 		}
 		priorKeyed = &keyed
 	}
-	if err := WriteRedactedBackup(client, configPath, backupPath); err != nil {
+	if err := writeRedactedBackup(client, configPath, backupPath); err != nil {
 		return err
 	}
 	var providerID *int64

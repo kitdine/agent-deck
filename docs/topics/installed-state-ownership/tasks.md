@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-11-05
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 
 # Installed State Ownership — Tasks
@@ -29,7 +29,7 @@ updated: 2026-11-07
 当前需求、CLI、架构保持已通过状态；任务分解的 2026-11-07 重写稿已通过 Round 10 独立复评。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。任务 3–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。任务 4–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -37,7 +37,7 @@ updated: 2026-11-07
 | --- | --- | --- |
 | 1. `installation-identity` | [x] | [x] |
 | 2. `state-root-guard` | [x] | [x] |
-| 3. `client-config-guard` | [ ] | [ ] |
+| 3. `client-config-guard` | [x] | [x] |
 | 4. `installation-diagnostics` | [ ] | [ ] |
 | 5. `installer-receipts` | [ ] | [ ] |
 | 6. `app-state-location` | [ ] | [ ] |
@@ -385,6 +385,37 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 - `refused_client_config` 文本与 JSON 固定测试在本任务完成；安装身份夹具仍使用任务 1 的 API，无须等待任务 5。只读会话扫描输入仍允许读取。
 
 **验证：L3**。因涉及真实客户端配置与凭据写入边界，运行 platform/provider/usagehook/telemetry/shellconfig/CLI 定向测试、Go 全量测试、`make vet`，并为改动中的并发写入路径选择对应 `-race` 包。记录客户端文件未变与状态访问屏障是不同的证明。
+
+#### 开发交接 — 2026-11-08
+
+本节是任务 3 的实现与验证材料，不是独立评审结论。Dev 已勾选，Review 保持未勾选。候选基线为 `2867c9c32fbd7349aff6cda81f90e2eb8ce81b4d`（任务 2 交付提交）；工作区 `agent-deck.installed-state-ownership`，分支 `feature/installed-state-ownership`。CEv1 WorkUnit 为 `installed-state-ownership:client-config-guard`，候选 ContentState 记录最终 HEAD、逐路径 blob 清单与指纹（配方同任务 2）。
+
+**守卫语义**
+
+- 新增 `platform.GuardClientWrite(path) (string, error)`（`internal/platform/client_guard.go`）。受保护集合是 `phys(account)`：逻辑账户主目录、其入口链接链和物理目标，每次调用只读入口元数据重新计算。候选路径按完整物理解析判定，位于该集合下时：已安装身份放行；未安装身份（含 formula 续登失败）返回 `ErrStateOwnershipRefused{Resource: "client_config"}`，reason 取身份原因。临时 `HOME` 位于集合外，直接放行。
+- 返回值是“物理父目录 + 末级名称”。所有写入者都替换或删除目录项本身，shell 与 Hook 写入者还拒绝末级符号链接；解析父目录可把写入固定在被判定的位置，又不把“替换链接”变成“经链接写入”。末级链接指向账户内时仍按完整解析拒绝。
+- 拒绝错误按 resource 选择文案：`client_config` 使用原型消息，文本块的 `next` 为客户端配置专用一行，不输出状态目录的 manual prerequisite。JSON details 仍只含 `resource`、`reason`。
+
+**写入者与守卫点**
+
+| 包 | 守卫点 | 使用返回路径 |
+| --- | --- | --- |
+| provider | `atomicPrivateReplace`（四个 `Write*Config` 唯一汇合点）；`Service.UseCredential`（`Use` 经由它）在备份与操作记录之前预检主配置与调用方指定的备份目的地；公开的 `WriteRedactedBackup` 守卫自身目的地 | stat、临时文件目录、重命名、chmod 均用返回路径；拒绝时不写备份、不建操作记录。托管备份由 `managedBackupPath` 落在已过状态守卫的根下，走包内未守卫的 `writeRedactedBackup`；自定义目的地一律按客户端写入判定（ISO-CCG-R1-F1） |
+| usagehook | `writeAtomicChecked`、`removePath`（全部 Hook/statusline 写入与回滚删除）；`mutate` 与四个 statusline 公开方法先预检，使拒绝以错误返回而非结果行 | 目录创建、临时文件、重命名、删除均用返回路径；statusline prior 记录写在状态目录，改走不带客户端守卫的内部写入，由状态守卫负责 |
+| telemetry | `WriteManagedBlock` 在写摘要记录与建目录前；`RemoveManagedBlock` 在读到记录后、替换前 | 读取、恢复、替换均用返回路径；CLI 的 enable 分支透传拒绝，不再折叠为 `codex_config_write_failed` |
+| shellconfig | `Setup`、`SetupIfUnconfigured`、`Remove` 在任何目录、临时文件、备份、回滚前对全部选中目标预检 | 写入与回滚使用物理路径；结果行保留请求路径用于显示 |
+
+**写入者重新枚举**：对 `internal/` 与 `cmd/` 中全部 `os.WriteFile/Create/CreateTemp/OpenFile/Rename/Remove/RemoveAll/MkdirAll/Chmod/Symlink` 调用逐个核对目标。账户主目录下的写入者只有上表四个包。其余写入目标均为状态目录或其派生位置，由任务 2 的状态守卫覆盖：`backup`、`credentialvault`、`desktop/derived_cache`、`hookrefusal`、`provider/project_gate` 与 provider 托管备份（调用方指定的备份目的地属于客户端写入，见上表 provider 行）、`telemetry` 的 config/token/journal/listener、`perftrace`（调用方指定的跟踪文件）、`cmd/agentdeck` 的 `purge-index`；`cmd/agentdeck-perf` 只写调用方指定的语料/工作目录。`quota capture` 只读取 prior statusline 命令。`extension` 没有直接文件写入。没有发现清单外的客户端写入者。
+
+**测试**
+
+- platform：账户内路径、缺失父目录、外部末级链接指向账户、经账户别名入口的路径和账户根本身均拒绝且不创建任何项；临时 HOME 经链接时返回物理父目录且不跟随末级链接；已安装放行；账户主目录不可解析时 `real_root_unresolved` 失败关闭。
+- provider/usagehook/telemetry/shellconfig：注入临时账户后，各写入入口与包内汇合点在账户内拒绝，账户树逐字节不变且无临时文件、备份、目录残留；provider 拒绝时零操作记录；自定义备份目的地（账户内目标、父目录别名、末级链接）经直接 API 与 `Service.Use` 均被拒绝且零操作记录，临时目的地与已安装身份照常写入；telemetry 拒绝时摘要记录不写、已有记录不丢；临时 HOME 与已安装身份下 setup/restore/remove 照常完成。原有 shellconfig 故障注入测试改用物理临时目录，以匹配写入者使用的物理路径。
+- CLI（`agentdeck_acceptance`，屏障与正负对照下运行）：默认隔离状态与显式非真实状态两组，各覆盖 `provider use`（codex/claude）、`telemetry enable --write-codex-config`、`telemetry disable`（账户内放置已登记块）、`usage hook setup/remove`、`desktop quota-statusline enable/disable`、`shell setup/remove`，共 20 例：exit 1、`state_ownership_refused`、`resource: client_config`、`reason: receipt_missing`，账户客户端文件树逐字节不变。`refused_client_config` 文本与 JSON 与原型逐字一致（固定测试数据由原型生成）；同一未安装构建对临时 HOME 的写入成功。显式真实状态目录的拒绝由任务 2 证明，未计入本任务证据。客户端文件未变与状态访问屏障是两种证明：屏障只覆盖真实状态目录，客户端拒绝以文件树比较证明。
+
+**验证（L3）**：`scripts/run-go-test.sh ./...` 全部通过；`scripts/run-go-test.sh -race ./internal/platform ./internal/provider ./internal/usagehook ./internal/telemetry ./internal/shellconfig` 通过、无竞态报告；`GOFLAGS=-tags=agentdeck_acceptance scripts/run-go-test.sh ./cmd/agentdeck ./internal/platform ./internal/installation ./internal/ownershiptest` 通过（含任务 2 的叶子矩阵与新增客户端配置用例，屏障在无外层沙箱的环境中运行）；`make vet` 通过。工具链 Go 1.27.3 darwin/amd64，vendor 模式。
+
+上述开发交接保留实现时的观察。任务 3 已通过 Round 4 独立复评并待授权提交，评审结果与证据门禁见[任务评审](reviews/client-config-guard.md)。安装协议、诊断与 App 仍由任务 4–7 交付，跨面组合归任务 8。
 
 ### 4. `installation-diagnostics`
 

@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
@@ -266,7 +267,10 @@ func setTelemetryEnabled(opts *commandOptions, enabled bool, port int, portSet, 
 			if facts.Exporter != telemetry.ExporterManaged && facts.Exporter != telemetry.ExporterAgentDeck {
 				// The Codex write happens first: when it is refused, nothing
 				// at all changes, including the receiver preference.
+				var refused *platform.ErrStateOwnershipRefused
 				switch err := telemetry.WriteManagedBlock(home, stateRoot, next.Port, token, time.Now()); {
+				case errors.As(err, &refused):
+					return err
 				case errors.Is(err, telemetry.ErrCodexOTelConflict):
 					return &telemetryCodexError{code: "codex_otel_conflict", text: "~/.codex/config.toml already has an [otel] section.\nNothing was changed. Run agentdeck telemetry config-preview and merge it yourself."}
 				case errors.Is(err, telemetry.ErrCodexConfigBlockRemains):

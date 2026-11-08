@@ -15,6 +15,9 @@ type ErrStateOwnershipRefused struct {
 }
 
 func (e *ErrStateOwnershipRefused) Error() string {
+	if e.Resource == "client_config" {
+		return clientConfigRefusedMessage
+	}
 	return "This AgentDeck is not the installed program and cannot use the real state directory."
 }
 

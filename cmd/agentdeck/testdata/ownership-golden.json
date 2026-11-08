@@ -11,6 +11,12 @@
     "json": "{\n  \"schema_version\": 1,\n  \"command\": \"scan\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"state_ownership_refused\",\n    \"message\": \"This AgentDeck is not the installed program and cannot use the real state directory.\",\n    \"details\": {\n      \"resource\": \"state_root\",\n      \"reason\": \"receipt_other_executable\"\n    }\n  }\n}",
     "exit": 1
   },
+  "refused_client_config": {
+    "stdout": "",
+    "stderr": "state_ownership_refused: This AgentDeck is not the installed program and cannot change client configuration in your home directory.\n  resource: client_config\n  reason: receipt_missing\n  next: Run the installed agentdeck, or run this build with a temporary HOME for development.\n  diagnose: agentdeck doctor\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"telemetry.enable\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"state_ownership_refused\",\n    \"message\": \"This AgentDeck is not the installed program and cannot change client configuration in your home directory.\",\n    \"details\": {\n      \"resource\": \"client_config\",\n      \"reason\": \"receipt_missing\"\n    }\n  }\n}",
+    "exit": 1
+  },
   "revoked": {
     "stdout": "",
     "stderr": "state_ownership_refused: This AgentDeck is not the installed program and cannot use the real state directory.\n  resource: state_root\n  reason: receipt_other_executable\n  next: Another installation now owns AgentDeck state. Run that installation's agentdeck.\n  diagnose: agentdeck doctor\n",
