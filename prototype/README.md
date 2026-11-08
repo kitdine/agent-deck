@@ -342,15 +342,22 @@ partial、stale、loading、failed、unavailable、override；沿用中英、深
 `agent-browser eval "$(cat prototype/tools/check-auxiliary-menubar.js)"` 检查范围与交互；
 该脚本在初始 work、all clients、today、会话 tab 上运行，不证明真实查询/原生辅助功能。
 
-## 辅助会话 Settings 框架标本
+## 辅助会话 Settings 标本（2026-11-07 重新设计）
 
-入口 `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions`。
-Settings stage 顶栏选择 normal/loading/loadFailed/saving/saveFailed/saveUnknown/conflict/pending；
-Width 为 320/520（URL `asWidth`）。Open settings 重开同一 App 内窗口，Complete pending 仅模拟后台完成。
-持久值/在途操作存于页面 App 模型，窗口草稿可丢弃；刷新页面重置合成数据，不写真实设置。
-查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 为未匹配覆盖。
+入口 `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions`。「会话」组位于「菜单栏」组之后，
+窗口沿用 460 pt；「管理…」打开「手动分类」sheet。舞台控件排在窗口上方（不再浮盖窗口），
+Settings scenario 可选 normal、loading、loadFailed、saving、saveFailed、saveUnknown、receiptMissing、
+conflict、pending、replayed、permissionWarning、三种 source* 与三种 codex*。窗口关着时有 Open settings；
+Complete pending 只模拟后台完成。该参数下不显示遥测舞台控件。
+持久值和在途操作保存在页面的 App 模型里，窗口草稿可以丢弃；刷新页面会重置合成数据，不写真实设置。
+查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 是未匹配的覆盖。
 设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
-检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行，覆盖保存/恢复和默认范围联动。
+检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行（每组 113 项），
+模型合同检查为 `node prototype/tools/check-auxiliary-settings-final.mjs`。
+
+分页设置窗口是待确认的候选：`?settings=1&settingsTabs=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions`。
+四页依次是通用、会话、实时用量、额度；`settingsPane` 指定初始页，同一页面内关窗再开会回到上次停留的页。
+不带 `settingsTabs` 时仍是单页长列表。同一检查脚本在分页窗口下会多跑 8 项（每组 121 项）。
 
 ## 辅助会话 Widget 框架标本
 

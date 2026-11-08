@@ -352,3 +352,199 @@ retry 得 saved、默认 auxiliary、回执 request_id 与原 `fixture-request-1
 - WorkUnit: `auxiliary-session-classification:ux/settings.md`；ContentState: `auxiliary-session-classification:set-r6-4b3a36b280aba002`。
 - Completion gate: VERIFIED
 - Gate scope: 本文档及其合成原型标本的独立复评；不认证原生 Settings 实现。
+
+## Round 7 — 2026-11-07
+
+## 📋 Settings 重新设计候选评审
+
+📊 总体评分：6.5/10
+
+✅ 结论：FAIL
+
+### 🔴 严重问题 — 必须修复
+
+**ASC-SET-R7-F1 — P2 — OPEN：core 不可读时仍承诺手动分类可用。**
+
+位置：[Settings 自动识别](../ux/settings.md#自动识别只读)第 246–248 行；
+`prototype/src/AuxiliarySettings.jsx:61–65, 148–159, 286`。
+
+- 行为风险：文档明确把“含 core 不可读”纳入“手动分类不受影响、仍可设置或撤销”，
+  将外部识别来源失效与保存覆盖记录的 core 失效混为一谈。用户看到仍可操作的承诺，实际无法查找或管理覆盖；
+  实现者也可能把尚未读回的覆盖或分类当成已确认结果。
+- 证据：独立浏览器打开 `?settings=1&auxSettings=loadFailed&auxMenu=normal&tab=sessions&lang=en&theme=light`，
+  再打开 Manage。两条来源均显示 `Local usage database unreadable`；来源说明仍为
+  `While a source is unavailable, detection reports Unknown, which counts as Work. Manual classification still works.`；
+  ID 输入与 Find 的 `disabled` 均为 true，列表显示 `The list cannot be read right now; it is not treated as empty.`。
+  [架构 §5](../architecture.md#5-写入幂等与前台读)要求 clear 读取 core 的键和版本，不把 core 读取失败解释为空覆盖；
+  [架构 §7](../architecture.md#7-cli-与桌面协议)规定 core 不可读时依赖字段为 null。
+- 💡 有界修复：区分外部适配器不可用和 core 不可读。只有前者能在 core/身份可读时继续管理覆盖；
+  后者明确说明当前分类/覆盖不可读及恢复入口，不承诺当前可写，也不推断 Unknown 或已生效覆盖。
+  同步中英文案和对应标本，保持已保存数据不被删除的承诺。
+
+**ASC-SET-R7-F2 — P2 — OPEN：手动分类 sheet 的键盘焦点可以越出模态范围。**
+
+位置：[Settings 键盘、焦点与辅助功能](../ux/settings.md#键盘焦点与辅助功能)第 322–327 行；
+`prototype/src/AuxiliarySettings.jsx:131–139, 196–199, 242`。
+
+- 行为风险：文档规定 sheet 为模态对话框，打开后由其接收焦点，但原型只把正文/工具栏设为 inert，
+  没有封闭 Tab 顺序。键盘用户能离开仍打开的 sheet，使当前操作位置和模态语义不一致。
+- 证据：独立浏览器在 normal 标本打开 Manage，将焦点放到 `[data-as-sheet-done]`，按一次 Tab。
+  读取结果为 `dialogOpen=true, inSheet=false, document.activeElement.tagName=BODY`。
+  源码 sheet 的 keydown 仅处理 Escape，没有 Tab/Shift+Tab 循环或等效原生模态机制。
+  本结论是合成浏览器标本的确定反例，不是对原生 VoiceOver 的推断。
+- 💡 有界修复：在文档明确 sheet 内的首尾焦点循环，并在标本落实 Tab/Shift+Tab 封闭；
+  锁定状态仍须能到达查询、重试和完成。保留 Escape 只关闭 sheet、关闭后回到 Manage 的规则。
+
+### 🟡 建议改进 — 推荐
+
+**ASC-SET-R7-F3 — P3 — OPEN（本轮必须修复）：标题改名使历史证据链接失效。**
+
+位置：`ux/settings.md:128`，以及 `reviews/origin-store.md:28`、`reviews/settings-control.md:66` 的引用。
+
+- 行为风险：从既有评审证据无法跳转到默认范围合同，L0 文档门禁失败。
+- 证据：HEAD 中存在 `## 默认范围`；当前改为 `## 默认会话范围`，没有保留旧锚点。
+  `python3 scripts/check-docs.py` exit 1，分别报告上述两处 `missing Markdown anchor: ../ux/settings.md#默认范围`。
+- 💡 有界修复：在新标题前保留 `默认范围` 兼容锚点，修复导航而不重写历史评审结论。
+
+### 🟢 优点
+
+- 默认范围只呈现最近确认值，在途目标另行表达；失败、未知、冲突与派生发布延迟仍分开。
+- 手动分类移入 sheet，主设置页保留摘要；core-only clear 后的独立分类查询、同请求身份重试和跨窗口 pending 语义均有明确约束。
+- manifest 的 11 个源码/检查脚本及 5 张新截图均与实际 SHA-256 一致；旧设计与新候选边界清楚，分页方案明确仍待用户决定。
+
+### 📝 总结
+
+- Reviewer：Codex；本会话未参与此重新设计或产品实现。
+- Method：单评审者冷上下文审查；文档/架构对照、工作树专属 CodeGraph 源码追踪、标本哈希核对、
+  保留截图目视检查及独立命名浏览器中的最小交互反例。确认阻断后停止扩大验证。
+- Scope：`ux/settings.md` 重新设计及 manifest 绑定的共享原型。窗口分页仅审查其候选边界，未批准采用；
+  不评审或修改并行原生 `settings-control` 实现，不更改其历史 PASS 或用户限定的验收范围。
+- Reviewed state：HEAD `27a12fc3c811d176cbd17fdf8df1293b20eca093`；
+  document blob `9cd1c1a328edcbcf29062fc8582e9c216c8fe04c`；
+  prototype manifest SHA-256 `3d04935e02646769030092571c80964a6562ff89bfe7756ef705c0b4ef3e6924`。
+- Fingerprint：`03b581b3fd6dac3b493f10ea37f2ab6124f3d431a6845321563ad8ccd3a1e8b5`；
+  SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Dependency：requirements blob `50da36642b7db63fe8286893141a42b464a5559c`；
+  architecture blob `416d63c922b9ea445a53a9774388efa13776af1c`，与文档声明一致。
+  稳定 CLI Design 的已交付 Settings 条目作为基线读取，本主题新增偏好按自己的 requirements/architecture 审查。
+- Evidence：`node prototype/tools/check-auxiliary-settings-final.mjs` 为 14 项、0 失败，仅证明合成模型；
+  文档 L0 的两处失效链接及两项浏览器反例见上。`bash scripts/check-topic-docs.sh auxiliary-session-classification`、
+  `make check-whitespace`、`git diff --check` 的检查序列未产生诊断，结束码 0。
+  作者登记的 412/444 项浏览器检查不是本轮重跑结果，不能排除本轮发现。
+- Disposition：ASC-SET-R7-F1、ASC-SET-R7-F2、ASC-SET-R7-F3 OPEN。
+  旧 ASC-SET-R1-F1、ASC-SET-R3-F1、ASC-SET-R5-F1 的历史关闭事实保留；不把旧候选 PASS 迁移到重设计。
+- WorkUnit：`auxiliary-session-classification:ux/settings.md`；
+  ContentState：`auxiliary-session-classification:ux-settings-r7-03b581b3fd6dac3b`。
+- Completion gate：FAILED
+- Gate scope：当前文档与合成标本的 document-integrity、independent-review；已登记 1 个 ContentState、
+  2 条失败 Evidence 和 4 条关系，关系预检全部 ok。正式精确状态查询返回 FAILED，两项失败证据均为
+  target_matches/applicable=true、malformed/invalidated/unresolved=false。未到达 Task 或 Topic 完成/交付边界。
+- Handoff：同一文档任务 `ad-auxiliary-session-classification-doc-ux-settings` 返回修复，Documents 的 Review 保持未勾选。
+  本轮仅写评审/状态及证据协调记录，未修复文档或原型，未提交、推送。
+
+## Repair candidate — 2026-11-07（Round 7 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-SET-R7-F1、ASC-SET-R7-F2、ASC-SET-R7-F3，未委派。
+- 复现：三项先按 Round 7 证据确认。`python3 scripts/check-docs.py` 修复前报告两处 `missing Markdown anchor: ../ux/settings.md#默认范围`；
+  原型 loadFailed 的来源说明为 `…Manual classification still works.`；源码 sheet 的 keydown 只处理 Escape。
+- ASC-SET-R7-F1 → repaired in candidate。[自动识别](../ux/settings.md#自动识别只读)按失效位置分两种说明：
+  外部来源不可用（core 可读）保留原句，手动分类照常；core 不可读时说明当前分类和手动分类都不可读、暂时不能修改、
+  已保存的不会被删除，并附「重新读取」；sheet 状态条说明查找与修改暂不可用，列表保持「不会当作没有覆盖」。
+  不推断 Unknown，也不把读取失败前的覆盖当作仍然生效。原型 `coreUnavailable` 改为跟随 loadFailed 状态，
+  `SOURCE_DOWN` 不再包含 loadFailed；重新读取成功后来源、覆盖、默认范围按读回结果恢复。
+- ASC-SET-R7-F2 → repaired in candidate。[键盘、焦点与辅助功能](../ux/settings.md#键盘焦点与辅助功能)规定 sheet 内
+  Tab / Shift+Tab 首尾循环、焦点停在 sheet 本身时的进入方向，以及锁定时循环只在可用的状态操作与「完成」之间进行；
+  Escape 规则不变。原型在 document 上监听 Tab，焦点因控件被禁用掉到 body 时也回到 sheet；窗口外的舞台控件不受影响。
+- ASC-SET-R7-F3 → repaired in candidate。「默认会话范围」标题前加 `<a id="默认范围"></a>` 兼容锚点；未改动历史评审记录。
+- 回归保护：`check-auxiliary-settings.js` 新增 10 项（焦点循环 6 项，含锁定 saveUnknown 下在「查询结果」与「完成」间循环；
+  core 不可读说明、sheet 锁定说明、恢复后来源与查找可用 4 项），三种 source* 场景另断言说明属于外部来源一类。
+- 验证（本候选内容）：`npm run build` 通过；浏览器检查长列表每组 113 项 × 中英深浅 4 组 = 452 项，分页每组 121 项 × 4 组 = 484 项，0 失败；
+  `node prototype/tools/check-auxiliary-settings-final.mjs` 14 项 0 失败；菜单栏 176 项 0 失败。
+  真实按键（agent-browser `press`）复核 Round 7 反例：长列表 en/light 与分页 zh/dark 中，从「完成」按 Tab 得到 `dialogOpen=true, inSheet=true`，
+  焦点到客户端选项；Shift+Tab 回到「完成」。
+  scoped axe 4.12.1（loadFailed）：主表面 en/light、zh/dark 均 0 violations、0 incomplete；sheet 0 violations，
+  incomplete 仅为遮罩下无法确定背景的 color-contrast；新增的 bad 状态条文字手算对比度浅色 5.93、深色 4.69。
+  `python3 scripts/check-docs.py` 通过（修复前的两处失效锚点消失），`bash scripts/check-topic-docs.sh auxiliary-session-classification` exit 0，
+  `bash scripts/check-whitespace.sh` exit 0，`git diff --check` 无输出。未运行产品测试（无产品代码变更）。
+- Candidate identity：HEAD `27a12fc3c811d176cbd17fdf8df1293b20eca093`；ux/settings.md blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011`（未提交）；
+  原型 AuxiliarySettings.jsx SHA-256 `ecc8b956aebae204b01fe28fe8278def4cd164586ed02e40ce203d539d6df4ce`、
+  check-auxiliary-settings.js SHA-256 `7193230b872b92e80cf226a4e7f05a27923041e6ffac67615f229b6261279d85`；
+  manifest 阶段 `redesign-r1-repair-r7`，SHA-256 `294305252a547d38a044c78a78061a7ca95a6ae88f868a07b350e806161c56d7`
+  （上一份 `3d04935e02646769030092571c80964a6562ff89bfe7756ef705c0b4ef3e6924` 记入 previous_manifest_sha256）。
+- 原 FAIL/OPEN 与 Round 7 的 FAILED 门禁保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 8 — 2026-11-08
+
+## 📋 Settings 重新设计修复复评
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。ASC-SET-R7-F1、ASC-SET-R7-F2 均在当前候选关闭，未发现修复引入的新阻断。
+
+### 🟡 建议改进 — 推荐
+
+无。ASC-SET-R7-F3 已关闭，不保留本轮待修发现。
+
+### 🟢 优点
+
+- **ASC-SET-R7-F1 — CLOSED**：`ux/settings.md:249–262` 区分外部来源不可用与 core 不可读，
+  `AuxiliarySettings.jsx:63–69, 311–313` 按当前读取状态选择说明。
+  独立浏览器打开长列表 en/light 的 loadFailed 标本并打开 Manage：来源说明的类型为 `core`，
+  明确当前分类和手动分类不可读、暂时不可修改、已保存内容不删除；sheet 状态条同样说明不可查找/修改。
+  ID 输入禁用，默认范围没有选中项。点击列表的 Read again 后，状态变为 `ready`，core 说明消失，
+  输入恢复可用，列表显示两项，来源按读回结果恢复。sourceUnavailable 对照仍为 `adapter` 说明，
+  输入与移除均可用，未把外部适配器失败误变成全组不可用。架构 §4 的 core 存储归属与本次说明一致。
+- **ASC-SET-R7-F2 — CLOSED**：`ux/settings.md:338–342` 明确首尾循环与锁定状态下的可达操作；
+  `AuxiliarySettings.jsx:142–162` 在当前可聚焦集合中处理 Tab/Shift+Tab，并回收落到 body 的焦点。
+  独立命名浏览器以真实 `press Tab` / `press Shift+Tab` 验证长列表 en/light 和分页候选 zh/dark：
+  从 Done 向前到 Codex，再向后回到 Done，始终 `inSheet=true`。
+  分页候选的正文和工具栏在 sheet 打开时均 inert；Escape 只关闭 sheet，窗口保留、焦点回到 Manage，
+  正文和工具栏解除 inert。另在 zh/dark 中为 Claude old-01 发起 Auxiliary 写入，进入 `saveUnknown`：
+  ID 输入禁用，请求身份 `fixture-request-1` 保留；真实按键在 Check result 与 Done 间双向循环，操作仍可达。
+- **ASC-SET-R7-F3 — CLOSED**：`ux/settings.md:129` 保留 `<a id="默认范围"></a>`。
+  原 `origin-store` 和 `settings-control` 历史引用无需改写；`python3 scripts/check-docs.py` exit 0，
+  上轮两处 missing Markdown anchor 已消失。
+
+### 📝 总结
+
+- Reviewer：Codex；沿用 Round 7 评审角色，未参与 Claude Code 的修复，未委派。
+- Method：逐项处置既有发现；核对修复交接、当前文档、所选工作树 CodeGraph 源码、manifest 身份，
+  以及独立浏览器中的真实按键与读回恢复。源码定位不足的顶层浏览器检查脚本使用一次有界源码读取。
+- Scope：ASC-SET-R7-F1/F2/F3 与受影响的文案、默认确认状态、来源降级、sheet 焦点和锚点引用。
+  长列表仍为确定的默认方案；分页的候选身份不变，本轮 PASS 不批准采用分页。
+- Reviewed state：HEAD `27a12fc3c811d176cbd17fdf8df1293b20eca093`；
+  document blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011`；
+  prototype manifest SHA-256 `294305252a547d38a044c78a78061a7ca95a6ae88f868a07b350e806161c56d7`。
+- Fingerprint：`8424e6bfac038d3b24e513eac849df516421a3f7720af7d9c9ff30f54a03f007`；
+  SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence：11 个源码/检查脚本及 5 张截图的 SHA-256 全部与 manifest 一致；
+  修复记录的 AuxiliarySettings.jsx、浏览器检查脚本、文档和 manifest 身份均与本轮一致。
+  本轮直接取得的浏览器结果见逐项处置；文档结构检查通过。
+  本轮状态同步后的 `check-review-records.py --base 27a12fc3c811d176cbd17fdf8df1293b20eca093`、
+  `python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均 exit 0。
+  复用 Repair candidate 的同内容构建、452/484 项浏览器检查、14 项合成模型合同和 176 项菜单栏兼容结果，
+  不将它们记作本轮重跑，也不据此宣称真实存储或原生验收通过。
+  前轮已读取的需求、架构、模型合同及未变化标本边界继续适用；本轮额外核对了架构 §4 的 core 存储归属。
+- Disposition：ASC-SET-R7-F1、ASC-SET-R7-F2、ASC-SET-R7-F3 CLOSED。
+  ASC-SET-R1-F1、ASC-SET-R3-F1、ASC-SET-R5-F1 的历史关闭保持；未观察到修复使未确认默认、回执恢复或来源语义回退。
+  Round 7 的 FAIL 和旧状态 FAILED 证据保持原样，不覆盖或重标记。
+- WorkUnit：`auxiliary-session-classification:ux/settings.md`；
+  ContentState：`auxiliary-session-classification:ux-settings-r8-8424e6bfac038d3b`。
+- Completion gate：VERIFIED
+- Gate scope：当前文档与 manifest 绑定标本的 document-integrity、independent-review。
+  登记 1 个新 ContentState、2 条 pass Evidence 和 4 条关系，关系预检全部 ok；
+  正式精确状态查询 VERIFIED 2/2，missing_criteria 为空，当前两条证据均 target_matches/applicable=true，
+  malformed/invalidated/unresolved=false。查询保留的历史 Round 3 invalidated 条目不匹配当前目标，不影响本轮结果。
+  CEv1 中该文档没有 contains 父节点；Beads 所属专题仍有未完成实现任务，因此不跨越 Topic 完成边界。
+- Residual scope：原生 Settings 视图需要另行按新设计重做；本次未改变 `settings-control` 的 awaiting_commit、
+  历史实现 PASS 或用户已有验收排除决定。浏览器结果不证明原生 VoiceOver、Dynamic Type、真实 CAS、磁盘持久化或 Widget 刷新。
+- Handoff：Documents 的 Settings Review 勾选；交付建议仅覆盖文档任务，不包含并行原生实现。
+  下一产品工作为按新版长列表设计重做 `settings-control` 视图，仍需用户下达相应阶段指令。
+
+Task checkpoint：`ad-auxiliary-session-classification-doc-ux-settings`；content_state `8424e6bfac038d3b24e513eac849df516421a3f7720af7d9c9ff30f54a03f007`；gate VERIFIED。
+提交建议：单独授权提交本次 Settings 文档、共享原型及检查脚本、manifest/截图、本评审记录、prototype README 对应说明和 tasks.md 的文档状态块；逐 hunk 排除并行 Swift 实现及其任务记录。
+推送建议：目标 origin/feature/auxiliary-session-classification；授权提交完成后，核对整个分支待推送提交范围和签名，再单独授权推送。当前未配置该分支的 upstream，未执行推送或远端检查。

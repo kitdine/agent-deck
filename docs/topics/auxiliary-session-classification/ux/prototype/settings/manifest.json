@@ -1,183 +1,202 @@
 {
-  "stage": "integration-repair-r5",
-  "date": "2026-11-04",
-  "architecture_blob": "d7c63db9b0933e7641564ff0a9711b31c7318d2f",
+  "stage": "redesign-r1-repair-r7",
+  "date": "2026-11-07",
+  "basis": "User rejected the reviewed integration-repair-r5 surface and authorized a redesign on the existing AgentDeck design language; the previous surface is commit 2c90d4d.",
+  "architecture_blob": "416d63c922b9ea445a53a9774388efa13776af1c",
   "retention": "Repository-owned design artifacts retained with topic review history.",
   "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
-  "previous_manifest_sha256": "8be1d4a4e253f737f7029c29092127312b02aa28adbfd892bad96d855c293f32",
-  "historical_manifest": {
-    "stage": "framework-repair-r1",
-    "date": "2026-10-27",
-    "retention": "Repository-owned design artifacts retained with topic review history.",
-    "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
-    "scenarios": [
-      "normal",
-      "loading",
-      "loadFailed",
-      "saving",
-      "saveFailed",
-      "saveUnknown",
-      "conflict",
-      "pending"
-    ],
-    "matrix": {
-      "languages": [
-        "en",
-        "zh"
-      ],
-      "themes": [
-        "dark",
-        "light"
-      ],
-      "widths": [
-        320,
-        520
-      ]
-    },
-    "checks": {
-      "build": "passed",
-      "browser": {
-        "languages": [
-          "en",
-          "zh"
-        ],
-        "widths": [
-          320,
-          520
-        ],
-        "theme": "dark",
-        "checks_each": 50,
-        "assertions": 200,
-        "failures": 0
-      },
-      "menubar_compatibility": {
-        "assertions": 149,
-        "failures": 0,
-        "scope": "new settings feature disabled"
-      },
-      "regression": "loading/loadFailed -> close Settings -> reopen Popover -> tab roundtrip: no scope/count before read; successful read then valid initialization and reopen",
-      "reuse": "Unchanged Settings layout/colors retain historical design evidence. New consumer unavailable state visually checked; no fresh axe/native claim.",
-      "limits": "Synthetic state and readback fixture; no real storage, Widget or CEv1 VERIFIED claim."
-    },
-    "files": [
-      {
-        "path": "prototype/src/AuxiliarySettings.jsx",
-        "sha256": "ae9abdc8cf5c887bd74e79d3e1a2eefc77c0079e12d379b8539d704225ef21d3"
-      },
-      {
-        "path": "prototype/src/auxiliarySettingsModel.js",
-        "sha256": "63a591dda3e39ff9cc1a8a39f484280964e9671e1f58d8283b465929948c33c9"
-      },
-      {
-        "path": "prototype/src/auxiliarySettings.css",
-        "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
-      },
-      {
-        "path": "prototype/src/Settings.jsx",
-        "sha256": "4756d6a610a9c5cb0608fca3c72d1fa44590da87913e4a7b8017d18b38bfa054"
-      },
-      {
-        "path": "prototype/src/App.jsx",
-        "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
-      },
-      {
-        "path": "prototype/src/Popover.jsx",
-        "sha256": "952c52927cefdabb4c4e8168b78e5d8ef71db0a2b072788d504741276ed487ac"
-      },
-      {
-        "path": "prototype/src/styles.css",
-        "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
-      },
-      {
-        "path": "prototype/tools/check-auxiliary-settings.js",
-        "sha256": "fa37b3cf3c1fee8118053119ea3c09a57816dc466a79889ddfc7f7361fd98766"
-      },
-      {
-        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/saved-en-dark.png",
-        "sha256": "f4c72320bea49fd3c9dc8042c700e909fe180ef505fbea4f2dd9a47aeb15c7b6"
-      },
-      {
-        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/unknown-en-light-320.png",
-        "sha256": "543dfe3daf4fe22999cb73d02e9a26d159364afea0ea2ebd049ceea579252896"
-      },
-      {
-        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/origin-zh-dark-320.png",
-        "sha256": "ba9b407263b0c9a2bbc40e578e83207b9a2efecc81c55467a2911f16fd81480d"
-      },
-      {
-        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/conflict-en-dark-520.png",
-        "sha256": "fb6428a55b215b00d7861e88eaceda889cae2deb48736122eb02ff905d204b00"
-      },
-      {
-        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r1fix-unconfirmed-popover.png",
-        "sha256": "91285450be48ff3c151ff1d42932206f2d186efd16f7980a673f2ab004dd61bb"
-      }
-    ],
-    "previous_design_checks": {
-      "build": "passed",
-      "browser": {
-        "combinations": 8,
-        "checks_each": 42,
-        "assertions": 336,
-        "failures": 0
-      },
-      "menubar_compatibility": {
-        "assertions": 149,
-        "failures": 0,
-        "scope": "new settings feature disabled"
-      },
-      "axe": {
-        "version": "4.12.1",
-        "scopes": [
-          "light settings group",
-          "dark origin detail"
-        ],
-        "violations": 0,
-        "incomplete": 0
-      },
-      "limits": "Synthetic memory-only model. No product persistence, request races, native AX, Widget, or release acceptance."
-    }
-  },
+  "previous_manifest_sha256": "3d04935e02646769030092571c80964a6562ff89bfe7756ef705c0b4ef3e6924",
   "checks": {
     "build": "passed",
-    "model_contract_checks": 14,
+    "model_contract_checks": {
+      "count": 14,
+      "failures": 0,
+      "note": "model adds lastOperation only; no transition changed"
+    },
     "browser": {
       "combinations": [
-        "default"
+        "zh-dark",
+        "zh-light",
+        "en-dark",
+        "en-light"
       ],
-      "checks_each": 70,
-      "assertions": 70,
+      "checks_each": 113,
+      "assertions": 452,
       "failures": 0,
-      "codex_source_states": [
-        "records",
-        "receiverOff",
-        "noRecords",
-        "receiverUnknown",
-        "coreUnavailable"
-      ]
+      "note": "long-list layout. Repair R7 added 10 checks (6 sheet focus cycle incl. locked saveUnknown, 4 core-unavailable/recovery); all four combinations rerun clean"
     },
-    "limits": "Synthetic model only; codex source row states are synthetic copy, not real receiver or core reads; no native or persistence acceptance."
+    "menubar_compatibility": {
+      "assertions": 176,
+      "failures": 0,
+      "scope": "?tab=sessions&auxMenu=normal, settings feature disabled"
+    },
+    "axe": {
+      "version": "4.12.1",
+      "tags": [
+        "wcag2a",
+        "wcag2aa"
+      ],
+      "runs": [
+        {
+          "scope": ".as-settings",
+          "state": "zh-dark normal",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "scope": ".as-settings",
+          "state": "en-light sourceUnavailable",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "scope": ".as-sheet",
+          "state": "zh-light normal with card",
+          "violations": 0,
+          "incomplete": 1,
+          "incomplete_rule": "color-contrast #as-sheet-desc (background undeterminable under scrim)"
+        },
+        {
+          "scope": ".as-sheet",
+          "state": "en-dark conflict with card",
+          "violations": 0,
+          "incomplete": 1,
+          "incomplete_rule": "color-contrast #as-sheet-desc (background undeterminable under scrim)"
+        },
+        {
+          "scope": ".settings-window",
+          "state": "en-light loadFailed (core unavailable)",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "scope": ".settings-window",
+          "state": "zh-dark loadFailed (core unavailable)",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "scope": "[data-as-sheet]",
+          "state": "en-light loadFailed",
+          "violations": 0,
+          "incomplete": 3,
+          "incomplete_rule": "color-contrast #as-sheet-desc, banner bad text, lookup-help code (background undeterminable under scrim); bad on banner bg light 5.93 by hand"
+        },
+        {
+          "scope": "[data-as-sheet]",
+          "state": "zh-dark loadFailed",
+          "violations": 0,
+          "incomplete": 2,
+          "incomplete_rule": "color-contrast #as-sheet-desc, #as-lookup-help (background undeterminable under scrim)"
+        }
+      ],
+      "manual_contrast": {
+        "dim_on_surface": {
+          "dark": 4.96,
+          "light": 5.08
+        },
+        "muted_on_surface2": {
+          "dark": 6.4,
+          "light": 5.04
+        },
+        "warn_on_surface2": {
+          "dark": 6.54,
+          "light": 6.63
+        },
+        "accent_link_on_surface2": {
+          "dark": 5.17,
+          "light": 4.95
+        },
+        "white_on_accent_strong": {
+          "dark": 4.61,
+          "light": 5.42
+        },
+        "bad_on_banner": {
+          "dark": 4.69,
+          "light": 5.93
+        }
+      }
+    },
+    "limits": "Synthetic model and browser rendering only; no Go CAS, disk commit, real source, Widget, native accessibility or failure-recovery claim. Inspect failure after clear is specified but not simulated.",
+    "tabbed_candidate": {
+      "entry": "?settings=1&settingsTabs=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions",
+      "status": "candidate pending user decision; long list remains the prototype default",
+      "panes": [
+        "general",
+        "sessions",
+        "live",
+        "quota"
+      ],
+      "measured_long_list": {
+        "content_px": 1325,
+        "visible_px_at_900_viewport": 762,
+        "groups": 5,
+        "rows": 15
+      },
+      "browser": {
+        "combinations": [
+          "zh-dark",
+          "zh-light",
+          "en-dark",
+          "en-light"
+        ],
+        "checks_each": 121,
+        "assertions": 484,
+        "failures": 0,
+        "note": "tab checks scoped to .settings-tabs; repair R7 checks included; all four combinations rerun clean"
+      },
+      "axe": [
+        {
+          "scope": ".settings-window",
+          "state": "general zh-dark",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "scope": ".settings-window",
+          "state": "sessions en-light",
+          "violations": 0,
+          "incomplete": 2,
+          "incomplete_rule": "color-contrast #as-default-help, #as-detect-help (partial overlap; dim/bg light 4.81 by hand)"
+        },
+        {
+          "scope": ".settings-window",
+          "state": "quota zh-light",
+          "violations": 0,
+          "incomplete": 4,
+          "incomplete_rule": "color-contrast on two disabled subscription-quota rows (overlapped; disabled text exempt)"
+        }
+      ],
+      "menubar_compatibility": {
+        "assertions": 176,
+        "failures": 0
+      }
+    }
   },
   "files": [
     {
       "path": "prototype/src/AuxiliarySettings.jsx",
-      "sha256": "b4ff27892e7e6fa3e3fd137fcc44d7a152dcbe2c647f2411a420d84afed54b1f"
+      "sha256": "ecc8b956aebae204b01fe28fe8278def4cd164586ed02e40ce203d539d6df4ce"
     },
     {
       "path": "prototype/src/auxiliarySettingsModel.js",
-      "sha256": "9dcef346076426b07dc6f584887207f5dc61fffde83d49c40dfb8cbea8413fb5"
+      "sha256": "007cee7a669616916577b648f091f945e8d07c0cfae727566e34123f4e397dca"
     },
     {
       "path": "prototype/src/auxiliarySettings.css",
-      "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
+      "sha256": "e12da20898df21578eae4553105fb84910961d7c6f30c88a349caac72e6f83a2"
+    },
+    {
+      "path": "prototype/src/settingsTabs.css",
+      "sha256": "ce8ff6de8b7f351e936136cd646e217cfbd9e2e6b6ed396c68cc3aae9e1043b0"
     },
     {
       "path": "prototype/src/Settings.jsx",
-      "sha256": "0099179801dfd3e879b34fd71b271a901ab0945b999e848f129cc3bf0845b697"
+      "sha256": "94126cb9866e05d92a2a218377ad8654fce93d88a58bf543f516b5b6f6c51049"
     },
     {
       "path": "prototype/src/App.jsx",
-      "sha256": "f6e05330477d540a4b22c1ba9eeaa90ea0468b75b2f581ca25597a60338ad8f6"
+      "sha256": "98323693e4efb49ab98aaddc14af1ed9f0d136e366ba0e14ddcc2c93236ae012"
     },
     {
       "path": "prototype/src/Popover.jsx",
@@ -189,69 +208,303 @@
     },
     {
       "path": "prototype/tools/check-auxiliary-settings.js",
-      "sha256": "76a079b86ad0fb7a47b8a1d9cbf45991f5369bdbffc1a812ba05afec9ddb7b38"
+      "sha256": "7193230b872b92e80cf226a4e7f05a27923041e6ffac67615f229b6261279d85"
     },
     {
       "path": "prototype/tools/check-auxiliary-settings-final.mjs",
       "sha256": "2da3fce03619106b640cfa3b71460acb22fceee8f8ab354025473da42879e778"
     },
     {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-clear-not-queried-en-320.png",
-      "sha256": "8e6e7244af242cbc31410a44ae4b584d447d0d494d0d29dbe8e0cb1e0cefdfb1"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-receipt-missing-zh-320.png",
-      "sha256": "142ce6497c15c4d607d356d1b3dc4c90af115dd9f05e5006051de6d4fe8fe7a0"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-source-status-en-320.png",
-      "sha256": "ea63b4edb85efa9d9bff87e0f0fa6ae08034a5d4ad63a2a1118dbdf48516a266"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-saved-warning-zh-light.png",
-      "sha256": "35f8d3473e2591622b8427c60e4c455fb951174cc2f50710dcb315a570b0f5fb"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r3fix-receipt-retry-zh-320.png",
-      "sha256": "023e1e26f44f8f9f683c69bef82ce05cd8db04b77eb71cde6519e32dd0b0680f"
-    },
-    {
-      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r5-codex-receiver-off-zh-320.png",
-      "sha256": "08a4407b452fd442332d24fae563e7e214b849662df519afdcabc69b0d0c581a"
+      "path": "prototype/tools/check-auxiliary-menubar.js",
+      "sha256": "04295f4ec73113cc966f68651dd71369de7944a41f688b1c2a47e860224bf668"
     }
   ],
-  "previous_final_checks": {
-    "build": "passed",
-    "model_contract_checks": 11,
-    "browser": {
-      "languages": [
-        "en",
-        "zh"
-      ],
-      "themes": [
-        "dark",
-        "light"
-      ],
-      "widths": [
-        320,
-        520
-      ],
-      "checks_each": 67,
-      "assertions": 536,
-      "failures": 0
+  "screenshots": [
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/redesign-group-zh-dark.png",
+      "sha256": "92c2f14614bc4cb35daf19d2355b2678f2e30bd1b6e5fd7d7dbb60f5f4990400"
     },
-    "axe": {
-      "version": "4.12.1",
-      "scopes": [
-        "light saved permission warning",
-        "dark clear classification not queried"
-      ],
-      "violations": 0,
-      "incomplete": 0
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/redesign-group-source-unavailable-en-light.png",
+      "sha256": "ef7c1a62835da800eb80847116ae3663dc0acf2a3cc4267084b9900b49fc3442"
     },
-    "limits": "Memory-only synthetic model, no Go CAS, persistence, requests, source data, Widget or native acceptance."
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/redesign-sheet-zh-dark.png",
+      "sha256": "0bb6c81059bdc9b96205bec2d573ac2ff062487223f7fd52dd764503663173bd"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/redesign-sheet-conflict-en-light.png",
+      "sha256": "7d7e9ecb8be3eda48d082539f3a77eb0c7b31c34c2edff080666e70c50eb0426"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/redesign-unknown-zh-dark.png",
+      "sha256": "de30b317004c32f4b1a6eac461fa0c748b3d2541c79484d5b1a507f7e31a5e2b"
+    }
+  ],
+  "superseded_manifest": {
+    "stage": "integration-repair-r5",
+    "date": "2026-11-04",
+    "architecture_blob": "d7c63db9b0933e7641564ff0a9711b31c7318d2f",
+    "retention": "Repository-owned design artifacts retained with topic review history.",
+    "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
+    "previous_manifest_sha256": "8be1d4a4e253f737f7029c29092127312b02aa28adbfd892bad96d855c293f32",
+    "historical_manifest": {
+      "stage": "framework-repair-r1",
+      "date": "2026-10-27",
+      "retention": "Repository-owned design artifacts retained with topic review history.",
+      "entry": "?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions",
+      "scenarios": [
+        "normal",
+        "loading",
+        "loadFailed",
+        "saving",
+        "saveFailed",
+        "saveUnknown",
+        "conflict",
+        "pending"
+      ],
+      "matrix": {
+        "languages": [
+          "en",
+          "zh"
+        ],
+        "themes": [
+          "dark",
+          "light"
+        ],
+        "widths": [
+          320,
+          520
+        ]
+      },
+      "checks": {
+        "build": "passed",
+        "browser": {
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "widths": [
+            320,
+            520
+          ],
+          "theme": "dark",
+          "checks_each": 50,
+          "assertions": 200,
+          "failures": 0
+        },
+        "menubar_compatibility": {
+          "assertions": 149,
+          "failures": 0,
+          "scope": "new settings feature disabled"
+        },
+        "regression": "loading/loadFailed -> close Settings -> reopen Popover -> tab roundtrip: no scope/count before read; successful read then valid initialization and reopen",
+        "reuse": "Unchanged Settings layout/colors retain historical design evidence. New consumer unavailable state visually checked; no fresh axe/native claim.",
+        "limits": "Synthetic state and readback fixture; no real storage, Widget or CEv1 VERIFIED claim."
+      },
+      "files": [
+        {
+          "path": "prototype/src/AuxiliarySettings.jsx",
+          "sha256": "ae9abdc8cf5c887bd74e79d3e1a2eefc77c0079e12d379b8539d704225ef21d3"
+        },
+        {
+          "path": "prototype/src/auxiliarySettingsModel.js",
+          "sha256": "63a591dda3e39ff9cc1a8a39f484280964e9671e1f58d8283b465929948c33c9"
+        },
+        {
+          "path": "prototype/src/auxiliarySettings.css",
+          "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
+        },
+        {
+          "path": "prototype/src/Settings.jsx",
+          "sha256": "4756d6a610a9c5cb0608fca3c72d1fa44590da87913e4a7b8017d18b38bfa054"
+        },
+        {
+          "path": "prototype/src/App.jsx",
+          "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+        },
+        {
+          "path": "prototype/src/Popover.jsx",
+          "sha256": "952c52927cefdabb4c4e8168b78e5d8ef71db0a2b072788d504741276ed487ac"
+        },
+        {
+          "path": "prototype/src/styles.css",
+          "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+        },
+        {
+          "path": "prototype/tools/check-auxiliary-settings.js",
+          "sha256": "fa37b3cf3c1fee8118053119ea3c09a57816dc466a79889ddfc7f7361fd98766"
+        },
+        {
+          "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/saved-en-dark.png",
+          "sha256": "f4c72320bea49fd3c9dc8042c700e909fe180ef505fbea4f2dd9a47aeb15c7b6"
+        },
+        {
+          "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/unknown-en-light-320.png",
+          "sha256": "543dfe3daf4fe22999cb73d02e9a26d159364afea0ea2ebd049ceea579252896"
+        },
+        {
+          "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/origin-zh-dark-320.png",
+          "sha256": "ba9b407263b0c9a2bbc40e578e83207b9a2efecc81c55467a2911f16fd81480d"
+        },
+        {
+          "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/conflict-en-dark-520.png",
+          "sha256": "fb6428a55b215b00d7861e88eaceda889cae2deb48736122eb02ff905d204b00"
+        },
+        {
+          "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r1fix-unconfirmed-popover.png",
+          "sha256": "91285450be48ff3c151ff1d42932206f2d186efd16f7980a673f2ab004dd61bb"
+        }
+      ],
+      "previous_design_checks": {
+        "build": "passed",
+        "browser": {
+          "combinations": 8,
+          "checks_each": 42,
+          "assertions": 336,
+          "failures": 0
+        },
+        "menubar_compatibility": {
+          "assertions": 149,
+          "failures": 0,
+          "scope": "new settings feature disabled"
+        },
+        "axe": {
+          "version": "4.12.1",
+          "scopes": [
+            "light settings group",
+            "dark origin detail"
+          ],
+          "violations": 0,
+          "incomplete": 0
+        },
+        "limits": "Synthetic memory-only model. No product persistence, request races, native AX, Widget, or release acceptance."
+      }
+    },
+    "checks": {
+      "build": "passed",
+      "model_contract_checks": 14,
+      "browser": {
+        "combinations": [
+          "default"
+        ],
+        "checks_each": 70,
+        "assertions": 70,
+        "failures": 0,
+        "codex_source_states": [
+          "records",
+          "receiverOff",
+          "noRecords",
+          "receiverUnknown",
+          "coreUnavailable"
+        ]
+      },
+      "limits": "Synthetic model only; codex source row states are synthetic copy, not real receiver or core reads; no native or persistence acceptance."
+    },
+    "files": [
+      {
+        "path": "prototype/src/AuxiliarySettings.jsx",
+        "sha256": "b4ff27892e7e6fa3e3fd137fcc44d7a152dcbe2c647f2411a420d84afed54b1f"
+      },
+      {
+        "path": "prototype/src/auxiliarySettingsModel.js",
+        "sha256": "9dcef346076426b07dc6f584887207f5dc61fffde83d49c40dfb8cbea8413fb5"
+      },
+      {
+        "path": "prototype/src/auxiliarySettings.css",
+        "sha256": "03b5a430df1490efbeaac858ff3efd486df6276522cfc5f2c0bc27288a90b787"
+      },
+      {
+        "path": "prototype/src/Settings.jsx",
+        "sha256": "0099179801dfd3e879b34fd71b271a901ab0945b999e848f129cc3bf0845b697"
+      },
+      {
+        "path": "prototype/src/App.jsx",
+        "sha256": "f6e05330477d540a4b22c1ba9eeaa90ea0468b75b2f581ca25597a60338ad8f6"
+      },
+      {
+        "path": "prototype/src/Popover.jsx",
+        "sha256": "92fdaeb5552be142ad24cd694723e16dea4c33549f3567288aa765ff4635d3c5"
+      },
+      {
+        "path": "prototype/src/styles.css",
+        "sha256": "538a829ff8f51723b50633cba18ca347c63dea14bf921936eb056418fa865933"
+      },
+      {
+        "path": "prototype/tools/check-auxiliary-settings.js",
+        "sha256": "76a079b86ad0fb7a47b8a1d9cbf45991f5369bdbffc1a812ba05afec9ddb7b38"
+      },
+      {
+        "path": "prototype/tools/check-auxiliary-settings-final.mjs",
+        "sha256": "2da3fce03619106b640cfa3b71460acb22fceee8f8ab354025473da42879e778"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-clear-not-queried-en-320.png",
+        "sha256": "8e6e7244af242cbc31410a44ae4b584d447d0d494d0d29dbe8e0cb1e0cefdfb1"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-receipt-missing-zh-320.png",
+        "sha256": "142ce6497c15c4d607d356d1b3dc4c90af115dd9f05e5006051de6d4fe8fe7a0"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-source-status-en-320.png",
+        "sha256": "ea63b4edb85efa9d9bff87e0f0fa6ae08034a5d4ad63a2a1118dbdf48516a266"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/final-saved-warning-zh-light.png",
+        "sha256": "35f8d3473e2591622b8427c60e4c455fb951174cc2f50710dcb315a570b0f5fb"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r3fix-receipt-retry-zh-320.png",
+        "sha256": "023e1e26f44f8f9f683c69bef82ce05cd8db04b77eb71cde6519e32dd0b0680f"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/settings/r5-codex-receiver-off-zh-320.png",
+        "sha256": "08a4407b452fd442332d24fae563e7e214b849662df519afdcabc69b0d0c581a"
+      }
+    ],
+    "previous_final_checks": {
+      "build": "passed",
+      "model_contract_checks": 11,
+      "browser": {
+        "languages": [
+          "en",
+          "zh"
+        ],
+        "themes": [
+          "dark",
+          "light"
+        ],
+        "widths": [
+          320,
+          520
+        ],
+        "checks_each": 67,
+        "assertions": 536,
+        "failures": 0
+      },
+      "axe": {
+        "version": "4.12.1",
+        "scopes": [
+          "light saved permission warning",
+          "dark clear classification not queried"
+        ],
+        "violations": 0,
+        "incomplete": 0
+      },
+      "limits": "Memory-only synthetic model, no Go CAS, persistence, requests, source data, Widget or native acceptance."
+    },
+    "historical_screenshots": [
+      "final-receipt-missing-zh-320.png (before R3 repair; superseded by r3fix-receipt-retry-zh-320.png)"
+    ]
   },
-  "historical_screenshots": [
-    "final-receipt-missing-zh-320.png (before R3 repair; superseded by r3fix-receipt-retry-zh-320.png)"
-  ]
+  "repair": {
+    "round": "after Review Round 7",
+    "findings": [
+      "ASC-SET-R7-F1",
+      "ASC-SET-R7-F2",
+      "ASC-SET-R7-F3"
+    ],
+    "changes": "core-unavailable note and sheet banner no longer promise manual classification and offer Read again; adapter outage keeps the original note; Tab/Shift+Tab cycle inside the open sheet; compatibility anchor for the renamed default-scope heading"
+  }
 }

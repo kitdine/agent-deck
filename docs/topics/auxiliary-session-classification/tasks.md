@@ -37,6 +37,36 @@ requirements 已于 Round 3 PASS。
 菜单栏已映射 maintenance_origin，其实现须按封闭枚举映射（含 `origin_metadata_missing`）并对未知码通用回退，列入任务 5；
 Widget 只消费聚合与安全 availability reason，不受影响。两份原 PASS 保留。
 
+2026-11-07 Settings 重新设计：用户看过已通过的 Settings 表面后判定其 UX/UI 不可接受，授权推翻旧设计并重新设计。
+[ux/settings.md](ux/settings.md) 现为重新设计候选（blob `9cd1c1a328edcbcf29062fc8582e9c216c8fe04c`，含待用户确认的窗口分页候选），Review 置回待评审。
+需求、架构协议和状态模型合同不变；改变的是位置、控件、写入时机（选中即保存）、信息层级和文案。
+旧表面在提交 `2c90d4d`，其 Round 6 PASS 只对旧 blob 成立。任务 6 `settings-control` 按旧表面实现并已通过评审
+（Round 3），控制器状态机仍然适用，视图层需要在新设计评审通过后重做；是否回退任务 6 的勾选和 Beads 状态，
+由用户另行决定，本次未改动它们，也未改动 Go/Swift。
+
+2026-11-07 Settings 重新设计候选独立评审 Round 7 FAIL，Documents 的 Review 保持未勾选。
+完整发现、当前文档/标本身份与完成门禁见
+[reviews/ux-settings.md](reviews/ux-settings.md#round-7--2026-11-07)。
+同一文档任务返回修复；旧表面的已交付历史保留，任务 6 的实现状态与验收决定未由本轮改写。
+本轮仅同步评审、证据与协调记录，未修改文档正文、原型、产品代码、测试或配置，未提交或推送。
+
+2026-11-07 Round 7 修复候选（ASC-SET-R7-F1/F2/F3）：core 不可读与外部来源不可用分开说明，前者不再承诺手动分类可用并给出「重新读取」；
+sheet 内 Tab / Shift+Tab 首尾循环；保留 `默认范围` 兼容锚点。候选 ux/settings.md blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011`，
+原型 manifest 阶段 `redesign-r1-repair-r7`。修复映射与验证见 [reviews/ux-settings.md](reviews/ux-settings.md#repair-candidate--2026-11-07round-7-后)。
+Documents 的 Review 仍未勾选，等待独立复评；只改文档与原型标本，未改产品代码，未提交或推送。
+
+2026-11-08 Settings 重新设计修复独立复评 Round 8 PASS，Documents 的 Review 已勾选。
+当前文档 blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011`，manifest SHA-256
+`294305252a547d38a044c78a78061a7ca95a6ae88f868a07b350e806161c56d7`；
+逐项处置、证据门禁与文档任务交付检查点见 [reviews/ux-settings.md](reviews/ux-settings.md#round-8--2026-11-08)。
+长列表保持默认，分页仍待用户决定；原生 settings-control 的既有状态未由本文档复评改写，后续需按新设计重做视图。
+本轮仅更新复评、状态与证据协调记录，未修改设计正文、原型或产品代码，未提交或推送。
+
+2026-11-08 用户授权 Settings 文档任务的本地提交：边界为 Round 8 已通过的设计文档、共享原型、
+检查脚本、manifest 与截图、对应评审记录和本文档状态块，候选门禁 VERIFIED 2/2。
+包含本说明且经对象核验的 Git 提交为交付原件；实际提交 ID、SSH 签名与提交态 CEv1 对账保存于该文档任务的 Beads 和证据记录。
+原生 settings-control 实现、其评审记录和实现状态变更不属本次提交；工作树中的相关改动继续保留。本次未授权推送。
+
 修订前的历史输入判定（保留）：SUFFICIENT——需求 Round 2、架构 Round 2、CLI Round 3、菜单栏 Round 4、
 Settings Round 4、Widget Round 2 均有适用 PASS。四份 UX 为最终表面，不沿用 framework 勾选冒充。
 评审记录分别位于 reviews/requirements.md、reviews/architecture.md、reviews/ux-cli.md、
@@ -60,7 +90,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | [architecture.md](architecture.md) | `5b5a3b5694827900a9380e3879058a6baca4919a` | `416d63c922b9ea445a53a9774388efa13776af1c` | Round 5 PASS |
 | [ux/cli.md](ux/cli.md) | `e4651cca9dbdc40348a0624134778a327539eb3e` | `549477b1b3e47aae80b26756a27bde6cd44c1360` | Round 6 PASS |
 | [ux/menubar.md](ux/menubar.md) | `770cb769987da4232789f629e079eec8a4aa8c98` | `770cb769987da4232789f629e079eec8a4aa8c98` | 未变，Round 4 PASS |
-| [ux/settings.md](ux/settings.md) | `090ce4e2151722f3c89c08714e2501cc8eee41ce` | `bb96bb3d65d8ce625bf7250ee4e741f2286a9e03` | Round 6 PASS |
+| [ux/settings.md](ux/settings.md) | `090ce4e2151722f3c89c08714e2501cc8eee41ce` | `bb96bb3d65d8ce625bf7250ee4e741f2286a9e03` | Round 6 PASS（2026-11-07 已被重新设计取代，新 blob 待评审） |
 | [ux/widget.md](ux/widget.md) | `0e764dbee6e92d2a878508ac7151d54901ff06ca` | `0e764dbee6e92d2a878508ac7151d54901ff06ca` | 未变，Round 2 PASS |
 
 完整文档集为上述六份输入加本 tasks.md，共七份；无 n/a 表面或未编写占位。

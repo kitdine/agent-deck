@@ -104,6 +104,13 @@ export function App() {
   const auxSettingsEnabled=params.has('auxSettings');
   const [auxSettingsModel,setAuxSettingsModel]=useState(()=>initialAuxSettings(params.get('auxSettings')||'normal'));
   const auxDispatch=event=>setAuxSettingsModel(current=>auxiliarySettingsTransition(current,event));
+  // 舞台控件只属于原型：设置窗口关着时在页面顶部，开着时排在窗口上方，不再浮盖在窗口上。
+  const auxStage=auxSettingsEnabled&&<div className="scan-stage-controls as-stage" aria-label="Settings specimen controls">
+    <label>Settings scenario (stage) <select data-as-stage value={auxSettingsModel.scenario} onChange={e=>auxDispatch({type:'scenario',value:e.target.value})}>{SETTINGS_SCENARIOS.map(key=><option key={key}>{key}</option>)}</select></label>
+    {!settings&&<button type="button" data-as-open onClick={()=>setSettings(true)}>Open settings (stage)</button>}
+    <button type="button" data-as-complete disabled={!['loading','saving'].includes(auxSettingsModel.status)} onClick={()=>auxDispatch({type:'complete'})}>Complete pending (stage)</button>
+    <small>Sample IDs: codex/task-01 · claude/old-01 · claude/maint-1</small>
+  </div>;
 
   useEffect(() => {
     const onKey = (event) => {
@@ -134,12 +141,7 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} showAnchor showRefresh showHealth />
-      {auxSettingsEnabled&&<div className="as-stage" aria-label="Settings specimen controls">
-        <label>Settings scenario (stage) <select data-as-stage value={auxSettingsModel.scenario} onChange={e=>auxDispatch({type:'scenario',value:e.target.value})}>{SETTINGS_SCENARIOS.map(key=><option key={key}>{key}</option>)}</select></label>
-        <button type="button" data-as-open onClick={()=>setSettings(true)}>Open settings (stage)</button>
-        <label>Width (stage) <select defaultValue={params.get('asWidth')||'520'} onChange={e=>{const next=new URL(window.location.href);next.searchParams.set('asWidth',e.target.value);window.location.href=next.href;}}><option value="520">520</option><option value="320">320</option></select></label>
-        <button type="button" data-as-complete disabled={!['loading','saving'].includes(auxSettingsModel.status)} onClick={()=>auxDispatch({type:'complete'})}>Complete pending (stage)</button>
-      </div>}
+      {!settings&&auxStage}
       {auxEnabled && <label style={{padding:'8px 20px'}}> {lang === 'zh' ? '辅助会话标本状态（舞台）' : 'Auxiliary session scenario (stage)'} <select value={auxScenario} onChange={e=>setAuxScenario(e.target.value)}>{AUX_MENUBAR_STATES.map(value=><option key={value}>{value}</option>)}</select></label>}
       {scan.enabled && !serving.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
       {serving.enabled && <ServingStageControls serving={serving} lang={lang} />}
@@ -183,8 +185,9 @@ export function App() {
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>
           <div onMouseDown={(event) => event.stopPropagation()}>
-            <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />
-            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} />
+            {auxStage}
+            {!auxSettingsEnabled && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
+            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} tabbed={params.get("settingsTabs") === "1"} initialPane={params.get("settingsPane")} />
           </div>
         </div>
       )}

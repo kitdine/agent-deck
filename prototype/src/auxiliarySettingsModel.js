@@ -11,8 +11,10 @@ export function initialAuxSettings(scenario='normal') {
   const confirmed=!['loading','loadFailed'].includes(scenario);
   const model={scenario,status:confirmed?'ready':scenario,defaultScope:confirmed?'work':null,defaultConfirmed:confirmed,defaultRevision:0,
     overrides:{'claude:old-01':'work','codex:archived-1':'auxiliary'},versions:{'claude:old-01':2,'codex:archived-1':4},inspected:{},
-    pending:null,receipt:null,receipts:{},serverState:null,nextRequest:1,faultUsed:false,revision:1,warnings:[]};
-  if(scenario==='replayed'){model.status='replayed';model.overrides['claude:old-01']='auxiliary';model.versions['claude:old-01']=4;model.receipt={request_id:'fixture-old-clear',target:'claude:old-01',operation:'clear',outcome:'saved',revision:3,override:null,automatic:null,effective:null,classification_available:false,classification_reason:'not_queried'};}
+    pending:null,receipt:null,receipts:{},serverState:null,nextRequest:1,faultUsed:false,revision:1,warnings:[],
+    // Which control owns the current status line: 'default' | 'override' | null.
+    lastOperation:null};
+  if(scenario==='replayed'){model.status='replayed';model.lastOperation='override';model.overrides['claude:old-01']='auxiliary';model.versions['claude:old-01']=4;model.receipt={request_id:'fixture-old-clear',target:'claude:old-01',operation:'clear',outcome:'saved',revision:3,override:null,automatic:null,effective:null,classification_available:false,classification_reason:'not_queried'};}
   return model;
 }
 const payload=a=>JSON.stringify([a.type,a.key??null,a.value,a.expected_revision]);
@@ -48,7 +50,7 @@ export function auxiliarySettingsTransition(m,event){
   if((event.type==='complete'&&m.status==='saving')||(event.type==='retry'&&m.status==='saveFailed'))return apply(m,m.pending);
   if(event.type!=='save'||['loading','loadFailed','saving','saveUnknown','conflict'].includes(m.status))return m;
   const a={...event.action,expected_revision:event.action.expected_revision??targetRevision(m,event.action),request_id:event.action.request_id??`fixture-request-${m.nextRequest}`};
-  const next={...m,nextRequest:m.nextRequest+1};
+  const next={...m,nextRequest:m.nextRequest+1,lastOperation:a.type};
   if(m.receipts[a.request_id]||a.expected_revision!==targetRevision(m,a))return apply(next,a);
   const same=a.type==='default'?m.defaultScope===a.value:(m.overrides[a.key]??'auto')===a.value;
   if(!same&&!m.faultUsed&&['saving','saveFailed','saveUnknown','receiptMissing','conflict'].includes(m.scenario)){

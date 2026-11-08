@@ -1,0 +1,20 @@
+/* 分页设置窗口（?settingsTabs=1，2026-11-07 候选）。
+ * 标题栏与工具栏是同一块材质：标题栏不画分隔线，工具栏底部画一条。
+ * 选中页：--surface-2 圆角底 + accent 图标；未选中：中性图标与文字。
+ * 窗口高度跟随当前页内容；只有超过屏幕时页内才滚动。 */
+
+.settings-window.tabbed { display:flex; flex-direction:column; width:min(460px, calc(100vw - 32px)); max-height:calc(100vh - 48px); }
+.settings-window.tabbed > header { border-bottom:0; }
+.settings-window.tabbed .settings-body { min-height:0; overflow-y:auto; }
+.window-backdrop > div:has(.tabbed) { display:flex; flex-direction:column; max-height:100%; min-height:0; }
+
+/* 每页只有一组时，分组标题就是页名，重复显示没有意义；「通用」页的「菜单栏」小标题保留。 */
+.settings-window.tabbed .settings-group[data-group] > .settings-group-title { display:none; }
+
+.settings-tabs { display:flex; justify-content:center; gap:2px; padding:2px 12px 8px; border-bottom:1px solid var(--line-soft); background:var(--surface); }
+.settings-tabs button { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:68px; padding:6px 10px 5px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:11px; line-height:1.2; }
+.settings-tabs button svg { color:var(--muted); }
+.settings-tabs button:hover { background:var(--surface-2); }
+.settings-tabs button[aria-selected="true"] { background:var(--surface-2); color:var(--text); }
+.settings-tabs button[aria-selected="true"] svg { color:var(--accent); }
+.settings-tabs button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
