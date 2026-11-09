@@ -147,7 +147,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
 	}
-	command.AddCommand(snapshot, refreshIndexes, newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
+	command.AddCommand(snapshot, refreshIndexes, newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts), newDesktopStateLocationCommand(opts))
 	return command
 }
 

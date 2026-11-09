@@ -335,7 +335,7 @@ func (m *Manager) prepareSetup(snapshot snapshot, client Client) ([]byte, Outcom
 		if analysis.modified {
 			return nil, OutcomeFailed, ConfigurationModified, fmt.Errorf("AgentDeck hook for %s/%s was modified; refusing to overwrite it", client, event)
 		}
-		if analysis.exact != 1 {
+		if analysis.exact != 1 || analysis.retired > 0 {
 			needsChange = true
 		}
 	}
@@ -391,7 +391,7 @@ func (m *Manager) prepareRemove(snapshot snapshot, client Client) ([]byte, Outco
 		if analysisErr != nil {
 			return nil, OutcomeFailed, ConfigurationInvalid, analysisErr
 		}
-		if analysis.exact > 0 {
+		if analysis.exact > 0 || analysis.retired > 0 {
 			removed = true
 		}
 		if len(updated) == 0 {
@@ -414,6 +414,9 @@ func (m *Manager) prepareRemove(snapshot snapshot, client Client) ([]byte, Outco
 type eventAnalysis struct {
 	exact    int
 	modified bool
+	// retired counts earlier-owner routes that setup and remove clear; it
+	// drives their change decision only and never counts toward hook status.
+	retired int
 }
 
 func analyzeEvent(groups []json.RawMessage, desired json.RawMessage, client Client) (eventAnalysis, error) {
@@ -424,6 +427,10 @@ func analyzeEvent(groups []json.RawMessage, desired json.RawMessage, client Clie
 			return eventAnalysis{}, err
 		}
 		for _, entry := range entries {
+			if retiredHookRoute(entry, desired, client) {
+				analysis.retired++
+				continue
+			}
 			candidate, exact, classifyErr := classifyEntry(entry, desired, client)
 			if classifyErr != nil {
 				return eventAnalysis{}, classifyErr
@@ -449,6 +456,10 @@ func updateEvent(groups []json.RawMessage, desired json.RawMessage, client Clien
 		changed := false
 		kept := make([]json.RawMessage, 0, len(entries))
 		for _, entry := range entries {
+			if retiredHookRoute(entry, desired, client) {
+				changed = true
+				continue
+			}
 			candidate, exact, classifyErr := classifyEntry(entry, desired, client)
 			if classifyErr != nil {
 				return nil, classifyErr
@@ -532,6 +543,34 @@ func classifyEntry(raw, desired json.RawMessage, client Client) (candidate, exac
 	}
 	exact = managedEntryEquivalent(raw, desired, client)
 	return candidate, exact, nil
+}
+
+// retiredHookRoute reports an AgentDeck-generated hook entry registered by an
+// absolute program path, the form written by an earlier owner. Setup and
+// remove replace or drop it; any extra field beyond the generated shape keeps
+// it as user data. Hook status ignores these routes, as before.
+func retiredHookRoute(raw, desired json.RawMessage, client Client) bool {
+	var entry map[string]json.RawMessage
+	if json.Unmarshal(raw, &entry) != nil || entry == nil {
+		return false
+	}
+	var kind, command string
+	if json.Unmarshal(entry["type"], &kind) != nil || kind != "command" || json.Unmarshal(entry["command"], &command) != nil {
+		return false
+	}
+	executable, ok := parseManagedCommand(command, []string{"usage", "hook", "event", string(client)})
+	if !ok || executable == "" {
+		return false
+	}
+	var want map[string]json.RawMessage
+	if json.Unmarshal(desired, &want) != nil {
+		return false
+	}
+	delete(entry, "command")
+	delete(want, "command")
+	left, leftErr := json.Marshal(entry)
+	right, rightErr := json.Marshal(want)
+	return leftErr == nil && rightErr == nil && jsonEquivalent(left, right)
 }
 
 func jsonEquivalent(left, right []byte) bool {

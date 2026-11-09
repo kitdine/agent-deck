@@ -110,6 +110,7 @@ func ownershipCommandCases() []ownershipCommandCase {
 		{name: "desktop.quota-refresh", arguments: "desktop quota-refresh"},
 		{name: "desktop.quota-settings", arguments: "desktop quota-settings --reading on"},
 		{name: "desktop.quota-statusline.disable", arguments: "desktop quota-statusline disable"},
+		{name: "desktop.state-location", arguments: "desktop state-location"},
 		{name: "desktop.quota-statusline.enable", arguments: "desktop quota-statusline enable"},
 		{name: "desktop.refresh-indexes", arguments: "desktop refresh-indexes"},
 		{name: "desktop.snapshot", arguments: "desktop snapshot"},
@@ -432,7 +433,9 @@ func TestOwnershipAllCommandSurfacesBehindBarrier(t *testing.T) {
 				if branch == "explicit-real" {
 					wantCode = 1
 					wantError = "state_ownership_refused"
-					if silent || row.name == "doctor" {
+					// doctor renders a partial report; state-location reports
+					// the isolated root instead of the refused real one.
+					if silent || row.name == "doctor" || row.name == "desktop.state-location" {
 						wantCode = 0
 						wantError = ""
 					}
@@ -467,6 +470,9 @@ func TestOwnershipAllCommandSurfacesBehindBarrier(t *testing.T) {
 					}
 					if string(env.Data) == "null" && row.name != "credential.remove" && row.name != "extension.release" && row.name != "provider.remove" && row.name != "provider.use" {
 						t.Fatalf("unexpected null data: %s", stdout.String())
+					}
+					if branch == "explicit-real" && row.name == "desktop.state-location" && (bytes.Contains(env.Data, []byte(f.Account)) || !bytes.Contains(env.Data, []byte(`"installed":false`))) {
+						t.Fatalf("state-location disclosed the real root: %s", stdout.String())
 					}
 					if branch == "explicit-real" && row.name == "doctor" && (!env.Partial || !reflect.DeepEqual(env.Warnings, []string{"checks_skipped"})) {
 						t.Fatalf("doctor refusal not partial: %s", stdout.String())

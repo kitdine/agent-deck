@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-11-05
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Installed State Ownership — Tasks
@@ -29,7 +29,7 @@ updated: 2026-11-08
 当前需求、CLI、架构保持已通过状态；任务分解的 2026-11-07 重写稿已通过 Round 10 独立复评。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。任务 4–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -38,7 +38,7 @@ updated: 2026-11-08
 | 1. `installation-identity` | [x] | [x] |
 | 2. `state-root-guard` | [x] | [x] |
 | 3. `client-config-guard` | [x] | [x] |
-| 4. `installation-diagnostics` | [ ] | [ ] |
+| 4. `installation-diagnostics` | [x] | [x] |
 | 5. `installer-receipts` | [ ] | [ ] |
 | 6. `app-state-location` | [ ] | [ ] |
 | 7. `debug-app-identity` | [ ] | [ ] |
@@ -440,6 +440,28 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 安装拒绝不写入 `hook-refusals.json`；schema-version-signal 的现有测试保持不变。
 
 **验证：L2**，因为改的是线路和文本契约。需要 targeted 测试和 Go 全量测试。
+
+#### 开发交接 — 2026-11-08
+
+**实现**：
+- `internal/usagehook/managed.go`：新增只读的 `Manager.ManagedCommands()`，读取 `~/.codex/hooks.json` 与 `~/.claude/settings.json` 中 AgentDeck 生成的 Hook 命令（`<程序> [--state-dir <dir>] usage hook event <client>`）和 Claude `statusLine`（`<程序> [--state-dir <dir>] quota capture`）。程序可以是 PATH 上的 `agentdeck`，也可以是基名为 `agentdeck` 的绝对路径（含 `shellQuote` 编码）。它不建目录、不写文件；文件缺失、无法读取或格式无效时不贡献命令。
+- `internal/doctor/managed_command.go`：`managed_command_owner` 只在已安装身份下运行，位置紧跟 `hook_deliveries`，在状态缺失或被拒绝的短路之后，因此两类部分报告都不包含它。绝对路径命令经 `EvalSymlinks` 与当前程序真实路径比较；程序不存在也算不同拥有者。判定规则：没有不匹配、且存在绝对路径命令或没有受管命令时为 `ok`；只有 PATH 命令时为 `ok` 并带 `reason: path_resolved`；存在不匹配时为 `warning (managed_command_owner_mismatch)`，`reason` 是受影响的客户端（按 `claude,codex` 顺序，逗号分隔）。`recovery_command` 规则：两个客户端的 Hook 都不匹配时为 `agentdeck usage hook setup --client all`；只有一个客户端时为对应的 `--client <client>`；只有 statusline 不匹配时为 `agentdeck desktop quota-statusline enable`。文本附加行是 `reason` 和 `next`，`recovery` 由现有通用分支输出。JSON 只用现有 `Check` 字段，不含路径。
+- `cmd/agentdeck/desktop_state_location.go`：新增隐藏命令 `desktop state-location`，只接受 `--format json`。数据为 `installed`、`channel`（已安装时）或 `reason`（未安装时），以及 `state_root`。状态目录经守卫：显式目录被拒绝时改报隔离默认根，不报错，也不给出真实路径。公共 pre-run 对这条命令放行拒绝，与 doctor 相同。
+- 通过 desktop 健康部分，这项检查进入 snapshot。合成语料的 snapshot 参考文件只多了一项 `managed_command_owner: ok`，已重新生成。
+
+**设计判断（供评审核对）**：CLI 契约只给出单客户端 Hook 的标本。双客户端时 `reason` 用逗号连接；statusline 不匹配时以 `desktop quota-statusline enable` 作为重新登记命令；`next` 文案按客户端拼接，例如 “Claude and Codex hooks point to another AgentDeck program and are ignored.”。当前 Hook 写入者只登记 PATH 形式；绝对路径 Hook 只可能来自旧拥有者，枚举仍覆盖这种形式。
+
+**测试**：
+- `internal/usagehook/managed_test.go`：枚举 PATH、带引号的绝对路径、`--state-dir`、statusline 和非受管命令；读取后配置字节不变；缺失或无效配置不贡献命令，也不建目录。
+- `internal/doctor/managed_command_test.go`：覆盖无命令、拥有者匹配、仅 PATH、Claude 不匹配、双客户端不匹配、statusline 不匹配、程序已不存在七种情况，并确认结果不含路径。另验证：已安装身份下状态缺失的部分报告不运行此检查，可读状态下运行，未安装身份下不运行。
+- `cmd/agentdeck/ownership_doctor_render_test.go`：将 `doctor_installed`、`doctor_command_owner` 标本的检查送入 doctor 写出器，文本和 JSON 与原型逐字一致。两份固定数据由 `prototype/src/ownership.js` 生成，加入 `ownership-golden.json`，键序与原型一致。其余三个 `doctor_*` 标本由任务 2 的验收测试继续回归。
+- `cmd/agentdeck/desktop_state_location_test.go`：已安装身份下，显式目录和默认目录各一例；未安装身份下，默认返回隔离根；显式指向真实根时返回隔离根，输出不含账户路径，真实目录也未被创建；文本格式被拒绝。
+- 任务 2 叶子矩阵（`agentdeck_acceptance`）登记 `desktop.state-location`。default 和 explicit-isolated 两个分支按普通命令断言；explicit-real 分支断言 exit 0、`installed:false`，且输出不含真实账户路径。
+
+**验证（L2）**：
+- `scripts/run-go-test.sh ./...` 通过。`make vet` 通过。对新增和改动的 Go 文件跑 `gofmt -l`，输出为空。
+- `GOFLAGS=-tags=agentdeck_acceptance scripts/run-go-test.sh ./cmd/agentdeck ./internal/platform ./internal/installation ./internal/ownershiptest`：`TestOwnershipLeafInventory` 和 `desktop.state-location` 的三个分支均通过。
+- 已知不稳定：叶子矩阵的 `watch` 行在 default 或 explicit-isolated 分支偶发 `snapshot session: context deadline exceeded`。在 `-count=3` 定向重跑中，6 次 watch 运行失败 2 次；同一套验收的第一次完整运行中 watch 通过。原因是验收子进程使用 1 秒 context（`ownership_guard_acceptance_test.go:75`），session 快照在负载下超时。`internal/watch` 不依赖本任务改动的 doctor、usagehook 和 desktop，因此这不是本任务引入的问题，也不在本任务范围内修复。
 
 ### 5. `installer-receipts`
 

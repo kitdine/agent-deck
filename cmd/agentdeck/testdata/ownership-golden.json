@@ -23,6 +23,12 @@
     "json": "{\n  \"schema_version\": 1,\n  \"command\": \"watch\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"state_ownership_refused\",\n    \"message\": \"This AgentDeck is not the installed program and cannot use the real state directory.\",\n    \"details\": {\n      \"resource\": \"state_root\",\n      \"reason\": \"receipt_other_executable\"\n    }\n  }\n}",
     "exit": 1
   },
+  "doctor_installed": {
+    "stdout": "status: healthy\nmode: quick\nwarnings: 0\nerrors: 0\ninstallation: ok\n  channel: homebrew_cask\nstate: ok\nmanaged_command_owner: ok\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"healthy\",\n    \"healthy\": true,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"ok\",\n        \"reason\": \"homebrew_cask\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"ok\"\n      },\n      {\n        \"name\": \"managed_command_owner\",\n        \"status\": \"ok\"\n      }\n    ],\n    \"problems\": 0,\n    \"warnings\": 0,\n    \"errors\": 0\n  },\n  \"warnings\": [],\n  \"partial\": false\n}",
+    "exit": 0
+  },
   "doctor_not_installed": {
     "stdout": "status: degraded\nmode: quick\nwarnings: 2\nerrors: 0\ninstallation: warning (not_installed)\n  reason: receipt_other_executable\n  state: isolated ~/.agentdeck-dev\n  next: Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app.\nstate: warning (state_missing)\nchecks_skipped: remaining diagnostics require a readable core database\n",
     "stderr": "",
@@ -39,6 +45,12 @@
     "stdout": "status: unhealthy\nmode: quick\nwarnings: 1\nerrors: 1\ninstallation: warning (not_installed)\n  reason: receipt_other_executable\n  state: isolated ~/.agentdeck-dev\n  next: Expected for development builds. If this should be your installation, reinstall it with Homebrew, make install, or make install-macos-app.\nstate: error (state_ownership_refused)\n  reason: receipt_other_executable\n  next: Omit --state-dir to use the isolated state, or run the installed agentdeck.\nchecks_skipped: the requested state directory was refused; no other diagnostics ran\n",
     "stderr": "",
     "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"unhealthy\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"warning\",\n        \"code\": \"not_installed\",\n        \"reason\": \"receipt_other_executable\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"error\",\n        \"code\": \"state_ownership_refused\",\n        \"reason\": \"receipt_other_executable\"\n      }\n    ],\n    \"problems\": 2,\n    \"warnings\": 1,\n    \"errors\": 1\n  },\n  \"warnings\": [\n    \"checks_skipped\"\n  ],\n  \"partial\": true\n}",
+    "exit": 0
+  },
+  "doctor_command_owner": {
+    "stdout": "status: degraded\nmode: quick\nwarnings: 1\nerrors: 0\ninstallation: ok\n  channel: make\nstate: ok\nmanaged_command_owner: warning (managed_command_owner_mismatch)\n  reason: claude\n  next: Claude hooks point to another AgentDeck program and are ignored.\n  recovery: agentdeck usage hook setup --client claude\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"degraded\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"ok\",\n        \"reason\": \"make\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"ok\"\n      },\n      {\n        \"name\": \"managed_command_owner\",\n        \"status\": \"warning\",\n        \"code\": \"managed_command_owner_mismatch\",\n        \"reason\": \"claude\",\n        \"recovery_command\": \"agentdeck usage hook setup --client claude\"\n      }\n    ],\n    \"problems\": 1,\n    \"warnings\": 1,\n    \"errors\": 0\n  },\n  \"warnings\": [],\n  \"partial\": false\n}",
     "exit": 0
   }
 }

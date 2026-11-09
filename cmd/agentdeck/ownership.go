@@ -35,6 +35,9 @@ func prepareOwnershipCommand(opts *commandOptions, command *cobra.Command) error
 			if command.CommandPath() == "agentdeck doctor" {
 				return nil // Doctor renders its own path-free partial report.
 			}
+			if command.CommandPath() == "agentdeck desktop state-location" {
+				return nil // Reports the isolated root instead of the refused one.
+			}
 		}
 		return err
 	}
@@ -76,6 +79,10 @@ func renderOwnershipCheck(w io.Writer, check doctor.Check) error {
 		if _, err := fmt.Fprintf(w, "  reason: %s\n  state: isolated ~/.agentdeck-dev\n  next: %s\n", check.Reason, isolatedStateNext); err != nil {
 			return err
 		}
+	}
+	if check.Name == "managed_command_owner" && check.Code == "managed_command_owner_mismatch" {
+		_, err := fmt.Fprintf(w, "  reason: %s\n  next: %s\n", check.Reason, doctor.ManagedCommandOwnerNext(check.Reason))
+		return err
 	}
 	if check.Name == "state" && check.Code == "state_ownership_refused" {
 		_, err := fmt.Fprintf(w, "  reason: %s\n  next: %s\n", check.Reason, refusedStateNext)

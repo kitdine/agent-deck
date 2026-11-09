@@ -97,6 +97,9 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if refusal, live := hookrefusal.Live(s.StateRoot, store.CurrentSchemaVersion); live {
 		report.add(Check{Name: "hook_deliveries", Status: "warning", Code: "hook_deliveries_dropped", Count: refusal.Count})
 	}
+	if check, ok := managedCommandOwnerCheck(s.Home); ok {
+		report.add(check)
+	}
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {

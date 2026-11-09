@@ -30,3 +30,7 @@ func RefusedStateReport(full bool, reason string) Report {
 	report.add(Check{Name: "state", Status: "error", Code: "state_ownership_refused", Reason: reason})
 	return report
 }
+
+// Add appends a check with the report's status accounting; renderers' tests
+// use it to build reports from contract specimens.
+func (r *Report) Add(check Check) { r.add(check) }

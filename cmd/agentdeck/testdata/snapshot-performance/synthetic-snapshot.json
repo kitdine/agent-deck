@@ -7440,6 +7440,10 @@
           "status": "ok"
         },
         {
+          "name": "managed_command_owner",
+          "status": "ok"
+        },
+        {
           "name": "schema",
           "status": "ok",
           "count": 33
