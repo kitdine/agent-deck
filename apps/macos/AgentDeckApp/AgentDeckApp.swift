@@ -94,7 +94,10 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let model: MenuBarViewModel
 	private let quotaSettings: QuotaSettingsController
 	private let telemetrySettings: TelemetrySettingsController
-	private let settingsController: SettingsWindowController
+	/// Internal rather than private so the two-phase restart acceptance can
+	/// observe the controllers this delegate's real startup built.
+	let sessionOrigin: SessionOriginSettingsController
+	let settingsController: SettingsWindowController
 	private let periodicDriver: DesktopRefreshPeriodicDriver
 	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
@@ -222,7 +225,22 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			preferences: preferences,
 			sessionScopeReader: runner
 		)
-		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
+		let sessionOrigin = SessionOriginSettingsController(
+			transport: runner,
+			// A committed default or override changes the next publication, not
+			// the views already shown. Only a refresh that starts after the write
+			// can carry it; a source-change request always runs one more round.
+			publish: { [weak coordinator] in
+				guard let coordinator else { return .failed }
+				await coordinator.requestFullRefresh(trigger: .sourceChange)
+				guard case .succeeded = coordinator.fullAttempt else { return .failed }
+				return .published(coordinator.latestSnapshot?.data.sessionScopeView.view?.default)
+			}
+		)
+		self.sessionOrigin = sessionOrigin
+		settingsController = SettingsWindowController(
+			preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings, sessionOrigin: sessionOrigin
+		)
 		super.init()
 	}
 

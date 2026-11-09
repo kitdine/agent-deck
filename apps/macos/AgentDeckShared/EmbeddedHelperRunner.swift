@@ -699,6 +699,34 @@ public struct EmbeddedHelperRunner: Sendable {
 		]
 	}
 
+	/// Runs one short session-origin command (SessionOriginTransport.swift) and
+	/// classifies how far it got. Only a missing helper proves that a write did
+	/// not happen: `launchFailed` is also raised after the process started, and
+	/// a timeout or an unreadable failure may follow a commit.
+	func runSessionOriginCommand(_ arguments: [String]) async -> DesktopOriginHelperRun {
+		let executableURL: URL
+		do {
+			executableURL = try embeddedHelperURL()
+		} catch {
+			return .notStarted
+		}
+		let output: HelperProcessOutput
+		do {
+			output = try await process.run(
+				executableURL: executableURL,
+				arguments: helperArguments(arguments),
+				environment: environment,
+				timeout: timeout
+			)
+		} catch {
+			return .indeterminate
+		}
+		guard !output.stdoutTruncated, !output.stderrTruncated else { return .indeterminate }
+		if output.exitStatus == 0 { return .succeeded(stdout: output.stdout) }
+		guard let failure = SessionOriginDecoding.error(output.stderr) else { return .indeterminate }
+		return .failed(code: failure.code, currentRevision: failure.currentRevision)
+	}
+
 	public func bootstrapServingSnapshot(
 		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
 		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void

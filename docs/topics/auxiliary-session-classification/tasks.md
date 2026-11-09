@@ -127,7 +127,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 3. `scope-projections` | [x] | [x] |
 | 4. `cli-contract` | [x] | [x] |
 | 5. `desktop-menubar` | [x] | [x] |
-| 6. `settings-control` | [ ] | [ ] |
+| 6. `settings-control` | [x] | [x] |
 | 7. `widget-summary` | [ ] | [ ] |
 | 8. `durability` | [ ] | [ ] |
 | 9. `integrated-acceptance` | [ ] | [ ] |
@@ -698,3 +698,241 @@ Review 保持未勾选，待复评；native-acceptance 仍未验证。
 加本文件和 [评审记录](reviews/desktop-menubar.md)；候选门禁 VERIFIED 9/9，验收排除范围保持不变。
 包含本说明且完成提交对象核验的 Git 提交为交付原件；最终提交 ID、SSH 签名及提交态 CEv1 对账保存于该任务的 Beads 和证据记录。
 交付核验完成后关闭本任务及同一修复载体、解除 settings-control 的相应依赖；后续开发仍需独立授权。本次无推送授权。
+
+2026-11-07 任务 6 `settings-control` 开发完成（claude-code，未提交，待独立评审）。基线 HEAD `27a12fc`（任务 5 已提交），Go 未改动。
+
+- 共享层：新增 `AgentDeckShared/SessionOriginTransport.swift`。经已批准 CLI 的 JSON 命令读写：
+  - 默认范围：`session scope get/set`。
+  - 精确查询、设置与撤销：`session classify --id= --client=`，配合 `--set` 或 `--clear`；ID 以 `--id=` 传值，以 `-` 开头或与子命令同名都不会被误读。
+  - 回执读回：`--request`。
+  - 有效覆盖分页：`classify list`，每页 20。
+  - 只读来源状态：`origin-source status`，固定两行，校验顺序与 kind。
+
+  每条命令都显式带 `--state-dir`、App 预分配的 request ID 和 expected_revision；`EmbeddedHelperRunner.runSessionOriginCommand` 是唯一运行入口。
+  写入结果只认定三类：
+  - 已提交回执：必须与本次请求的 ID、kind、target 一致。
+  - `origin_conflict`。
+  - 确定未写入：`origin_write_failed`、`origin_identity_unavailable`、`session_not_found`、`state_busy`、参数拒绝，或 helper 不存在。
+
+  `origin_write_unknown`、`runtime_error`、未知错误码、超时、截断、进程已启动后的失败和无法解析的输出，一律为结果未知。
+- App：新增 App 级 `SessionOriginSettingsController`，由 delegate 持有；窗口关闭只丢弃草稿和查询输入，已接受的操作、回执和提示保留。
+  - 同一时刻只接受一个写入，状态分为 saving、failed、unknown、conflict；saved、noChange、replayed、reloaded、invalidRequest、权限警告和 publication_pending 分开显示。
+  - 结果未知时先按同一请求 ID 读回回执；仍未知才提供以同 ID、同负载、同 expected_revision 重试。冲突只能通过“重新读取”结束。
+  - 读回到的回执或重放回执之后，重新读取当前值，旧回执不会移除更新的覆盖。
+  - 撤销后 automatic/effective 显示“未查询”，只有独立的可见查询才重新显示分类；列表撤销直接用条目的 core 键和 revision，不查会话。
+  - 未确认的默认值不会显示为 Work，也不允许写入。
+  - 保存成功后经 `requestFullRefresh(.sourceChange)` 请求一次发布；默认范围要等已安装的发布带有不低于回执的 revision，才清除 pending。发布失败只保留 pending，不回滚默认值。
+- 视图：Settings 窗口新增“会话范围与分类”组，按原型放在首位；窗口内容改为纵向滚动，高度上限为屏幕可用高度。组内依次为说明、状态与回执、默认范围、单会话查询、现有覆盖（含分页）、只读来源状态，共 84 条中英文案。
+  - 选择器的标签放在控件上方，避免窄宽度横向溢出。
+  - 撤销一行后，焦点移到下一条（无下一条时为上一条）的撤销按钮，列表为空时移到查询输入。
+  - 未注入控制器的调用方仍按原来的分组渲染。
+- 实现决定与偏差：
+  1. 查询结果不显示 UX 所列的“安全项目标签”：已批准的 classify JSON 没有项目字段，本任务限定 Go 只复用接口。
+  2. 原生 Settings 窗口保持现有 460pt 宽，UX 的 520/320 两档以 460 与 320 渲染核对。
+  3. 文案偏差三处：内建来源说明指向原生“实时用量”分组的 OTel 开关，而非原型的“Codex 记忆联动区域”；set 成功另设“会话分类已保存”；Codex 行 core 不可读的英文补上 “automatic origin is Unknown”，与中文一致。
+- 验证：`scripts/test-macos-app.sh`（隔离 HOME）在最终候选上 TEST SUCCEEDED：App 209 项（1 项为既有跳过）、Shared 133 项、Widget 51 项，0 失败。
+  同一内容的前一轮中，既有的 `MenuBarChromeTests.testWindowWarmUpRunsOnceWithoutShowingAWindowOrMovingFocus` 因 key window 顺序失败一次；
+  该测试不涉及本次改动的代码，同内容重跑通过，按既有窗口顺序不稳定处理，未修改。
+  - 新增 Shared 桥接测试 7 项、App 控制器与窗口测试 20 项。
+  - 其中一项在 XCTest 隔离 HOME 下的新目录里运行真实内嵌 Go helper：默认值从“不可用”到“保存→读回→无变化→冲突→同 ID 重放→同 ID 换负载被拒”；回执读回已知与未知；空覆盖列表；从未存在的键撤销为 no_change/0；无会话索引时查询为不可用。由此核对了 Swift DTO 与 Go 实际 JSON 一致。
+  - 新增组在 en/zh-Hans × 320/460pt × 三态（正常、结果未知、读取失败）下渲染，断言两侧边距没有内容溢出，12 张图已目视核对。
+  - `make check-whitespace` 通过。
+- 变异检查（已恢复，blob 已核对）：
+  - 未知错误码当作未写入、重试换新请求 ID、不可读默认值回退 Work、读回回执当作当前值、跳过发布 revision 核对：五项各使对应测试失败。
+  - 选择器标签改回同行：英文 320pt 三态的溢出断言失败。首轮渲染正是这样发现了这个溢出，已按上述布局修复。
+- 候选：HEAD `27a12fc3c811d176cbd17fdf8df1293b20eca093` + 11 个路径，摘要 `891355b0152d64ea285772dfd8ed1d55f76ecc8b57375ebe54587f68e4b071fe`（算法同任务 5：`head=` 行加按路径字节序排列的 `path=blob` 行）。
+- CEv1：本会话 Neo4j MCP 无法连接，未查询、未写入 WorkUnit `auxiliary-session-classification:settings-control`；证据由评审在提供方恢复后按上述候选绑定。
+- 残余：原生 Tab 顺序与焦点移动、VoiceOver、Dynamic Type、应用重启后的读回、与 CLI 并发写入的原生交互验收均未执行；对应行为仅有控制器单测、真实 helper 往返测试和渲染核对作支撑。
+
+2026-11-07 任务 6 `settings-control` 独立评审 FAIL；Dev 保持已完成，Review 保持未勾选。
+本轮内容与上述 11 路径候选一致，完整结论、证据门禁及后续范围见
+[reviews/settings-control.md](reviews/settings-control.md) Round 1。
+同一任务返回修复，原生验收缺口仍开放；未修改产品代码、测试或配置，未提交、推送。
+
+2026-11-07 任务 6 `settings-control` 修复 ASC-SC-R1-F1（claude-code，未提交）：已确认的写入现在使在它之前发出的读取失效。
+默认值、覆盖列表与单会话查询各自计代，较早发出的读取在写入确认后返回时被丢弃，不能把确认值、草稿或下一次
+expected revision 退回；写入之后才开始的读取照常显示外部变更。
+三项挂起读取回归在评审候选上全部复现失败，修复后通过。复现、回归与验证见
+[reviews/settings-control.md](reviews/settings-control.md) Repair 1。
+新候选摘要 `21bdec01283376983147c1dc81532434641aaac8a5569ac5b7de6fad9354d4d4`（HEAD `27a12fc` + 同一 11 个路径）。
+Review 保持未勾选，待复评；原生验收仍未执行。
+
+2026-11-07 任务 6 修复范围独立复评 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 2。
+本轮仅核准修复及受影响路径；整任务 Review 与完成门禁仍待剩余完整候选审查和验收，Beads 保持 in_review。
+用户明确排除本任务的原生键盘和辅助功能验收；应用重启、并发 CLI 原生交互及其余适用验收继续保留。
+验收范围与候选内容分别绑定于 Round 2 的 ContentState，跳过项不记作测试通过；未提交、推送。
+
+2026-11-07 任务 6 完整候选独立审查及剩余适用验收 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 3。
+本轮完成整任务审查，Review 已勾选；候选和用户排除范围均与 Round 2 相同，Task 门禁 VERIFIED 10/10。
+任务进入 awaiting_commit，待单独授权提交；任务 7 的交付依赖尚未解除，完整证据与交付建议以 Round 3 为准。
+原生隔离验收及已有测试复用的事实已收录；未修改产品、测试或配置，未提交、推送，任务 7 尚未启动。
+
+2026-11-08 任务 6 `settings-control` 按 Settings 重新设计（[ux/settings.md](ux/settings.md) Round 8 PASS，已交付于 `5d47df8`）重做原生视图
+（claude-code，未提交，待独立评审）。Round 3 的 PASS 与 VERIFIED 10/10 只绑定旧的 11 路径候选，不适用于本次内容，Review 已置回未勾选。Go 未改动。
+
+- 控制器：写入状态机、请求身份、读取代次保护和同 ID 重试保持不变。
+  - 去掉默认范围和单会话分类的草稿与「保存」：`selectDefault`、`selectOrigin` 选中即提交；点已确认的值不发请求。
+  - 记录发起写入的控件（默认范围或手动分类），状态只显示在该控件下；另一控件只显示中性的锁定原因。请求 ID 只在结果未知时出现，不再显示 revision、回执块或待确认行。
+  - 撤销成功后，若卡片仍在显示，立即另发一次只读可见查询；期间显示「正在读取…」，失败、未找到或被排除时保留卡片并显示「当前分类暂不可读」与「重新读取」，不沿用撤销前的值。
+  - 新增 sheet 显示状态（窗口草稿，关窗即关闭）、`openOverride`（已匹配行填入查找并打开卡片）、手动分类行摘要、来源行与来源说明（外部来源不可用与 core 不可读分开）。
+- 视图：「会话」组为三行：默认会话范围（分段控件）、手动分类（摘要与「管理…」）、自动识别（两行来源、圆点着色、reason code 只放 tooltip）。
+  「管理…」打开「手动分类」sheet：查找（客户端分段、等宽 ID 输入、查找）、会话卡片、已手动分类列表（未匹配行不可点、移除时显示转圈、分页）和「完成」。
+  在 ID 输入框内回车执行查找，其他位置回车为「完成」；Escape 只关闭 sheet，关闭后焦点回到「管理…」。
+- 文案：`DesktopCopy` 与 `Localizable.xcstrings` 的旧表面文案整体替换为新设计中英文案（删除 72 条、新增 74 条，原样保留 11 条、改写 1 条译文）。
+- 实现决定与偏差：
+  1. 组顺序改为 通用 → 菜单栏 → 会话 → 实时用量 → 额度。设计要求「会话」位于「菜单栏」之后、「实时用量」之前，原生原先把实时用量排在菜单栏之前，因此一并调整；各组内容不变。
+  2. 卡片仍不显示安全项目标签：已批准的 classify JSON 没有项目字段。
+  3. 在途写入的目标项脉冲点以状态行的转圈图标表示（设计的原生映射允许）。
+  4. 列表跨页时，摘要只给总数、不给「M 个未生效」：列表接口没有未匹配总数，只数当前页会误导。
+  5. sheet 宽 460 pt，高为 min(600, 屏幕可用高度 − 160)，正文滚动。
+  6. 来源行与卡片的事实行用固定标签列的 HStack，不用 `Grid`：首轮渲染发现 `Grid` 测得的高度短于折行后的实际高度，英文 core 不可读态里「自动识别」标题与分隔线重叠。
+- 验证（最终内容）：`scripts/test-macos-app.sh`（隔离 HOME）TEST SUCCEEDED：App 219 项（1 项为既有的 opt-in 跳过）、Shared 133 项、Widget 51 项，0 失败；
+  其中 `SessionOriginSettingsControllerTests` 30 项。新增或改写的回归覆盖选中即保存、点已选值不发请求、状态归属与锁定原因、撤销后自动查询及其失败路径、
+  已匹配行打开会话、来源两类说明、sheet 随窗口关闭、core 不可读时 sheet 状态条。
+  渲染测试在中英 × 5 种状态（主表面常规、结果未知、core 不可读；sheet 常规、core 不可读）下按 460 pt 渲染，10 张图已目视核对；
+  主表面另断言按测得高度渲染与在更高画布顶对齐渲染逐行一致。`make check-whitespace` 与 `git diff --check` 通过。
+- 变异检查（已恢复，两文件 SHA-256 与最终内容逐字节一致）：同时注入 5 处缺陷——撤销后不再查询、点已确认默认值仍写入、状态显示在两个控件下、core 不可读当作外部来源不可用、
+  来源行退回 `Grid`。分别使 2、1、3、1 项控制器测试和渲染测试（英文 3 种主表面状态报告高度挤压）失败。
+- 候选：HEAD `5d47df828df4c76fd2d909e2981a4606ac9d87c6` + 与前一候选相同的 11 个路径，摘要
+  `28b23079ad43efd3058dcd1fac148545fb88d6dc0e34a4f918e31bf3dbaec3ac`（算法同 [Round 1](reviews/settings-control.md)）；控制器 blob `2e6bc6024370a68bb1f87219d3d924f1283d8f68`，视图 blob `797b4fb668b8f573536abcffbe8f017aa24070a0`。
+- CEv1：本会话 Neo4j MCP 连接失败（ENETUNREACH），未查询、未写入 WorkUnit `auxiliary-session-classification:settings-control`；新候选证据由评审在提供方恢复后按上述摘要绑定。
+- 残余：真实窗口中的 sheet 焦点封闭与 Escape、键盘顺序、VoiceOver、Dynamic Type、应用重启后的读回，以及与 CLI 并发写入的原生交互，本轮均未执行；
+  对应行为只有控制器单测、渲染核对和沿用的真实 helper 往返测试作支撑。
+
+2026-11-08 任务 6 重设计实现独立评审 FAIL，见 [reviews/settings-control.md](reviews/settings-control.md) Round 4。
+当前候选与上述实现交接一致；Dev 保持已完成，Review 保持未勾选，任务返回修复。
+沿用此前用户排除的原生键盘与辅助功能验收范围；本轮没有把旧候选的完整验收重标为新候选结果。
+精确门禁及复现事实以 Round 4 为准；未修改产品、测试或配置，未提交、推送，任务 7–9 未启动。
+
+2026-11-08 任务 6 修复 ASC-SC-R4-F1（claude-code，未提交）：来源状态明确报告 `core_unavailable` 时，凡在该次读取开始前取得的
+默认值、覆盖列表和查找结果都作废，整组进入 loadFailed，禁止查找与写入，成功重新读取后恢复。较早发出的读取晚返回时不能恢复旧值；
+pending 操作保留原请求身份；只有外部 adapter 不可用时不受影响。新增 5 项回归，其中 4 项在去掉修复后复现评审观测；
+隔离套件 App 224 项（1 项既有跳过）、Shared 133 项、Widget 51 项，0 失败。
+新候选摘要 `ea76f255edf353328946b5be2e5756537baebc5d49e373cfe81527540e573139`（HEAD `5d47df8` + 同一 11 个路径），
+映射与复现见 [reviews/settings-control.md](reviews/settings-control.md) Repair 2。Review 保持未勾选，待复评；CEv1 本会话不可达，未查询或写入。
+
+2026-11-08 任务 6 修复范围独立复评 FAIL，见 [reviews/settings-control.md](reviews/settings-control.md) Round 5。
+候选与 Repair 2 交接一致；Dev 保持完成，Review 保持未勾选，任务返回修复。
+适用的用户验收排除范围不变；门禁、复现及现有测试读回事实以 Round 5 为准。
+本轮未修改产品、测试或配置，未提交、推送，未启动后续任务。
+
+2026-11-08 任务 6 再次修复 ASC-SC-R4-F1（claude-code，未提交）：作废判据改为「来源读取开始后是否有新答复或确认写入真正落地」，不再用请求开始即推进的读取代次。
+core 不可读的报告到达时，没有新值落地的默认值、列表和查询立即作废，此刻仍在途的读取一并丢弃。
+新增 Round 5 交错的确定性回归，在读取仍挂起时断言禁写，换回旧判据时只有这一项失败。
+隔离套件 App 225 项（1 项既有跳过）、Shared 133 项、Widget 51 项，0 失败。
+新候选摘要 `a9a263da0807ba96e920023422aa2600ba5aabe059a8fab108955eb2a8c7b9d2`（HEAD `5d47df8` + 同一 11 个路径），
+映射、复现与对 Repair 2 失败计数的更正见 [reviews/settings-control.md](reviews/settings-control.md) Repair 3。
+Review 保持未勾选，待复评；CEv1 本会话不可达，未查询或写入。
+
+2026-11-08 任务 6 修复范围独立复评 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 6。
+本轮关闭既有发现并核验相关回归；整任务仍需完成剩余候选审查与适用证据，完成门禁 NOT_VERIFIED。
+因此整任务 Review 保持未勾选，Beads 保持 in_review；交付建议和精确后续前提以 Round 6 为准。
+用户验收排除范围不变；本轮未修改产品、测试或配置，未提交、推送，未启动任务 7–9。
+
+2026-11-08 Settings 设计修订后任务 6 Dev 置回未完成：当前工作树实现仍是单页长列表加窗口级 accent tint，
+额度组「客户端」行说明折行后压到下一行，不满足修订后的 [ux/settings.md](ux/settings.md#影响)。
+须在该文档重新评审通过后，按[窗口分页](ux/settings.md#窗口分页)、[整窗视觉对齐](ux/settings.md#整窗视觉对齐)
+与[原生整窗验收](ux/settings.md#原生整窗验收)重做窗口容器与样式；控制器及 ASC-SC-R4-F1 修复保留。
+Round 6 对修复范围的 PASS 仍是历史结论，重做后的候选需整体重新评审。Beads 记录依赖，未提交或推送。
+
+2026-11-09 任务 6 `settings-control` 按修订后的 [ux/settings.md](ux/settings.md)（分页定为唯一布局，已交付于 `8e61b61`）重做窗口容器与整窗样式
+（claude-code，未提交，待独立评审）。Dev 勾选，Review 未勾选；此前各轮 PASS 只绑定旧候选，重做后的候选需整体重新评审。
+控制器 `SessionOriginSettingsController` 未改（blob 仍为 Round 6 的 `017eb2b8c2f50f6b2dd186065816ec0feaac21b5`），Go 未改动。
+
+- 窗口容器：`SettingsWindowController` 改用 `NSTabViewController`（`tabStyle = .toolbar`，窗口 `toolbarStyle = .preference`）。
+  - 四页依次为 通用 → 会话 → 实时用量 → 额度，图标为 `gearshape`、`square.stack.3d.up`、`waveform.path.ecg`、`gauge.with.dots.needle.50percent`。
+    没有会话控制器时不出现「会话」页。
+  - 每页一个 `NSHostingController<SettingsPaneView>`，在窗口生命周期内常驻；切页只换显示，不重建、不重新读取。
+  - 标题栏显示页名。窗口宽 460 pt，高度跟随当前页的自然高度并保持顶边，只有超出屏幕的页才在页内滚动。
+  - 同一次 App 运行内记住上次的页，首次打开为「通用」；`show(pane:)` 可按页 key 直达。
+  - 「手动分类」sheet 打开期间拒绝切页（`canChangePane`）。
+  - 额度与实时用量的加载由窗口每次从关闭变为显示时发起，不再挂在页视图的 `.task` 上，避免切页触发重新读取。
+- 视图：`SettingsWindowView` 拆为按页渲染的 `SettingsPaneView`。只有一组的页不显示组标题，「通用」保留「菜单栏」小节标题；各组的行、文案和合同不变。
+- 整窗视觉对齐：
+  - 去掉窗口根部与 sheet 根部的 accent tint，以及分段控件上单独设的 accent tint。开关保留各自的 accent tint。
+  - 状态操作链接改用 `.settingsLink()`（accent），「管理…」「查看连接配置」等次要按钮为系统中性样式。
+    「完成」仍是 accentStrong；实时用量同意区的主按钮按原型保持 accent 填充，改为在按钮上显式设置。
+  - 额度「客户端」行的两个 AppKit 复选框加 `.fixedSize()`。原先它们横向拉满整行，把说明挤成三行并压到下一行，这就是之前的重叠。
+- 实现决定与偏差：
+  1. 分段控件偏离 [整窗视觉对齐](ux/settings.md#整窗视觉对齐) 与 [原生整窗验收](ux/settings.md#原生整窗验收) 中「系统默认外观、不设 tint」的写法：
+     统一用 `.settingsSegmented()`，即 `Picker(.segmented)` 加 `.tint(DesktopVisualTheme.surface)`。
+     原因：在 macOS 26 上，不设 tint 的系统分段控件在活动窗口中会用系统强调色（蓝）填充选中段，达不到这两节要求的「中性、低饱和」。实测各变体：设为 surface 时，浅色为白底深字，深色为抬起的深底浅字，与原型 `.settings-segmented button.active`
+     的 `--surface` 底加正文色一致，标签颜色由 AppKit 自动取对比色。非活动窗口仍是系统灰。此偏差需评审确认，必要时回写 UX 文档。
+  2. 窗口尺寸由窗口控制器负责：先测量即将显示的页并写入其 preferredContentSize，再在切页后按页高带动画缩放。
+     `NSTabViewController` 自带的过渡（`transitionOptions`）会按切页前测得的旧尺寸再缩放一次，导致窗口高度落后一页，所以设为空，不用它。
+  3. 页内容变化（例如通知权限警告出现）由页面以 `onGeometryChange` 报告自然高度，窗口在下一个 run loop 周期重新适配。
+     用 run loop 而非主队列，是因为主队列的块在异步测试和模态嵌套循环里不能及时执行。动画缩放期间的嵌套请求会延后到缩放结束。
+     页的 hosting 视图不加约束（`sizingOptions = []`）：改用约束时，窗口在 layout 中缩放会触发约束循环并抛出异常。
+  4. 新的窗口与分页测试放在任务自有的 `SessionOriginSettingsControllerTests.swift` 中（`SettingsWindowPaneTests` 类），不新增工程文件引用。
+- 验证（最终内容）：`scripts/test-macos-app.sh`（隔离 HOME）TEST SUCCEEDED：App 231 项（1 项为既有的 opt-in 跳过）、Shared 133 项、Widget 51 项，0 失败。
+  - 新增 6 项：页序、页名与图标；切页时标题与高度跟随，页实例不变；关窗再开回到上次的页，可按 key 直达；sheet 打开时不能切页；
+    切页往返回归；四页加 sheet 的整窗渲染。
+  - 切页往返回归覆盖：实时用量写入后经「通用」往返仍为 `written`，关闭采集走 `removed` 分支；写入被拒、已有配置冲突区、写入同意区往返后仍在；
+    「会话」页未知结果的状态行和在途保存往返后不变；每次往返都断言没有重新读取状态。
+  - 整窗渲染为中英 × 深浅 × 四页加 sheet，共 20 张，均以 460 pt 渲染，已目视核对。断言：不超出 460 pt；测得高度等于自然高度（与更高画布顶部逐行一致）；
+    页高加标题栏与工具栏不超过 875 pt，即 900 pt 屏幕上不滚动；开关全关时页内没有 accent 色；
+    没有系统蓝色的选中段（额度页按复选框的实际位置排除这两个复选框，它们的系统样式归 subscription-quota）；sheet 只有底部「完成」带 accent。
+  - 既有用例改为对应页：额度复选框与警告行增高两项改为打开「额度」页，并按页的自然高度断言；`MenuBarChromeTests` 的设置渲染改为渲染「通用」页。
+  - `make check-whitespace` 与 `git diff --check` 通过。
+- 变异检查（已恢复，两个产品文件的 SHA-256 与最终内容逐字节一致）：
+  - 同时注入三处：分段控件改回系统默认、去掉复选框 `.fixedSize()`、恢复 `NSTabViewController` 过渡。
+    结果：20 张渲染都报告系统蓝选中段，额度 4 张报告高度挤压，切页测试报告窗口高度不跟随页。
+  - 另外注入两处：sheet 打开时允许切页、切页时重新加载实时用量。sheet 用例与往返用例各自失败。
+  - 首轮变异暴露了两个测试缺口，都已补上：
+    - 往返用例在断言前没有让出执行，切页时排入的读取尚未执行；现在每次往返后先让出执行再断言。
+    - 复选框拉伸时 `sizeThatFits` 返回无限高度，`setFrame` 因此抛出异常；测量现在忽略非有限尺寸。
+- 候选：HEAD `8e61b614b2ce9deeceee12a1cd33a50373bce4a2` 加 13 个路径：原 11 个路径，再加 `apps/macos/AgentDeckAppTests/MenuBarChromeTests.swift`
+  与 `apps/macos/AgentDeckAppTests/QuotaSettingsControllerTests.swift`。摘要 `5bcad0423fe870c595b1f6a7b6b611cb615c442f3229438d950e86e0ab749c87`，
+  算法同 [Round 1](reviews/settings-control.md)。视图 blob `231142a190290bd03a126dd96ebb654a48f905a5`，窗口控制器所在文件 blob `e433dd6c7dd5c7af79553ee85c0922f0bf154069`。
+- CEv1：本会话 Neo4j 提供方可达，WorkUnit `auxiliary-session-classification:settings-control` 存在。开发阶段不跨完成边界，未写入证据；
+  新候选的 ContentState 与证据由评审绑定。
+- 残余：原生键盘与辅助功能验收继续按用户此前的决定排除。以下各项本轮均未执行：
+  - 真实活动窗口中的工具栏切页动画与选中样式、sheet 打开时工具栏的系统禁用表现；
+  - 应用重启后的读回、与 CLI 并发写入的原生交互；
+  - 900 pt 实体屏幕上的目视核对。
+  测试宿主在后台运行，窗口内的控件都按非活动外观绘制，活动外观只由不放进窗口的单独渲染复现。
+
+2026-11-09 任务 6 整任务独立评审 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 7（Codex 子线程，`gpt-6.1-sol`，请求 `reasoningEffort` max）。
+候选与上述开发交接一致（13 路径摘要 `5bcad0423fe870c595b1f6a7b6b611cb615c442f3229438d950e86e0ab749c87`），无开放发现，Review 勾选。
+完成门禁 NOT_VERIFIED（7/10）：mutation-recovery、lifecycle-concurrency、native-ux 三项仍缺当前候选的验收证据，Beads 保持 in_review，尚未提交。
+
+2026-11-09 任务 6 门禁补证（claude-code，未提交，待独立复评）：为 Round 7 后仍缺的三项 criterion 补当前候选的验收测试，只改测试文件 `SessionOriginSettingsControllerTests.swift`，产品代码不变。
+
+- 新增 `SettingsHelperAcceptanceTests`（2 项）。在隔离脚本的临时 HOME 下，用真实 Settings 窗口、真实内嵌 Go helper 和真实 SQLite；另起一个同 state 目录的 helper 进程代替 CLI。
+  - lifecycle-concurrency：CLI 先写默认值，窗口读回并确认；窗口保存后 CLI 读到同值。
+    CLI 在窗口仍持有旧值时并发写入，窗口的保存得到 conflict 且没有写入，组被锁住；「读取最新值」后才解锁，不重放旧选择。
+    「应用重启」用全新的窗口控制器、设置控制器和 helper runner 读同一持久库来模拟：读回持久默认，新一次运行打开在「通用」页。
+    这不是真正的新 OS 进程，App 内存中的状态全部丢弃，只保留 core 持久化的内容。
+  - mutation-recovery：用故障注入 transport 包装真实 helper。
+    - 提交前失败：请求没有到达 helper，界面保持 unknown，确认值不变；关窗再开后仍是同一请求；读回回执为 unknown；
+      显式重试用同一请求 ID、负载与 expected revision，只提交一次（revision 1→2，回执 replayed=false）。
+    - 提交后确认丢失：helper 已提交但答复被丢弃，界面不声称已保存；读回原请求回执后才确认，revision 只到 3，没有第二次写入。
+    - 到达 transport 的请求 ID 依次为 acceptance-1、acceptance-1、acceptance-2，没有另造新 ID。
+- native-ux：sheet 用例补充断言：sheet 确实挂在 Settings 窗口上（`attachedSheet`）；通过工具栏按钮自身的 action 切页，在 sheet 打开期间被拒绝，关闭后才切换。
+- 变异检查（已恢复，控制器 SHA-256 逐字节一致）：
+  - 「重开窗口时丢弃 unknown 操作」使故障恢复用例失败。
+  - 「重试换新请求 ID」单独注入时同一用例失败：helper 上找不到原请求的回执。
+- 验证：`scripts/test-macos-app.sh`（隔离 HOME）。
+  - 第一次运行唯一失败的是既有的 `MenuBarViewModelTests.testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges`，
+    报告「Date surface requires active host and visible key window: active=false」，即测试宿主 2 秒内没有成为前台应用。
+    该用例与本次改动无关，此前两次全量运行都通过，单独重跑也通过。
+  - 同一内容再跑全量，TEST SUCCEEDED：App 233 项（1 项既有 opt-in 跳过）、Shared 133、Widget 51，0 失败。
+  - `make check-whitespace` 与 `git diff --check` 通过。
+- 候选：HEAD `8e61b614b2ce9deeceee12a1cd33a50373bce4a2` 加相同 13 个路径，摘要 `8aabcfb74bbd540150b5c9c63094658056cb4bde3dbb95e5c310e0f4aa671a7a`；
+  相对 Round 7 只有测试文件 blob 由 `c6493e5866fdfa36e058370aafa9accb70e89dfc` 变为 `397358cbc2a099686a4765c392ac19c7768d83f9`。
+- 未覆盖：活动窗口的切页动画与工具栏选中样式。测试宿主不在前台，这部分无法在隔离测试中观测；UX 已把它们列为允许由系统绘制的差异。
+  键盘与辅助功能仍按用户决定排除。
+
+2026-11-09 任务 6 门禁补证独立复评 FAIL，见 [reviews/settings-control.md](reviews/settings-control.md) Round 8（Codex，`gpt-6.1-sol`，请求 `reasoningEffort` max）。
+两项验收证据缺口待修复：ASC-SC-R8-F1（同进程内重建实例不等于 App 重启读回）、ASC-SC-R8-F2（缺少切页动画的直接证据）。mutation-recovery 已判定满足。
+最新一轮为 FAIL，Review 置回未勾选；门禁 FAILED；未提交。
+
+2026-11-09 任务 6 修复 ASC-SC-R8-F1、ASC-SC-R8-F2（claude-code，未提交），详见 [reviews/settings-control.md](reviews/settings-control.md) Repair 4。
+- F1：`scripts/test-macos-app.sh` 新增两阶段宿主重启验收，经 App 自身启动接线跨进程读回默认值。
+- F2：新增活动 key window 下的切页动画用例。
+- 隔离套件 App 236 项（3 项跳过）、Shared 133、Widget 51，0 失败；两个重启阶段均通过。
+- 候选为 14 路径（新增测试脚本），摘要 `8e6d3ac3d00ba1bfd3f3137733f2176e676373c160857503edfdf123dc64ae81`。Review 未勾选，待复评。
+
+2026-11-09 任务 6 Repair 4 独立复评 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 9（Codex，`gpt-6.1-sol`，请求 `reasoningEffort` max）。
+ASC-SC-R8-F1、ASC-SC-R8-F2 已关闭，无新发现；Review 勾选。
+14 路径候选摘要 `8e6d3ac3d00ba1bfd3f3137733f2176e676373c160857503edfdf123dc64ae81` 的 Task 门禁 VERIFIED（10/10）。任务进入 awaiting_commit，按用户授权本地提交，不推送。

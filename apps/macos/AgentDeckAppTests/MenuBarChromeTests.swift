@@ -952,7 +952,7 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let popover = MenuBarSurfaceView(model: model, height: MenuBarGeometry.maximumHeight)
 			.environment(\.colorScheme, .dark)
-		let settings = SettingsWindowView(preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences), telemetrySettings: makeTelemetrySettingsController())
+		let settings = SettingsPaneView(pane: .general, preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences), telemetrySettings: makeTelemetrySettingsController(), scrolls: false)
 			.environment(\.colorScheme, .dark)
 		let providers = ProviderMenuView(model: multiTargetModel, dismiss: {})
 			.environment(\.colorScheme, .dark)
@@ -985,7 +985,7 @@ final class MenuBarChromeTests: XCTestCase {
 			size: NSSize(width: 420, height: 760)
 		)
 		model.selectedPanel = .usage
-		let settingsPNG = try renderedViewPNG(settings, size: NSSize(width: 460, height: 310))
+		let settingsPNG = try renderedViewPNG(settings, size: NSSize(width: 460, height: 400))
 		let providersPNG = try renderedViewPNG(providers, size: NSSize(width: 250, height: 260))
 		let providerTargetsPNG = try renderedViewPNG(providerTargets, size: NSSize(width: 250, height: 260))
 
