@@ -187,7 +187,7 @@ export function App() {
           <div onMouseDown={(event) => event.stopPropagation()}>
             {auxStage}
             {!auxSettingsEnabled && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
-            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} tabbed={params.get("settingsTabs") === "1"} initialPane={params.get("settingsPane")} />
+            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} tabbed={params.get("settingsTabs") !== "0"} initialPane={params.get("settingsPane")} />
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 // Browser checks for the redesigned Sessions settings group (2026-11-07).
-// Run from ?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions via
+// Run from ?settings=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions via
 //   agent-browser eval "$(cat prototype/tools/check-auxiliary-settings.js)"
 // Synthetic fixture only: no real storage, CAS, Widget or native accessibility claim.
 (async()=>{
@@ -21,9 +21,10 @@ const noOverflow=root=>[...root.querySelectorAll('*')].filter(x=>x.clientWidth&&
 for(let i=0;i<50&&!(document.readyState==='complete'&&$('.as-settings'));i++)await new Promise(r=>setTimeout(r,100));
 await new Promise(r=>setTimeout(r,300));
 
-// Layout: either one group after the menu bar group in the long list, or its own pane (?settingsTabs=1).
+// Layout: its own pane in the tabbed window (default; open with &settingsPane=sessions), or, for the
+// historical comparison only (?settingsTabs=0), one group after the menu bar group in the long list.
 const tabbed=!!$('.settings-window.tabbed');
-const groups=$$('.settings-body > .settings-group').map(g=>g.dataset.group??g.querySelector('.settings-group-title')?.textContent);
+const groups=$$('.settings-body > .settings-group:not([hidden])').map(g=>g.dataset.group??g.querySelector('.settings-group-title')?.textContent);
 if(!tabbed)test('sessions group follows menu bar group',groups.indexOf('sessions')===2);
 else{
  const tabs=$$('.settings-tabs [role="tab"]');
@@ -34,7 +35,7 @@ else{
  test('roving tabindex',tabs.filter(x=>x.tabIndex===0).length===1);
  $('.settings-tabs [aria-selected="true"]').focus();
  $('.settings-tabs').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await tick();
- test('arrow key moves to the next pane',$('.settings-tabs [aria-selected="true"]')?.dataset.pane==='live'&&document.activeElement?.dataset.pane==='live'&&!!$('[data-group="telemetry"]'));
+ test('arrow key moves to the next pane',$('.settings-tabs [aria-selected="true"]')?.dataset.pane==='live'&&document.activeElement?.dataset.pane==='live'&&$('[data-group="telemetry"]')?.hidden===false&&$('[data-group="sessions"]')?.hidden===true);
  await click('.settings-tabs [data-pane="sessions"]');
  await click('.settings-window .close');await click('[data-as-open]');
  test('pane remembered after reopen',$('.settings-tabs [aria-selected="true"]')?.dataset.pane==='sessions');

@@ -1,4 +1,4 @@
-/* 分页设置窗口（?settingsTabs=1，2026-11-07 候选）。
+/* 分页设置窗口（默认；?settingsTabs=0 为旧单页长列表对照）。
  * 标题栏与工具栏是同一块材质：标题栏不画分隔线，工具栏底部画一条。
  * 选中页：--surface-2 圆角底 + accent 图标；未选中：中性图标与文字。
  * 窗口高度跟随当前页内容；只有超过屏幕时页内才滚动。 */
@@ -7,6 +7,10 @@
 .settings-window.tabbed > header { border-bottom:0; }
 .settings-window.tabbed .settings-body { min-height:0; overflow-y:auto; }
 .window-backdrop > div:has(.tabbed) { display:flex; flex-direction:column; max-height:100%; min-height:0; }
+
+/* 切页只隐藏、不卸载（ASC-SET-R9-F1）：各组的写入事实、配置所有权、未解决结果和确认流程在切页往返后原样保留。
+ * .settings-group 自带 display:flex，会盖过 [hidden] 的默认样式，所以这里显式隐藏。 */
+.settings-body > [hidden] { display:none !important; }
 
 /* 每页只有一组时，分组标题就是页名，重复显示没有意义；「通用」页的「菜单栏」小标题保留。 */
 .settings-window.tabbed .settings-group[data-group] > .settings-group-title { display:none; }

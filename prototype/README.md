@@ -344,20 +344,25 @@ partial、stale、loading、failed、unavailable、override；沿用中英、深
 
 ## 辅助会话 Settings 标本（2026-11-07 重新设计）
 
-入口 `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions`。「会话」组位于「菜单栏」组之后，
-窗口沿用 460 pt；「管理…」打开「手动分类」sheet。舞台控件排在窗口上方（不再浮盖窗口），
+入口 `?settings=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions`。设置窗口默认按工具栏分页
+（通用、会话、实时用量、额度），「会话」是独立一页；窗口沿用 460 pt；「管理…」打开「手动分类」sheet。舞台控件排在窗口上方（不再浮盖窗口），
 Settings scenario 可选 normal、loading、loadFailed、saving、saveFailed、saveUnknown、receiptMissing、
 conflict、pending、replayed、permissionWarning、三种 source* 与三种 codex*。窗口关着时有 Open settings；
 Complete pending 只模拟后台完成。该参数下不显示遥测舞台控件。
 持久值和在途操作保存在页面的 App 模型里，窗口草稿可以丢弃；刷新页面会重置合成数据，不写真实设置。
 查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 是未匹配的覆盖。
 设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
-检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行（每组 113 项），
+检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行（分页窗口每组 121 项），
 模型合同检查为 `node prototype/tools/check-auxiliary-settings-final.mjs`。
 
-分页设置窗口是待确认的候选：`?settings=1&settingsTabs=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions`。
-四页依次是通用、会话、实时用量、额度；`settingsPane` 指定初始页，同一页面内关窗再开会回到上次停留的页。
-不带 `settingsTabs` 时仍是单页长列表。同一检查脚本在分页窗口下会多跑 8 项（每组 121 项）。
+分页由用户 2026-11-07 提出，2026-11-08 定为默认。四页依次是通用、会话、实时用量、额度；`settingsPane`
+指定初始页（缺省为通用），同一页面内关窗再开会回到上次停留的页。「会话」页只在带 `auxSettings` 参数时出现。
+`settingsTabs=0` 只用于对照旧的单页长列表，不是产品状态；同一检查脚本在长列表下少跑 8 项分页检查（每组 113 项）。
+scan-performance 的两个历史检查脚本（`scan-performance-repair-check.mjs`、`scan-performance-otel-linkage.mjs`）
+验证的是长列表，因此固定带 `settingsTabs=0`。
+切页只隐藏非当前页、不卸载，各组状态在切页往返后保留；`prototype/tools/check-settings-pane-lifecycle.js`
+从 `?settings=1&settingsPane=live` 运行，分别加无参数、`codexWrite=refused`、`codexRestore=incomplete`、`codexExporter=other`
+四种 Codex 标本（每组共 43 项）。
 
 ## 辅助会话 Widget 框架标本
 

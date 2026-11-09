@@ -5,7 +5,8 @@ import { AuxiliarySettings } from "./AuxiliarySettings.jsx";
 import { TelemetrySettings } from "./TelemetrySettings.jsx";
 import "./settingsTabs.css";
 
-// 分页设置（2026-11-07 候选，?settingsTabs=1）。一页长列表已经到 5 组 15 行、内容约 1325 px，
+// 分页设置（用户 2026-11-07 提出，2026-11-08 定为默认；?settingsTabs=0 只用于对照旧的单页长列表）。
+// 一页长列表已经到 5 组 15 行、内容约 1325 px，
 // 900 px 高的屏幕要滚 1.7 屏；按 macOS 偏好设置的惯例改成工具栏分页，每页都不必滚动。
 // 页的划分按"用户为什么来这里"：通用（启动、更新、菜单栏外观）、会话（看谁、怎么分类）、
 // 实时用量（OTel 采集）、额度（订阅额度读取与提醒）。各组的行与合同不变，只换容器。
@@ -136,7 +137,11 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
   const setPane = (next) => {
     rememberedPane = next;
     setPaneState(next);
+    // 页实例常驻，正文不再随切页重建；新页从顶部开始显示。
+    document.getElementById("settings-pane")?.scrollTo(0, 0);
   };
+  // 分页时所有页都挂载，只隐藏非当前页（ASC-SET-R9-F1）。卸载会丢掉组内仍需行动的状态，
+  // 例如实时用量刚写入的 Codex 托管段：切走再回来后关闭采集就不会再移除它。
   const show = (key) => !tabbed || pane === key;
   const paneLabel = panes.find((item) => item.key === pane)?.[lang === "zh" ? "zh" : "en"];
 
@@ -242,10 +247,9 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
 
       <div
         className="settings-body"
-        key={tabbed ? pane : "list"}
         {...(tabbed ? { id: "settings-pane", role: "tabpanel", "aria-labelledby": `settings-tab-${pane}` } : {})}
       >
-        {show("general") && <div className="settings-group" data-group="general">
+        <div className="settings-group" data-group="general" hidden={!show("general")}>
           <span className="settings-group-title">{dict.settings.general}</span>
           <Field
             id="launchAtLogin"
@@ -268,9 +272,9 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               describedBy={hintId("periodicRefresh")}
             />
           </Field>
-        </div>}
+        </div>
 
-        {show("general") && <div className="settings-group">
+        <div className="settings-group" hidden={!show("general")}>
           <span className="settings-group-title">{dict.settings.menubar}</span>
           <Field id="menubarValue" label={dict.settings.menubarValue} hint={dict.settings.menubarValueHint}>
             <Segmented
@@ -297,18 +301,18 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               ]}
             />
           </Field>
-        </div>}
+        </div>
 
         {/* 会话默认范围决定菜单栏「会话」页下次打开看什么，紧跟菜单栏组。 */}
-        {auxSettings && show("sessions") && <AuxiliarySettings lang={lang} {...auxSettings} />}
+        {auxSettings && <AuxiliarySettings lang={lang} {...auxSettings} hidden={!show("sessions")} />}
 
-        {show("live") && <TelemetrySettings lang={lang} enabled={!!prefs.otelEnabled} onEnabled={set("otelEnabled")} scenario={telemetryScenario} />}
+        <TelemetrySettings lang={lang} enabled={!!prefs.otelEnabled} onEnabled={set("otelEnabled")} scenario={telemetryScenario} hidden={!show("live")} />
 
         {/* 订阅额度。三个开关的层级是有依赖的，不是并列：
             不读取额度 → 状态栏通路与提醒都无从谈起；
             不开提醒 → 阈值不可编辑。禁用而不是隐藏，
             因为隐藏会让人以为产品没有这个能力。 */}
-        {show("quota") && <div className="settings-group" data-group="quota">
+        <div className="settings-group" data-group="quota" hidden={!show("quota")}>
           <span className="settings-group-title">{dict.settings.quota}</span>
           <Field id="quotaProbe" label={dict.settings.quotaProbe} hint={dict.settings.quotaProbeHint}>
             <Switch
@@ -405,7 +409,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               disabled={!prefs.quotaProbe || !prefs.quotaAlerts}
             />
           </Field>
-        </div>}
+        </div>
 
       </div>
     </section>

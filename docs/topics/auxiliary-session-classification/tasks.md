@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-11-07
+updated: 2026-11-09
 ---
 
 # 辅助会话识别与工作视图隔离：实现分解
@@ -66,6 +66,27 @@ Documents 的 Review 仍未勾选，等待独立复评；只改文档与原型�
 检查脚本、manifest 与截图、对应评审记录和本文档状态块，候选门禁 VERIFIED 2/2。
 包含本说明且经对象核验的 Git 提交为交付原件；实际提交 ID、SSH 签名与提交态 CEv1 对账保存于该文档任务的 Beads 和证据记录。
 原生 settings-control 实现、其评审记录和实现状态变更不属本次提交；工作树中的相关改动继续保留。本次未授权推送。
+
+2026-11-08 Settings 设计修订（分页定为默认）：用户 2026-11-07 提出设置窗口太长、要考虑多页设计，上一版却把分页写成
+「候选，待用户确认」，Round 8 评审与原生实现因此都按长列表进行。用户看到原生窗口后确认分页早已是其要求。
+[ux/settings.md](ux/settings.md#窗口分页) 现把工具栏分页（通用、会话、实时用量、额度）写为唯一产品布局，
+新增[整窗视觉对齐](ux/settings.md#整窗视觉对齐)（分段控件与次要按钮中性、不施加窗口级 accent tint、行高按自然高度）
+与[原生整窗验收](ux/settings.md#原生整窗验收)（四页逐页整窗渲染并对照原型）。原型默认分页，`settingsTabs=0` 只作长列表对照；
+scan-performance 两个历史检查脚本固定带该参数。Round 8 PASS 只对旧 blob `2b873cd` 成立，Documents 的 Review 置回待评审。
+「会话」组自身的行、文案、状态机与 14 项模型合同不变。本轮未修改产品代码，未提交或推送。
+
+2026-11-08 Settings 默认分页设计独立评审 Round 9 FAIL，文档任务返回修复，Documents 的 Review 保持未勾选。
+候选身份、完整发现和证据门禁见 [reviews/ux-settings.md](reviews/ux-settings.md#round-9--2026-11-08)。
+
+2026-11-08 Round 9 修复候选（ASC-SET-R9-F1）：分页切页只隐藏非当前页、不卸载，写入事实、配置所有权、未解决结果和
+进行中的确认在切页往返后保留；文档写明保留规则、原生页控制器常驻与切页往返验收，新增切页生命周期检查（4 × 43 项）。
+候选 ux/settings.md blob `ee49b63034a47a20b0e86775acf49863f926bf6c`，manifest 阶段 `redesign-r1-tabs-default-repair-r9`。
+映射、修复前复现与验证见 [reviews/ux-settings.md](reviews/ux-settings.md#repair-candidate--2026-11-08round-9-后)。
+Documents 的 Review 仍未勾选，等待独立复评；只改文档与原型标本，未改产品代码，未提交或推送。
+
+2026-11-09 Settings 分页修复独立复评 Round 10 PASS，Documents 的 Review 已勾选。
+当前候选身份、逐项处置、证据门禁与文档任务交付检查点见
+[reviews/ux-settings.md](reviews/ux-settings.md#round-10--2026-11-09)。
 
 修订前的历史输入判定（保留）：SUFFICIENT——需求 Round 2、架构 Round 2、CLI Round 3、菜单栏 Round 4、
 Settings Round 4、Widget Round 2 均有适用 PASS。四份 UX 为最终表面，不沿用 framework 勾选冒充。

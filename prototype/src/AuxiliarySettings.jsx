@@ -53,7 +53,7 @@ function StatusArea({status,warning,attr}){
   </>;
 }
 
-export function AuxiliarySettings({lang,model,dispatch}){
+export function AuxiliarySettings({lang,model,dispatch,hidden=false}){
   const zh=lang==='zh',t=(a,b)=>zh?a:b;
   const names={work:t('工作','Work'),auxiliary:t('辅助','Auxiliary'),all:t('全部','All'),unknown:t('未知','Unknown'),auto:t('自动','Automatic')};
   const rootRef=useRef(null),manageRef=useRef(null),idRef=useRef(null),sheetRef=useRef(null),clearFocus=useRef(null);
@@ -268,7 +268,7 @@ export function AuxiliarySettings({lang,model,dispatch}){
       </div>
     </div>,host);
 
-  return <div className="settings-group as-settings" data-group="sessions" data-as-status={model.status} ref={rootRef}>
+  return <div className="settings-group as-settings" data-group="sessions" data-as-status={model.status} ref={rootRef} hidden={hidden}>
     <span className="settings-group-title" id="as-title">{t('会话','Sessions')}</span>
 
     <div className="settings-field">

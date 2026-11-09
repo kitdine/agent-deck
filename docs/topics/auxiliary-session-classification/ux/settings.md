@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-27
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 
 # 辅助会话隔离：Settings 最终表面
@@ -21,8 +21,15 @@ updated: 2026-11-07
 本轮不修改产品 Go/Swift、真实偏好、会话日志或用户数据库。原生 `settings-control` 实现按旧设计完成，
 需要按本文件重做，见[影响](#影响)。
 
-复用[共享原型](../../../../prototype/README.md)的 SettingsWindow，新增「会话 / Sessions」组。
-入口 `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions`。
+**2026-11-08 分页定为默认。** 用户 2026-11-07 看过重新设计后提出「整个 settings 太长了，是不是要考虑多 tab 页的设计」。
+这是要求，不是待选项；上一版却把分页写成「候选，待用户确认」，原型默认仍是长列表，所以 Round 8 评审和原生实现都按长列表进行，
+原生窗口的控件样式也没有对照原型。本版把工具栏分页写成唯一的产品布局（见[窗口分页](#窗口分页)），
+并补上原生整窗的视觉对齐与验收要求（见[整窗视觉对齐](#整窗视觉对齐)）。
+Round 8 的 PASS 只对旧 blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011` 成立，本文件**需要重新评审**。
+「会话」组自身的行、控件、状态机和文案不变。
+
+复用[共享原型](../../../../prototype/README.md)的 SettingsWindow，新增「会话 / Sessions」页。
+入口 `?settings=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions`。
 源码为 `AuxiliarySettings.jsx`、`auxiliarySettingsModel.js`、`auxiliarySettings.css`，
 内容身份与截图见 [manifest](prototype/settings/manifest.json)。
 
@@ -40,11 +47,13 @@ updated: 2026-11-07
 
 ## 布局
 
-「会话」组放在「菜单栏」组之后、「实时用量」组之前：默认范围决定菜单栏「会话」页下次打开显示什么，
-与菜单栏偏好相邻。主列表三行：
+设置窗口按工具栏分页（见[窗口分页](#窗口分页)）。「会话」是第二页，排在「通用」（含菜单栏偏好）之后、「实时用量」之前：
+默认范围决定菜单栏「会话」页下次打开显示什么，与菜单栏偏好相邻。页内三行；这一页只有一组，组标题不显示，页名已在标题栏和工具栏里：
 
 ```
-会话
+                              会话
+            ⚙ 通用    ▣ 会话    ∿ 实时用量    ◔ 额度
+─────────────────────────────────────────────────────────────
 默认会话范围                                     ┌────┬────┬────┐
 菜单栏「会话」页与 Widget 下次打开时使用；      │工作│辅助│全部│
 「工作」含来源未确认的会话。                     └────┴────┴────┘
@@ -94,18 +103,21 @@ updated: 2026-11-07
 「移除」用中性色：破坏性的小动作不该是全行最抢眼的元素。
 客户端标签（Codex/Claude）是 `--surface-3` 小胶囊；会话 ID 用等宽字体并允许任意处换行，不截断。
 
-## 窗口分页（候选，待用户确认）
+## 窗口分页
 
-加入「会话」组之后，单页设置窗口已有 5 组 15 行，内容约 1325 px。900 px 高的屏幕上可见约 762 px，
-要滚动约 1.7 屏。候选方案是按 macOS 偏好设置的惯例改成工具栏分页（原型参数 `settingsTabs=1`，
-`settingsPane=general|sessions|live|quota` 指定初始页）。各组的行和合同都不变，只换容器：
+<!-- 兼容锚点：本节 2026-11-08 前名为「窗口分页（候选，待用户确认）」。 -->
+<a id="窗口分页候选待用户确认"></a>
 
-| 页 | 图标（原型 / SF Symbol） | 内容 | 约高 |
+用户 2026-11-07 提出设置窗口太长、要考虑多页设计；2026-11-08 起工具栏分页是**唯一的产品布局**，单页长列表不再是产品状态。
+依据：加入「会话」组之后，单页设置窗口有 5 组 15 行，内容约 1325 px；900 px 高的屏幕上可见约 762 px，要滚动约 1.7 屏。
+按 macOS 偏好设置的惯例改成工具栏分页后，每一页都不用滚动。各组的行和合同都不变，只换容器。
+
+| 页 | 图标（原型 / SF Symbol） | 内容 | 窗口高度（原型实测，含标题栏与工具栏） |
 | --- | --- | --- | --- |
-| 通用 | GearSix / `gearshape` | 开机时启动、自动更新；「菜单栏」小节：显示内容、统计范围 | 320 px |
-| 会话 | Stack / `square.stack.3d.up` | 本文件的三行 | 255 px |
-| 实时用量 | Pulse / `waveform.path.ecg` | OTel 采集开关、状态与配置预览（scan-performance） | 195 px 起 |
-| 额度 | Gauge / `gauge.with.dots.needle.50percent` | 订阅额度 7 行（subscription-quota） | 463 px |
+| 通用 | GearSix / `gearshape` | 开机时启动、自动更新；「菜单栏」小节：显示内容、统计范围 | 433 px |
+| 会话 | Stack / `square.stack.3d.up` | 本文件的三行 | 367 px（中文）/ 390 px（英文） |
+| 实时用量 | Pulse / `waveform.path.ecg` | OTel 采集开关、状态与配置预览（scan-performance） | 308 px 起 |
+| 额度 | Gauge / `gauge.with.dots.needle.50percent` | 订阅额度 7 行（subscription-quota） | 611 px |
 
 划分依据是「用户为什么打开设置」，而不是按技术来源：通用是装好后调一次的外观与启动项，
 会话是「看谁、怎么分类」，实时用量和额度各自有独立的授权与外部副作用（写 Codex 配置、写 Claude statusLine）。
@@ -113,17 +125,57 @@ updated: 2026-11-07
 
 - 标题栏显示当前页名（「通用」「会话」…），工具栏与标题栏是同一块材质。选中页用 `--surface-2` 圆角底，
   图标改用 accent 色的实心版；未选中页用中性色。
-- 窗口宽度固定 460 pt，高度跟随当前页内容，只有超过屏幕时页内才滚动。只有一组的页隐藏组标题，因为页名已经说明了。
+- 窗口宽度固定 460 pt，高度跟随当前页内容，只有超过屏幕时页内才滚动。只有一组的页隐藏组标题，因为页名已经说明了；
+  「通用」页保留「菜单栏」小节标题。
+- **切页只换显示，不重建页。** 窗口打开期间四页的实例都保留，切走只是隐藏。各组仍需行动或有外部副作用的状态
+  在切页往返后原样保留，包括：写入事实（例如实时用量刚写入 Codex 托管段）、配置所有权（关闭采集时据此移除
+  AgentDeck 托管段）、未解决的结果（写入被拒、恢复冲突、保存未知、冲突）和进行中的确认（写入同意区、已有配置冲突区）。
+  切页不能让任何一组退回初始状态，也不能清除仍需用户处理的结果。新显示的页从顶部开始。
+  关窗之后的保留规则不变，仍由各组自己的文档规定。
 - 同一次 App 运行内记住上次停留的页，关窗再开回到原处；首次打开为「通用」。
   其他表面需要直达某一页时（例如额度提示引导用户开启读取），以页 key 打开。
 - 打开「手动分类」sheet 时，工具栏和正文一起 inert，不能切到别的页；「会话」页比 sheet 矮，
   sheet 打开期间窗口暂时增高到能放下它（原生对应 sheet 高于父窗口时的系统行为）。
 - 键盘与辅助功能：`tablist`/`tab`/`tabpanel`，roving tabindex，左右方向键切页；面板由当前 tab 标注。
+  原生工具栏分页由系统提供对应的键盘与 VoiceOver 行为，需原生验收确认。
 - 原生：现有 `SettingsWindow` 改为以 `NSTabViewController`（`tabStyle = .toolbar`）为内容，
   每页一个 `NSHostingController`，窗口标题和高度由系统随页切换并带动画；各组视图（`SettingsRow` 等）不变。
+  四个页控制器在窗口生命周期内常驻，切页不重建，也不用随页变化的 `.id` 让 SwiftUI 重建页内视图。
+  写入事实、配置所有权、未解决结果与进行中的确认放在 App 级 controller（现有 `TelemetrySettingsController`、
+  `QuotaSettingsController`、`SessionOriginSettingsController`），视图不持有；页实例常驻只是第二道保障。
+  工具栏选中项的底色和图标着色由系统绘制，这是允许的原生差异；页的顺序、名称、图标和每页内容必须与原型一致。
 
-这一改动改变的是整个 Settings 窗口的容器，影响 scan-performance（实时用量）与 subscription-quota（额度）两组的
-所在位置，但不改变它们的行、文案或合同。用户确认采用前，原型默认仍是单页长列表，两种布局都可以查看。
+这一改动改变的是整个 Settings 窗口的容器：scan-performance（实时用量）与 subscription-quota（额度）两组
+各自成为一页，行、文案和合同不变。原型 `settingsTabs=0` 仍能打开旧的单页长列表，只用于对照和重放历史检查，不是产品状态。
+
+## 整窗视觉对齐
+
+原型是设计真相，原生 Settings 窗口要按**整窗**对照原型，不能只对照新加的一组。2026-11-08 用户看到的原生窗口有三处与原型不符，
+本节把对应规则写死：
+
+| 元素 | 原型 | 原生规则 |
+| --- | --- | --- |
+| 分段控件（显示内容、统计范围、默认会话范围、读取间隔、提醒阈值、sheet 的客户端与分类） | 选中段为中性：`--surface` 底加细阴影，文字正文色（`.settings-segmented button.active`） | 系统默认的 `Picker(.segmented)` 外观；**不得**用 accent 填充选中段。窗口根部不施加 `.tint(DesktopVisualTheme.accent)`，分段控件也不单独设 accent tint |
+| 开关 | 开启态 accent | 每个 `Toggle(.switch)` 自带 `.tint(DesktopVisualTheme.accent)`（现状即如此，保留） |
+| 次要按钮（管理…、查看连接配置等） | 中性：`--surface-2` 底、`--line` 边、正文色文字 | 系统中性按钮（`.bordered` 或默认样式，不设 tint）；文字不用 accent |
+| 主按钮 | 只有 sheet 的「完成」：`--accent-strong` 底、白字 | `.borderedProminent` + `.tint(accentStrong)`，只用于「完成」 |
+| 状态操作链接 | `--accent` | `.buttonStyle(.link)`，accent |
+| 设置行 | 左侧标题加说明，右侧控件；说明折行时整行随之增高 | 任何文字都不得与分隔线或相邻行重叠；行高按自然高度测量 |
+
+复选框（额度的客户端选择）沿用系统样式，归 subscription-quota 定义，本文件不改。
+
+## 原生整窗验收
+
+- 四页逐页渲染整个窗口内容（不只渲染「会话」组），中英 × 深浅各一套；会话页另渲染 sheet。
+- 每张渲染都要满足：宽度不超过 460 pt；测得的高度等于自然高度（把同一内容放在更高画布顶部，逐行像素一致），
+  所以任何行不会被挤压重叠；900 pt 屏幕上每页不出现滚动。
+- 分段控件的选中段是中性色：在选中段内取样，饱和度低，不是 accent / accentStrong 的橙色。
+- 与原型截图（manifest 的 `tabs-*.png`）并排目视核对：页序、页名、图标、每页的行与控件类型一致，控件着色规则符合上表。
+  允许的差异只有系统绘制的部分：标题栏与工具栏材质、工具栏选中样式、系统控件的精确尺寸与字体渲染。
+- 原生窗口在页间切换时标题与高度随页变化；关窗再开回到上次停留的页；sheet 打开期间不能切页。
+- 切页往返回归：实时用量写入成功 → 切到通用再切回 → 关闭采集，必须走移除托管段的分支；
+  写入被拒、恢复冲突、写入同意区和已有配置冲突区在切页往返后仍显示且可操作；
+  「会话」页的状态行与在途保存在切页往返后保持。原型对应 `prototype/tools/check-settings-pane-lifecycle.js`。
 
 <!-- 兼容锚点：本节原名「默认范围」，既有评审记录按旧锚点引用。 -->
 <a id="默认范围"></a>
@@ -352,17 +404,18 @@ backup/restore 的身份匹配和可移植边界按需求落实。
 | 原型 | SwiftUI |
 | --- | --- |
 | 设置行 | 现有 `SettingsRow(label:note:status:statusAction:)`；状态行为 `SettingsRowStatus`，操作为 `.buttonStyle(.link)` |
-| 默认范围 | `Picker(selection:)` + `.pickerStyle(.segmented)` + `.labelsHidden()`。绑定的 getter 返回已确认值，setter 提交保存；读不到时 selection 为 nil，控件禁用 |
+| 默认范围 | `Picker(selection:)` + `.pickerStyle(.segmented)` + `.labelsHidden()`，系统默认外观、不设 accent tint。绑定的 getter 返回已确认值，setter 提交保存；读不到时 selection 为 nil，控件禁用 |
 | 在途标记 | 目标项旁边的小圆点；或者在 `SettingsRowStatus` 用 `ProgressView().controlSize(.small)` |
-| 管理… | `Button("管理…")`，`.sheet(isPresented:)` 挂在 Settings 窗口上 |
-| sheet | 固定宽度跟随窗口；内容 `ScrollView`；底部「完成」是 `.keyboardShortcut(.defaultAction)` 的 `.borderedProminent` 按钮，tint 用 accent |
+| 管理… | `Button("管理…")`，系统中性按钮、不设 tint；`.sheet(isPresented:)` 挂在 Settings 窗口上 |
+| sheet | 固定宽度跟随窗口；内容 `ScrollView`；底部「完成」是 `.keyboardShortcut(.defaultAction)` 的 `.borderedProminent` 按钮，tint 用 accentStrong |
 | 客户端 / ID / 查找 | `Picker(.segmented)` + `TextField`（`.monospaced()`，`.onSubmit` 查找）+ `Button` |
-| 会话卡片 | `GroupBox` 或圆角背景容器；事实区是 `Grid` 两列 |
+| 会话卡片 | 圆角背景容器；事实区是固定标签列的 `HStack` 行（`Grid` 遇到折行文字会少算高度，导致行间重叠） |
 | 覆盖列表 | `VStack` + `Divider` 行；「移除」是 `.borderless` 按钮，在途时换成 `ProgressView` |
 | reason code / 规则版本 | `.help(...)` |
 | 来源圆点 | `Circle().fill(...)`，6–7 pt，颜色取 `DesktopVisualTheme` 的 good/warn/bad/dim |
 
-窗口宽度保持现有 `SettingsWindowView` 的 460 pt，不另设宽度。
+窗口宽度保持现有 `SettingsWindowView` 的 460 pt，不另设宽度。窗口容器见[窗口分页](#窗口分页)，
+控件着色与行高见[整窗视觉对齐](#整窗视觉对齐)，渲染验收见[原生整窗验收](#原生整窗验收)。
 
 ## 已定协议与验收设计
 
@@ -398,12 +451,18 @@ default revision 与各覆盖键的 revision 相互独立；clear 留下的版�
 
 ## 影响
 
-- **原生实现**：`SettingsWindowView.swift` 的 `SessionOriginSettingsGroup` 按旧表面实现
-  （表单式控件、显式保存按钮、平铺的查找与列表）。控制器 `SessionOriginSettingsController` 的写入状态机、
-  请求身份和读取代次保护仍然适用；视图层需要按本文件重做，并且要补上撤销之后的自动只读查询。
-  `DesktopCopy` / `Localizable.xcstrings` 中旧表面的文案需要替换。
-- **评审**：旧 settings final-surface 的 PASS 不适用于本文件，需要独立评审后才能作为实现依据。
-- **不受影响**：需求、架构、CLI、菜单栏和 Widget 的合同；状态模型的合同检查。
+- **原生实现（任务 6 settings-control）**：当前未提交的实现已经按 2026-11-07 版重做了「会话」组和 sheet，
+  控制器 `SessionOriginSettingsController`（写入状态机、请求身份、读取代次与 ASC-SC-R4-F1 的已应用计数）继续适用。
+  它仍是单页长列表加 `ScrollView`，并在窗口根部施加 accent tint，使全窗分段控件和次要按钮变成橙色；
+  额度组「客户端」行的说明折行后压到下一行。按本版需要重做窗口容器（工具栏分页）、去掉窗口级 accent tint、
+  修正行高，并按[原生整窗验收](#原生整窗验收)补逐页整窗渲染回归。它在 Repair 3 后的待复评候选随之作废，
+  重做后整体重新评审。
+- **其他专题**：scan-performance（实时用量）与 subscription-quota（额度）两组各自成为一页，行、文案和合同不变；
+  它们的颜色随窗口级 tint 去掉而改为本文件[整窗视觉对齐](#整窗视觉对齐)的规则，与共享原型一致。
+  共享原型的 scan-performance 历史检查脚本 `scan-performance-repair-check.mjs`、`scan-performance-otel-linkage.mjs`
+  验证的是长列表，已固定带 `settingsTabs=0`，检查内容不变。
+- **评审**：Round 8 的 PASS 只对旧 blob `2b873cd65cb8e6c68cdd900f5ca41533de04e011` 成立；本版需要重新评审后才能作为实现依据。
+- **不受影响**：需求、架构、CLI、菜单栏和 Widget 的合同；状态模型的合同检查；「会话」组自身的行、文案与状态规则。
 
 ## 自检 — 2026-11-07（重新设计候选）
 
@@ -457,6 +516,40 @@ default revision 与各覆盖键的 revision 相互独立；clear 留下的版�
   incomplete 只有 color-contrast（遮罩下无法确定背景）：en/light 为 `#as-sheet-desc`、状态条 bad 文字、查找说明里的 `code`，
   zh/dark 为 `#as-sheet-desc`、`#as-lookup-help`。手算 bad 文字对状态条背景：浅色 5.93，深色 4.69；其余文字沿用上文 token 对，均 ≥ 4.5。
 - 只验证合成模型和浏览器呈现，不证明原生 `.sheet` 的焦点范围、VoiceOver 或真实 core 故障恢复。
+
+## 自检 — 2026-11-08（分页定为默认）
+
+- 原型：`SettingsWindow` 默认分页（`settingsTabs=0` 才回到长列表对照）；`settingsPane` 缺省为「通用」，
+  不带 `auxSettings` 时只有通用、实时用量、额度三页（实测）。`npm run build` 通过。
+- 模型合同 `check-auxiliary-settings-final.mjs`：14 项，0 失败。
+- `check-auxiliary-settings.js` 从 `?settings=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions` 运行：
+  分页窗口中英 × 深浅四组各 121 项，共 484 项，0 失败；`settingsTabs=0` 长列表 zh/dark、en/light 各 113 项，0 失败。
+  菜单栏 `check-auxiliary-menubar.js` 176 项，0 失败。
+- scan-performance 长列表入口（加 `settingsTabs=0`）实测仍是长列表且 OTel 开关存在；未重跑这两个脚本，
+  因为它们会覆盖 scan-performance 的历史截图。
+- 每页窗口高度（视口 1280×1000）：通用 433、会话 367（中文）/ 390（英文）、实时用量 308、额度 611 px，均无页内滚动。
+- 截图（已逐张目视核对）：`tabs-general-zh-dark.png`、`tabs-sessions-en-light.png`、`tabs-sessions-zh-dark.png`、
+  `tabs-live-zh-light.png`、`tabs-quota-en-dark.png`、`tabs-sheet-zh-light.png`。原型的分段控件选中段均为中性底，
+  次要按钮均为中性，这就是[整窗视觉对齐](#整窗视觉对齐)要求原生对齐的样子。
+- 只验证浏览器呈现，不证明原生工具栏分页、窗口动画、VoiceOver 或原生渲染；这些由任务 6 的[原生整窗验收](#原生整窗验收)覆盖。
+
+## 修复自检 — 2026-11-08（Round 9 后）
+
+- ASC-SET-R9-F1：标本的正文容器原来以当前页为 key，各组按当前页条件挂载，切页会卸载实时用量组并丢掉其本地的
+  托管所有权、结果和同意区。现在四页都挂载，非当前页只设 `hidden`（`.settings-group` 自带 `display:flex`，
+  `settingsTabs.css` 显式隐藏），正文不再随切页重建，切页时把新页滚回顶部。[窗口分页](#窗口分页)写明切页保留规则，
+  原生映射要求页控制器常驻、状态归 App 级 controller，[原生整窗验收](#原生整窗验收)增加切页往返回归。
+- 新增 `prototype/tools/check-settings-pane-lifecycle.js`，按 Codex 标本四种情形运行：默认写入（写入同意区往返、写入后往返、
+  关闭采集走移除分支、再开启重新要求同意）、写入被拒、恢复冲突、已有其他配置（冲突区往返、仅开启接收端后往返、关闭不移除用户配置）。
+  每次往返还断言只显示当前页、切回的是同一个组实例。中英 × 深浅四组各 43 项，共 172 项，0 失败。
+- 修复前复现：临时把实时用量组改回按当前页条件挂载，en/light 四种情形全部失败。默认写入情形与评审证据一致：
+  写入后往返结果消失，关闭采集得不到 `removed`。之后恢复修复后的 `Settings.jsx`，SHA-256 与修复版一致，全量复跑通过。
+- 评审的原路径（`?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions&lang=en&theme=light`，实时用量 → 开启 → 写入并开启 →
+  通用 → 实时用量 → 关闭）现在依次为 `written`、`written`、`removed`，再开启出现写入同意区。
+- `check-auxiliary-settings.js` 只统计未隐藏的组；分页四组各 121 项、长列表两组各 113 项，0 失败。菜单栏 176 项、
+  模型合同 14 项 0 失败，`npm run build` 通过。各页窗口高度不变：中文 通用 433、会话 367、实时用量 308、额度 575 px，
+  英文 通用 468、会话 390、实时用量 325、额度 611 px；视觉没有变化，截图未重拍。
+- 只验证合成浏览器标本；不证明原生页控制器的生命周期或真实 Codex 配置写入。
 
 ## 历史
 

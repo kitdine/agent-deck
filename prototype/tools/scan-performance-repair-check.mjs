@@ -30,7 +30,7 @@ for(const lang of ['zh','en'])for(const theme of ['dark','light'])for(const widt
  check(`M1-F1 ${lang}/${theme}/${width} atomic publication preserves choices`,before===after&&await evaluate(`document.querySelector('[data-serving-status]').dataset.phase==='memory'&&!document.querySelector('[data-domain-unavailable]')`));
 }
 for(const lang of ['zh','en'])for(const theme of ['dark','light']){
- await open(`serving=rebuilding&settings=1&telemetry=unknown&lang=${lang}&theme=${theme}`);
+ await open(`serving=rebuilding&settings=1&settingsTabs=0&telemetry=unknown&lang=${lang}&theme=${theme}`);
  check(`S1-F1 ${lang}/${theme} default off`,await evaluate(`document.querySelector('[data-otel-switch]').getAttribute('aria-checked')==='false'`));
  await browser('click','[data-otel-switch]');
  check(`S1-F1 ${lang}/${theme} enabled defaults unknown`,await evaluate(`document.querySelector('[data-otel-status]').dataset.otelStatus==='unknown'`));

@@ -548,3 +548,186 @@ retry 得 saved、默认 auxiliary、回执 request_id 与原 `fixture-request-1
 Task checkpoint：`ad-auxiliary-session-classification-doc-ux-settings`；content_state `8424e6bfac038d3b24e513eac849df516421a3f7720af7d9c9ff30f54a03f007`；gate VERIFIED。
 提交建议：单独授权提交本次 Settings 文档、共享原型及检查脚本、manifest/截图、本评审记录、prototype README 对应说明和 tasks.md 的文档状态块；逐 hunk 排除并行 Swift 实现及其任务记录。
 推送建议：目标 origin/feature/auxiliary-session-classification；授权提交完成后，核对整个分支待推送提交范围和签名，再单独授权推送。当前未配置该分支的 upstream，未执行推送或远端检查。
+
+## Round 9 — 2026-11-08
+
+## 📋 Settings 默认分页设计评审
+
+📊 总体评分：7/10
+
+✅ 结论：FAIL
+
+### 🔴 严重问题 — 必须修复
+
+**ASC-SET-R9-F1 — P2 — OPEN**
+
+默认分页卸载实时用量页时丢失 OTel 配置托管状态，破坏既有开启与关闭合同。
+
+位置为 [窗口分页](../ux/settings.md#窗口分页)第 113 行和[影响](../ux/settings.md#影响)第 449–452 行，
+共享标本的 `prototype/src/Settings.jsx:246,306` 与 `prototype/src/TelemetrySettings.jsx:101–104,111–136`。
+
+- 行为风险。文档把工具栏分页确立为唯一产品布局，并承诺各组的行和合同继续成立。
+  标本的页容器以当前页为 key，实时用量组又按当前页条件挂载。切走该页会销毁其本地 `managed`、`result` 和 `consent`。
+  `otelEnabled` 保存在外层，返回后仍显示采集开启，但刚完成的托管写入及其状态已经丢失。
+  用户随后关闭采集时无法走到移除 AgentDeck 托管配置的分支。该标本会把有外部副作用的状态生命周期错误传递给实现。
+- 直接证据。在独立浏览器会话打开
+  `?settings=1&auxSettings=normal&auxMenu=normal&tab=sessions&lang=en&theme=light`，
+  进入 Live usage，点击采集开关，再点击 Write and turn on。
+  此时 `enabled=true,result=written`。依次切到 General、Live usage 后，
+  `enabled=true,result=null`。随后关闭采集得到 `enabled=false,result=null`，
+  再次开启又出现 `consent=write`。
+- 对照证据。重新载入同一合成入口，执行写入后直接关闭采集，结果为
+  `enabled=false,result=removed`。跨页操作是两条路径唯一的行为差异。
+  源码中 `managed` 从未随写入更新的 `stage.exporter` 重新初始化，因此返回页面后 `ownsBlock=false`。
+- 归属。窗口分页在本轮成为默认产品路径，该问题属于本轮文档绑定标本的跨页生命周期。
+  旧长列表及可选分页的历史 PASS 保留其原有内容身份。
+- 💡 有界修复。为分页明确写入事实、配置所有权、未解决结果和确认流程的保留规则。
+  将相关状态放到稳定的窗口或 App 所有者，或保留页实例，并补充“写入成功 → 切页往返 → 关闭采集”回归。
+  同时用原有失败、恢复冲突和待确认场景核对跨页行为，确保一次切页不会清除仍需行动的结果。
+  更新对应文档、检查脚本和 manifest 身份后提交独立复评。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 四页的名称、顺序、内容归属和默认入口已经确定，原生整窗验收包含逐页尺寸、控件着色与 sheet 行为。
+- 当前 manifest 的 14 个源码或检查文件与 11 张截图均通过 SHA-256 核对。
+
+### 📝 总结
+
+- Reviewer：Codex，独立于本轮设计作者，未委派。
+- Method：单评审者冷上下文审查，文档与前轮记录对照、当前工作树 CodeGraph 定位、
+  未索引窗口容器的有界源码检查，以及独立浏览器中的最小跨页反例和无跨页对照。
+  取得阻断反例后停止扩大产品验证。
+- Scope：默认分页设计、整窗视觉与验收规则，以及 manifest 绑定共享标本中的受影响生命周期。
+  本轮证据来自文档和合成浏览器。原生整窗、VoiceOver、真实 Codex 配置写入及持久化仍由相应实现任务验收。
+- Reviewed state：HEAD `5d47df828df4c76fd2d909e2981a4606ac9d87c6`，
+  document blob `fd50942383f77109ade18e6eaf66b8f4c000673c`，
+  prototype manifest SHA-256 `a959646c4b0aa5d5dd3c31032b966e17df72aead2b4c3508c57a1852d31f068d`。
+- Fingerprint：`3352895629fef99d64183edee436177e7fdcaabb493b18dca1994ec5f51deefe`。
+  沿用 SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence：25 个 manifest 条目哈希一致。浏览器复现与对照的输入、顺序和输出见 ASC-SET-R9-F1。
+  作者的 484 项分页检查与 14 项模型检查保留为作者记录，本轮新增证据是其未覆盖的跨页状态反例。
+  `python3 scripts/check-docs.py` exit 0，完成相关链接、专题文档集和评审结构检查。
+  `make check-whitespace` 与 `git diff --check` 均未报告诊断，检查序列 exit 0。
+- Disposition：ASC-SET-R9-F1 OPEN。Round 8 对 ASC-SET-R7-F1/F2/F3 的关闭保留。
+  本轮 `AuxiliarySettings.jsx` 与 `auxiliarySettingsModel.js` 的哈希仍与上一候选一致，
+  该保留只覆盖既有修复事实。
+- WorkUnit：`auxiliary-session-classification:ux/settings.md`。
+- ContentState：`auxiliary-session-classification:ux-settings-r9-3352895629fef99d`。
+- Completion gate：FAILED
+- Gate scope：document-integrity、independent-review。入口查询确认当前状态缺少这两项证据。
+  已登记新 ContentState、1 条 pass 和 1 条 fail Evidence，新增 4 条关系且预检全部 ok。
+  MCP 写入响应返回更新计数，另以稳定 ID 和完整 attributes_json 读回确认两条证据及 WorkUnit 更新共 3/3。
+  精确状态查询返回 FAILED，两条当前证据均 target_matches/applicable=true，
+  malformed/invalidated/unresolved=false。document-integrity 通过，independent-review 被本轮反例否定。
+  查询中的 Round 3 历史 invalidated 条目不匹配当前目标。文档 WorkUnit 返回 in_progress，
+  保留此前已交付提交及其证据，当前边界保持开放。
+- Handoff：文档任务 `ad-auxiliary-session-classification-doc-ux-settings` 返回修复，
+  Documents 的 Settings Review 保持未勾选。修复范围为 ASC-SET-R9-F1，
+  完成后对新文档和标本进行独立复评。
+
+## Repair candidate — 2026-11-08（Round 9 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-SET-R9-F1，未委派。
+- 复现：按 Round 9 证据确认根因。`Settings.jsx` 的正文容器以当前页为 key，各组按当前页条件挂载，
+  切页会卸载 `TelemetrySettings`，丢掉其本地 `managed`、`result`、`consent`；返回后 `ownsBlock=false`，关闭采集不走移除分支。
+- ASC-SET-R9-F1 → repaired in candidate。原型四页常驻：去掉正文的随页 key，各组始终渲染，非当前页设 `hidden`
+  （`settingsTabs.css` 显式隐藏，因为 `.settings-group` 自带 `display:flex`），切页后新页滚回顶部。
+  [窗口分页](../ux/settings.md#窗口分页)写明切页只换显示、不重建页，写入事实、配置所有权、未解决结果和进行中的确认在往返后保留，
+  关窗规则仍归各组自己的文档；原生映射要求页控制器常驻、不用随页变化的 `.id`，这些状态归 App 级 controller；
+  [原生整窗验收](../ux/settings.md#原生整窗验收)增加切页往返回归。
+- 回归保护：新增 `prototype/tools/check-settings-pane-lifecycle.js`，覆盖 Codex 标本四种情形：
+  默认写入（同意区往返、写入后往返、关闭得到 `removed`、再开启重新要求同意）、写入被拒、恢复冲突、已有其他配置
+  （冲突区往返、仅开启接收端后往返、关闭不移除用户配置）；每次往返另断言只显示当前页、切回的是同一组实例。
+  `check-auxiliary-settings.js` 改为只统计未隐藏的组，方向键切页一项改断言实时用量显示、会话隐藏。
+- 修复前复现：临时把实时用量组改回按当前页条件挂载，en/light 四种情形全部失败。默认写入情形依次失败于
+  同意区保留、写入结果保留和「关闭得到 removed」，与 Round 9 的 `result=null` 一致。之后恢复修复版 `Settings.jsx`
+  （SHA-256 `d30210b35f4a3ded3d8f30b94cd654e61d0ffb87e24396926e413e121b29c2a5`），全量复跑通过。
+- 验证（本候选内容）：切页生命周期每组 43 项 × 中英深浅 4 组 = 172 项，0 失败；
+  Round 9 原路径（Sessions 入口 en/light，写入并开启 → 通用 → 实时用量 → 关闭）依次为 `written`、`written`、`removed`，
+  再开启出现写入同意区。`check-auxiliary-settings.js` 分页 4 组各 121 项、长列表 zh/dark 与 en/light 各 113 项，0 失败；
+  菜单栏 176 项、模型合同 14 项 0 失败；`npm run build` 通过。各页窗口高度与修复前相同，视觉无变化，截图未重拍。
+  `python3 scripts/check-docs.py` 通过，`bash scripts/check-topic-docs.sh` exit 0，`bash scripts/check-whitespace.sh` exit 0，
+  `git diff --check` 无输出。未运行产品测试（无产品代码变更）。
+- 原 FAIL/OPEN 与 Round 9 的 FAILED 门禁保留；本候选不自称 Review PASS 或 CEv1 VERIFIED。
+  CEv1：本会话 Neo4j MCP 不可达，未查询、未写入，由复评在提供方可用时按下方身份绑定。未提交、未推送。
+- Candidate identity：HEAD `5d47df828df4c76fd2d909e2981a4606ac9d87c6`；ux/settings.md blob `ee49b63034a47a20b0e86775acf49863f926bf6c`（未提交）；
+  manifest 阶段 `redesign-r1-tabs-default-repair-r9`，SHA-256 `0a3f7e5c58caaa0bfce8afb77c1b54ea5b4737b154c18f35bc5845bd987f934d`
+  （上一份 `a959646c4b0aa5d5dd3c31032b966e17df72aead2b4c3508c57a1852d31f068d` 记入 previous_manifest_sha256），
+  新增 TelemetrySettings.jsx 与 check-settings-pane-lifecycle.js 两个条目；
+  Fingerprint `ff235d3e74eb41f828a46eca550d719b35b38f0b258baa1b8ee696592abc0320`，
+  沿用 SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- 2026-11-09 重发修复指令后复核：无新评审轮次，候选未改动。重新计算 HEAD、文档 blob、manifest SHA-256 与 Fingerprint，
+  均与上方一致；manifest 列出的 27 个文件与截图哈希无漂移；切页生命周期检查复跑 172 项 0 失败。未改原型、文档或产品代码。
+
+## Round 10 — 2026-11-09
+
+## 📋 Settings 分页生命周期修复复评
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。ASC-SET-R9-F1 已关闭，受影响路径未发现新阻断。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-SET-R9-F1 — CLOSED**。[窗口分页](../ux/settings.md#窗口分页)第 130–146 行明确跨页保留写入事实、
+  配置所有权、未解决结果和确认流程，并要求原生页控制器常驻、业务状态由 App controller 持有。
+  `Settings.jsx` 去掉正文随页变化的 key，四页常驻，非当前页通过 `hidden` 隐藏，
+  `settingsTabs.css` 显式覆盖组容器的 flex 显示。`TelemetrySettings` 的 managed/result/consent 因此跨页保留。
+- 独立浏览器按 Round 9 原入口执行“写入并开启 → 通用 → 实时用量 → 关闭采集”，
+  结果依次为 `enabled=true,result=written`、`enabled=true,result=written`、`enabled=false,result=removed`。
+  再次开启出现 `consent=write`。往返前后遥测组节点身份相同，隐藏时计算样式为 `display:none`，
+  通用页仅显示 general 与 menubar 两组。
+- 以当前 `check-settings-pane-lifecycle.js` 在 en/light 独立执行写入被拒、恢复冲突和已有其他配置三种场景，
+  分别为 9、13、10 项检查，全部通过。检查包含未完成确认、拒绝结果、恢复冲突、配置预览和托管移除语义。
+- zh/dark 的会话未知写入在切页往返后保持 `saveUnknown` 与同一 `fixture-request-1`，会话组节点身份相同。
+  打开锁定 sheet 后，真实 Tab 与 Shift+Tab 均停留在可用的“完成”按钮，正文和工具栏均 inert。
+  Escape 关闭 sheet 后焦点回到“管理…”，当前页仍为 sessions，正文及工具栏解除 inert，未知写入状态继续保留。
+
+### 📝 总结
+
+- Reviewer：Codex，沿用 Round 9 独立评审角色，未参与修复，未委派。
+- Method：逐项处置既有发现，核对修复交接、工作树内容与 manifest，使用当前工作树 CodeGraph 定位，
+  对未索引的检查脚本和受影响的 sheet 生命周期作有界源码检查，再独立执行原反例、三条补充路径与真实键盘操作。
+- Scope：ASC-SET-R9-F1 及跨页显示、OTel 状态、会话未知写入和 sheet 焦点。
+  证据来自文档和合成浏览器，原生页控制器、VoiceOver、真实配置写入与持久化属于 settings-control 的验收范围。
+- Reviewed state：HEAD `5d47df828df4c76fd2d909e2981a4606ac9d87c6`，
+  document blob `ee49b63034a47a20b0e86775acf49863f926bf6c`，
+  prototype manifest SHA-256 `0a3f7e5c58caaa0bfce8afb77c1b54ea5b4737b154c18f35bc5845bd987f934d`。
+- Fingerprint：`ff235d3e74eb41f828a46eca550d719b35b38f0b258baa1b8ee696592abc0320`，
+  沿用 SHA-256(`head=<HEAD>;document=<blob>;prototype=<manifest_sha256>`)。
+- Evidence：manifest 的 16 个源码或检查文件和 11 张截图共 27 项哈希一致。
+  独立交互结果见上。复用 Repair candidate 中相同候选的构建、172 项切页生命周期检查、
+  484 项分页及 226 项长列表检查、176 项菜单栏检查和 14 项模型合同检查。
+  本轮重新执行其中三种生命周期场景的 32 项检查，用于独立核验该修复的失败与确认路径。
+  本轮状态同步后，`python3 scripts/check-docs.py`、`make check-whitespace` 和 `git diff --check`
+  在 fail-fast 检查序列中全部通过。最终候选指纹及 27 项 manifest 条目与入口核验一致。
+- Disposition：ASC-SET-R9-F1 CLOSED。ASC-SET-R1-F1、ASC-SET-R3-F1、ASC-SET-R5-F1
+  以及 ASC-SET-R7-F1/F2/F3 的历史关闭保留。本轮对 AuxiliarySettings 的改动为根节点传入 hidden，
+  状态模型和来源规则继续沿用既有内容，受影响的请求保留与 sheet 键盘行为已直接核验。
+- WorkUnit：`auxiliary-session-classification:ux/settings.md`。
+- ContentState：`auxiliary-session-classification:ux-settings-r10-ff235d3e74eb41f8`。
+- Completion gate：VERIFIED
+- Gate scope：document-integrity、independent-review，精确状态查询 VERIFIED 2/2。
+  两条新 pass Evidence 与 WorkUnit 更新经稳定 ID 和完整 attributes_json 读回确认 3/3，
+  4 条关系预检全部 ok，写入响应确认新增 4 条关系。
+  当前两条证据均 target_matches/applicable=true、malformed/invalidated/unresolved=false，missing_criteria 为空。
+  返回的 Round 3 历史 invalidated 条目不匹配当前目标。Round 9 的旧目标与失败证据继续保留。
+  文档 WorkUnit 没有 contains 父节点或子节点，专题矩阵中任务 6–9 继续由各自实现与验收边界管理。
+- Handoff：Documents 的 Settings Review 勾选，文档任务交到 awaiting_commit 并释放复评认领。
+  下一实现任务为按已批准分页设计完成 settings-control。
+
+Task checkpoint：`ad-auxiliary-session-classification-doc-ux-settings`，content_state `ff235d3e74eb41f828a46eca550d719b35b38f0b258baa1b8ee696592abc0320`，gate VERIFIED。
+提交建议：单独授权提交已复评的 Settings 文档任务，纳入设计文档、共享原型及对应检查脚本、manifest 与新截图、评审记录、prototype README 和 tasks.md 的文档状态 hunks。
+推送建议：目标 origin/feature/auxiliary-session-classification。先完成授权提交并核验整个分支的待推送提交范围与 SSH 签名，再单独授权推送。当前分支未配置 upstream。
