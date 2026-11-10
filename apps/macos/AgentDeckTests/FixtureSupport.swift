@@ -44,13 +44,15 @@ struct RecordedHelperInvocation: Equatable, Sendable {
 
 actor RecordingHelperProcess: EmbeddedHelperProcess {
 	private var behaviors: [TestHelperBehavior]
+    private var stateRoots: [String] = []
 	private var invocations = [RecordedHelperInvocation]()
 
 	init(behavior: TestHelperBehavior) {
 		behaviors = [behavior]
 	}
 
-	init(behaviors: [TestHelperBehavior]) {
+	init(behaviors: [TestHelperBehavior], stateRoots: [String] = []) {
+        self.stateRoots = stateRoots
 		precondition(!behaviors.isEmpty)
 		self.behaviors = behaviors
     }
@@ -69,6 +71,11 @@ actor RecordingHelperProcess: EmbeddedHelperProcess {
                 timeout: timeout
             )
         )
+        if arguments == ["desktop", "state-location", "--format", "json"] {
+            let root = stateRoots.isEmpty ? (environment["HOME"] ?? "/tmp/isolated-home") + "/.agentdeck"
+                : (stateRoots.count > 1 ? stateRoots.removeFirst() : stateRoots[0])
+            return try fixtureStateLocation(root: root)
+        }
 		let behavior = behaviors.count == 1 ? behaviors[0] : behaviors.removeFirst()
 		switch behavior {
         case let .output(output):
@@ -108,7 +115,14 @@ actor RecordingHelperProcess: EmbeddedHelperProcess {
 		)
 	}
 
-    func recordedInvocations() -> [RecordedHelperInvocation] {
-        invocations
+    func recordedInvocations(includingStateLocation: Bool = false) -> [RecordedHelperInvocation] {
+        invocations.filter { includingStateLocation || !$0.arguments.contains("state-location") }
     }
+}
+
+func fixtureStateLocation(root: String, installed: Bool = false) throws -> HelperProcessOutput {
+    HelperProcessOutput(exitStatus: 0, stdout: try JSONSerialization.data(withJSONObject: [
+        "schema_version": 1, "command": "desktop.state-location", "partial": false,
+        "data": ["installed": installed, "state_root": root], "warnings": []
+    ]))
 }

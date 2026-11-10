@@ -29,7 +29,7 @@ updated: 2026-11-10
 需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6、8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -40,7 +40,7 @@ updated: 2026-11-10
 | 3. `client-config-guard` | [x] | [x] |
 | 4. `installation-diagnostics` | [x] | [x] |
 | 5. `installer-receipts` | [x] | [x] |
-| 6. `app-state-location` | [ ] | [ ] |
+| 6. `app-state-location` | [x] | [x] |
 | 7. `debug-app-identity` | [x] | [x] |
 | 8. `ownership-acceptance` | [ ] | [ ] |
 | 9. `contract-reconciliation` | [ ] | [ ] |
@@ -584,6 +584,27 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 - 增加 `installation`、`managed_command_owner` 检查名，以及 `not_installed`、`managed_command_owner_mismatch` 说明的中英文文案。
 
 **验证：L3**。由于新增跨进程锁与原生生命周期，运行 `make test-macos-app`、AgentDeckVerification 对应现有脚本，以及上面两层隔离的 Swift 会话/真实 helper/排他锁竞争测试；任务 7 的旧结果不能代替本任务改动后的回归。记录实际驱动命令、Go/Swift 解析出的同一临时锁路径、被测 helper 物理路径与回执身份；不能把构建成功或替身返回 installed 当成真实拥有者/锁生效。原生运行前确认临时 HOME、账户注入、App Group 和偏好域隔离；无法满足时报告该任务的验证阻塞。
+
+
+#### 开发交接 — 2026-11-10
+
+- 工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`，基线 HEAD `a4a5d684bc1e2d067f8e92113aa1c7f064bd4ba5`；依赖任务 4、7 均已本地交付。本轮未提交、推送、安装或修改开发者账号资源。
+- `EmbeddedHelperRunner` 删除构造时 `HOME/.agentdeck` 推算与全部 `--state-dir` 注入。snapshot、serving restore、bootstrap 及 quota/telemetry 请求重新执行 `desktop state-location --format json`；本轮路径用于 serving 文件探测和扫描锁等待。查询失败/畸形输出不回退默认路径。
+- 新增内部 `NativeOwnershipSession`：系统账户由 `getpwuid_r(getuid())` 解析，生产不接受环境/命令/线路字段覆盖；仅内部测试构造允许注入临时账户。installed 且物理 state_root 等于账户真实根时取得共享 flock，最长等待 5 秒，并在锁内再次查询。并发查询串行化；失去拥有者资格或查询失败释放锁；App 退出同步关闭描述符，包含正在异步复核的临时锁，关闭后的迟到查询不能重新持锁。
+- 路径比较使用最近存在祖先的 `realpath` 加缺失组件，拒绝无法解析的路径和悬空符号链接，覆盖首次启动时 `.agentdeck` 尚不存在的 `/tmp` / `/private/tmp` 别名。不能仅依赖 Foundation `resolvingSymlinksInPath`：本轮最小实验确认它对既有父目录与缺失叶子的别名处理不同，真实 helper 交错测试曾据此发现 App 未持锁；修复后同一排他断言通过。
+- App 的 termination 回调接入同步释放；telemetry controller 每轮重新定位 `telemetry/receiver.json` 监视器，查询失败撤销旧监视器并停止 listener。保留 `.codex/config.toml` 的客户端配置监视。Health 新增 Installation/安装、Hook command owner/Hook 命令归属，以及未安装和归属不匹配的英中文案。
+- 原生夹具由 `scripts/test-macos-app.sh` 在本次隔离根单独构建验收 tag helper；`internal/installation/native_fixture_test.go` 仅进入测试二进制，严格校验临时根/账户/helper 物理路径，使用真实 `AcquireOwnershipLock` / `WriteReceipt`。驱动支持 register、mismatch、probe 和模拟手工 delete；不配置参数时跳过驱动入口，XCTest 集成用例缺少参数则失败，不回退真实账户。构建、打包脚本及生产 Go 行为未修改；正常 Debug helper 的 `go version -m` 为 Go 1.27.3、darwin/amd64，不含 acceptance build tag。
+- 可复现主命令：将已有 Go 1.27.3 bin 放到本次进程 PATH 首位，设置 `GOCACHE=/private/tmp/agent-deck-go-build` 后执行 `make test-macos-app`。harness 内运行 `go build -mod=vendor -tags agentdeck_acceptance` 到临时 bundle；经 `scripts/run-go-test.sh ./internal/installation -c -o <fixture>/native-driver` 编译驱动，并通过该包装器的 `-run '^TestNativeOwnershipFixture$'` 注册夹具。Swift 用 FoundationEmbeddedHelperProcess 启动真实 helper/驱动，共用临时账户；后续驱动调用同一 TestNativeOwnershipFixture 入口。
+- 最终运行观测（路径仅为当次身份事实，不是保留工件引用）：运行根标识 `agentdeck-macos-xctest.YDy3Od`，helper 的物理路径为 `/private/tmp/agentdeck-macos-xctest.YDy3Od/AgentDeck.app/Contents/Helpers/agentdeck`；Go 与 Swift 竞争 `/private/tmp/agentdeck-macos-xctest.YDy3Od/account/Library/Application Support/AgentDeck/ownership.lock`。末次注册回执 `installation_id=47c3667b4dd6dad4f25bd03a82a5df26`、channel `local_app`，executable 与上述 helper 一致。夹具随测试退出清理；重现时生成新身份，不依赖这个临时目录仍然存在。
+- 真实 helper 测试通过：已安装/真实根时排他驱动报告忙；模拟手工删除回执后下一轮返回隔离根并允许排他锁；回执登记另一个 helper 时不持长期锁；重新注册后关闭会话允许排他锁。这里只验证原生会话与真实 Go Resolver/锁交互，不声称完成真实安装器和完整 App 进程的 Task 8 A5 联合验收。
+- 最终 `make test-macos-app` exit 0、TEST SUCCEEDED：Shared 133、App 168、Widget 51，共 352 项，0 failure，1 项既有 schema 手工矩阵 opt-in skip；原日期焦点用例本次通过，harness 未报告 helper 泄漏。新增确定性用例覆盖锁内资格改变、非真实状态不持锁、查询失败释放、锁超时、wire 拒绝、两轮路径变化、查询/复核中退出和物理路径别名；App 用例验证 receiver 监视器随路径变化、失败后清除。
+- `swift run --disable-sandbox --package-path apps/macos --scratch-path <临时构建缓存> AgentDeckFoundationVerifier` 携带 `desktop/fixtures/v1/` 的 complete、partial、empty-client、legacy、schema-ahead 五个快照，通过全部 Foundation/helper 参数边界验证。首次执行暴露既有 verifier 的 schema 32 断言与当前 schema 33 契约/夹具不符；仅校准测试断言为 33，并保留 31→32、31/32→33 兼容和反向/未知版本拒绝，不修改产品 schema。最后在已编译的最终候选 verifier 再执行上述五个夹具，同样通过。
+- 失败历史保留：首次完整回归因 Swift 夹具把 `/private/tmp` 改成 `/tmp` 而被测试驱动拒绝；修正路径传递后，真实排他断言暴露上述物理路径比较缺陷。两项均修复并由最终原始全量命令验证；中途主动取消的一次构建不算通过。未使用重试、放宽断言/超时或跳过集成用例掩盖失败。
+- `bash -n scripts/test-macos-app.sh`、局部文档链接、空白和 `git diff --check` 通过。CEv1 WorkUnit `installed-state-ownership:app-state-location`，候选 ContentState `installed-state-ownership:app-state-location:dev-20261110-3Xphhahl`；Dev 完成、Review 未执行。完成门禁 NOT_VERIFIED，独立评审项待补；Beads 转 `in_review` 交接，不宣称 Task 或 Topic 完成。
+
+#### 修复交接 — 2026-11-10
+
+- Round 1 所需修复已完成，原始完整 XCTest 353 项、0 failure、1 项既有 opt-in skip；详见[修复记录](reviews/app-state-location.md#repair-1--2026-11-10)。候选 `installed-state-ownership:app-state-location:repair-r1-f1-20261110`，完成门禁 NOT_VERIFIED，仅待独立复评；Dev 保持完成、Review 未勾选，Beads 为 `in_review`。未提交或推送。
 
 ### 7. `debug-app-identity`
 

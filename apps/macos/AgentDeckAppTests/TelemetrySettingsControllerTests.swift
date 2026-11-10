@@ -231,3 +231,39 @@ final class TelemetrySettingsControllerTests: XCTestCase {
 		}
 	}
 }
+
+private actor TelemetryRootSequence {
+    var roots: [URL]
+    init(_ roots: [URL]) { self.roots = roots }
+    func next() throws -> URL {
+        guard !roots.isEmpty else { throw HelperExecutionError.launchFailed }
+        return roots.removeFirst()
+    }
+}
+
+extension TelemetrySettingsControllerTests {
+    func testReceiverMonitorFollowsResolvedRootAndDropsItOnFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appendingPathComponent("first")
+        let second = directory.appendingPathComponent("second")
+        let roots = TelemetryRootSequence([first, second])
+        let supervisor = StubTelemetryListenerSupervisor()
+        let transport = StubTelemetryTransport(statuses: [status(enabled: false, listener: "stopped")])
+        let controller = TelemetrySettingsController(transport: transport, supervisor: supervisor,
+            stateRoot: { try await roots.next() })
+        defer { controller.stop() }
+        await controller.load()
+        XCTAssertEqual(controller.receiverURL, first.appendingPathComponent("telemetry/receiver.json"))
+        await controller.load()
+        XCTAssertEqual(controller.receiverURL, second.appendingPathComponent("telemetry/receiver.json"))
+        await controller.load()
+        XCTAssertNil(controller.receiverURL)
+        XCTAssertNil(controller.status)
+        XCTAssertFalse(supervisor.isRunning)
+        controller.stop()
+        await controller.load()
+        XCTAssertNil(controller.receiverURL)
+    }
+}

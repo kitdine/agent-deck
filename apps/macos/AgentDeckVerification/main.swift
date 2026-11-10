@@ -123,12 +123,15 @@ enum AgentDeckFoundationVerifier {
         let hook = ahead.data.health.checks.first { $0.code == "hook_deliveries_dropped" }
         try require(ahead.data.wireVersion == 1 && ahead.partial && !ahead.data.provider.available && !ahead.data.usage.available && !ahead.data.sessions.available && ahead.data.health.available, "schema-ahead section availability")
         try require(ahead.warnings.contains("sessions_unavailable"), "independent session warning survives")
-		try require(schema?.count == 99 && schema?.supportedCount == 32 && schema?.recoveryCommand == nil, "schema version pair")
-		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 32
+		try require(schema?.count == 99 && schema?.supportedCount == 33 && schema?.recoveryCommand == nil, "schema version pair")
+		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 33
 			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 32)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 31)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 32)
-			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33), "derived-only schema transition")
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33)
+            && DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33)
+            && !DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 32)
+            && !DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 34), "derived-only schema transition")
         try require(hook?.count == 2 && hook?.supportedCount == nil && hook?.recoveryCommand == nil, "Hook refusal count")
 
         try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")
@@ -159,8 +162,9 @@ enum AgentDeckFoundationVerifier {
         )
         _ = try await embeddedRunner.snapshot()
         let invocations = await recordingProcess.recordedInvocations()
-        // One streamed global scan completes before the read-only snapshot.
-        try require(invocations.count == 2, "expected one global scan followed by one streamed snapshot")
+        // State location is resolved before the scan and snapshot.
+        try require(invocations[0].arguments == ["desktop", "state-location", "--format", "json"], "state-location must precede direct state probes")
+        try require(invocations.count == 3, "expected one global scan followed by one streamed snapshot")
         for invocation in invocations {
             try require(
                 invocation.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path,
@@ -168,11 +172,11 @@ enum AgentDeckFoundationVerifier {
             )
         }
         try require(
-            invocations[0].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "ndjson", "scan"],
+            invocations[1].arguments == ["--format", "ndjson", "scan"],
             "the global scan must use the approved event-stream argument array"
         )
         try require(
-            invocations[1].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
+            invocations[2].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
             "helper command must use the approved argument array"
         )
 
@@ -382,7 +386,10 @@ private actor VerifierProcess: EmbeddedHelperProcess {
         timeout _: Duration
     ) async throws -> HelperProcessOutput {
         invocations.append(VerifierInvocation(executableURL: executableURL, arguments: arguments))
-		let behavior = behaviors.count == 1 ? behaviors[0] : behaviors.removeFirst()
+		if arguments == ["desktop", "state-location", "--format", "json"] {
+            return HelperProcessOutput(exitStatus: 0, stdout: Data(#"{"schema_version":1,"command":"desktop.state-location","partial":false,"data":{"installed":false,"state_root":"/tmp/agentdeck-fixture-home/.agentdeck"}}"#.utf8))
+        }
+        let behavior = behaviors.count == 1 ? behaviors[0] : behaviors.removeFirst()
 		switch behavior {
         case let .output(output):
             return output

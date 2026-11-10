@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import XCTest
 @testable import AgentDeckShared
@@ -101,20 +102,21 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
         )
 
 		_ = try await runner.snapshot()
-		let invocations = await process.recordedInvocations()
+		let allInvocations = await process.recordedInvocations(includingStateLocation: true)
+        XCTAssertEqual(allInvocations.first?.arguments, ["desktop", "state-location", "--format", "json"])
+        XCTAssertEqual(allInvocations.count, 3)
+        let invocations = await process.recordedInvocations()
 		XCTAssertEqual(invocations.count, 2)
 		XCTAssertTrue(invocations.allSatisfy {
 			$0.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path
 		})
 		XCTAssertEqual(invocations[0].arguments, [
-			"--state-dir", "/tmp/isolated-home/.agentdeck",
 			"--format", "ndjson", "scan",
 		])
 		XCTAssertEqual(
 			invocations[1].arguments,
 			[
-				"--state-dir", "/tmp/isolated-home/.agentdeck",
-				"--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream",
+					"--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream",
 			]
 		)
 		XCTAssertEqual(invocations[0].timeout, EmbeddedHelperRunner.indexRefreshTimeout)
@@ -279,7 +281,6 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		let invocations = await process.recordedInvocations()
 		let invocation = try XCTUnwrap(invocations.only)
 		XCTAssertEqual(invocation.arguments, [
-			"--state-dir", "/tmp/isolated-home/.agentdeck",
 			"--quiet", "--format", "json", "provider", "use", "relay",
 			"--client", "codex", "--credential", "work", "--via", "--no-shell-setup",
 		])
@@ -397,7 +398,7 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 	// An empty state root has nothing to restore or fall back to: the restore
 	// fails without launching the helper, so a first import is not delayed.
 	// Committed facts without a serving file still go to the helper.
-	func testRestoreOfAnEmptyStateRootLaunchesNoHelper() async throws {
+	func testRestoreOfAnEmptyStateRootQueriesLocationButDoesNotReadSnapshot() async throws {
 		let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 		addTeardownBlock { try? FileManager.default.removeItem(at: home) }
@@ -413,6 +414,9 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		}
 		let none = await process.recordedInvocations()
 		XCTAssertTrue(none.isEmpty)
+        let queries = await process.recordedInvocations(includingStateLocation: true)
+        XCTAssertEqual(queries.count, 1)
+        XCTAssertEqual(queries[0].arguments, ["desktop", "state-location", "--format", "json"])
 		let stateRoot = home.appendingPathComponent(".agentdeck")
 		try FileManager.default.createDirectory(at: stateRoot, withIntermediateDirectories: true)
 		XCTAssertTrue(FileManager.default.createFile(atPath: stateRoot.appendingPathComponent("agentdeck.sqlite3").path, contents: Data()))
@@ -583,8 +587,9 @@ private actor ScanLockReleasingProcess: EmbeddedHelperProcess {
 		self.releaseDelay = releaseDelay
 	}
 
-	func run(executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
-		HelperProcessOutput(exitStatus: 1, stdout: Data(), stderr: Data("unexpected non-stream invocation".utf8))
+	func run(executableURL _: URL, arguments: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+        if arguments.contains("state-location") { return try fixtureStateLocation(root: lockURL.deletingLastPathComponent().path) }
+		return HelperProcessOutput(exitStatus: 1, stdout: Data(), stderr: Data("unexpected non-stream invocation".utf8))
 	}
 
 	func runLines(
@@ -628,5 +633,262 @@ private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async {
 private extension Array {
     var only: Element? {
         count == 1 ? first : nil
+    }
+}
+
+private actor NativeLocationSequence {
+    var values: [Result<NativeStateLocation, HelperExecutionError>]
+    private(set) var calls = 0
+    init(_ values: [Result<NativeStateLocation, HelperExecutionError>]) { self.values = values }
+    func next() throws -> NativeStateLocation {
+        calls += 1
+        return try (values.count > 1 ? values.removeFirst() : values[0]).get()
+    }
+}
+
+extension EmbeddedHelperRunnerTests {
+    private func ownershipAccount() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root.resolvingSymlinksInPath()
+    }
+
+    private func exclusiveDescriptor(_ account: URL) throws -> Int32 {
+        let directory = account.appendingPathComponent("Library/Application Support/AgentDeck")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fd = Darwin.open(directory.appendingPathComponent("ownership.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        return fd
+    }
+
+    func testOwnershipSessionRechecksUnderLockAndReleasesOnLossAndClose() async throws {
+        let account = try ownershipAccount()
+        let real = NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path)
+        let isolated = NativeStateLocation(installed: false, stateRoot: account.appendingPathComponent("isolated").path)
+        let query = NativeLocationSequence([.success(real), .success(real), .success(isolated)])
+        let session = NativeOwnershipSession(accountHome: { account })
+        let first = try await session.resolve { try await query.next() }
+        XCTAssertEqual(first.path, real.stateRoot)
+        let count = await query.calls
+        XCTAssertEqual(count, 2, "the first ownership observation must be checked under flock")
+        let fd = try exclusiveDescriptor(account)
+        defer { Darwin.close(fd); session.close() }
+        XCTAssertNotEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        let second = try await session.resolve { try await query.next() }
+        XCTAssertEqual(second.path, isolated.stateRoot)
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        flock(fd, LOCK_UN)
+        _ = try await session.resolve { real }
+        XCTAssertNotEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        session.close()
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        do { _ = try await session.resolve { real }; XCTFail("closed session reopened") } catch {}
+    }
+
+    func testOwnershipTransferBeforeLockConfirmationDoesNotRetainLock() async throws {
+        let account = try ownershipAccount()
+        let query = NativeLocationSequence([
+            .success(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path)),
+            .success(NativeStateLocation(installed: false, stateRoot: account.appendingPathComponent("isolation").path))
+        ])
+        let session = NativeOwnershipSession(accountHome: { account })
+        defer { session.close() }
+        let path = try await session.resolve { try await query.next() }
+        XCTAssertEqual(path.lastPathComponent, "isolation")
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+    }
+
+    func testInstalledHelperUsingIsolatedStateDoesNotTakeOwnershipLock() async throws {
+        let account = try ownershipAccount()
+        let session = NativeOwnershipSession(accountHome: { account })
+        defer { session.close() }
+        _ = try await session.resolve { NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent("isolation").path) }
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+    }
+
+    func testOwnershipQueryFailureReleasesExistingSession() async throws {
+        let account = try ownershipAccount()
+        let session = NativeOwnershipSession(accountHome: { account })
+        defer { session.close() }
+        _ = try await session.resolve { NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path) }
+        do { _ = try await session.resolve { throw HelperExecutionError.malformedOutput }; XCTFail("query failure accepted") } catch {}
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+    }
+
+    func testOwnershipLockTimeoutIsBoundedAndNeverQueriesUnderExclusiveLock() async throws {
+        let account = try ownershipAccount()
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        let query = NativeLocationSequence([.success(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))])
+        let session = NativeOwnershipSession(accountHome: { account }, lockWait: .milliseconds(30))
+        defer { session.close() }
+        do { _ = try await session.resolve { try await query.next() }; XCTFail("exclusive lock ignored") }
+        catch { XCTAssertEqual(error as? HelperExecutionError, .timedOut) }
+        let calls = await query.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testStateLocationRejectsInvalidWireBeforeAnyDirectProbe() throws {
+        for payload in [
+            #"{"schema_version":2,"command":"desktop.state-location","partial":false,"data":{"installed":true,"state_root":"/tmp/x"}}"#,
+            #"{"schema_version":1,"command":"desktop.snapshot","partial":false,"data":{"installed":true,"state_root":"/tmp/x"}}"#,
+            #"{"schema_version":1,"command":"desktop.state-location","partial":false,"data":{"installed":true,"state_root":"relative"}}"#,
+            #"{"schema_version":1,"command":"desktop.state-location","partial":true,"data":{"installed":true,"state_root":"/tmp/x"}}"#
+        ] { XCTAssertThrowsError(try NativeStateLocation.decode(Data(payload.utf8))) }
+    }
+
+    func testNativeHelperAndGoReceiptDriverShareOwnershipLock() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let path = try XCTUnwrap(env["AGENTDECK_NATIVE_FIXTURE_ROOT"], "native harness must supply its isolated fixture; no production fallback")
+        let root = URL(fileURLWithPath: path)
+        guard root.path.hasPrefix("/private/tmp/agentdeck-macos-xctest.") else {
+            throw CocoaError(.fileReadNoPermission)
+        }
+        let account = root.appendingPathComponent("account")
+        let process = FoundationEmbeddedHelperProcess()
+        let fixtureEnvironment = ["HOME": account.path, "PATH": "/usr/bin:/bin", "AGENTDECK_ACCEPTANCE_ACCOUNT_HOME": account.path,
+                                  "AGENTDECK_NATIVE_FIXTURE_ROOT": root.path]
+        func drive(_ action: String) async throws -> String {
+            var environment = fixtureEnvironment
+            environment["AGENTDECK_NATIVE_FIXTURE_ACTION"] = action
+            let result = try await process.run(executableURL: root.appendingPathComponent("native-driver"),
+                arguments: ["-test.run=^TestNativeOwnershipFixture$", "-test.v"], environment: environment, timeout: .seconds(10))
+            guard result.exitStatus == 0 else {
+                XCTFail(String(decoding: result.stdout + result.stderr, as: UTF8.self))
+                throw HelperExecutionError.nonZeroExit(result.exitStatus)
+            }
+            return String(decoding: result.stdout, as: UTF8.self)
+        }
+        let registration = try await drive("register")
+        XCTAssertTrue(registration.contains(root.appendingPathComponent("AgentDeck.app/Contents/Helpers/agentdeck").path))
+        XCTAssertTrue(registration.contains(account.appendingPathComponent("Library/Application Support/AgentDeck/ownership.lock").path))
+        let runner = EmbeddedHelperRunner(appBundleURL: root.appendingPathComponent("AgentDeck.app"), process: process,
+            environment: fixtureEnvironment, ownershipSession: NativeOwnershipSession(accountHome: { account }))
+        defer { runner.closeOwnershipSession() }
+        let installed = try await runner.resolveStateRoot()
+        XCTAssertEqual(installed.path, account.appendingPathComponent(".agentdeck").path)
+        let blocked = try await drive("probe")
+        XCTAssertTrue(blocked.contains("NATIVE_LOCK_BUSY"))
+        _ = try await drive("delete")
+        let isolated = try await runner.resolveStateRoot()
+        XCTAssertNotEqual(isolated.path, installed.path)
+        let released = try await drive("probe")
+        XCTAssertTrue(released.contains("NATIVE_LOCK_ACQUIRED"))
+        _ = try await drive("mismatch")
+        let mismatch = try await runner.resolveStateRoot()
+        XCTAssertNotEqual(mismatch.path, installed.path)
+        let uninstalled = try await drive("probe")
+        XCTAssertTrue(uninstalled.contains("NATIVE_LOCK_ACQUIRED"))
+        _ = try await drive("register")
+        _ = try await runner.resolveStateRoot()
+        runner.closeOwnershipSession()
+        let closed = try await drive("probe")
+        XCTAssertTrue(closed.contains("NATIVE_LOCK_ACQUIRED"))
+        print("Native ownership fixture: helper=\(try runner.embeddedHelperURL().path) lock=\(account.appendingPathComponent("Library/Application Support/AgentDeck/ownership.lock").path); receipt and lock scenario assertions executed")
+    }
+}
+
+private actor SuspendedOwnershipQuery {
+    private var continuation: CheckedContinuation<NativeStateLocation, Never>?
+    var waiting: Bool { continuation != nil }
+    func query() async -> NativeStateLocation {
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func finish(_ location: NativeStateLocation) { continuation?.resume(returning: location); continuation = nil }
+}
+
+extension EmbeddedHelperRunnerTests {
+    func testClosingWhileQueryIsInFlightCannotReacquireOwnership() async throws {
+        let account = try ownershipAccount()
+        let session = NativeOwnershipSession(accountHome: { account })
+        let suspended = SuspendedOwnershipQuery()
+        let work = Task { try await session.resolve { await suspended.query() } }
+        for _ in 0..<1000 {
+            if await suspended.waiting { break }
+            await Task.yield()
+        }
+        let waiting = await suspended.waiting
+        XCTAssertTrue(waiting)
+        session.close()
+        await suspended.finish(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))
+        do { _ = try await work.value; XCTFail("closed during query but returned a usable path") }
+        catch { XCTAssertEqual(error as? HelperExecutionError, .cancelled) }
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+    }
+}
+
+extension EmbeddedHelperRunnerTests {
+    func testRestoreUsesEachQueriedRootInsteadOfHomeOrCachedPath() async throws {
+        let home = try ownershipAccount()
+        let bundle = try makeEmbeddedHelperBundle(in: home.appendingPathComponent("bundle"))
+        let legacy = home.appendingPathComponent(".agentdeck")
+        let empty = home.appendingPathComponent("empty")
+        let populated = home.appendingPathComponent("populated")
+        for root in [legacy, populated] {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try Data().write(to: root.appendingPathComponent("agentdeck.sqlite3"))
+        }
+        let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 1, stdout: Data()))],
+                                            stateRoots: [empty.path, populated.path])
+        let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process, environment: ["HOME": home.path])
+        _ = try? await runner.readServingSnapshot()
+        let first = await process.recordedInvocations()
+        XCTAssertTrue(first.isEmpty, "HOME has a database but the helper-selected root does not")
+        _ = try? await runner.readServingSnapshot()
+        let second = await process.recordedInvocations()
+        XCTAssertEqual(second.count, 1, "second query points to committed facts; do not cache the first root")
+        XCTAssertFalse(second[0].arguments.contains("--state-dir"))
+        let all = await process.recordedInvocations(includingStateLocation: true)
+        XCTAssertEqual(all.filter { $0.arguments.contains("state-location") }.count, 2)
+    }
+}
+
+private actor SuspendedOwnershipRecheck {
+    let location: NativeStateLocation
+    var calls = 0
+    private var continuation: CheckedContinuation<NativeStateLocation, Never>?
+    var waiting: Bool { continuation != nil }
+    init(_ location: NativeStateLocation) { self.location = location }
+    func query() async -> NativeStateLocation {
+        calls += 1
+        if calls == 1 { return location }
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func finish() { continuation?.resume(returning: location); continuation = nil }
+}
+
+extension EmbeddedHelperRunnerTests {
+    func testCloseReleasesProvisionalLockBeforeRecheckReturns() async throws {
+        let account = try ownershipAccount()
+        let session = NativeOwnershipSession(accountHome: { account })
+        let suspended = SuspendedOwnershipRecheck(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))
+        let work = Task { try await session.resolve { await suspended.query() } }
+        for _ in 0..<1000 {
+            if await suspended.waiting { break }
+            await Task.yield()
+        }
+        let waiting = await suspended.waiting
+        XCTAssertTrue(waiting)
+        let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
+        XCTAssertNotEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        session.close()
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0, "termination must release even before recheck finishes")
+        await suspended.finish()
+        do { _ = try await work.value; XCTFail("closed recheck returned a path") }
+        catch { XCTAssertEqual(error as? HelperExecutionError, .cancelled) }
+    }
+}
+
+extension EmbeddedHelperRunnerTests {
+    func testPhysicalStatePathMatchesAliasesBeforeFirstDatabaseExists() throws {
+        let suffix = "agentdeck-path-check-" + UUID().uuidString + "/.agentdeck"
+        let a = try NativeOwnershipSession.physicalPath(URL(fileURLWithPath: "/tmp/" + suffix))
+        let b = try NativeOwnershipSession.physicalPath(URL(fileURLWithPath: "/private/tmp/" + suffix))
+        XCTAssertEqual(a, b)
     }
 }

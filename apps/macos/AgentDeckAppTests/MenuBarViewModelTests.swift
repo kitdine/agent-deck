@@ -1064,6 +1064,49 @@ final class MenuBarViewModelTests: XCTestCase {
 		}
 	}
 
+	func testInstallationHealthDescriptionsUseWireCodesInBothLanguages() async throws {
+		// These are doctor/desktop fixture shapes: reason is intentionally not
+		// equal to code. Testing dictionary membership alone misses the regression.
+		let checks: [[String: Any]] = [
+			["name": "installation", "status": "warning", "code": "not_installed", "reason": "receipt_missing"],
+			["name": "managed_command_owner", "status": "warning", "code": "managed_command_owner_mismatch", "reason": "claude,codex"],
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_live"],
+			["name": "future_check", "status": "warning", "code": "future_code", "reason": "not_installed"],
+		]
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks,
+		]
+		let previousLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let previousLocale { setenv("AGENTDECK_TEST_LOCALE", previousLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let model = await readyModel(envelope: WireFixture.envelope(health: health))
+			let rows = model.healthDetail.rows
+			XCTAssertEqual(rows.count, 4)
+			let expected = language == "en" ? [
+				"This copy is not installed; isolated state is in use.",
+				"The Hook command belongs to another AgentDeck installation.",
+			] : ["此副本未安装，正在使用隔离状态。", "Hook 命令属于另一个 AgentDeck 安装。"]
+			XCTAssertEqual(Array(rows.prefix(2).map(\.name)), language == "en" ? ["Installation", "Hook command owner"] : ["安装", "Hook 命令归属"])
+			for index in 0..<2 {
+				XCTAssertEqual(rows[index].cause, expected[index])
+				XCTAssertTrue(rows[index].hasDisclosure, "the description must reach the visible detail row")
+				XCTAssertTrue(rows[index].accessibilityText(expanded: true).contains(expected[index]))
+				XCTAssertNil(rows[index].reasonLabel, "do not also interpret the wire code as a reason label")
+				XCTAssertNil(rows[index].actionContent, "copy routing must not invent an executable action")
+			}
+			XCTAssertEqual(rows[2].cause, t(DesktopCopy.healthCauseStateLive))
+			XCTAssertEqual(rows[2].reasonLabel, t("Active lock"))
+			XCTAssertNil(rows[3].cause)
+			XCTAssertNil(rows[3].reasonLabel)
+			XCTAssertFalse(rows[3].hasDisclosure)
+		}
+	}
+
 	func testUnknownAndMismatchedHealthActionsFailClosed() async {
 		let checks: [[String: Any]] = [
 			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "dangerous command"],

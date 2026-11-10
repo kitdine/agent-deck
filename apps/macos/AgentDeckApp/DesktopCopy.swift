@@ -182,6 +182,8 @@ enum DesktopCopy {
 	static let healthUnknownCheck = "Other health check"
 	static let healthAffectedCount = "Affected: %1$lld"
 	static let healthCheckNameKeys: [String: String] = [
+		"installation": "Installation",
+		"managed_command_owner": "Hook command owner",
 		"state": "State",
 		"state_permissions": "State file permissions",
 		"state_lock": healthStateLock,
@@ -215,6 +217,12 @@ enum DesktopCopy {
 	static let healthCauseScanLive = "Another AgentDeck scan is still running."
 	static let healthEffectStale = "Updates only AgentDeck's derived extension inventory and scan fingerprint; client configuration and installed extensions stay unchanged."
 	static let healthEffectIncomplete = "Client configuration did not change, and inventory was not rolled back."
+	// Installation diagnostics put these classifications in code; reason holds
+	// the installation cause or affected client list, not a copy lookup key.
+	static let healthCodeCauseKeys: [String: String] = [
+		"not_installed": "This copy is not installed; isolated state is in use.",
+		"managed_command_owner_mismatch": "The Hook command belongs to another AgentDeck installation.",
+	]
 	static let healthReasonKeys: [String: String] = [
 		"lock_live": "Active lock", "lock_legacy": "Legacy lock", "lock_owner_unknown": "Lock owner unknown",
 		"lock_reclaimable": "Reclaimable lock", "extension_state_missing": "Extension state missing",
@@ -508,7 +516,7 @@ enum DesktopCopy {
 		healthNoticeStateLive, healthNoticeScanLive, healthNoticeLegacy, healthNoticeOwnerUnknown,
 		healthNoticeStale, healthNoticeIncomplete, healthCauseStateLive, healthCauseScanLive,
 		healthEffectStale, healthEffectIncomplete,
-	] + Array(healthCheckNameKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
+	] + Array(healthCheckNameKeys.values) + Array(healthCodeCauseKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
 		noticeMore,
 		warningProviderUnavailable, warningProviderCandidatesUnavailable,
 		warningUsageUnavailable, warningSessionsUnavailable,

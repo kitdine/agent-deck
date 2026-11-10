@@ -1589,6 +1589,7 @@ final class MenuBarViewModel {
 
 	private func healthCause(_ check: DesktopHealthCheckV1) -> String? {
 		if let reason = check.reason, let copy = healthCauseCopy(reason, resource: check.resource) { return copy }
+		if let code = check.code, let key = DesktopCopy.healthCodeCauseKeys[code] { return t(key) }
 		if check.code == "schema_ahead", let stored = check.count, let supported = check.supportedCount {
 			return t(DesktopCopy.schemaSignalCause, Int64(stored), Int64(supported))
 		}

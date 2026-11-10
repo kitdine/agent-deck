@@ -220,6 +220,10 @@ final class TelemetrySettingsController {
 	private let transport: any TelemetryTransport
 	private let supervisor: any TelemetryListenerSupervising
 	private let settleDelay: Duration
+	private let stateRoot: (@Sendable () async throws -> URL)?
+	@ObservationIgnored private var receiverMonitor: DesktopSourceChangeMonitor?
+	private(set) var receiverURL: URL?
+	private var stopped = false
 	@ObservationIgnored private var configurationMonitors: [DesktopSourceChangeMonitor] = []
 
 	private(set) var status: DesktopTelemetryStatusV1?
@@ -229,10 +233,11 @@ final class TelemetrySettingsController {
 	private(set) var isApplying = false
 	var showsPreview = false
 
-	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURLs: [URL] = []) {
+	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURLs: [URL] = [], stateRoot: (@Sendable () async throws -> URL)? = nil) {
 		self.transport = transport
 		self.supervisor = supervisor
 		self.settleDelay = settleDelay
+		self.stateRoot = stateRoot
 		configurationMonitors = configurationURLs.map { configurationURL in
 			DesktopSourceChangeMonitor(configurationURL: configurationURL) { [weak self] in
 				Task { @MainActor [weak self] in
@@ -290,6 +295,7 @@ final class TelemetrySettingsController {
 	/// on and Codex Memories is not off. Called at launch (after startup
 	/// settles) and when Settings opens.
 	func load() async {
+        guard !stopped else { return }
 		configurationMonitors.forEach { $0.start() }
 		await refresh()
 		startListenerIfNeeded()
@@ -337,6 +343,8 @@ final class TelemetrySettingsController {
 	}
 
 	func stop() {
+		stopped = true
+		receiverMonitor?.stop()
 		configurationMonitors.forEach { $0.stop() }
 		supervisor.stop()
 	}
@@ -389,14 +397,34 @@ final class TelemetrySettingsController {
 	}
 
 	private func startListenerIfNeeded() {
-		guard let status, status.receiverEnabled, status.codexMemories != "off", status.listener != "running", status.listener != "failed",
+		guard !stopped, let status, status.receiverEnabled, status.codexMemories != "off", status.listener != "running", status.listener != "failed",
 			!supervisor.isRunning
 		else { return }
 		supervisor.start()
 	}
 
 	private func refresh() async {
-		if case let .decoded(current) = await transport.loadTelemetryStatus() {
+        if let stateRoot {
+            // Drop the old monitor before resolving; a failed query must never
+            // leave a direct-file reader attached to a previous owner's state.
+            receiverMonitor?.stop()
+            receiverMonitor = nil
+            receiverURL = nil
+            guard let root = try? await stateRoot(), !stopped else {
+                status = nil
+                supervisor.stop()
+                return
+            }
+            let url = root.appendingPathComponent("telemetry/receiver.json")
+            receiverURL = url
+            let monitor = DesktopSourceChangeMonitor(configurationURL: url) { [weak self] in
+                Task { @MainActor [weak self] in await self?.load() }
+            }
+            receiverMonitor = monitor
+            _ = monitor.start()
+        }
+
+		if case let .decoded(current) = await transport.loadTelemetryStatus(), !stopped {
 			status = current
 		}
 	}

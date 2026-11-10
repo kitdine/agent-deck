@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Observation
 
@@ -453,6 +454,170 @@ private final class CaptureBarrier: @unchecked Sendable {
 	}
 }
 
+
+// The helper owns state-path selection. This decoder deliberately does not
+// accept a lock path or account identity from the wire.
+struct NativeStateLocation: Decodable, Sendable {
+    let installed: Bool
+    let stateRoot: String
+    enum CodingKeys: String, CodingKey { case installed; case stateRoot = "state_root" }
+
+    static func decode(_ data: Data) throws -> Self {
+        struct Envelope: Decodable {
+            let schema_version: Int
+            let command: String
+            let data: NativeStateLocation
+            let partial: Bool
+            let error: DesktopWireOutputErrorV1?
+        }
+        let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+        guard envelope.schema_version == 1, envelope.command == "desktop.state-location",
+              !envelope.partial, envelope.error == nil,
+              envelope.data.stateRoot.hasPrefix("/"),
+              !envelope.data.stateRoot.utf8.contains(0) else {
+            throw HelperExecutionError.malformedOutput
+        }
+        return envelope.data
+    }
+}
+
+/// The descriptor is synchronized separately so App termination can release it
+/// synchronously, including while an asynchronous helper query is in flight.
+private final class NativeOwnershipDescriptor: @unchecked Sendable {
+    private let mutex = NSLock()
+    private var descriptor: Int32 = -1
+    private var stopped = false
+
+    var isHeld: Bool { mutex.withLock { descriptor >= 0 } }
+    func checkOpen() throws {
+        try mutex.withLock { if stopped { throw HelperExecutionError.cancelled } }
+    }
+    func install(_ fd: Int32) throws {
+        try mutex.withLock {
+            guard !stopped else { Darwin.close(fd); throw HelperExecutionError.cancelled }
+            descriptor = fd
+        }
+    }
+    func release(stop: Bool = false) {
+        mutex.withLock {
+            if stop { stopped = true }
+            if descriptor >= 0 { Darwin.close(descriptor); descriptor = -1 }
+        }
+    }
+    deinit { release() }
+}
+
+actor NativeOwnershipSession {
+    private let accountHome: @Sendable () throws -> URL
+    private let lockWait: Duration
+    private nonisolated let descriptor = NativeOwnershipDescriptor()
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(accountHome: @escaping @Sendable () throws -> URL = NativeOwnershipSession.systemAccountHome,
+         lockWait: Duration = .seconds(5)) {
+        self.accountHome = accountHome
+        self.lockWait = lockWait
+    }
+
+    nonisolated func close() { descriptor.release(stop: true) }
+
+    static func systemAccountHome() throws -> URL {
+        var record = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        var buffer = [CChar](repeating: 0, count: 16 * 1024)
+        let home: String? = buffer.withUnsafeMutableBufferPointer { bytes in
+            guard getpwuid_r(getuid(), &record, bytes.baseAddress, bytes.count, &result) == 0,
+                  result != nil, let directory = record.pw_dir else { return nil }
+            return String(cString: directory)
+        }
+        guard let home, home.hasPrefix("/") else { throw HelperExecutionError.launchFailed }
+        return URL(fileURLWithPath: home, isDirectory: true).resolvingSymlinksInPath()
+    }
+
+    // Foundation may preserve /private/tmp for a missing leaf while reducing
+    // an existing parent to /tmp. Compare physical paths even before first use.
+    static func physicalPath(_ url: URL) throws -> String {
+        var path = url.standardizedFileURL.path
+        guard path.hasPrefix("/") else { throw HelperExecutionError.malformedOutput }
+        var missing: [String] = []
+        while true {
+            if let resolved = Darwin.realpath(path, nil) {
+                defer { free(resolved) }
+                return missing.reversed().reduce(String(cString: resolved)) {
+                    ($0 as NSString).appendingPathComponent($1)
+                }
+            }
+            guard errno == ENOENT, path != "/" else { throw HelperExecutionError.launchFailed }
+            // A dangling symlink is not an absent ordinary component.
+            var info = stat()
+            if lstat(path, &info) == 0 { throw HelperExecutionError.launchFailed }
+            missing.append((path as NSString).lastPathComponent)
+            path = (path as NSString).deletingLastPathComponent
+        }
+    }
+
+    func resolve(query: @Sendable () async throws -> NativeStateLocation) async throws -> URL {
+        if busy { await withCheckedContinuation { waiters.append($0) } }
+        busy = true
+        defer {
+            if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() }
+        }
+        do {
+            try descriptor.checkOpen()
+            try Task.checkCancellation()
+            var location = try await query()
+            try descriptor.checkOpen()
+            let account = URL(fileURLWithPath: try Self.physicalPath(accountHome()))
+            let realRoot = try Self.physicalPath(account.appendingPathComponent(".agentdeck"))
+            func ownsRealState(_ value: NativeStateLocation) throws -> Bool {
+                guard value.installed else { return false }
+                return try Self.physicalPath(URL(fileURLWithPath: value.stateRoot)) == realRoot
+            }
+            if try !ownsRealState(location) {
+                descriptor.release()
+            } else if !descriptor.isHeld {
+                let directory = account.appendingPathComponent("Library/Application Support/AgentDeck")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                       attributes: [.posixPermissions: 0o700])
+                let path = directory.appendingPathComponent("ownership.lock").path
+                let fd = Darwin.open(path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0o600)
+                guard fd >= 0 else { throw HelperExecutionError.launchFailed }
+                var transferred = false
+                defer { if !transferred { Darwin.close(fd) } }
+                var info = stat()
+                guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+                      fchmod(fd, 0o600) == 0 else { throw HelperExecutionError.launchFailed }
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: lockWait)
+                while flock(fd, LOCK_SH | LOCK_NB) != 0 {
+                    guard errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR else {
+                        throw HelperExecutionError.launchFailed
+                    }
+                    try descriptor.checkOpen()
+                    try Task.checkCancellation()
+                    guard clock.now < deadline else { throw HelperExecutionError.timedOut }
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                // Publish even the provisional descriptor to the synchronous
+                // close path before awaiting the lock-held recheck.
+                transferred = true
+                try descriptor.install(fd)
+                location = try await query()
+                try descriptor.checkOpen()
+                try Task.checkCancellation()
+                if try !ownsRealState(location) { descriptor.release() }
+            }
+            try Task.checkCancellation()
+            try descriptor.checkOpen()
+            return URL(fileURLWithPath: location.stateRoot, isDirectory: true).standardizedFileURL
+        } catch {
+            descriptor.release()
+            throw error
+        }
+    }
+}
+
 public struct EmbeddedHelperRunner: Sendable {
     public static let defaultRecentLimit = 5
 	public static let minimumRecentLimit = 1
@@ -467,7 +632,7 @@ public struct EmbeddedHelperRunner: Sendable {
     private let appBundleURL: URL
     private let process: any EmbeddedHelperProcess
     private let environment: [String: String]
-    private let stateRoot: String
+    private let ownershipSession: NativeOwnershipSession
     private let timeout: Duration
 
     public init(
@@ -487,9 +652,7 @@ public struct EmbeddedHelperRunner: Sendable {
         self.appBundleURL = appBundleURL
         self.process = process
         self.environment = resolvedEnvironment
-        stateRoot = URL(fileURLWithPath: resolvedEnvironment["HOME"]!, isDirectory: true)
-            .appendingPathComponent(".agentdeck", isDirectory: true)
-            .standardizedFileURL.path
+        ownershipSession = NativeOwnershipSession()
         self.timeout = timeout
     }
 
@@ -500,6 +663,32 @@ public struct EmbeddedHelperRunner: Sendable {
     ) {
         self.init(appBundleURL: bundle.bundleURL, process: process, timeout: timeout)
     }
+
+    init(appBundleURL: URL, process: any EmbeddedHelperProcess,
+         environment: [String: String], timeout: Duration = Self.defaultTimeout,
+         ownershipSession: NativeOwnershipSession) {
+        self.appBundleURL = appBundleURL
+        self.process = process
+        self.environment = environment
+        self.timeout = timeout
+        self.ownershipSession = ownershipSession
+    }
+
+    /// The result belongs to this operation only; never infer it from HOME.
+    public func resolveStateRoot() async throws -> URL {
+        try await ownershipSession.resolve {
+            let output = try await process.run(
+                executableURL: embeddedHelperURL(),
+                arguments: ["desktop", "state-location", "--format", "json"],
+                environment: environment, timeout: timeout)
+            guard output.exitStatus == 0, !output.stdoutTruncated, !output.stderrTruncated else {
+                throw HelperExecutionError.malformedOutput
+            }
+            return try NativeStateLocation.decode(output.stdout)
+        }
+    }
+
+    public func closeOwnershipSession() { ownershipSession.close() }
 
 	public func snapshot(
 		recentLimit: Int = Self.defaultRecentLimit,
@@ -526,11 +715,12 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
 			throw error
 		}
+		let stateRoot = try await resolveStateRoot()
 		let scanStarted = PerfTrace.begin()
 		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
 		PerfTrace.end(.scanRequest, since: scanStarted)
 		let drainStarted = PerfTrace.begin()
-		try await waitForCompletedScanWorkerToReleaseLock()
+		try await waitForCompletedScanWorkerToReleaseLock(stateRoot: stateRoot)
 		PerfTrace.end(.workerDrain, since: drainStarted)
 		let requestStarted = PerfTrace.begin()
 		let requestStartedAt = Date()
@@ -632,10 +822,10 @@ public struct EmbeddedHelperRunner: Sendable {
 	}
 
 	public func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
-		// An empty state root has neither a serving file nor committed facts to
-		// fall back to; the helper could only fail. Fail without launching it, so
-		// a first import's bootstrap does not wait behind it.
-		let root = URL(fileURLWithPath: stateRoot, isDirectory: true)
+		// Resolve ownership before any file probe. An empty resolved root has
+		// no serving file or committed facts, so avoid the snapshot command
+		// while still querying state-location on every restore attempt.
+		let root = try await resolveStateRoot()
 		let files = FileManager.default
 		guard files.fileExists(atPath: root.appendingPathComponent("desktop-serving-snapshot.json").path)
 			|| files.fileExists(atPath: root.appendingPathComponent("agentdeck.sqlite3").path)
@@ -666,6 +856,7 @@ public struct EmbeddedHelperRunner: Sendable {
 		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
 		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void
 	) async throws -> DesktopServingSnapshotV2? {
+		_ = try await resolveStateRoot()
 		let capture = DesktopBootstrapCapture()
 		let output = try await process.runLines(
 			executableURL: embeddedHelperURL(),
@@ -774,8 +965,8 @@ public struct EmbeddedHelperRunner: Sendable {
 	/// this refresh's own completed scan as an external conflict. Wait only for
 	/// that bounded handoff. A genuinely continuing scan remains visible after
 	/// the grace period and is still reported by doctor.
-	private func waitForCompletedScanWorkerToReleaseLock() async throws {
-		let lockPath = URL(fileURLWithPath: stateRoot, isDirectory: true)
+	private func waitForCompletedScanWorkerToReleaseLock(stateRoot: URL) async throws {
+		let lockPath = stateRoot
 			.appendingPathComponent("scan.lock", isDirectory: false).path
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(2))
@@ -835,7 +1026,7 @@ public struct EmbeddedHelperRunner: Sendable {
 	}
 
 	private func helperArguments(_ arguments: [String]) -> [String] {
-		["--state-dir", stateRoot] + arguments
+		arguments
 	}
 
     private static func defaultEnvironment() -> [String: String] {
@@ -1562,6 +1753,7 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 		let executableURL: URL
 		do {
 			executableURL = try embeddedHelperURL()
+            _ = try await resolveStateRoot()
 		} catch {
 			return .undecodable
 		}
