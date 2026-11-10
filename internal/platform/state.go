@@ -41,6 +41,14 @@ func SetInstallationResolver(resolver InstallationResolver) {
 	installationResolver.value = resolver
 }
 
+// CurrentInstallationResolver returns the injected resolver, or nil. Install
+// commands use it so a process without a production resolver fails closed.
+func CurrentInstallationResolver() InstallationResolver {
+	installationResolver.RLock()
+	defer installationResolver.RUnlock()
+	return installationResolver.value
+}
+
 func CurrentInstallation() InstallationIdentity {
 	installationResolver.RLock()
 	resolver := installationResolver.value

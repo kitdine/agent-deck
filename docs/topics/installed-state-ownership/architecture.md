@@ -309,7 +309,7 @@ Round 2 评审在嵌套沙箱中得到 exit 71，与上述"嵌套时不可用"�
 
 ```text
 <暂存的新程序> install register --channel <c> --executable <目标路径> [--source <暂存的文件或 App> --cleanup-manifest <本次安装的清理清单>] [--takeover] [--require-unowned [--authorized-repair [--expected-installation <原 ID>]]]
-<可信的程序> install unregister --channel <c> --executable <目标路径> --expected-installation <id> --cleanup-manifest <本次安装的清理清单> [--remove] [--authorized-repair]
+<可信的程序> install unregister --channel <c> --executable <目标路径> --expected-installation <id> --cleanup-manifest <本次安装的清理清单> [--remove] [--authorized-repair] [--require-identity]
 <固定 App helper> install repair-identity --channel homebrew_cask --executable <固定 App helper>
 ```
 
@@ -404,7 +404,7 @@ Round 2 评审在嵌套沙箱中得到 exit 71，与上述"嵌套时不可用"�
 
 捕获结果通过本条 brew 命令的 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION` 传递。模板将它原样转换成 helper 的 `--expected-installation <原 ID>`，与固定 channel/executable 一起构成本次修复的预期身份；helper 不读环境变量。它只与 `HOMEBREW_AGENTDECK_REPAIR=1` 配对使用，单独设置、空值或格式无效均拒绝；不持久化，不在卸载、preflight、回滚或重试中从当前回执刷新，也不能因校验失败而丢弃它后重试无绑定修复。新进程或重新求值 cask 时仍使用同一条命令继承的值，不依赖两个 Ruby 块共享闭包。
 
-有预期 ID 时，卸载与 register 各自在自己的同一次连续排他锁内核对 ID/channel/规范 executable，核对与任何目标操作之间不得释放锁。原身份仍匹配而材料不可用时，卸载只报告 `skipped_unverified`，保留原回执和 App；保留副本缺失时使用固定路径的 App 内 helper 执行这一检查，定位文件缺失时直接使用命令绑定的身份，不从外部索引猜 ID。随后 register 可按表中匹配原身份的一行原子替换，并建立全新的 attempt、清单和 installation ID。若原卸载已经正常完成，则只在无有效拥有者且目标不存在时按普通新装发布；绑定身份不能授权替换一个已无回执的现存对象。
+有预期 ID 时，卸载与 register 各自在自己的同一次连续排他锁内核对 ID/channel/规范 executable，核对与任何目标操作之间不得释放锁。`attempt cleanup` 向执行清理的 helper 显式传递内部参数 `--require-identity`，无论清理材料是否完整，都先在该排他锁内验证捕获身份；该参数须与 `--authorized-repair` 配对，完整材料在身份匹配后才进入条件删除。原身份仍匹配而材料不可用时，卸载只报告 `skipped_unverified`，保留原回执和 App；保留副本缺失时使用固定路径的 App 内 helper 执行这一检查，定位文件缺失时直接使用命令绑定的身份，不从外部索引猜 ID。随后 register 可按表中匹配原身份的一行原子替换，并建立全新的 attempt、清单和 installation ID。若原卸载已经正常完成，则只在无有效拥有者且目标不存在时按普通新装发布；绑定身份不能授权替换一个已无回执的现存对象。
 
 身份捕获后出现同路径后继 B（即使 channel、版本都相同）时，带授权和预期 ID 的卸载、发布均以 `owned_by_other` 非零拒绝，B 的对象和回执不变；材料缺失也不能让脚本绕过锁内核对后 exit 0。若 B 的回执又缺失/损坏但目标仍在，仍以 `receipt_missing`/`receipt_invalid` 拒绝。普通旧清单的延迟清理继续使用原 ID 及既有 `skipped_superseded` 语义，不把该跳过变成本次修复的替换授权。材料和 App helper 同时不可用、因而无法完成上述检查时，不声称此有效身份恢复入口可用：保留对象、报告未完成，不靠 shell 模拟 ID 校验。
 
@@ -595,7 +595,7 @@ desktop 快照的 health 部分来自同一个 `doctor.Service`（`internal/desk
 
 ## 兼容性与契约同步
 
-- 新增错误码 `state_ownership_refused` 和 `install_claim_refused`；新增公开命令 `install claim`，以及只供安装方式调用的隐藏命令 `install register`（可带 `--source`，在锁内发布文件；cask 另带 `--require-unowned`，用户授权修复时再带 `--authorized-repair`，身份绑定模式还带 `--expected-installation <原 ID>`）、`install unregister`（可带 `--remove`；用户授权修复时可带 `--authorized-repair`）、`install repair-identity --channel homebrew_cask --executable <固定 App helper>`（只读捕获原 installation ID）；cask 的授权修复入口是用户设置的环境变量 `HOMEBREW_AGENTDECK_REPAIR=1`，身份绑定模式须配对 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION=<原 ID>`，只出现在安装方式的失败提示和手册里。两种入口及身份捕获、参数传递和拒绝规则以 [cask 无主判定与授权修复](#cask-无主判定与授权修复) 为准；doctor 新增 `installation` 和 `managed_command_owner` 两个检查，以及状态目录被拒绝时的部分报告。按 `cli-design.md` 的版本语义，这属于 MINOR 变更。
+- 新增错误码 `state_ownership_refused` 和 `install_claim_refused`；新增公开命令 `install claim`，以及只供安装方式调用的隐藏命令 `install register`（可带 `--source`，在锁内发布文件；cask 另带 `--require-unowned`，用户授权修复时再带 `--authorized-repair`，身份绑定模式还带 `--expected-installation <原 ID>`）、`install unregister`（可带 `--remove`；用户授权修复时可带 `--authorized-repair`，身份绑定清理由 attempt 层再传内部 `--require-identity`）、`install repair-identity --channel homebrew_cask --executable <固定 App helper>`（只读捕获原 installation ID）；cask 的授权修复入口是用户设置的环境变量 `HOMEBREW_AGENTDECK_REPAIR=1`，身份绑定模式须配对 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION=<原 ID>`，只出现在安装方式的失败提示和手册里。两种入口及身份捕获、参数传递和拒绝规则以 [cask 无主判定与授权修复](#cask-无主判定与授权修复) 为准；doctor 新增 `installation` 和 `managed_command_owner` 两个检查，以及状态目录被拒绝时的部分报告。按 `cli-design.md` 的版本语义，这属于 MINOR 变更。
 - `cli-design.md` 的 Local State 一节还要写明：`~/Library/Application Support/AgentDeck/` 下的 `installation.json` 和 `ownership.lock` 都属于安装所有权，不属于状态目录，也不在便携备份范围内；安装方式私有的清理清单和 helper 副本也不属于便携状态。`installation_id` 只约束旧清理操作，不改变公开 CLI 或运行时路径判定。
 - 已安装进程现有的所有输出、退出码、默认目录都不变。
 - 主题收尾时同步以下内容：

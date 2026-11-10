@@ -47,6 +47,13 @@ func ownershipCommandProcess() (bool, int) {
 		}
 	}
 	platform.SetInstallationResolver(installation.DefaultResolver())
+	// A cleanup helper started by this process is this same test binary, so
+	// it needs its command through the environment like every other child.
+	installation.AcceptanceHelperCommand = func(command *exec.Cmd) {
+		encoded, _ := json.Marshal(command.Args[1:])
+		command.Args = []string{command.Args[0], "-test.run=^$"}
+		command.Env = append(os.Environ(), "AGENTDECK_OWNERSHIP_COMMAND="+string(encoded))
+	}
 	if os.Getenv("AGENTDECK_OWNERSHIP_NOTIFY") == "1" {
 		platform.SetInstallationResolver(&observedOwnershipResolver{Resolver: installation.DefaultResolver()})
 	}
@@ -116,6 +123,13 @@ func ownershipCommandCases() []ownershipCommandCase {
 		{name: "desktop.snapshot", arguments: "desktop snapshot"},
 		{name: "doctor", arguments: "doctor"},
 		{name: "extension.adopt", arguments: "extension adopt $EXT"},
+		{name: "install.claim", arguments: "install claim", expectedError: "not_current_formula_keg"},
+		{name: "install.repair-identity", arguments: "install repair-identity --channel homebrew_cask --executable $BASE/AgentDeck.app/Contents/Helpers/agentdeck", expectedError: "receipt_missing"},
+		{name: "install.attempt.prepare", arguments: "install attempt prepare --attempt 0123456789abcdef0123456789abcdef --token agentdeck-app --version 1.2.3 --executable $BASE/AgentDeck.app/Contents/Helpers/agentdeck --locator $BASE/staged/.agentdeck-attempt"},
+		{name: "install.attempt.complete", arguments: "install attempt complete --attempt 0123456789abcdef0123456789abcdef", expectedError: "attempt record"},
+		{name: "install.attempt.cleanup", arguments: "install attempt cleanup --token agentdeck-app --version 1.2.3 --executable $BASE/AgentDeck.app/Contents/Helpers/agentdeck --locator $BASE/staged/.agentdeck-attempt", expectedError: "receipt_missing"},
+		{name: "install.register", arguments: "install register --channel make --executable $BASE/install/agentdeck --source $BASE/install/.agentdeck.staged --cleanup-manifest $BASE/install-cleanup.json"},
+		{name: "install.unregister", arguments: "install unregister --channel make --executable $BASE/install/agentdeck --expected-installation 0123456789abcdef0123456789abcdef --cleanup-manifest $BASE/missing-cleanup.json --remove", expectedError: "receipt_missing"},
 		{name: "extension.disable", arguments: "extension disable $EXT", expectedError: "extension_read_only"},
 		{name: "extension.doctor", arguments: "extension doctor"},
 		{name: "extension.enable", arguments: "extension enable $EXT", expectedError: "extension_read_only"},
@@ -223,7 +237,7 @@ func TestOwnershipLeafInventory(t *testing.T) {
 	}
 	for _, row := range ownershipCommandCases() {
 		command := all[row.name]
-		if !contains(fixture.LeafCommands, row.name) && !emitsShellScript(command) && command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" && command.Annotations[humanInteractiveSurfaceOnlyAnnotation] != "true" && command.Annotations[internalRuntimeSurfaceOnlyAnnotation] != "true" {
+		if !contains(fixture.LeafCommands, row.name) && !emitsShellScript(command) && command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" && command.Annotations[humanInteractiveSurfaceOnlyAnnotation] != "true" && command.Annotations[internalRuntimeSurfaceOnlyAnnotation] != "true" && command.Annotations[installationLifecycleSurfaceOnlyAnnotation] != "true" {
 			t.Errorf("unclassified surface: %s", row.name)
 		}
 	}
@@ -308,6 +322,19 @@ func seedOwnershipCommand(t *testing.T, f ownershiptest.Fixture, state string, r
 		state = filepath.Join(f.Base, "archive-source")
 		invoke("passphrase\n", "backup", "create", filepath.Join(f.Base, "input.adb"))
 		state = original
+	}
+	if row.name == "install.register" {
+		if err := os.MkdirAll(filepath.Join(f.Base, "install"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(f.Base, "install", ".agentdeck.staged"), []byte("staged program"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if row.name == "install.attempt.prepare" {
+		if err := os.MkdirAll(filepath.Join(f.Base, "staged"), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if row.name == "desktop.quota-statusline.enable" {
 		invoke("", "desktop", "quota-settings", "--reading", "on")
@@ -430,7 +457,9 @@ func TestOwnershipAllCommandSurfacesBehindBarrier(t *testing.T) {
 					wantCode = 1
 				}
 				silent := row.name == "usage.hook.event" || row.name == "quota.capture"
-				if branch == "explicit-real" {
+				// Install commands use only the receipt and ownership lock and
+				// ignore --state-dir, so the real-root branch keeps their result.
+				if branch == "explicit-real" && !strings.HasPrefix(row.name, "install.") {
 					wantCode = 1
 					wantError = "state_ownership_refused"
 					// doctor renders a partial report; state-location reports

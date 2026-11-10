@@ -23,10 +23,13 @@ PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share/agentdeck
 FORCE ?= 0
+TAKEOVER ?= 0
+APPDIR ?= /Applications
+BIN_LINK ?= /usr/local/bin/agentdeck
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-desktop-refresh-integration check-macos-distribution
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall install-macos-app uninstall-macos-app release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-desktop-refresh-integration check-macos-distribution
 
 .PHONY: release-artifact-verify
 
@@ -119,14 +122,24 @@ check-prices-reproducible:
 verify: check-whitespace check-go-test-runner test test-race vet
 
 install: build
-	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"
+	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" TAKEOVER="$(TAKEOVER)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"
 
 uninstall:
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" bash scripts/manage-install.sh uninstall
 
+# Installs the already built MACOS_APP (ad-hoc signed, no hardened runtime) as
+# the owner of AgentDeck state. Quit any installed AgentDeck.app first; a
+# running owner makes registration fail with owner_running.
+install-macos-app:
+	@APPDIR="$(APPDIR)" BIN_LINK="$(BIN_LINK)" FORCE="$(FORCE)" TAKEOVER="$(TAKEOVER)" bash scripts/install-local-app.sh install "$(MACOS_APP)"
+
+uninstall-macos-app:
+	@APPDIR="$(APPDIR)" BIN_LINK="$(BIN_LINK)" bash scripts/install-local-app.sh uninstall
+
 check-install:
 	bash scripts/check-installation-resolver.sh
 	bash scripts/test-install.sh
+	bash scripts/test-install-local-app.sh
 	bash scripts/test-completion-install.sh
 	bash scripts/test-shell-integration-acceptance.sh
 

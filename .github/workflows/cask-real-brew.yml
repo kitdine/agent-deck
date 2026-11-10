@@ -1,0 +1,38 @@
+name: Cask real Homebrew
+
+on:
+  push:
+    branches: ['feature/installed-state-ownership', main]
+  pull_request:
+    paths:
+      - 'cmd/agentdeck/**'
+      - 'internal/installation/**'
+      - 'internal/platform/**'
+      - 'packaging/homebrew/**'
+      - 'scripts/*cask*'
+      - '.github/workflows/cask-real-brew.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cask-real-brew-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cask-real-brew:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the fixture App and widget
+        run: bash scripts/build-macos-app.sh
+      - name: Exercise the real Homebrew installer
+        run: bash scripts/test-cask-real-brew.sh --ci apps/macos/build/DerivedData/Build/Products/Debug/AgentDeck.app

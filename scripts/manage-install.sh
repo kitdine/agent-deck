@@ -291,7 +291,7 @@ read_manifest() {
     rc_separator_added=
     return
   fi
-  [ "$lines" = 9 ] || fail "invalid AgentDeck install manifest: $file"
+  [ "$lines" = 9 ] || [ "$lines" = 11 ] || fail "invalid AgentDeck install manifest: $file"
   manifest_version=${manifest_line1#manifest_version=}
   binary_path=${manifest_line2#binary_path=}
   binary_sha=${manifest_line3#binary_sha256=}
@@ -310,6 +310,16 @@ read_manifest() {
   [ "$manifest_line7" = "rc_path=$rc_path" ] || fail "invalid rc path record"
   [ "$manifest_line8" = "block_sha256=$block_sha" ] || fail "invalid block hash record"
   [ "$manifest_line9" = "rc_separator_added=$rc_separator_added" ] || fail "invalid rc separator record"
+  cleanup_manifest=
+  installation_id=
+  if [ "$lines" = 11 ]; then
+    cleanup_manifest=${manifest_line10#cleanup_manifest=}
+    installation_id=${manifest_line11#installation_id=}
+    [ "$manifest_line10" = "cleanup_manifest=$cleanup_manifest" ] || fail "invalid cleanup manifest record"
+    [ "$manifest_line11" = "installation_id=$installation_id" ] || fail "invalid installation id record"
+    [ "$manifest_version" = 3 ] || fail "unsupported install manifest version: $manifest_version"
+    return
+  fi
   [ "$manifest_version" = 2 ] || fail "unsupported install manifest version: $manifest_version"
 }
 
@@ -325,6 +335,8 @@ load_manifest() {
 	manifest_line7=$(sed -n '7p' "$file")
 	manifest_line8=$(sed -n '8p' "$file")
 	manifest_line9=$(sed -n '9p' "$file")
+	manifest_line10=$(sed -n '10p' "$file")
+	manifest_line11=$(sed -n '11p' "$file")
 	read_manifest "$file"
 }
 
@@ -341,6 +353,13 @@ validate_loaded_manifest() {
   validate_regular_hash "$binary_path" "$binary_sha" "installed binary"
   if [ "$manifest_version" = 1 ]; then
     return
+  fi
+  if [ "$manifest_version" = 3 ]; then
+    case "$cleanup_manifest" in
+      "$data_dir/cleanup/"*.json) ;;
+      *) fail "install manifest cleanup record is outside $data_dir/cleanup" ;;
+    esac
+    [[ $installation_id =~ ^[0-9a-f]{32}$ ]] || fail "invalid installation id record"
   fi
   case "$completion_shell" in fish|zsh|bash|none) ;; *) fail "invalid completion shell in manifest" ;; esac
   if [ "$completion_shell" = none ]; then
@@ -385,15 +404,35 @@ prepare_rc_with_block() {
   cat "$block" >>"$destination"
 }
 
+# The binary is owned by the receipt: only the helper publishes it, inside the
+# ownership lock. A failure before registration leaves it untouched; after
+# registration, the only permitted undo is this installation's conditional
+# cleanup, never restoring the previous binary over a new owner.
 rollback_install() {
 	if [ "${commit_started:-0}" != 1 ]; then
 		return 0
 	fi
   set +e
-	if [ "$old_binary_exists" = 1 ]; then atomic_copy "$work/old-binary" "$target"; else rm -f "$target"; fi
+	if [ "${registered:-0}" = 1 ]; then
+		cp -p "$target" "$work/rollback-helper" &&
+			"$work/rollback-helper" install unregister --channel make --executable "$target" \
+				--expected-installation "$new_installation_id" --cleanup-manifest "$new_cleanup_manifest" --remove >&2
+	fi
 	if [ "$old_completion_exists" = 1 ]; then atomic_copy "$work/old-completion" "$new_completion"; elif [ -n "$new_completion" ]; then rm -f "$new_completion"; fi
 	if [ "$old_rc_exists" = 1 ]; then atomic_copy "$work/old-rc" "$new_rc"; elif [ -n "$new_rc" ]; then rm -f "$new_rc"; fi
 	if [ "$old_manifest_exists" = 1 ]; then atomic_copy "$work/old-manifest" "$manifest"; else rm -f "$manifest"; fi
+}
+
+# A fresh private record for every installation; never an existing file.
+new_cleanup_path() {
+	local nc_directory=$1 nc_path
+	nc_path=$(mktemp "$nc_directory/install-XXXXXXXX")
+	rm -f "$nc_path"
+	printf '%s.json\n' "$nc_path"
+}
+
+installation_id_from() {
+	sed -n 's/^{"installation_id":"\([0-9a-f]\{32\}\)".*$/\1/p' "$1"
 }
 
 install_agentdeck() {
@@ -413,8 +452,10 @@ install_agentdeck() {
   old_completion_exists=0
   old_rc_exists=0
   old_manifest_exists=0
+  old_cleanup_manifest=
   new_completion=
   new_rc=
+  registered=0
 
   if [ -e "$target" ] || [ -L "$target" ] || [ -e "$manifest" ] || [ -L "$manifest" ]; then
     [ "${FORCE:-0}" = 1 ] || fail "refusing to overwrite existing AgentDeck installation; rerun with FORCE=1"
@@ -425,7 +466,10 @@ install_agentdeck() {
     cp -p "$manifest" "$work/old-manifest"
     old_binary_exists=1
 		old_manifest_exists=1
-		if [ "$manifest_version" = 2 ]; then
+		if [ "$manifest_version" = 3 ]; then
+			old_cleanup_manifest=$cleanup_manifest
+		fi
+		if [ "$manifest_version" != 1 ]; then
 			[ "$completion_shell" = "$detected_shell" ] || fail "changing completion shell requires uninstall before reinstall"
 			if [ "$completion_shell" != none ]; then
 				old_block_hash=$block_sha
@@ -440,7 +484,7 @@ install_agentdeck() {
     ensure_directory "$data_dir/completions"
     new_completion="$data_dir/completions/agentdeck.$detected_shell"
     if [ -e "$new_completion" ] || [ -L "$new_completion" ]; then
-      if [ "$old_manifest_exists" != 1 ] || [ "$manifest_version" != 2 ] || [ "$completion_path" != "$new_completion" ]; then
+      if [ "$old_manifest_exists" != 1 ] || [ "$manifest_version" = 1 ] || [ "$completion_path" != "$new_completion" ]; then
         fail "refusing existing completion outside the validated manifest: $new_completion"
       fi
       cp -p "$new_completion" "$work/old-completion"
@@ -453,7 +497,7 @@ install_agentdeck() {
 		validate_path "$requested_rc" "shell rc"
     ensure_directory "$(dirname "$requested_rc")"
     new_rc=$(resolve_rc_path "$requested_rc")
-    if [ "$old_manifest_exists" = 1 ] && [ "$manifest_version" = 2 ] && [ "$completion_shell" != none ]; then
+    if [ "$old_manifest_exists" = 1 ] && [ "$manifest_version" != 1 ] && [ "$completion_shell" != none ]; then
       [ "$completion_shell" = "$detected_shell" ] || fail "changing completion shell requires uninstall before reinstall"
       [ "$rc_path" = "$new_rc" ] || fail "changing completion rc requires uninstall before reinstall"
     fi
@@ -470,18 +514,10 @@ install_agentdeck() {
     new_rc_separator_added=
   fi
 
-  {
-    printf 'manifest_version=2\n'
-    printf 'binary_path=%s\n' "$target"
-    printf 'binary_sha256=%s\n' "$new_binary_sha"
-    printf 'completion_shell=%s\n' "$detected_shell"
-    printf 'completion_path=%s\n' "$new_completion"
-    printf 'completion_sha256=%s\n' "$new_completion_sha"
-    printf 'rc_path=%s\n' "$new_rc"
-    printf 'block_sha256=%s\n' "$new_block_sha"
-    printf 'rc_separator_added=%s\n' "$new_rc_separator_added"
-  } >"$work/new-manifest"
-  chmod 0644 "$work/new-manifest"
+  ensure_directory "$data_dir/cleanup"
+  new_cleanup_manifest=$(new_cleanup_path "$data_dir/cleanup")
+  staged=$(mktemp "$bin_dir/.agentdeck.staged.XXXXXX")
+  cp -p "$work/new-binary" "$staged"
 
 	if [ "$old_binary_exists" = 1 ]; then
 		printf 'upgrade from:\n'
@@ -493,13 +529,43 @@ install_agentdeck() {
 	fi
 
 	commit_started=1
-	atomic_copy "$work/new-binary" "$target"
 	if [ "$detected_shell" != none ]; then
 		atomic_copy "$work/new-completion" "$new_completion"
 		atomic_copy "$work/new-rc" "$new_rc"
 	fi
+	# The staged new program publishes itself onto the target and records the
+	# receipt inside one exclusive ownership lock; this script never moves it.
+	set -- install register --channel make --executable "$target" \
+		--source "$staged" --cleanup-manifest "$new_cleanup_manifest"
+	if [ "${TAKEOVER:-0}" = 1 ]; then
+		set -- "$@" --takeover
+	fi
+	if ! "$staged" "$@" >"$work/register.out"; then
+		fail "AgentDeck did not register the new installation; nothing was replaced"
+	fi
+	new_installation_id=$(installation_id_from "$new_cleanup_manifest")
+	[[ $new_installation_id =~ ^[0-9a-f]{32}$ ]] || fail "registered installation wrote an unreadable cleanup record"
+	registered=1
+  {
+    printf 'manifest_version=3\n'
+    printf 'binary_path=%s\n' "$target"
+    printf 'binary_sha256=%s\n' "$new_binary_sha"
+    printf 'completion_shell=%s\n' "$detected_shell"
+    printf 'completion_path=%s\n' "$new_completion"
+    printf 'completion_sha256=%s\n' "$new_completion_sha"
+    printf 'rc_path=%s\n' "$new_rc"
+    printf 'block_sha256=%s\n' "$new_block_sha"
+    printf 'rc_separator_added=%s\n' "$new_rc_separator_added"
+    printf 'cleanup_manifest=%s\n' "$new_cleanup_manifest"
+    printf 'installation_id=%s\n' "$new_installation_id"
+  } >"$work/new-manifest"
+  chmod 0644 "$work/new-manifest"
 	atomic_copy "$work/new-manifest" "$manifest"
   commit_started=0
+  registered=0
+  if [ -n "$old_cleanup_manifest" ] && [ "$old_cleanup_manifest" != "$new_cleanup_manifest" ]; then
+    rm -f "$old_cleanup_manifest"
+  fi
   install_succeeded=1
   printf 'installed %s' "$target"
   if [ "$detected_shell" != none ]; then
@@ -533,13 +599,14 @@ install_agentdeck() {
     'does not affect normal AgentDeck use.'
 }
 
+# Runs only after the helper removed the binary and receipt; the binary is
+# never restored outside the ownership lock.
 rollback_uninstall() {
 	if [ "${uninstall_started:-0}" != 1 ]; then
 		return 0
 	fi
   set +e
-	atomic_copy "$work/uninstall-binary" "$binary_path"
-	if [ "$manifest_version" = 2 ] && [ "$completion_shell" != none ]; then
+	if [ "$completion_shell" != none ]; then
 		atomic_copy "$work/uninstall-completion" "$completion_path"
 		atomic_copy "$work/uninstall-rc" "$rc_path"
 	fi
@@ -556,21 +623,35 @@ uninstall_agentdeck() {
   target="$bin_dir/agentdeck"
   manifest="$data_dir/install-manifest"
   load_manifest "$manifest"
+  [ "$manifest_version" = 3 ] || fail "this installation predates installation receipts and cannot prove ownership; reinstall it with make install FORCE=1, then uninstall"
   validate_loaded_manifest "$target" "$work/uninstall-block"
-  cp -p "$binary_path" "$work/uninstall-binary"
   cp -p "$manifest" "$work/uninstall-manifest"
-  if [ "$manifest_version" = 2 ] && [ "$completion_shell" != none ]; then
+  if [ "$completion_shell" != none ]; then
     cp -p "$completion_path" "$work/uninstall-completion"
     cp -p "$rc_path" "$work/uninstall-rc"
     remove_block "$rc_path" "$work/uninstall-rc-new" "$rc_separator_added"
   fi
+  # The hash-verified installed program is the trusted cleanup helper. It
+  # removes the binary and its receipt only if the receipt still names this
+  # installation; a later installation of the same path is left untouched.
+  cp -p "$binary_path" "$work/uninstall-helper"
+  if ! "$work/uninstall-helper" install unregister --channel make --executable "$binary_path" \
+    --expected-installation "$installation_id" --cleanup-manifest "$cleanup_manifest" --remove >"$work/unregister.out"; then
+    fail "AgentDeck could not verify this installation for removal; nothing was removed"
+  fi
+  case "$(cat "$work/unregister.out")" in
+    "skipped superseded "*)
+      printf 'skipped: a later installation now owns %s; nothing was removed\n' "$binary_path"
+      return 0
+      ;;
+  esac
   uninstall_started=1
-  rm "$binary_path"
-  if [ "$manifest_version" = 2 ] && [ "$completion_shell" != none ]; then
+  if [ "$completion_shell" != none ]; then
     rm "$completion_path"
 		atomic_copy "$work/uninstall-rc-new" "$rc_path"
   fi
   rm "$manifest"
+  rm -f "$cleanup_manifest"
   uninstall_started=0
   printf 'uninstalled %s; preserved AgentDeck user state and unrelated shell configuration\n' "$binary_path"
 }
@@ -585,7 +666,8 @@ commit_started=0
 uninstall_started=0
 install_succeeded=0
 created_dirs=()
-trap 'set +e; rollback_install; rollback_uninstall; cleanup_created_directories; rm -rf "$work"' EXIT
+staged=
+trap 'set +e; rollback_install; rollback_uninstall; if [ -n "$staged" ]; then rm -f "$staged"; fi; cleanup_created_directories; rm -rf "$work"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM

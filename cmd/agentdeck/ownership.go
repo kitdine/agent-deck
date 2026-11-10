@@ -24,6 +24,9 @@ func ownershipSilentCommand(command *cobra.Command) bool {
 }
 
 func prepareOwnershipCommand(opts *commandOptions, command *cobra.Command) error {
+	if strings.HasPrefix(command.CommandPath(), "agentdeck install ") {
+		return nil // Install commands touch only the receipt and ownership lock, never state.
+	}
 	root, err := opts.stateRoot()
 	if err != nil {
 		if ownershipSilentCommand(command) {

@@ -29,7 +29,7 @@ updated: 2026-11-10
 需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 6–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -39,7 +39,7 @@ updated: 2026-11-10
 | 2. `state-root-guard` | [x] | [x] |
 | 3. `client-config-guard` | [x] | [x] |
 | 4. `installation-diagnostics` | [x] | [x] |
-| 5. `installer-receipts` | [ ] | [ ] |
+| 5. `installer-receipts` | [x] | [x] |
 | 6. `app-state-location` | [ ] | [ ] |
 | 7. `debug-app-identity` | [ ] | [ ] |
 | 8. `ownership-acceptance` | [ ] | [ ] |
@@ -473,7 +473,7 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 - `scripts/manage-install.sh`；
 - 新建 `scripts/install-local-app.sh`；
 - `Makefile`：新增 `install-macos-app` 及对应的卸载目标，增加 `TAKEOVER`；
-- 新建 `cmd/agentdeck/install.go` 及测试：公开命令 `install claim`；隐藏命令 `install repair-identity`（由原 App helper 持锁验证有效 cask 回执及当前程序，输出原 installation ID，不依赖清理材料且不写入）、`install register`（带 `--source` 和 `--cleanup-manifest` 时在锁内发布；cask 带 `--require-unowned`，授权修复另带 `--authorized-repair`，修复有效原安装还须传预先捕获的 `--expected-installation`）、`install unregister`（携带 channel、路径、原 ID 和清单，`--remove` 仅锁内条件删除；授权容忍材料缺失时不删除，结果 `skipped_unverified`；绑定模式身份不匹配或无法验证仍非零失败）；
+- 新建 `cmd/agentdeck/install.go` 及测试：公开命令 `install claim`；隐藏命令 `install repair-identity`（由原 App helper 持锁验证有效 cask 回执及当前程序，输出原 installation ID，不依赖清理材料且不写入）、`install register`（带 `--source` 和 `--cleanup-manifest` 时在锁内发布；cask 带 `--require-unowned`，授权修复另带 `--authorized-repair`，修复有效原安装还须传预先捕获的 `--expected-installation`）、`install unregister`（携带 channel、路径、原 ID 和清单，`--remove` 仅锁内条件删除；授权容忍材料缺失时不删除，结果 `skipped_unverified`；绑定模式由 attempt 层传递内部 `--require-identity`，在清理锁内核对原身份，身份不匹配或无法验证仍非零失败）；
 - `internal/installation`：在所有权排他锁内写入和删除回执、生成安装 ID、写本次清理清单并校验清理归属；`resolver_acceptance.go`（仅验收 tag）在 `AGENTDECK_ACCEPTANCE_ACCOUNT_HOME` 未设置时读取 `HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME`；
 - `scripts/test-install.sh`、`scripts/test-completion-install.sh`、`scripts/test-cask-migration.sh` 及新增的 `scripts/test-install-local-app.sh`：凡是会安装的测试都改用验收版程序和临时账户目录；
 - 新建 `scripts/test-cask-real-brew.sh` 和 `.github/workflows/cask-real-brew.yml`：真实 brew 回归，只在 CI 运行；
@@ -536,6 +536,21 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 4. 门禁 VERIFIED 后任务关闭。CI 失败时任务回到 `in_progress`，修复、复评，再由用户另行授权新的提交和推送。
 
 评审 PASS 不代表 `real-brew` 已满足；提交和推送仍须用户逐次授权。
+
+
+#### 开发交接（2026-11-10）
+
+本地实现已包含安装 helper、make/local App/cask 接入、身份绑定修复与 attempt 材料。接续开发修复了非法修复参数在 cask 创建暂存副本后才被拒绝导致的残留，补齐 `repair-identity` 和三个 `attempt` 命令的访问屏障矩阵，并增加 `scripts/test-cask-real-brew.sh` 与 `.github/workflows/cask-real-brew.yml`。CI 脚本仅允许带 `--ci` 的 GitHub 托管 macOS runner 运行，执行真实 Homebrew 安装、升级恢复、材料缺失修复、竞争者交错、强杀和延迟清理。
+
+本地证据使用 Go 1.27.3。全量 Go 1,590 个顶层测试、installation/platform race、`make vet`、`make check-install`、双架构构建及 arm64 体积检查、cask 迁移脚本、发布分发脚本、Homebrew 声明与分派检查均通过。验收 tag 的 installation 包、I1–I5（I5 含 21 个子场景）和最终完整叶子命令访问屏障矩阵通过。CI 脚本的 shell/Python/YAML 语法及本地入口拒绝检查通过。
+
+首次整包 CLI 验收出现 `watch` 一秒截止时间失败，并在后续 schema-signal 用例执行到第 5 秒时达到十分钟整包上限。补齐安装命令清单后单独执行完整叶子矩阵通过，包括 `watch`；I1–I5 复用首次运行中的通过结果。整包验收未记为通过，后续实际使用中仍需观察该时间相关失败。
+
+精确候选与逐准则结果记录在 CEv1 WorkUnit `installed-state-ownership:installer-receipts`、ContentState `installed-state-ownership:installer-receipts:implement-20261110-Qx9ye6HAPTmIcTMg`。独立评审及 `real-brew` 仍待验证，任务保持开放。CI 当前仅完成脚本实现和静态检查，真实 runner 执行结果按上文例外补齐。
+
+#### 评审交接（2026-11-10）
+
+任务 5 Round 2 独立复评 PASS，Review 已勾选。完成门禁仍待真实 Homebrew CI，按本任务时序例外进入待授权交付。当前复评结论、候选身份和完成门禁以[任务评审记录](reviews/installer-receipts.md)为准。开发交接保留为原候选的历史验证事实。
 
 ### 6. `app-state-location`
 

@@ -52,5 +52,29 @@
     "stderr": "",
     "json": "{\n  \"schema_version\": 1,\n  \"command\": \"doctor\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"mode\": \"quick\",\n    \"status\": \"degraded\",\n    \"healthy\": false,\n    \"checks\": [\n      {\n        \"name\": \"installation\",\n        \"status\": \"ok\",\n        \"reason\": \"make\"\n      },\n      {\n        \"name\": \"state\",\n        \"status\": \"ok\"\n      },\n      {\n        \"name\": \"managed_command_owner\",\n        \"status\": \"warning\",\n        \"code\": \"managed_command_owner_mismatch\",\n        \"reason\": \"claude\",\n        \"recovery_command\": \"agentdeck usage hook setup --client claude\"\n      }\n    ],\n    \"problems\": 1,\n    \"warnings\": 1,\n    \"errors\": 0\n  },\n  \"warnings\": [],\n  \"partial\": false\n}",
     "exit": 0
+  },
+  "claim_ok": {
+    "stdout": "Claimed: this Homebrew formula installation now owns AgentDeck state.\n",
+    "stderr": "",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"install.claim\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": {\n    \"channel\": \"homebrew_formula\",\n    \"takeover\": false\n  },\n  \"warnings\": [],\n  \"partial\": false\n}",
+    "exit": 0
+  },
+  "claim_owned_by_other": {
+    "stdout": "",
+    "stderr": "install_claim_refused: Another AgentDeck installation owns AgentDeck state.\n  reason: owned_by_other\n  next: Keep the current installation, or rerun with --takeover after quitting it.\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"install.claim\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"install_claim_refused\",\n    \"message\": \"Another AgentDeck installation owns AgentDeck state.\",\n    \"details\": {\n      \"reason\": \"owned_by_other\"\n    }\n  }\n}",
+    "exit": 1
+  },
+  "claim_owner_running": {
+    "stdout": "",
+    "stderr": "install_claim_refused: The current owner is still using AgentDeck state.\n  reason: owner_running\n  next: Quit AgentDeck.app, stop any agentdeck watch or telemetry listener, pause Codex and Claude sessions, then retry.\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"install.claim\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"install_claim_refused\",\n    \"message\": \"The current owner is still using AgentDeck state.\",\n    \"details\": {\n      \"reason\": \"owner_running\"\n    }\n  }\n}",
+    "exit": 1
+  },
+  "claim_not_current_keg": {
+    "stdout": "",
+    "stderr": "install_claim_refused: Only the current Homebrew formula installation can claim AgentDeck state.\n  reason: not_current_formula_keg\n  next: Run $(brew --prefix)/opt/agentdeck/bin/agentdeck install claim instead.\n",
+    "json": "{\n  \"schema_version\": 1,\n  \"command\": \"install.claim\",\n  \"generated_at\": \"2026-11-05T12:00:00Z\",\n  \"data\": null,\n  \"warnings\": [],\n  \"partial\": false,\n  \"error\": {\n    \"code\": \"install_claim_refused\",\n    \"message\": \"Only the current Homebrew formula installation can claim AgentDeck state.\",\n    \"details\": {\n      \"reason\": \"not_current_formula_keg\"\n    }\n  }\n}",
+    "exit": 1
   }
 }

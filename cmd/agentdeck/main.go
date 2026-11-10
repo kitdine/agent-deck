@@ -501,6 +501,13 @@ func errorDetails(err error) any {
 	if errors.As(err, &refused) {
 		return map[string]string{"resource": refused.Resource, "reason": refused.Reason}
 	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		if installRefused.Detail != "" {
+			return map[string]string{"reason": installRefused.Reason, "detail": installRefused.Detail}
+		}
+		return map[string]string{"reason": installRefused.Reason}
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		return &commandLockErrorDetails{
@@ -540,6 +547,10 @@ func errorDetails(err error) any {
 }
 
 func errorMessage(err error) string {
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		return installRefusalMessage(installRefused.Reason)
+	}
 	var codexConfig *telemetryCodexError
 	if errors.As(err, &codexConfig) {
 		return codexConfig.text
@@ -571,6 +582,11 @@ func renderCommandErrorText(w io.Writer, err error) {
 	var refused *platform.ErrStateOwnershipRefused
 	if errors.As(err, &refused) {
 		renderStateOwnershipRefusal(w, refused)
+		return
+	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		renderInstallRefusal(w, installRefused)
 		return
 	}
 	var contention *store.ErrLockContention
@@ -660,6 +676,10 @@ func errorCode(err error) string {
 	var refused *platform.ErrStateOwnershipRefused
 	if errors.As(err, &refused) {
 		return "state_ownership_refused"
+	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		return "install_claim_refused"
 	}
 	var notFound *errdefs.NotFound
 	var scanDomain *scanruntime.DomainError
@@ -844,7 +864,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts), newTelemetryCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts), newTelemetryCommand(opts), newInstallCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root

@@ -9,15 +9,33 @@ dist="$temporary/dist"
 binary="$dist/agentdeck"
 manager="$root/scripts/manage-install.sh"
 
-make -C "$root" DIST_DIR="$dist" build >/dev/null
+# Installing registers the program as the account's AgentDeck owner, so the
+# installed binary is an agentdeck_acceptance build and every HOME below gets
+# its own temporary account; a production build would use the real account.
+mkdir -p "$dist"
+(cd "$root" && env GOCACHE="${GOCACHE:-/private/tmp/agent-deck-go-build}" GOMODCACHE="${GOMODCACHE:-/private/tmp/agent-deck-go-mod}" \
+  "${GO:-go}" build -mod=vendor -trimpath -tags agentdeck_acceptance -o "$binary" ./cmd/agentdeck)
+"${GO:-go}" tool nm "$binary" | grep -F 'installation.acceptanceAccountHome' >/dev/null || {
+  echo "refusing to install a binary that would use the real account: $binary" >&2
+  exit 1
+}
+export AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$temporary/account"
+mkdir -p "$AGENTDECK_ACCEPTANCE_ACCOUNT_HOME"
+
+account_for() {
+  mkdir -p "$1.account"
+  printf '%s\n' "$1.account"
+}
 
 test_shell_helpers() {
   local helper_root="$temporary/shell-helpers"
   local fixture="$helper_root/my+project"
   local fake_bin="$helper_root/bin"
-  local state="$helper_root/home/.agentdeck"
+  # Wrappers run this build without --state-dir. It is not the installed
+  # program, so its default state is the isolated ~/.agentdeck-dev.
+  local state="$helper_root/home/.agentdeck-dev"
   local unconfigured_home="$helper_root/unconfigured-home"
-  local unconfigured_state="$unconfigured_home/.agentdeck"
+  local unconfigured_state="$unconfigured_home/.agentdeck-dev"
   local codex_config="$helper_root/config.toml"
   local claude_config="$helper_root/settings.json"
   local fail_root="$helper_root/fail-open"
@@ -249,13 +267,13 @@ test_shell_helpers
 
 install_for() {
   local shell=$1 home=$2 prefix=$3 rc=$4 output=${5:-/dev/null}
-  HOME="$home" PREFIX="$prefix" COMPLETION_SHELL="$shell" COMPLETION_RC="$rc" TMPDIR=/private/tmp \
+  AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$home")" HOME="$home" PREFIX="$prefix" COMPLETION_SHELL="$shell" COMPLETION_RC="$rc" TMPDIR=/private/tmp \
     bash "$manager" install "$binary" >"$output"
 }
 
 uninstall_from() {
   local home=$1 prefix=$2
-  HOME="$home" PREFIX="$prefix" TMPDIR=/private/tmp bash "$manager" uninstall >/dev/null
+  AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$home")" HOME="$home" PREFIX="$prefix" TMPDIR=/private/tmp bash "$manager" uninstall >/dev/null
 }
 
 smoke_shell() {
@@ -309,7 +327,7 @@ for shell in fish zsh bash; do
   expected_rc="$case_root/expected.rc"
   test -x "$prefix/bin/agentdeck"
   test -f "$completion"
-  grep -F 'manifest_version=2' "$manifest" >/dev/null
+  grep -F 'manifest_version=3' "$manifest" >/dev/null
   grep -F "completion_shell=$shell" "$manifest" >/dev/null
   grep -F 'rc_separator_added=0' "$manifest" >/dev/null
   grep -F '# >>> agentdeck completion >>>' "$rc" >/dev/null
@@ -450,8 +468,13 @@ chmod 0755 "$v1_prefix/bin/agentdeck"
 v1_binary=$(cd "$v1_prefix/bin" && pwd -P)/agentdeck
 v1_hash=$(shasum -a 256 "$v1_binary" | awk '{print $1}')
 printf 'path=%s\nsha256=%s\n' "$v1_binary" "$v1_hash" >"$v1_prefix/share/agentdeck/install-manifest"
-uninstall_from "$v1_home" "$v1_prefix"
-test ! -e "$v1_binary"
+# A version 1 record predates installation receipts and cannot prove
+# ownership: uninstall refuses and keeps the binary until a reinstall.
+if uninstall_from "$v1_home" "$v1_prefix" 2>/dev/null; then
+  echo 'uninstall removed a version 1 installation without a receipt' >&2
+  exit 1
+fi
+test -f "$v1_binary"
 
 v1_upgrade_root="$temporary/v1-upgrade"
 v1_upgrade_home="$v1_upgrade_root/home"
@@ -463,9 +486,9 @@ chmod 0755 "$v1_upgrade_prefix/bin/agentdeck"
 v1_upgrade_binary=$(cd "$v1_upgrade_prefix/bin" && pwd -P)/agentdeck
 v1_upgrade_hash=$(shasum -a 256 "$v1_upgrade_binary" | awk '{print $1}')
 printf 'path=%s\nsha256=%s\n' "$v1_upgrade_binary" "$v1_upgrade_hash" >"$v1_upgrade_prefix/share/agentdeck/install-manifest"
-HOME="$v1_upgrade_home" PREFIX="$v1_upgrade_prefix" FORCE=1 COMPLETION_SHELL=fish COMPLETION_RC="$v1_upgrade_rc" TMPDIR=/private/tmp \
+AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$v1_upgrade_home")" HOME="$v1_upgrade_home" PREFIX="$v1_upgrade_prefix" FORCE=1 COMPLETION_SHELL=fish COMPLETION_RC="$v1_upgrade_rc" TMPDIR=/private/tmp \
   bash "$manager" install "$binary" >/dev/null
-grep -F 'manifest_version=2' "$v1_upgrade_prefix/share/agentdeck/install-manifest" >/dev/null
+grep -F 'manifest_version=3' "$v1_upgrade_prefix/share/agentdeck/install-manifest" >/dev/null
 uninstall_from "$v1_upgrade_home" "$v1_upgrade_prefix"
 
 fake_root="$temporary/fake-process"
@@ -483,7 +506,7 @@ test "$detected" = zsh
 
 login_home="$fake_root/login-home"
 login_prefix="$fake_root/login-prefix"
-PATH="$fake_root/bin:$PATH" FAKE_PS_COMM=-bash HOME="$login_home" PREFIX="$login_prefix" COMPLETION_SHELL=auto TMPDIR=/private/tmp \
+PATH="$fake_root/bin:$PATH" FAKE_PS_COMM=-bash AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$login_home")" HOME="$login_home" PREFIX="$login_prefix" COMPLETION_SHELL=auto TMPDIR=/private/tmp \
   bash "$manager" install "$binary" >/dev/null
 test -f "$login_home/.bash_profile"
 test ! -e "$login_home/.bashrc"
@@ -537,7 +560,7 @@ mkdir -p "$(dirname "$interrupt_rc")"
 printf '# interrupt sentinel\n' >"$interrupt_rc"
 printf '%s\n' '#!/usr/bin/env bash' 'kill -TERM "$PPID"' 'sleep 1' >"$interrupt_binary"
 chmod 0755 "$interrupt_binary"
-if HOME="$interrupt_home" PREFIX="$interrupt_prefix" COMPLETION_SHELL=fish COMPLETION_RC="$interrupt_rc" TMPDIR=/private/tmp \
+if AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$interrupt_home")" HOME="$interrupt_home" PREFIX="$interrupt_prefix" COMPLETION_SHELL=fish COMPLETION_RC="$interrupt_rc" TMPDIR=/private/tmp \
   bash "$manager" install "$interrupt_binary" >/dev/null 2>&1; then
   echo 'install continued after a termination signal' >&2
   exit 1
@@ -561,7 +584,7 @@ mkdir -p "$exact_home"
 printf '# rc without trailing newline' >"$exact_rc"
 cp -p "$exact_rc" "$exact_expected"
 install_for zsh "$exact_home" "$exact_prefix" "$exact_rc"
-HOME="$exact_home" PREFIX="$exact_prefix" FORCE=1 COMPLETION_SHELL=zsh COMPLETION_RC="$exact_rc" TMPDIR=/private/tmp \
+AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$(account_for "$exact_home")" HOME="$exact_home" PREFIX="$exact_prefix" FORCE=1 COMPLETION_SHELL=zsh COMPLETION_RC="$exact_rc" TMPDIR=/private/tmp \
   bash "$manager" install "$binary" >/dev/null
 uninstall_from "$exact_home" "$exact_prefix"
 cmp "$exact_expected" "$exact_rc"

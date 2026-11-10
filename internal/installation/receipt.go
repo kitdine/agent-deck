@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -124,68 +125,97 @@ func (r *Resolver) WriteReceipt(lock *platform.OwnershipLock, executable, channe
 	}
 	var receipt Receipt
 	err = lock.WithExclusive(home, func() error {
-		physical, err := filepath.EvalSymlinks(executable)
+		id, err := newInstallationID()
 		if err != nil {
 			return err
 		}
-		if physical != executable {
-			return errors.New("receipt executable must be a physical absolute path")
-		}
-		info, err := os.Lstat(executable)
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("receipt executable must be a regular file")
-		}
-		var id [16]byte
-		if _, err := rand.Read(id[:]); err != nil {
-			return err
-		}
-		now := r.now
-		if now == nil {
-			now = time.Now
-		}
-		receipt = Receipt{1, executable, channel, now().UTC().Truncate(time.Second), hex.EncodeToString(id[:])}
-		if err := receipt.validate(); err != nil {
-			return err
-		}
-		data, err := json.Marshal(receipt)
-		if err != nil {
-			return err
-		}
-		data = append(data, '\n')
-		if len(data) > maxReceiptBytes {
-			return errors.New("installation receipt exceeds 4 KiB")
-		}
-		path := receiptPath(home)
-		file, err := os.CreateTemp(filepath.Dir(path), ".installation-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(file.Name())
-		defer file.Close()
-		if err := file.Chmod(platform.FileMode); err != nil {
-			return err
-		}
-		if _, err := file.Write(data); err != nil {
-			return err
-		}
-		if err := file.Sync(); err != nil {
-			return err
-		}
-		if err := file.Close(); err != nil {
-			return err
-		}
-		if err := os.Rename(file.Name(), path); err != nil {
-			return err
-		}
-		dir, err := os.Open(filepath.Dir(path))
-		if err != nil {
-			return err
-		}
-		defer dir.Close()
-		return dir.Sync()
+		receipt, _, err = r.writeReceiptLocked(home, executable, channel, id)
+		return err
 	})
 	return receipt, err
+}
+
+func newInstallationID() (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(id[:]), nil
+}
+
+// writeReceiptLocked is called only while the caller holds the exclusive
+// ownership lock for home. committed reports whether the new receipt replaced
+// the old one, so a caller never rolls back a publication the receipt names.
+func (r *Resolver) writeReceiptLocked(home, executable, channel, id string) (receipt Receipt, committed bool, err error) {
+	physical, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	if physical != executable {
+		return Receipt{}, false, errors.New("receipt executable must be a physical absolute path")
+	}
+	info, err := os.Lstat(executable)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return Receipt{}, false, errors.New("receipt executable must be a regular file")
+	}
+	now := r.now
+	if now == nil {
+		now = time.Now
+	}
+	receipt = Receipt{1, executable, channel, now().UTC().Truncate(time.Second), id}
+	if err := receipt.validate(); err != nil {
+		return Receipt{}, false, err
+	}
+	data, err := json.Marshal(receipt)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	data = append(data, '\n')
+	if len(data) > maxReceiptBytes {
+		return Receipt{}, false, errors.New("installation receipt exceeds 4 KiB")
+	}
+	path := receiptPath(home)
+	file, err := os.CreateTemp(filepath.Dir(path), ".installation-*")
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+	if err := file.Chmod(platform.FileMode); err != nil {
+		return Receipt{}, false, err
+	}
+	if _, err := file.Write(data); err != nil {
+		return Receipt{}, false, err
+	}
+	if err := file.Sync(); err != nil {
+		return Receipt{}, false, err
+	}
+	if err := file.Close(); err != nil {
+		return Receipt{}, false, err
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
+		return Receipt{}, false, err
+	}
+	return receipt, true, syncDirectory(filepath.Dir(path))
+}
+
+// removeReceiptLocked revokes the receipt; the caller holds the exclusive lock
+// and has already matched the receipt against the expected installation.
+func removeReceiptLocked(home string) error {
+	if err := os.Remove(receiptPath(home)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return syncDirectory(filepath.Dir(receiptPath(home)))
+}
+
+func syncDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

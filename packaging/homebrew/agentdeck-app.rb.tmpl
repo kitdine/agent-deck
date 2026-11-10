@@ -40,15 +40,168 @@ cask "@CASK_TOKEN@" do
     end
   end
 
-  app "AgentDeck.app"
+  # Exactly one installation owns AgentDeck state, recorded in one receipt in
+  # the user's account. The App is therefore not published by an `app` stanza,
+  # which would move it outside AgentDeck's ownership lock: the staged helper
+  # publishes the bundle and writes the receipt inside that lock, and removes
+  # it again only while the receipt still names this installation.
+  #
+  # Every AgentDeck path below the account directory is resolved by the helper.
+  # This cask only passes its own token, version, staged directory and appdir.
+  final_helper = "#{appdir}/AgentDeck.app/Contents/Helpers/agentdeck"
+  staged_helper = "#{staged_path}/AgentDeck.app/Contents/Helpers/agentdeck"
+  attempt_locator = "#{staged_path}/.agentdeck-attempt"
+  cask_identity = ["--token", token, "--version", version.to_s, "--executable", final_helper]
+
+  # A repair is authorized for one brew command by the person running it. The
+  # values are read once here and passed on as explicit helper arguments.
+  repair_arguments = []
+  repair_arguments << "--authorized-repair" if ENV["HOMEBREW_AGENTDECK_REPAIR"] == "1"
+  if ENV.key?("HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION")
+    repair_arguments += ["--expected-installation", ENV.fetch("HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION")]
+  end
+
+  quoted_helper = final_helper.gsub("'", %q('\\\\''))
+  unowned_repair_hint = <<~EOS
+    If AgentDeck.app is already present but its installation record is missing or damaged, repair it by reinstalling:
+      HOMEBREW_AGENTDECK_REPAIR=1 brew reinstall --cask @CASK_TOKEN@
+    If Homebrew no longer lists this cask, use:
+      HOMEBREW_AGENTDECK_REPAIR=1 brew install --cask @CASK_TOKEN@
+  EOS
+  bound_repair_hint = <<~EOS
+    If this cask's AgentDeck.app is installed and only its cleanup records are missing, repair it by reinstalling:
+      agentdeck_repair_installation="$('#{quoted_helper}' install repair-identity --channel homebrew_cask --executable '#{quoted_helper}')" && HOMEBREW_AGENTDECK_REPAIR=1 HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION="$agentdeck_repair_installation" brew reinstall --cask @CASK_TOKEN@
+    If Homebrew no longer lists this cask, use `brew install --cask @CASK_TOKEN@` at the end of that command instead.
+  EOS
+  owned_by_other_hint = <<~EOS
+    Another AgentDeck installation owns AgentDeck state. Remove it with the method that installed it, then install this cask:
+      brew uninstall agentdeck        # the CLI-only Homebrew formula
+      make uninstall                  # a source checkout installed with make install
+      make uninstall-macos-app        # a local App installed with make install-macos-app
+      brew install --cask @CASK_TOKEN@
+    Your AgentDeck state in ~/.agentdeck is untouched by that migration.
+  EOS
+
+  # Set by this evaluation's preflight once it has asked the helper to publish,
+  # and read by the rollback block below. A later uninstall evaluates the cask
+  # again, so the value is empty there and the rollback block does nothing.
+  published_attempt = nil
+
+  preflight do
+    require "securerandom"
+    require "fileutils"
+
+    # Reject malformed repair bindings before creating an attempt or staging a
+    # bundle. A failed register cannot otherwise prove publication never began.
+    if repair_arguments.include?("--expected-installation")
+      expected = repair_arguments.fetch(repair_arguments.index("--expected-installation") + 1)
+      unless repair_arguments.include?("--authorized-repair") && expected.match?(/\A[0-9a-f]{32}\z/)
+        raise ::Cask::CaskError, "--expected-installation needs --authorized-repair and a valid installation ID"
+      end
+    end
+
+    attempt = SecureRandom.hex(16)
+    staged_copy = "#{appdir}/.AgentDeck.app.#{attempt}"
+    register_called = false
+    # A refusal is decided before anything is published, so the staged copy is
+    # still this attempt's own and can be removed.
+    refused = false
+    begin
+      materials = system_command(staged_helper, args: ["install", "attempt", "prepare", "--attempt", attempt,
+                                                       *cask_identity, "--locator", attempt_locator])
+                  .stdout.lines.to_h { |line| line.chomp.split("=", 2) }
+      manifest = materials.fetch("manifest")
+      system_command("/usr/bin/ditto", args: ["#{staged_path}/AgentDeck.app", staged_copy])
+      published_attempt = attempt
+      register_called = true
+      registered = command.run(staged_helper,
+                               args: ["install", "register", "--channel", "homebrew_cask",
+                                      "--executable", final_helper, "--source", staged_copy,
+                                      "--cleanup-manifest", manifest, "--require-unowned", *repair_arguments])
+      unless registered.success?
+        refusal = registered.stderr
+        refused = refusal.include?("install_claim_refused")
+        $stderr.puts unowned_repair_hint if refusal.match?(/reason: receipt_(missing|invalid)/)
+        if refusal.include?("reason: owned_by_other")
+          $stderr.puts owned_by_other_hint
+          $stderr.puts bound_repair_hint
+        end
+        raise ::Cask::CaskError, "AgentDeck.app was not installed (attempt #{attempt})."
+      end
+      system_command(staged_helper, args: ["install", "attempt", "complete", "--attempt", attempt])
+      FileUtils.rm_r(staged_copy) if File.exist?(staged_copy)
+    rescue
+      # This block cleans up after its own failure; the rollback block below
+      # only handles failures of later artifacts.
+      published_attempt = nil
+      cleaned = !register_called
+      if register_called
+        cleaned = command.run(staged_helper, args: ["install", "attempt", "cleanup", "--attempt", attempt,
+                                                    *cask_identity]).success?
+        unless cleaned
+          $stderr.puts "AgentDeck install attempt #{attempt} could not be verified for cleanup. Nothing was removed; its cleanup records were kept."
+        end
+      end
+      if cleaned || refused
+        FileUtils.rm_rf(staged_copy)
+      elsif File.exist?(staged_copy)
+        $stderr.puts "The staged copy #{staged_copy} was kept."
+      end
+      raise
+    end
+  end
+
+  # Rollback for a failure in a later artifact of the same install. It removes
+  # only what this evaluation's attempt published, and never with repair
+  # authority.
+  uninstall_preflight do
+    next if published_attempt.nil?
+
+    rolled_back = command.run(staged_helper, args: ["install", "attempt", "cleanup", "--attempt", published_attempt,
+                                                    *cask_identity])
+    unless rolled_back.success?
+      $stderr.puts "AgentDeck install attempt #{published_attempt} could not be verified for cleanup. Nothing was removed; its cleanup records were kept."
+    end
+  end
+
   # Install-step sandboxes cannot reach PlugInKit. The signed app registers its
-  # extension on normal first launch; the uninstall script runs before removal.
-  uninstall quit: "com.kitdine.agentdeck",
+  # extension on normal first launch. The uninstall script runs after the app
+  # quits and outside that sandbox: the helper unregisters the extension and
+  # removes the App inside the ownership lock, and only while the receipt still
+  # names the installation this cask version published. Nothing here deletes
+  # the App by path.
+  uninstall quit:   "com.kitdine.agentdeck",
             script: {
               executable: "/bin/sh",
-              args: ["-c", 'if [ -d "$1" ]; then /usr/bin/pluginkit -r "$1"; fi',
-                     "agentdeck-widget-uninstall", "#{appdir}/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex"],
-              sudo: false,
+              args:       ["-c", <<~'SH', "agentdeck-cask-uninstall", token, version.to_s, final_helper, attempt_locator, staged_helper, unowned_repair_hint, bound_repair_hint, *repair_arguments],
+                token=$1 version=$2 executable=$3 locator=$4 staged=$5 unowned_hint=$6 bound_hint=$7
+                shift 7
+                for helper in "$staged" "$executable"; do
+                  [ -f "$helper" ] && [ -x "$helper" ] || continue
+                  output=$("$helper" install attempt cleanup --token "$token" --version "$version" --executable "$executable" --locator "$locator" "$@" 2>&1)
+                  status=$?
+                  # A helper that could not start, or was killed, decided nothing.
+                  if [ "$status" -ge 126 ]; then
+                    continue
+                  fi
+                  printf '%s\n' "$output" >&2
+                  if [ "$status" -ne 0 ]; then
+                    case "$output" in
+                      *"detail: cleanup_materials_unavailable"*) printf '%s\n' "$bound_hint" >&2 ;;
+                      *"reason: receipt_missing"*|*"reason: receipt_invalid"*) printf '%s\n' "$unowned_hint" >&2 ;;
+                    esac
+                  fi
+                  exit "$status"
+                done
+                if [ "$#" -eq 1 ] && [ "$1" = "--authorized-repair" ]; then
+                  echo "skipped unverified: no AgentDeck helper could verify this installation, so nothing was removed and the App is still installed." >&2
+                  exit 0
+                fi
+                echo "AgentDeck was not uninstalled: no AgentDeck helper could verify this installation. Nothing was removed." >&2
+                printf '%s\n' "$unowned_hint" >&2
+                exit 1
+              SH
+              sudo:       false,
             }
 
   binary "#{appdir}/AgentDeck.app/Contents/Helpers/agentdeck"
