@@ -868,3 +868,239 @@ Evidence: 内容身份、L0 与门禁见上方字段。核对的源码位置以 
 Task checkpoint：ad-installed-state-ownership-doc-tasks；content_state `c47933121f31148e364e8608ab74790db5763fbe1bf2f703576aeed031c03391`；gate VERIFIED。
 提交建议：经明确授权后，提交 `docs/topics/installed-state-ownership/tasks.md` 与 `docs/topics/installed-state-ownership/reviews/tasks.md`，作为一个“重写任务分解”的签名文档提交；不夹带其他文件。本轮未提交。
 推送建议：目标 origin/feature/installed-state-ownership；需显式推送授权，并先核对提交对象、签名和范围。本地分支还领先远端（含任务 1 的提交 `1425256` 等），推送前要一并确认。本轮未推送。
+
+## Round 11 — 2026-11-09
+
+### 📋 installer-receipts 任务分解修订评审
+
+📊 总体评分：6/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra；独立冷上下文评审，未委派。
+- Method: Task 5 修订与架构、Homebrew 真实分派及安装 helper 的依赖闭包核对；文档集合检查。
+- Scope: tasks.md 的 installer-receipts 文件边界、验收、CI 和证据时序例外；其余任务不重新签发实现结论。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `317de3e7b9ad87fe115296466b5195b5c29016b2`；SHA-256 `1d2a31a9d4853a3c44a6727d22cb1c1e6ba08cc089ee90553f84dade359f6ee9`，配方 `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:tasks.md`；本次调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`，不重开历史已交付文档任务。
+- Final state after status sync: blob `8630911bde376e596cddb07eb88ba3d764fc78f4`；SHA-256 `2ddf6e57b9c08c046abd396f5a6096fc90670ab20da179fcf798fc0b7bbc407d`；仅第 29 行状态摘要变化。
+- Target ContentState: `installed-state-ownership:tasks:review-20261109-2ddf6e57`。
+- 完成门禁：FAILED
+- Gate evidence: 固定 gate-status 查询对同步后目标返回 FAILED；`:review` 失败证据适用且无 malformed/invalidated/unresolved，`:l0` 为 blocked。证据写入计数、关系预检及读回与本批架构记录一致。
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-TASKS-R11-F1 — P1 / OPEN：Task 5 固化了未闭合的回滚方案，验收缺少升级失败恢复这一分支。**
+
+- 位置：`tasks.md:492-504`。
+- 风险：第 494 行指定经典 uninstall 作为清理路径，却无法满足第 493 行“后续步骤失败仍使用本次清单条件清理”；第 500 行覆盖正常升级和同版本重装，但没有要求恢复旧版时采用新的安装清单。实现者必须自行补设计，或到 CI 才发现既定方案无法通过。
+- 证据：本批 [架构 Round 8](architecture.md#round-8--2026-11-09) 的 ISO-ARCH-R8-F1/F2；该记录列出真实 Homebrew 源码及两条无安装副作用的分派探针结果。此任务发现承接同一根因，不另行重复架构问题。
+- 💡 修复：架构两项缺陷修复后同步 Task 5 的可达清理入口和材料生命周期；明确 preflight 内发布后失败、后续链接失败、升级回退重装旧版三条 CI 验收路径及断言。保持新实例保护、CI-only 和用户已决定的 real-brew 证据时序例外。
+
+#### 🟡 改进建议 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+文件清单纳入验收 Resolver、安装测试、发布验证和独立 CI 工作流；real-brew 后置不被描述为已取得证据，任务关闭仍要求最终门禁 VERIFIED，提交/推送授权保持独立。
+
+#### 📝 总结
+
+本批架构依赖不通过，任务分解修订 FAIL。任务 5 继续等待设计修复与独立复评，历史任务及需求/CLI 的通过状态保留。仅更新本主题状态摘要和评审记录，不修复产品或设计内容。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` exit 0；`python3 scripts/check-docs.py` 因既有归档文档 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法 exit 1。该无关诊断不作为本轮语义发现，也不声称 L0 完全通过。最终状态同步只改变第 29 行摘要，验收与任务定义未改，门禁绑定同步后内容身份。
+
+
+#### 修复交接 — 2026-11-09（待独立复评）
+
+Repair: Codex；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。仅修订 architecture.md、tasks.md 和两份既有评审记录，保留工作区其他实现改动；未执行产品安装、提交或推送。
+
+- ISO-TASKS-R11-F1 → repaired in candidate，待复评：Task 5 同步架构两个清理入口、Caskroom 外材料与定位生命周期、隐藏 `--require-unowned` 的锁内约束；CI 明列发布块返回前失败、后续 binary 失败、旧版恢复新尝试三条路径，并补回滚中断的残余材料断言。正常卸载与回滚分开，保留 CI-only、新实例保护和既有 real-brew 证据时序例外。
+
+候选 tasks.md blob `bcce1b85a1809959dbf86db474e68b563a32268b`；架构依赖 blob `7312450ae9f74a61688eabf90ad05ac8f503fa31`。Documents 的两项 Review 仍未勾选，Task 5 cask 开发继续等待独立复评。本次未签发 PASS 或新 CEv1 完成结论；上方 FAILED 属于历史目标。验证范围、五例真实分派方法探针和既有 L0 阻塞见[架构修复交接](architecture.md#round-8--2026-11-09)。主题文档集合与 whitespace 检查通过，未运行真实 brew 或产品实现测试。
+
+## Round 12 — 2026-11-09
+
+### 📋 installer-receipts 任务分解修订复评
+
+📊 总体评分：7/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra；独立复核修复，未委派，未修复产品或设计。
+- Method: ISO-TASKS-R11-F1 的逐项覆盖与修复新增前置条件的依赖核查。
+- Scope: Task 5 cask 设计修订；架构 Round 9 为本轮依赖。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `bcce1b85a1809959dbf86db474e68b563a32268b`；同步后仅第 29 行状态摘要变化，任务定义不变；配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度任务 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Final state: tasks.md blob `4ce4d71ce47291571dbf1aeb1d572fa3131602ca`；fingerprint `760767c37bb075ffa6b3c396846d5ab414c779e0a65ce304641a7340886d948f`；Target ContentState: `installed-state-ownership:tasks:r12-20261109-760767c3`。
+- 完成门禁：FAILED
+- Gate evidence: 固定 gate-status 对同步后目标返回 FAILED；review 失败证据适用、无 invalidated/unresolved/malformed，L0 为 blocked；本批写入计数与关系预检见架构 Round 9。
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-TASKS-R12-F1 — P1 / NEW / OPEN：新 require-unowned 验收没有覆盖既有恢复/迁移边界。**
+
+- 位置：`tasks.md:495-506`，尤其第 495 行“回执和目标均不存在”。
+- 风险与证据：任务照搬新前置条件，未规定目标存在且回执损坏时如何兑现 A3 的重装指引，也未验证已认领 formula 卸载后的过期回执 → cask 迁移。依赖 [架构 Round 9](architecture.md#round-9--2026-11-09) 的 ISO-ARCH-R9-F1；不能由实现者自行选择恢复授权语义。
+- 💡 修复：架构确定安全、可达的恢复与过期回执规则后同步 Task 5 的入口和断言；同时将 CI 权限边界与修正后的架构风险表保持一致。
+
+#### 🟡 改进建议 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+**ISO-TASKS-R11-F1 — CLOSED。** Task 5 已明确发布返回前失败、后续 binary 失败、O/N/R 旧版恢复三条 CI 路径，并加入回滚中断时外部材料保留、竞争者拒绝和旧清单不变断言。原发现要求的分派与清单修复已落实到任务定义。
+
+#### 📝 总结
+
+原发现关闭，新恢复边界发现未关闭，结论 FAIL；架构仍有两项新发现。Documents 的两项 Review 保持未勾选，Task 5 cask 工作继续等待设计通过；不改历史已交付任务状态，不执行提交/推送。
+
+Evidence: 与架构 Round 9 共享同一修复候选和既有 L0 阻塞诊断；未将修复者的探针或设计通过等同于产品验收。本轮主题集合、空白、diff 和新增记录结构检查均 exit 0。
+
+
+#### 修复交接 — 2026-11-09（待独立复评）
+
+Repair: Claude Code / Claude Sonnet 5.5；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。仅修订 architecture.md、tasks.md 和两份既有评审记录，保留工作区其他实现改动；未执行产品安装、真实 brew、提交或推送。
+
+- ISO-TASKS-R12-F1 → repaired in candidate，待复评：它依赖的[架构 Round 9](architecture.md#round-9--2026-11-09) 两项已在候选中修复（见该记录的修复交接），Task 5 随之同步。① 隐藏命令描述写明 `--require-unowned` 的精确含义（没有有效拥有者且目标不存在；回执缺失、无效、过期都算无主）以及 `--authorized-repair`。② 新增“无主判定与授权修复”验收，并写明授权语义由架构决定、实现者不得另选：helper 层（开发机、验收版 helper、临时账户目录）覆盖 register 判定表每一行带与不带授权、有效拥有者的三种情形、过期回执加不存在或存在的目标、授权替换的失败注入，以及 `unregister --authorized-repair` 的容忍与不容忍情形。③ CI 的真实 brew 回归新增四项：损坏安装的授权修复（两种损坏、外部材料完整与缺失两轮，含无授权的拒绝和带授权的恢复，以及 Homebrew 不记录该 cask 的状态）、授权不越过有效拥有者、过期 formula 回执迁移（keg 已删则成功，keg 仍在则 `owned_by_other`）、恢复旧版 R 保持严格。④ CI 权限边界与修正后的架构风险行一致：不依赖 `writable_paths`，`HOME` 与账户目录取不同临时目录并断言产物只在账户目录，账户目录不可写时失败且无回退写入；开发机上渲染声明的静态检查同步。
+
+候选 tasks.md blob `7425c307929c384906ef632a26d0cf77259428e9`；架构依赖 blob `24120bd94d616315079861ffec52f1893951d477`。Documents 的两项 Review 仍未勾选，Task 5 cask 开发继续等待独立复评。本次未签发 PASS 或新 CEv1 完成结论；上方 FAILED 属于历史目标。源码核对、设计选择的说明和既有 L0 阻塞见[架构修复交接](architecture.md#round-9--2026-11-09)。主题文档集合与 whitespace 检查通过，未运行真实 brew 或产品实现测试。
+
+## Round 13 — 2026-11-09
+
+### 📋 installer-receipts 任务分解修订独立复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra，独立冷上下文复评；未参与修复，未委派。
+- Method: 逐项追踪 ISO-TASKS-R12-F1 到架构契约与 helper/真实 brew 验收矩阵。
+- Scope: Task 5 cask 设计修订；架构 Round 10 为本轮依赖。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `7425c307929c384906ef632a26d0cf77259428e9`；只同步第 29 行状态摘要，任务定义不变；最终身份在下文绑定。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-TASKS-R13-F1 — P2 / NEW / OPEN：恢复验收缺少“有效回执、仅清理材料丢失”的完整重装路径。**
+
+- 位置：`tasks.md:492,496,507-509`。
+- 行为风险：按现有矩阵实现，可通过“回执损坏且同时丢失材料”的全部恢复测试，却仍无法恢复回执有效、清理材料单独丢失的安装。
+- 证据：第 508 行只在删除/损坏回执后再删除外部材料；第 496 行虽分别测试无效/缺失清单的 unregister exit 0，也测试有效拥有者 register 拒绝，但没有将两步组成授权重装。组合后恰好落入 [架构 Round 10](architecture.md#round-10--2026-11-09) 的 ISO-ARCH-R10-F1：旧回执保留，新 register 被它拒绝。第 507 行只要求报告缺材料的残余，不验证恢复。
+- 💡 有界修复：先确定 R10-F1 的身份绑定恢复契约，再分别加入仅丢失清单、仅丢失保留的 helper 副本、仅丢失定位文件的情形（回执和 App helper 保持有效），覆盖无授权拒绝、授权恢复、恢复后普通卸载，以及身份捕获后同路径后继安装的保护。helper 层与 CI 完整重装链分别验证；不把恢复决策交给实现者。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-TASKS-R12-F1 — CLOSED。** 第 495–511 行已覆盖原缺失/损坏回执恢复、过期 formula 迁移、有效拥有者拒绝和 HOME/账户分离；授权形式已由架构明确。原发现不再成立。
+- ISO-TASKS-R11-F1 保持关闭；发布返回前失败、后续 artifact 失败和旧版恢复的 CI 路径保留。真实 brew 的提交后证据时序例外仍限于 Task 5，不扩展到文档复评。
+
+#### 📝 总结
+
+上轮发现关闭，新增依赖恢复缺口未关闭，结论 FAIL。Documents 两项 Review 保持未勾选，Task 5 cask 工作仍等待设计修复及复评。未跨越 Task/Topic 完成边界，无提交或推送建议。
+
+Evidence: 入口 ContentState `installed-state-ownership:tasks:r13-entry-20261109-b9fc3a99` 门禁 NOT_VERIFIED，fingerprint `b9fc3a9968764ccb4d2576233d9f9672f143f146d93a35627d963fc981cb8b2e`；本轮只按新候选出具结论，不沿用历史失败结论。最终 tasks.md blob `83f2308810b588aaaf2023a6b1f1c5046f138f83`，fingerprint `137a34a9ea81c3aa2be432cf25daf5aede2561b362137da0f38c7b39ce9347e0`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。最终 ContentState `installed-state-ownership:tasks:r13-20261109-137a34a9` 已绑定新的 review=fail、l0=blocked 证据，固定 gate-status 返回 FAILED；证据均适用，无 malformed/invalidated/unresolved。结构/空白/diff 四项检查通过；完整文档检查只受既有归档链接语法阻塞，具体命令及写入核对见架构 Round 10。
+
+#### 修复交接 — 2026-11-09（ISO-TASKS-R13-F1，待独立复评）
+
+Repair: Codex，未委派；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。本次只修订两份设计文档和各自的既有评审记录，其他实现改动保留。
+
+ISO-TASKS-R13-F1 → repaired in candidate，待独立复评。Task 5 明确消费架构 R10-F1 的身份绑定修复契约，新增隐藏 `install repair-identity`、register 的原 ID 参数和模板传递要求；实现者不得自行决定替换有效拥有者的条件。分别只删清单、只删保留 helper、只删定位文件，保持回执和 App helper 有效，各自验证无授权拒绝、仅授权不能替换有效拥有者、捕获原 ID 后完整恢复及普通无授权卸载。单独损坏清理材料不再借用损坏回执的用例覆盖。
+
+新增 I5 和对应 CI 完整 brew 用例：身份捕获后、卸载容忍后且发布前分别插入同 channel/路径/版本的后继 B；预期 ID 始终为原值，B 及其回执不变，B 回执丢失/损坏也不得降级。另覆盖交换后提交前失败恢复原对象/回执、修复后的延迟旧清理不删新实例、App helper 也不可用时的明确限制。helper 层真实命令与 CI 完整重装链分别验收；保留 CI-only 和仅限 Task 5 real-brew 的既有证据时序例外。
+
+候选 HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`；tasks.md blob `1cb749de0801ad70d2873229e9a9f2ec18078821`，fingerprint `0da8509dbc1b4020a7a0b2e1e6729aa9370971076f40a27bfd685b0fd84e6589`；架构依赖 blob `ad141e83c9d7ab675e81e124bc0cb87571e89d95`。ContentState `installed-state-ownership:tasks:repair-r13-f1-20261109-0da8509d`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。入口固定 gate-status 返回 NOT_VERIFIED，缺少本候选的 l0 与独立 review，无 invalidated/unresolved；原 Round 13 FAIL/FAILED 仅保留历史含义。Documents 两项 Review 仍未勾选，Task 5 cask 开发仍等待设计通过，本次不签发复评 PASS。
+
+验证：按三种独立损坏状态、授权/身份组合和两个竞争者插入点逐项核对架构与任务矩阵；未运行产品安装或真实 brew。`python3 scripts/check-docs.py` exit 1，仅报告未改归档 `docs/archive/plans/agentdeck-cli.md` 的既有链接语法；其余结构/空白检查事实由本候选 CEv1 l0 证据记录，不声称完整 L0 已通过。Beads 两次读取均连接超时，未核实或变更当前归属；精确的后续协调待办见架构 Round 10 本次修复交接。未提交、推送或跨越 Task/Topic 完成边界。
+
+## Round 14 — 2026-11-10
+
+### 📋 installer-receipts 任务分解修订独立复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: Claude Code / Claude Opus 5.5，独立冷上下文复评；未参与 R13-F1 修复，未委派。
+- Method: 把 ISO-TASKS-R13-F1 的修复要求逐项对照任务 5 的文件清单、helper 层矩阵、CI 真实 brew 回归与交错表 I5；再核对任务 9 消费的架构契约清单。
+- Scope: 任务 5 cask 设计修订与任务 9 的契约同步依赖；架构 Round 11 为本轮依赖。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `1cb749de0801ad70d2873229e9a9f2ec18078821`（fingerprint `0da8509dbc1b4020a7a0b2e1e6729aa9370971076f40a27bfd685b0fd84e6589`）；本轮只同步第 29 行状态摘要，任务定义不变；最终身份在下文绑定。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+本轮不为同一跨文档缺陷另起编号：
+
+- **ISO-ARCH-R11-F1 — P2，新增，由[架构 Round 11](architecture.md#round-11--2026-11-10) 持有。** [任务 9](../tasks.md#9-contract-reconciliation) 的要求是“按兼容性与契约同步更新”，而该节漏记 `install repair-identity`、`--expected-installation` 与配对环境变量，并要求手册只写无绑定修复命令。任务 9 照做会把材料单独丢失的用户引向注定失败的命令。架构修复后任务 9 的引用自动生效，任务定义预计无需改动；修复时需复核这一点。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-TASKS-R13-F1 — CLOSED。** 第 476 行文件清单加入 `install repair-identity` 与 register 的 `--expected-installation`；第 496 行把授权语义锁定为架构决定、禁止刷新或降级预期 ID；第 498 行按仅删清单、仅删保留 helper、仅删定位文件三例分别保持回执和 App helper 有效，覆盖无授权拒绝、仅授权不能覆盖、捕获后完整恢复与普通卸载，以及捕获后、卸载容忍后两个后继 B 插入点和 B 回执损坏；CI 回归另列同三轮完整 `brew reinstall` 链与竞争者交错，明确禁止复用“损坏回执且同时删材料”的用例；交错表新增 I5。原发现要求的每一项都已落实。
+- ISO-TASKS-R12-F1、R11-F1 保持关闭；CI-only 与仅限任务 5 `real-brew` 准则的证据时序例外未扩展。
+
+#### 📝 总结
+
+上轮发现关闭；架构依赖的新发现 ISO-ARCH-R11-F1 直接影响任务 9 的输出，结论 FAIL。Documents 两项 Review 保持未勾选，任务 5 cask 工作继续等待设计通过。未跨越 Task/Topic 完成边界，无提交或推送建议。
+
+#### 修复交接 — 2026-11-10
+
+OpenCode / GPT-6 Astra 在本轮候选中补齐 ISO-ARCH-R11-F1 的架构签名和契约同步清单，完整映射、内容身份与验证见[架构 Round 11 修复交接](architecture.md#round-11--2026-11-10)。复核任务 9 的既有文件范围和“按兼容性与契约同步更新”要求，已直接涵盖隐藏命令、绑定参数、配对变量以及手册的两种恢复入口，无须改动任务定义。tasks.md 仅同步待复评状态，两项 Review 保持未勾选；历史 FAIL 不改写，候选等待独立复评，任务 5 cask 开发继续受设计门禁约束。
+
+Evidence: 同批检查与架构 Round 11 相同：主题集合、空白、diff 与两份记录的结构检查 exit 0；`python3 scripts/check-docs.py` 仅因既有归档链接语法 exit 1，不声称完整 L0 通过。最终 tasks.md blob `04273e3bfb15537fdb8c7fc696c4b6637317c505`，fingerprint `7781a17be2ba80bfe162191edbb0df8dd388b934f0fbc5e49b017d4e48962caf`，配方 SHA-256 of `head=<HEAD>;document=<blob>`；相对输入只改第 29 行状态摘要。最终 ContentState `installed-state-ownership:tasks:r14-20261110-7781a17b` 绑定本轮 review=fail 与 l0=blocked 证据，门禁读回 FAILED。
+
+## Round 15 — 2026-11-10
+
+### 📋 installer-receipts 任务分解修订独立复评（ISO-ARCH-R11-F1 依赖）
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Claude Code / Claude Opus 5.5，独立冷上下文复评；未参与修复，未委派。
+- Method: 核对 Round 14 唯一的跨文档发现在架构候选中的关闭情况，并复核任务 9 的文件范围与“按兼容性与契约同步更新”的要求是否已能覆盖新增契约面。
+- Scope: 任务 5 cask 设计修订与任务 9 契约同步依赖；架构 Round 12 为本轮依赖。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `177b73ea625da47f0c937c9d6644933f0707e178`（fingerprint `bb159179e786daa672781fb6873383980445e5958cf01b414ba84fde13d6ddf6`）；本轮只勾选 Documents 两项 Review 并同步第 29 行状态摘要，任务定义不变。最终 blob `212f88363f329612e6ce7619d0e84d102e8cd220`，fingerprint `ba22e45acc897e18474ee486974bc91f905e8ca90e203fbf7ecd14626763463a`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:tasks:r15-20261110-ba22e45a`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-ARCH-R11-F1（跨文档，由架构记录持有）— CLOSED。** 见[架构 Round 12](architecture.md#round-12--2026-11-10)。任务 9 的文件范围已含 `cli-design.md`、`cli-manual.md`，要求直接消费修正后的同步清单，任务定义无需改动，修复者的这一判断成立。
+- ISO-TASKS-R13-F1、R12-F1、R11-F1 保持关闭；任务 5 的三类材料单独丢失、竞争者交错与 I5 保留，CI-only 与仅限任务 5 `real-brew` 的证据时序例外未扩展。
+
+#### 📝 总结
+
+本记录全部发现关闭，结论 PASS，Documents 两项 Review 勾选。证据门禁 BLOCKED，原因与前提见架构 Round 12 的 L0 根因更正：工作区根目录未跟踪的 `agentdeck` 构建产物触发 `check-docs.py` 子串误判。门禁 VERIFIED 前不进入 `awaiting_commit`，任务 5 cask 开发继续等待。未提交、推送或跨越 Topic 完成边界。
+
+Evidence: 主题集合、空白、diff 与两份记录的结构检查 exit 0；`python3 scripts/check-docs.py` exit 1，仅因上述未跟踪文件的子串误判，去掉该路径后的只读探针 exit 0。CEv1：最终状态写入 review=pass 与 l0=blocked，门禁读回 BLOCKED。
+
+**门禁同步 — 2026-11-10。** 按用户决定删除未跟踪构建产物 `agentdeck` 后，L0 全部 exit 0（含 `python3 scripts/check-docs.py`）。第 29 行状态摘要随之同步，最终 tasks.md blob `7795dfb26bd620b28e3e0d6f77b1ea099fcc5bbb`，fingerprint `cfeedc55d1a1010b7fb0c4b12519a6a445580da46d3534a79fa477d6f30d38ed`；相对 `ba22e45a` 只改该行，任务定义不变，本轮 PASS 结论适用。最终 ContentState `installed-state-ownership:tasks:r15-final-20261110-cfeedc55` 绑定 review=pass（注明来源于本轮对 `ba22e45a` 的结论）与 l0=pass，门禁读回 VERIFIED；`ba22e45a` 上原有的 blocked 记录保留为历史。

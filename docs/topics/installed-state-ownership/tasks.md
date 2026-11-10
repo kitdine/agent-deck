@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-11-05
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Installed State Ownership — Tasks
@@ -26,7 +26,7 @@ updated: 2026-11-09
 - **小组件**：Debug 配置改用独立的扩展身份，这是构建身份的变化，界面不变。
 - **Settings**：不涉及。
 
-当前需求、CLI、架构保持已通过状态；任务分解的 2026-11-07 重写稿已通过 Round 10 独立复评。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
+需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
 `installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
@@ -473,13 +473,15 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 - `scripts/manage-install.sh`；
 - 新建 `scripts/install-local-app.sh`；
 - `Makefile`：新增 `install-macos-app` 及对应的卸载目标，增加 `TAKEOVER`；
-- 新建 `cmd/agentdeck/install.go` 及测试：公开命令 `install claim`，隐藏命令 `install register`（带 `--source` 和 `--cleanup-manifest` 时在锁内发布文件或 App bundle）、`install unregister`（携带 channel、路径、`--expected-installation` 和 `--cleanup-manifest`，带 `--remove` 时在锁内条件删除）；
-- `internal/installation`：在所有权排他锁内写入和删除回执、生成安装 ID、写本次清理清单并校验清理归属；
-- `scripts/test-install.sh`、`scripts/test-cask-migration.sh` 及新增的本地 App 安装测试。
+- 新建 `cmd/agentdeck/install.go` 及测试：公开命令 `install claim`；隐藏命令 `install repair-identity`（由原 App helper 持锁验证有效 cask 回执及当前程序，输出原 installation ID，不依赖清理材料且不写入）、`install register`（带 `--source` 和 `--cleanup-manifest` 时在锁内发布；cask 带 `--require-unowned`，授权修复另带 `--authorized-repair`，修复有效原安装还须传预先捕获的 `--expected-installation`）、`install unregister`（携带 channel、路径、原 ID 和清单，`--remove` 仅锁内条件删除；授权容忍材料缺失时不删除，结果 `skipped_unverified`；绑定模式身份不匹配或无法验证仍非零失败）；
+- `internal/installation`：在所有权排他锁内写入和删除回执、生成安装 ID、写本次清理清单并校验清理归属；`resolver_acceptance.go`（仅验收 tag）在 `AGENTDECK_ACCEPTANCE_ACCOUNT_HOME` 未设置时读取 `HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME`；
+- `scripts/test-install.sh`、`scripts/test-completion-install.sh`、`scripts/test-cask-migration.sh` 及新增的 `scripts/test-install-local-app.sh`：凡是会安装的测试都改用验收版程序和临时账户目录；
+- 新建 `scripts/test-cask-real-brew.sh` 和 `.github/workflows/cask-real-brew.yml`：真实 brew 回归，只在 CI 运行；
+- `scripts/verify-release-artifacts.sh`：删除对发布产物的安装冒烟，因为发布产物会把回执写进运行者的真实账户；`scripts/test-release-distribution.sh` 检查 formula 的认领提示。
 
 **输入/输出接口**：消费任务 1 的回执/排他锁及任务 2 的真实状态共享会话；产出 `install claim/register/unregister`、清理清单、安装脚本和完整安装器测试。本任务用 CLI 会话证明 `owner_running`，不要求尚未完成的原生 App；App 与安装器的组合归任务 8。
 
-**实施顺序**：先完成 helper 安装协议及失败注入，再接入 make/local App/cask/formula，最后执行真实 Homebrew 完整分派与下表交错测试。脚本不能先上线一个锁外发布版本等待后续修复。
+**实施顺序**：先完成 helper 安装协议及失败注入，再接入 make/local App/cask/formula，然后运行下表交错测试，最后由 CI 执行 cask 的真实 Homebrew 完整分派。脚本不能先上线一个锁外发布版本等待后续修复。
 
 **验收要求**：
 - 按[安装回执](architecture.md#安装回执)实现每种方式的写入、拒绝冲突和卸载清理。cask、make、本地 App 调用暂存新程序的 `install register --source` 或保留 helper 的 `install unregister --remove`；formula 保持由用户 claim、升级按任务 2 续登、删除 keg 后回执过期的独立契约。安装脚本自己既不写回执，也不把文件移到最终位置，也不写任何 keg 回执。
@@ -487,30 +489,53 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 - 接管只以[所有权排他锁](architecture.md#所有权锁与交接)作为同步边界，不使用 `lsof`。测试中让一个替身进程持有共享锁来模拟旧拥有者的会话，断言 `TAKEOVER=1`、`install-macos-app` 和 `install claim --takeover` 都以 `owner_running` 拒绝，回执不变；替身释放锁之后，接管成功。
 - **在锁内发布**：按[安装回执](architecture.md#安装回执)，由 `install register --source` 在一次持锁内完成原子发布和回执写入。单个文件用 `rename(2)`；App bundle 用 `renamex_np(RENAME_SWAP)` 交换，再删除旧 bundle；任何失败都不改目标路径和回执。`manage-install.sh` 原有的暂存、校验和清单逻辑保留，只把最后的重命名交给这条命令。测试中，替身进程持有共享锁时，发布以 `owner_running` 失败，目标和回执都不动；替身释放锁之后，一次完成。在发布与写回执之间注入失败，断言目标路径仍为原内容、回执未变。
 - 回执写入前，要确认 `executable` 满足 `EvalSymlinks(executable) == executable`，并且就是正在安装或认领的程序；写入要原子化，权限为 `0600`。
-- **完整清理链**：按[卸载与失败清理](architecture.md#卸载与失败清理)，正常卸载、升级卸载、安装失败回滚、重试和损坏安装清理全部经过带原清单 ID 的 `unregister`。清单在发布前由 helper 独占创建并同步落盘，位于最终目标之外；相同版本重装生成新 ID/新清单，旧清单不能被覆盖或从当前回执刷新。测试回执匹配时清理、路径/channel/ID 任一不匹配时跳过、回执和目标均不存在时幂等成功、回执缺失/损坏而目标存在时保留并报错。helper 缺失时使用私有保留副本；副本/清单不可用必须报告未完成，不能直接 `rm`。小组件注销也必须在归属匹配之后、同一次持锁期间执行。
-- **回滚与失败注入**：成功登记后，在后续 Homebrew 步骤注入失败；回滚使用本次清单条件清理。登记前失败不能删除旧回执所属对象；释放锁后的恢复不能覆盖后来发布的对象。在 helper 返回、回滚回调开始及条件校验后分别暂停，插入同路径新安装，验证锁内串行或 ID 不匹配跳过。覆盖同 channel 同版本、不同 channel、清理重复调用、删除失败、清理 helper 缺失，以及 `--force` 跳过脚本的路径；删除失败保留残余和恢复材料并报告失败，不追加锁外兜底。
-- **cask 改为由 install step 发布 App，不再使用 `app` 标签。** 以下各点都必须在真实 brew 回归测试中验证通过，任一项失败，都要停下来回到设计重新决定，不能静默改用别的方式：
-  - install step 能写 `$HOME` 下的回执，也能写 `appdir`；
+- **完整清理链**：按[卸载与失败清理](architecture.md#卸载与失败清理)，正常卸载、升级卸载、安装失败回滚和旧清理重试都经过带原清单 ID 的 `unregister`；材料单独缺失的恢复走下文的身份绑定替换，不伪造原清单或先删回执。清单在发布前由 helper 独占创建并同步落盘，位于最终目标之外；相同版本重装生成新 ID/新清单，旧清单不能被覆盖或从当前回执刷新。测试回执匹配时清理、路径/channel/ID 任一不匹配时跳过、回执和目标均不存在时幂等成功、回执缺失/损坏而目标存在时保留并报错。helper 缺失时使用私有保留副本；副本/清单不可用必须报告未完成，不能直接 `rm`。小组件注销也必须在归属匹配之后、同一次持锁期间执行。
+- **回滚与失败注入**：按架构分别实现发布块内部 rescue、后续 artifact 的 `uninstall_preflight` 回调和经典卸载脚本。回调捕获本次不可变 attempt，不重新读取可变定位文件或当前回执。覆盖发布后标记/暂存清理失败、binary 失败、前序回滚 artifact 抛错、强杀与 `--force` 跳过脚本；不可达或失败的清理必须保留 Caskroom 外的恢复材料并报告未完成。
+- **cask 发布与材料**：formula 冲突仍在 `preflight_steps` 检查；经典 Ruby `preflight` 发布，经典 `uninstall_preflight` 只在本次安装闭包中有 attempt 时回滚；正常卸载经 `quit` 后的经典 script 条件清理。不使用 `app` 标签或路径式小组件注销。经典 flight DSL 已弃用，CI 加载或分派不支持即阻塞，不修改 Homebrew 或静默换入口。
+- **每次尝试隔离**：实现架构规定的外部 `attempts/<ID>` 目录、不可变清单/helper、外部恢复索引和 `.agentdeck-attempt` 定位文件。目录独占创建并拒绝符号链接；材料在发布前落盘。普通安装、同版本重装、旧版恢复均分配新 ID 和路径；保留旧材料，不自动 GC。隐藏 register 增加 `--require-unowned`，在所有权锁内要求“没有有效拥有者（回执缺失、无效或过期都算无主）且目标不存在”，防止恢复旧版覆盖竞争者或有效拥有者；保持其他安装方式原有覆盖规则。
+- **无主判定与授权修复**：按[无主判定与授权修复](architecture.md#cask-无主判定与授权修复)实现，不能由实现者自行选择恢复语义。`HOMEBREW_AGENTDECK_REPAIR=1` 授权无主容忍/替换；有效原安装另须一次捕获的 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION`。模板各入口读取命令继承的固定值，转成显式 `--authorized-repair`/`--expected-installation`，helper 不读环境，不允许刷新 ID 或在失败后删去预期 ID 降级。无绑定时仍拒绝全部有效拥有者；有绑定只允许锁内 ID/channel/规范 executable 全匹配的原 cask 安装，不是同路径覆盖权。材料缺失的 unregister 只容忍不删除；有绑定但身份不匹配/无法验证时非零拒绝。回滚/rescue 只用新 attempt 的清单 ID，永不带授权参数。失败提示按无主修复或身份绑定修复给出带固定 helper/token 的完整命令，身份捕获失败不执行 brew；`doctor` 和状态拒绝文案不变。
+- **helper 层的授权矩阵**（开发机、验收版 helper、临时账户目录，不执行暂存 helper）：register 判定表每一行分别验证无授权、仅授权、授权加预期 ID，检查目标/回执字节及退出原因。有效拥有者覆盖相同 channel/路径、不同 channel、不同路径；只有精确绑定原 cask ID 才可替换，空值/格式无效 ID、单独传 ID、其他 ID 均拒绝。过期回执加空目标发布成功，无主现存目标仅在无绑定授权时可替换；绑定模式无法证明原身份则拒绝。授权替换在发布后、写回执前失败恢复原对象/回执，提交后才删旧对象。原 unregister 的正常清理、`skipped_superseded`、`owner_running`、清单不一致和删除失败语义保留，绑定修复遇到后继身份另须非零拒绝。
+- **有效原回执、材料单独丢失**（ISO-TASKS-R13-F1）：分别仅删除清单、仅删除保留 helper 副本、仅删除 `.agentdeck-attempt`，保持原回执及 App helper 有效。每例通过真实 `repair-identity` → 授权 unregister → register 验证：无授权拒绝；只有授权但无预期 ID 不可覆盖原拥有者；一次捕获 ID 后，材料缺失卸载仅报告并保留 App/回执，发布持锁匹配后生成全新 attempt/清单/ID，剩余旧材料逐字节不变，随后普通无授权卸载成功。身份捕获不依赖三类材料、无任何写入；App helper 也不可用时报告不可恢复边界，不用 shell 模拟校验。用受控钩子分别在身份捕获后、卸载容忍后且发布前安装同 channel/路径/版本的 B，原绑定调用非零拒绝，B App/回执不变；再测 B 回执缺失/损坏仍保留 B、不降级。修复成功后延迟原 ID 的清理不得删除新实例；在交换后、回执提交前失败恢复原 App/回执。helper 层实际命令和完整 brew 链分别验证，不能把若干独立拒绝断言当作恢复成功。
+- **开发机上的 cask 检查**（`scripts/test-cask-migration.sh`，不执行 Homebrew 暂存的 helper）：渲染声明满足上述约束；按声明用临时账户直接调用验收 helper，覆盖材料/定位校验、缺失材料拒绝、条件卸载、无主安装锁内检查；用真实 Homebrew 方法和无副作用 artifact 替身验证回滚分派。模板及渲染后的所有清理路径无最终 App 或外部材料根的 `delete`、`trash`、`rmdir` 或 shell 兜底，binary 只删除链接。渲染后的声明另做静态检查：`--authorized-repair` 只由 `HOMEBREW_AGENTDECK_REPAIR` 决定，回滚块和 rescue 的清理调用不带它；没有 `writable_paths`/`writable_base`；没有由 `HOME`、`~` 或 `Dir.home` 推导的 AgentDeck 路径（材料和索引路径只来自 helper）。
+- **CI 的真实 brew 回归**（`scripts/test-cask-real-brew.sh`，由 `.github/workflows/cask-real-brew.yml` 在 GitHub 托管的 macOS runner 上运行）。脚本没有 CI 专用开关时拒绝运行，避免在开发机上触发 Gatekeeper 弹窗。prefix、Caskroom、cache、`HOME`、`appdir` 和账户目录都是临时目录；账户目录通过 `HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME` 指向一个与 `HOME` 不同的独立临时目录，以证明模板不依赖 `HOME`。被安装的 App 内是验收版 helper，运行前用符号检查确认。以下各点都必须通过，任一项失败，都停下来回到设计重新决定，不能静默改用别的方式：
+  - 可行性探测：验收版 helper 能在 cask 步骤中执行，未被终止；
+  - 经典 flight stanza 可加载；preflight/helper 仅写临时账户的回执、外部尝试目录及 `appdir`。权限边界与[风险](architecture.md#风险)中的账户解析一行一致：它不依赖 `writable_paths`，`HOME` 与账户目录不同时，回执、清单、材料和索引只在账户目录，`HOME` 下没有；账户目录不可写时，安装非零退出、没有回执和已发布的 App、没有回退写入；
   - 不带 `app` 标签的 cask 能正常安装、升级、卸载，`binary` 和补全链接照旧；
-  - 升级时，旧版本的 uninstall 步骤（`install unregister --remove`）先于新版本的 install step 执行；
-  - `test-cask-widget-registration.rb` 的小组件注册仍然有效；
-  - 真正卸载后不留回执，其他安装方式随后可以正常登记，不需要 `--takeover`。
-  - 模板以及渲染后的 `uninstall`、`zap`、postflight、失败回滚中，没有能删除最终 App/父目录的 `delete`、`trash`、`rmdir` 或 shell 兜底。`binary` 仅删除链接本身，不跟随链接删 App。
-  - 沿真实 Homebrew 完整分派执行下表 I4；不能在 helper 返回时就停止测试。观察所有后续文件操作，确认新 App 和回执保留；同时证明旧 ID 的延迟回滚不会删除同 channel 的新安装。
-  - Caskroom 的本次清单和可执行清理 helper 保留至全部清理调用结束；破坏最终 App 内 helper 后仍可在锁内正常清理。缺少私有副本或清单时，即使 Homebrew 强制跳过脚本也不删除最终 App，验收须报告残余而非卸载成功。
+  - 升级时旧版本的卸载先于新版本的 preflight 执行；同版本重装时，新清单路径不与旧清单冲突；
+  - 完整执行“旧 O 卸载 → 新 N 发布 → 后续失败 → N 清理 → 旧版恢复 R”，无竞争者时旧版恢复成功，R 使用全新清单/ID，定位文件指向 R，O/N 清单与 helper 不变；加入同 channel 竞争者 B 时 R 在锁内拒绝，B 的 App/回执逐字节不变；延迟 O/N 清理不能删除 R/B；
+  - `test-cask-widget-registration.rb` 的小组件注册仍然有效，卸载时在锁内注销成功；
+  - 真正卸载后不留回执，其他安装方式随后可以正常登记，不需要 `--takeover`；
+  - 沿真实 Homebrew 完整分派执行下表 I4，不能在 helper 返回时就停止测试；观察所有后续文件操作，确认新 App 和回执保留，旧 ID 的延迟回滚不会删除同 channel 的新安装；
+  - 分别在发布成功但 preflight 尚未返回时（标记写入、暂存清理）和后续 binary 链接处注入失败，断言原 attempt 条件清理可达、brew 非零退出；即使回滚中断，purge 后外部清单/helper/索引仍可恢复；破坏最终 App 内 helper 后仍可在锁内正常清理；缺少私有副本或清单时，即使 Homebrew 强制跳过脚本也不删除最终 App，验收报告残余而非卸载成功；
+  - 损坏安装的授权修复：两种损坏——删除回执、把回执改成无效内容——各做两轮，第一轮外部材料完整，第二轮同时删除外部材料。每一轮里，不带 `HOMEBREW_AGENTDECK_REPAIR=1` 的 `brew reinstall --cask` 非零退出，App、Caskroom 记录和仍在的外部材料逐字节不变，失败输出含带本 cask token 的完整修复命令；带该变量重跑成功，生成新的 attempt、清单和 installation ID，仍在的旧材料不变，App 被替换，小组件注册有效，随后不带变量的 `brew uninstall --cask` 成功清理。再用“目标处有无回执的残留 App，且 Homebrew 不记录该 cask”的状态验证 `brew install --cask`：不带变量被拒绝、目标不变；带变量替换成功；
+  - 有效原回执、仅清理材料丢失（ISO-TASKS-R13-F1）：三轮分别只删清单、只删保留 helper 副本、只删定位文件，保持 App helper 和回执有效。各轮无授权重装非零拒绝；仅授权变量但不绑定原 ID 时也不能替换有效安装。用原 App helper 实际捕获 ID，执行带两个变量的完整 `brew reinstall --cask`，确认卸载容忍阶段未删除 App/回执，随后发布产生新 attempt/清单/ID，仍在的旧材料不变，小组件注册有效，再不带变量普通卸载成功。不得复用“损坏回执且同时删材料”的用例冒充此状态；
+  - 绑定修复的竞争者交错：对上述三轮各在捕获原 ID 后、卸载容忍后且发布前暂停，再通过真实安装协议放入同 channel/路径/版本的 B，恢复完整 brew 分派，原修复须非零拒绝，B App/回执逐字节不变；另测 B 回执缺失/损坏仍拒绝、不删预期 ID 后重试。无竞争者的修复在交换后、提交回执前失败时恢复原 App/回执；成功后运行原 ID 的延迟清理，修复后的新安装保持完整。断言预期 ID 始终为捕获的原值，不因重新求值或旧版恢复而刷新；
+  - 授权不越过其他有效拥有者：先放入有效拥有者（make 与 local_app 各自的回执加对应对象，以及仍存在的 formula keg 的回执），仅带授权变量或另带不匹配预期 ID 的 `brew install --cask` 都以 `owned_by_other` 失败，拥有者的对象和回执逐字节不变，输出含迁移命令；
+  - 过期 formula 回执迁移：回执登记一个已被删除的 keg 路径，不带任何变量的 `brew install --cask` 成功，回执改为 cask，没有使用 `--takeover`；keg 仍在时同一命令以 `owned_by_other` 失败并打印迁移命令，目标不存在、回执不变；
+  - 恢复旧版 R 仍然严格：目标处有回执丢失的竞争者对象，且没有设置该变量时，R 以 `receipt_missing` 拒绝，竞争者对象不变。
 - 本地 App 安装沿用 ad-hoc 签名，不加 hardened runtime，并执行 `lsregister`。
-- 所有测试都在临时 `HOME`、`PREFIX`、`APPDIR` 下进行。
+- 所有测试都在临时 `HOME`、`PREFIX`、`APPDIR` 和临时账户目录下进行；会安装的测试脚本在安装前确认被安装的程序是验收版，不是就中止。
 
-**安装协议交错表**：下面四项承接旧任务 2 第 8–10、12 条。它们必须运行本任务的真实 `register/unregister` 代码与命令，使用受控同步钩子，不能仅调用锁 API 或跑协议模型。
+**安装协议交错表**：I1–I4 承接旧任务 2 第 8–10、12 条，I5 补齐本次身份绑定恢复。它们必须运行本任务的真实安装 helper 代码与命令，使用受控同步钩子，不能仅调用锁 API 或跑协议模型。
 
 | 编号 | 受控顺序 | 必须观察到的结果 |
 | --- | --- | --- |
 | I1 发布与登记 | A 的任务 2 真实读写会话持共享锁；安装方执行 `register --source`。释放 A 后重试，在发布后、写回执前暂停 | 首次 `owner_running`，目标与回执不变；重试在一次排他锁内发布/登记，中间任何共享会话都等待；失败注入恢复原内容与回执 |
 | I2 同路径竞争 | A/B 同 channel/目标、各自暂存源及新清单；暂停 A 的锁内发布，启动 B；另测共用同一清单和不同 channel | B 在取排他锁处等待，等待期间不读写安装对象；A 完成发布和登记、释放锁后，B 才在自己的排他锁内看到 A 的正式回执并覆盖；从无“改目标时还有另一方会话”；同清单独占创建失败且不改原清单/目标；不同 channel 无 takeover 时 `owned_by_other`，且目标 P 与原回执逐字节不变 |
 | I3 暂停与崩溃 | A 锁内 SIGSTOP，测试时钟推进超过旧方案的 601 秒；B 登记和访问同时尝试；再测 A 取锁前暂停、恢复，以及发布进程崩溃 | 锁内暂停时 B 的登记/访问分别 `owner_running`/`ownership_busy`，没有超时租约放行，暂停期间任何一方都不改 P、不读取发布中间状态；A 恢复后在同一次连续持锁内完成发布和登记。锁外暂停时 B 正常完成登记并开启会话；A 恢复后先取排他锁，等待 B 会话结束后成功，或达到上限以 `owner_running` 失败，等待/失败期间 P 和回执不变。崩溃由内核释放锁，目标是旧/新完整内容之一，B 随后可正常登记 |
-| I4 延迟完整清理 | A helper 锁内清理后返回；B 发布同路径并开启真实共享会话；继续 A 的全部卸载/失败回滚/重试，包括 Homebrew 后续分派 | B App/回执逐字节不变、会话有效；A 无锁外最终删除；条件清理在 B 持锁时超时，释放后因原 ID 不匹配跳过；B 分别为 local_app 与同 channel、同版本 homebrew_cask 重装 |
+| I4 延迟完整清理 | A helper 锁内清理后返回；B 发布同路径并开启真实共享会话；继续 A 的全部卸载/失败回滚/重试。helper 层在本地验收测试中运行；包括 Homebrew 后续分派的完整链在 CI 的真实 brew 回归中运行 | B App/回执逐字节不变、会话有效；A 无锁外最终删除；条件清理在 B 持锁时超时，释放后因原 ID 不匹配跳过；B 分别为 local_app 与同 channel、同版本 homebrew_cask 重装 |
+| I5 绑定修复与后继 | A 回执及 App helper 有效，三类清理材料分别单独丢失；捕获 A 的 ID，分别在捕获后、卸载容忍后且 register 前插入同 channel/路径/版本 B；另测 B 回执再缺失/损坏，以及无竞争者的完整恢复/普通卸载 | 预期 ID 始终为 A，不能读取 B 的 ID 刷新；有后继时非零拒绝，B App/回执逐字节不变，材料缺失不跳过核对或降级。无竞争者时生成新 ID/材料并可普通卸载；交换后提交前失败恢复 A；A 的延迟清理不删除修复后的新实例。本地 helper 链与 CI 真实 brew 链均覆盖 |
 
-**验证：L3**。安装 helper/CLI/installation 的定向与 Go 全量测试、相关并发包 `-race`、`make vet`、`make check-install`；扩展并运行 `scripts/test-cask-migration.sh`、模板/小组件注册测试及新本地 App 安装测试。先检查现有脚本的隔离方式，再选命令；触及系统 tap、签名、注册等真实环境的操作必须另外获得授权，不能由测试名推定安全。真实 brew 的已批准可行性条件任一失败，保持本任务未完成并返回相应设计决策，不把失败转交任务 8。
+**验证：L3**。本地：安装 helper/CLI/installation 的定向与 Go 全量测试、验收 tag 下的交错与叶子矩阵测试、相关并发包 `-race`、`make vet`、`make check-install`（含本地 App 安装测试）、`scripts/test-cask-migration.sh`、`scripts/test-release-distribution.sh` 与模板检查。CI：`cask-real-brew` 回归。先检查现有脚本的隔离方式，再选命令；触及系统 tap、签名、注册等真实环境的操作必须另外获得授权，不能由测试名推定安全；开发机上不运行会执行 Homebrew 暂存 helper 的步骤。真实 brew 的已批准可行性条件任一失败，保持本任务未完成并返回相应设计决策，不把失败转交任务 8。
+
+**证据时序例外（2026-11-09 用户决定，仅限本任务的 `real-brew` 准则）**：CI 只能运行已推送的提交，所以 CEv1 的 `real-brew` 准则只能在提交并推送之后取得。处理顺序如下：
+
+1. 独立评审依据本地证据给出结论；其余准则照常在提交前通过门禁。
+2. 评审 PASS 后，Beads 进入 `awaiting_commit` 不以 `real-brew` 为前提，这是唯一的例外。
+3. 用户另行授权提交并推送 topic 分支后，以 CI 回归结果作为 `real-brew` 证据，绑定到该提交的树。CI 运行记录会过期，证据直接写下检查事实、提交和结果。
+4. 门禁 VERIFIED 后任务关闭。CI 失败时任务回到 `in_progress`，修复、复评，再由用户另行授权新的提交和推送。
+
+评审 PASS 不代表 `real-brew` 已满足；提交和推送仍须用户逐次授权。
 
 ### 6. `app-state-location`
 
@@ -658,4 +683,4 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 旧 Round 8 的具体遗漏与本次重写交接记在 [tasks 评审记录](reviews/tasks.md#重新分解--2026-11-07)。它的历史结论和已交付任务 1 的事实保留；本稿需新的独立评审，不由作者自签 PASS。
 
-仍有两个明确的环境前提：任务 5 的隔离真实 brew 能力、任务 7 的 Debug App Group 注册。屏障不可用阻塞需要屏障的任务；原生隔离不可用阻塞任务 6/8 对应证明。失败时保留准确结果并暂停该边界，不能降低验收标准。实现仅在临时状态上试验；不通过数据库降级、真实目录回滚或锁外文件删除来恢复测试/安装。可交付回退和残余清理按架构的锁内安装协议处理。
+仍有两个明确的环境前提：任务 5 在 CI 的 GitHub 托管 macOS runner 上以隔离的真实 brew 执行验收版 helper 的能力（开发机上会被 Gatekeeper 拦截，不在开发机运行），以及任务 7 的 Debug App Group 注册。屏障不可用阻塞需要屏障的任务；原生隔离不可用阻塞任务 6/8 对应证明。失败时保留准确结果并暂停该边界，不能降低验收标准。实现仅在临时状态上试验；不通过数据库降级、真实目录回滚或锁外文件删除来恢复测试/安装。可交付回退和残余清理按架构的锁内安装协议处理。

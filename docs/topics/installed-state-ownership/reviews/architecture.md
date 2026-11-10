@@ -764,3 +764,291 @@ HEAD `660c81586f4c13e04e66dbc05cde5331bf09acec`；`architecture.md` blob `9a5e5a
 Task checkpoint：ad-installed-state-ownership-doc-arch；content_state `6d1e0be4912cf4c0e3b1ec2a04a5b69c791406c075fca5b10d26a6cc788421a3`；gate VERIFIED。
 提交建议：经明确授权提交 architecture.md、本评审记录及必要状态片段；可与其他已通过文档成批交付。当前尚未执行提交。
 推送建议：目标 origin/feature/installed-state-ownership；需显式推送授权及对应提交对象、签名、范围检查。当前尚未执行推送。
+
+## Round 8 — 2026-11-09
+
+### 📋 installer-receipts 设计修订评审
+
+📊 总体评分：5/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra；独立冷上下文评审，未参与本次设计，未委派。
+- Method: 修订差异、安装协议与 Homebrew 分派源码对照；提取真实 `install_artifacts` 方法，以无文件副作用的 Ruby artifact 替身执行两条失败路径。
+- Scope: architecture.md 的 cask 发布/清理链、验收隔离和 CI 位置；tasks.md 为依赖。生产实现不是本轮交付对象。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `e90d2191d2f4906bb7103b81847c53df8afc72f1`；SHA-256 `91b0c0fdc8421ddaad91197337b2972055fdf1c7d991bd3ac4c6d63156d6ec1e`，配方 `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；本次调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:review-20261109-91b0c0fd`。
+- 完成门禁：FAILED
+- Gate evidence: 固定 gate-status 查询对本轮目标返回 FAILED；`:review` 失败证据适用且无 malformed/invalidated/unresolved，`:l0` 为 blocked。两份文档的新增证据共 4 个，另写 1 个同步后 ContentState；节点新增数 5、关系新增数 8 与提交批次相符，关系预检均为 ok，查询读回一致。
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-ARCH-R8-F1 — P1 / OPEN：经典 uninstall 不在安装失败的回滚分派中。**
+
+- 位置：`architecture.md:371-382`，以及第 386 行的失败回滚说明。
+- 风险：preflight 已发布 App 后，写 registered 标记、最后的暂存清理或后续 binary 链接失败，经典卸载脚本不会运行；App/回执残留，而本次清单与保存的 helper 被清除，违背完整清理与恢复材料保留契约。
+- 证据：Homebrew 源码提交 `47b42777c81a72198fd0598a2e5fb02f1701c63a`，`Library/Homebrew/cask/installer.rb:335-390` 只把成功返回的、拥有 `install_phase` 的 artifact 加入回滚列表，失败后 finally 调用 `purge_versioned_files`；`cask/artifact/uninstall.rb:9-38` 的经典 Uninstall 没有 `install_phase`。即使 preflight 已成功返回，它的逆向执行也只调用 `run_steps(phase: :uninstall)`，`install_steps.rb:1383-1385` 只逆向处理 symlink，不执行 register 对应的清理 shell。`installer.rb:835-839` 清除整个 staged_path，包括设计放在其中的 `.agentdeck-cleanup`。
+- 定向探针：直接提取上述真实 `install_artifacts` 方法，注入仅记录事件的 artifact。preflight 发布后抛错得到 `published → purged_cleanup_material`；后续链接抛错得到 `published → preflight_uninstall_phase → purged_cleanup_material`。两者都没有 `classic_cleanup`。这是分派层隔离验证，不是实际 brew/产品安装验收。
+- 💡 修复：明确覆盖 preflight 尚未成功返回和后续 artifact 失败这两类路径的可达条件清理入口，以及 Homebrew purge 前的恢复材料保存策略；不能仅声明“Homebrew 进入回滚”。保留归属锁与原 ID 条件删除，补相应真实 CI 故障注入。
+
+**ISO-ARCH-R8-F2 — P1 / OPEN：固定清单路径阻止失败升级恢复旧版本。**
+
+- 位置：`architecture.md:369-371,386`，依赖第 340 行的“每次安装使用新清单、不得覆盖旧清单”。
+- 风险：旧版本正常卸载保留清单；升级失败后 Homebrew 恢复备份并重新执行旧版本 preflight。固定 `.agentdeck-cleanup/manifest.json` 已存在，新的 register 以独占创建失败；即使没有任何竞争安装，也不能恢复旧版。
+- 证据：同一 Homebrew 提交的 `cask/upgrade.rb:506` 调用旧安装器的 `revert_upgrade`；`installer.rb:679-714` 备份/恢复完整 staged_path 后重新 `install_artifacts`。候选 `internal/installation/install.go:127-152,374-376` 用 `O_EXCL` 创建清单，`437-525` 的 Unregister 不删除清单，符合架构原契约。新方案没有定义恢复安装的新清单命名、选取和旧清单寿命。
+- 💡 修复：给每次安装尝试（包括 Homebrew 恢复旧版本）分配独立清单/清理材料，并定义卸载如何定位正确实例；不可删除或覆盖原清单来绕过独占创建。验收加入“旧版卸载 → 新版后续步骤失败 → 旧版恢复”，同时验证延迟旧清理仍不能删除新实例。
+
+#### 🟡 改进建议 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+真实 brew 验收明确移到 CI，拒绝开发机误运行；验收账户变量仅进入验收构建，生产产物禁止安装冒烟；保留锁内条件删除和私有 helper，方向正确。
+
+#### 📝 总结
+
+两项新增设计缺陷未关闭，架构 FAIL。Round 7 的历史结论与已关闭发现保留；它们不能替代此次具体分派方案的评审。未执行真实 brew、未更改产品代码、未提交或推送。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0。`python3 scripts/check-docs.py` exit 1，唯一诊断为既有 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法；该文件未变，本轮不修复，也不声称完整 L0 通过。Homebrew 源码按上述提交及路径定位，观察事实已完整记录，不依赖临时探针文件。
+
+
+#### 修复交接 — 2026-11-09（待独立复评）
+
+Repair: Codex；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。仅修订 architecture.md、tasks.md 和两份既有评审记录，保留工作区其他实现改动；未执行产品安装、提交或推送。
+
+- ISO-ARCH-R8-F1 → repaired in candidate，待复评：发布改由经典 preflight 的内部 rescue 覆盖返回前失败；独立 uninstall_preflight artifact 在后续失败时按捕获的 attempt 条件清理，不依赖两者排序或经典 uninstall。外部尝试目录先于发布持久化，不受 Homebrew purge 影响；回滚遍历被其他 artifact 中断时报告残余并保留恢复材料。正常卸载仍在 quit 后执行；新实例保护和锁内条件删除不变。
+- ISO-ARCH-R8-F2 → repaired in candidate，待复评：每次安装/恢复分配新 attempt、清单和 installation ID；可变定位文件与不可变历史材料分离。明确 O → N 失败 → R 恢复，新增锁内 `--require-unowned` 防止恢复覆盖竞争者；旧 ID 延迟清理不能删除 R/B。Task 5 同步三类 CI 故障注入和断言。
+- 兼容性限制：经典 flight DSL 已弃用，当前源码仍实现它；CI 必须验证加载及分派，拒绝该 DSL 时阻塞并回到设计。真实 brew 仅在 CI，未把静态探针写成产品验收。清理材料本任务不自动 GC。
+
+候选 architecture.md blob `7312450ae9f74a61688eabf90ad05ac8f503fa31`；依赖 tasks.md blob `bcce1b85a1809959dbf86db474e68b563a32268b`。本次为修复交接，未签发 Review PASS 或新 CEv1 完成结论；上方 FAILED 仅属于原评审目标，不能用于判定此新候选。复评需针对新 HEAD + scoped blob 解析目标状态和门禁。
+
+验证：读取同一 Homebrew 提交的 installer.rb、artifact/abstract_flight_block.rb、artifact/abstract_artifact.rb、dsl.rb、artifact_set.rb，确认真实分派、独立 artifact、排序与弃用行为。临时 Ruby 探针直接提取真实 install_artifacts、install_phase、uninstall_phase 方法，替身仅记录事件：两种 flight 顺序 × 发布内/后续失败四例均产生 published → cleanup → purge（guard 先注册且发布内失败时 cleanup 可重复，依赖幂等协议）；外部材料保留。另验证新求值的正常卸载 guard 无操作，共五例 PASS，exit 0。探针未调用真实安装 helper，临时文件已自动删除，不作持久引用。
+
+`bash scripts/check-topic-docs.sh installed-state-ownership` 与 `make check-whitespace` 通过。`python3 scripts/check-docs.py` 仍被未改动的 `docs/archive/plans/agentdeck-cli.md` 既有 indented list continuation 链接语法阻塞；未修复越界文件，不声称完整 L0 通过。
+
+## Round 9 — 2026-11-09
+
+### 📋 installer-receipts 设计修订复评
+
+📊 总体评分：7/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra；独立复核他方修复，未参与修复，未委派。
+- Method: 按原发现核对修复及受影响的恢复/迁移契约；复用同一 Homebrew 提交的已验证安装器分派，直接核对新增 flight phase 源码。
+- Scope: ISO-ARCH-R8-F1/F2 与修复引入的 cask 前置条件、材料生命周期及风险说明；产品实现不签发结论。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `7312450ae9f74a61688eabf90ad05ac8f503fa31`；配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度任务 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Content fingerprint: `92dd83cf7c88f21fc4707d88a760e691879a996c840ecf0620060fb7fbb8b76c`；Target ContentState: `installed-state-ownership:arch:r9-20261109-92dd83cf`。
+- 完成门禁：FAILED
+- Gate evidence: 固定 gate-status 对本轮目标返回 FAILED；review 失败证据适用、无 invalidated/unresolved/malformed，L0 仍为 blocked。本批 6 个新节点、8 条关系与输入计数相符，8 条关系预检均为 ok，门禁读回确认精确目标。
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-ARCH-R9-F1 — P1 / NEW / OPEN：新的空目标前置条件没有闭合既有重装恢复与过期回执迁移。**
+
+- 位置：`architecture.md:372`，对照 `346,350,401` 与 `requirements.md:106`（A3）。
+- 风险：cask 的所有 preflight 都带 `--require-unowned`，明确仅在回执和目标均不存在时发布。对于目标 App 仍存在、回执丢失或损坏的安装，旧条件卸载保留目标并失败；用户遵循“通过原安装方式重新安装修复”时，新 register 也拒绝，未规定可成功的恢复入口。即使外部清单完整，现有 unregister 仍要求匹配回执，不能据此清理。不能让用户靠手删 App/回执打破循环。
+- 另一须明确的边界：formula 卸载只删除 keg，留下过期回执，第 401 行要求按“不存在”处理；新规则的“回执不存在”究竟指物理文件缺失还是已按过期规则归一化，没有在新检查中说明。直接按物理存在检查会阻断已认领 formula → cask 的正常迁移。
+- 证据：原清理协议第 346/350 行明确拒绝无法证明归属的清理并要求重装恢复；新第 372 行同时排除了目标存在的重装。未变候选 `internal/installation/install.go:455-478` 对缺失/损坏回执且目标存在的情况确实拒绝清理，`203-211` 的现有 owner 判断则把已删除 executable 的回执视为无主。本轮结论是设计契约不闭合，不是声称未实现的 flag 已运行失败。
+- 💡 修复：区分正常新装/失败升级恢复的竞争者保护与经过明确授权的损坏安装修复；定义可达、持锁且不覆盖其他实例的恢复流程，并明确过期 formula 回执语义。同步 Task 5 的两类回归；不能简单放宽所有恢复安装为同 channel 无条件覆盖。
+
+**ISO-ARCH-R9-F2 — P2 / NEW / OPEN：风险表仍把已撤销的 steps 沙箱权限声明当作回执写入保证。**
+
+- 位置：`architecture.md:563`，对照第 366、372 行。
+- 风险：主方案已改为经典 flight，明确不受 steps 沙箱及 writable_paths 保证；风险表却要求以 `writable_base: :home` 声明回执目录，并断言账户主目录与 HOME 不同时必被拒绝。两种可观察行为不能同时作为实现和 CI 验收契约。
+- 证据：修复后的第 366 行明确“原 steps 的 writable_paths 不是这些块的权限保证”，第 563 行仍保留旧规则。本轮只将其视为新方案未同步的行为约束，不把既有弃用风险重复列为发现。
+- 💡 修复：按实际执行入口修订这条风险及验证要求，明确真实账户解析、HOME 不一致和写入失败时的实际边界；保留 CI 隔离要求。
+
+#### 🟡 改进建议 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+- **ISO-ARCH-R8-F1 — CLOSED。** 第 364–378 行区分发布块自身 rescue 与后续 artifact 的独立 uninstall_preflight 回滚，捕获不可变 attempt，不再借经典 uninstall 充当失败回调；外部材料保留覆盖回滚中断和 purge。
+- **ISO-ARCH-R8-F2 — CLOSED。** 第 368–384 行给 O/N/R 各自分配新目录、清单和 installation ID，旧材料不覆盖；旧 staged_path 恢复后重新分配 R，解除原固定清单 O_EXCL 冲突。竞争者保护有明确锁内判定，当前剩余问题是该判定与其他恢复契约的衔接，见新 F1。
+- 实查 Homebrew `47b42777c81a72198fd0598a2e5fb02f1701c63a` 的 `cask/artifact/abstract_flight_block.rb:39-58,77-80`：安装和卸载 phase 分别调用对应 directive，未定义的 phase 无操作，与修复的闭包方案相符。原安装器源码提交未变；不重跑先前已验证的基础回滚分派。修复交接的五例探针只作辅助记录，不作为本轮亲自执行的产品验收。
+
+#### 📝 总结
+
+原两项关闭，新两项未关闭，结论 FAIL。此前历史发现和原 FAIL 证据保留。真实 brew、经典 DSL 可用性与实际安装恢复仍由 Task 5 的 CI 验收承担，未在开发机执行。
+
+L0: 沿用已定位的完整文档检查阻塞：未改归档文件 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法；此诊断不因阶段变化重复执行，不声称完整 L0 通过。本轮 `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`、两份记录的 `python3 scripts/check-review-records.py` 均 exit 0。
+
+
+#### 修复交接 — 2026-11-09（待独立复评）
+
+Repair: Claude Code / Claude Sonnet 5.5；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。仅修订 architecture.md、tasks.md 和两份既有评审记录，保留工作区其他实现改动；未执行产品安装、真实 brew、提交或推送。
+
+- ISO-ARCH-R9-F1 → repaired in candidate，待复评：新增小节[cask 无主判定与授权修复](../architecture.md#cask-无主判定与授权修复)。① “无主”按有效拥有者归一化：回执缺失、无效，或有效但登记的程序已被删除（过期）都算无主，不看文件是否物理存在。已认领 formula 卸载后的过期回执因此不阻断 cask 安装，也不需要 `--takeover`；有效拥有者（含相同 channel、相同路径）仍以 `owned_by_other` 拒绝。② 把两种策略分开：普通新装和失败升级恢复 R 继续用严格的 `--require-unowned`（无主且目标不存在才发布）；损坏安装的修复要求用户为那条 `brew` 命令显式设置 `HOMEBREW_AGENTDECK_REPAIR=1`，模板只把它转成 helper 的 `--authorized-repair`。register 在同一次排他锁内用 `RENAME_SWAP` 原子替换无主目标，回执提交前失败则换回原对象；卸载脚本容忍“无法证明归属”的拒绝但不删除任何对象。有效拥有者永远不被覆盖，`unregister` 仍不会在没有匹配回执时删除目标（外部清单完整也一样），回滚和 rescue 永不带该参数，R 仍然严格。③ 可达性来自源码核对，不是推断：旧版卸载脚本失败会使重装、升级、卸载整体中止；带 `--force` 的 `brew install` 不会重装已记录且最新的 cask；经典块与卸载脚本拿不到 `--force`。所以修复入口是 `HOMEBREW_AGENTDECK_REPAIR=1 brew reinstall --cask <token>`（Homebrew 不再记录该 cask 时用 `brew install --cask`），不需要用户手工删 App 或回执。Task 5 同步判定表、授权修复、过期 formula 回执迁移的 helper 层与 CI 回归。
+- ISO-ARCH-R9-F2 → repaired in candidate，待复评：风险表该行按实际执行入口重写，不再把 `writable_base: :home` 或沙箱拒写当作保证。经典 `preflight`/`uninstall_preflight` 在 `brew` 进程内以调用者身份运行，`uninstall script:` 由 `brew` 以子进程启动，都不在 steps 沙箱中；写入边界改为：账户路径只由 helper 经系统账户数据库解析并写入（验收构建可由受限变量覆盖，缺失则失败不回退），经典块只传 attempt ID 并使用 helper 返回的路径，不从 `HOME`、`~`、`Dir.home` 推导；加上所有权排他锁内的条件检查。`HOME` 与账户主目录不一致因此不是拒绝条件，也不会让产物落到 `HOME` 下；写入失败使 preflight 失败并按既有回滚处理，不换位置重试。验证要求改为：CI 把 `HOME` 与账户目录设为不同的临时目录，断言产物只在账户目录；账户目录不可写时非零退出、无回执和已发布 App、无回退写入；渲染后的声明静态检查无 `writable_paths`/`writable_base`、无 HOME 推导路径。保留了 CI 隔离要求。第 368、372 行同步写明材料目录由 helper 创建（`~` 指账户主目录而非 `HOME`），与第 366 行“仅调用受控 helper”一致。
+
+设计选择与限制：授权形式（环境变量）是本次修复作出的设计选择，需求 A3/A6 与 CLI 原型没有规定它；它只出现在安装方式的失败提示和手册中，`doctor` 与状态拒绝的逐字标本不变，也没有新增公开命令。请复评核对这一选择是否可接受，以及“容忍但不删除”的卸载语义（Homebrew 的记录被移除而 App 留在原处，报告里明示）是否与“不假装卸载完成”一致。环境变量能到达经典块与卸载脚本，已从 `system_command.rb:531-558` 的源码确认，端到端仍由 CI 回归证明。真实 brew 仍只在 CI 运行，未在开发机执行。另外，requirements.md 第 117 行的前提仍以 steps 的 `sandbox_write_paths` 解释 cask 写回执，与经典 flight 方案不符；该文件属已通过的需求，不在本次发现范围，未修改。
+
+候选 architecture.md blob `24120bd94d616315079861ffec52f1893951d477`；依赖 tasks.md blob `7425c307929c384906ef632a26d0cf77259428e9`。本次为修复交接，未签发 Review PASS 或新 CEv1 完成结论；上方 FAILED 仅属于原评审目标，不能用于判定此新候选。复评需针对新 HEAD + scoped blob 解析目标状态和门禁。
+
+验证：直接读取本机 Homebrew `47b42777c81a72198fd0598a2e5fb02f1701c63a`（与评审使用的提交相同）：`cask/installer.rb:193,272-278`（重装先强制卸载）、`cask/artifact/abstract_uninstall.rb:633-655`（卸载脚本 `must_succeed: true`，`force` 只跳过不存在的脚本）、`cmd/install.rb:232-239,459-492` 与 `cask/upgrade.rb:58-80`（已记录且最新的 cask 不会被 `install --force` 重装）、`cask/artifact/abstract_flight_block.rb:39-41,55-57,77-80` 与 `cask/dsl/base.rb:20-28`（块拿不到 `force`）、`system_command.rb:531-558`（子进程继承环境）。这些是只读源码核对，没有运行 brew。`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` exit 0；`python3 scripts/check-docs.py` 仍只报既有的 `docs/archive/plans/agentdeck-cli.md` indented list continuation 链接语法，新增锚点（`#cask-无主判定与授权修复`、`#风险`、`ux/cli.md#文案约束`）无报错，不声称完整 L0 通过。
+
+## Round 10 — 2026-11-09
+
+### 📋 installer-receipts 设计修订独立复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: OpenCode / GPT-6 Astra，独立冷上下文复评角色；未参与设计修复，未委派。会话 `ses_e3c7d6155ffe5SZAVor6b3oymo`。
+- Method: 逐项核对 Round 9 发现和修复后的状态转换表；只读核对 Homebrew 重装顺序、卸载脚本失败处理及环境继承。
+- Scope: cask 授权修复、无主归一化、账户路径边界及 Task 5 的相关依赖。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Reviewed state: architecture.md blob `24120bd94d616315079861ffec52f1893951d477`；fingerprint `fd173264ed7d43fa6bd6a045db90eeb117e32451d934b8ce5412580ff431e2f0`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:r10-20261109-fd173264`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-ARCH-R10-F1 — P2 / NEW / OPEN：仅清理材料损坏时，新增授权重装仍被有效的本安装回执阻断。**
+
+- 位置：`architecture.md:394,412-414,598`，对照 `350,380`。
+- 行为风险：文档对 helper 副本、清单或定位文件不可用的安装承诺通过授权重装恢复，但该流程只在回执也失效时成功。材料单独丢失后，用户照提示重装仍失败，无法恢复可正常卸载的安装。
+- 证据：取一个回执有效、登记的 App helper 存在的 cask，只删除外部清单或 helper 副本。没有授权时卸载失败；设置 `HOMEBREW_AGENTDECK_REPAIR=1` 后，第 412 行让脚本报告并 exit 0，明确不删除对象、不改回执。随后第 413 行的新 register 带 `--require-unowned --authorized-repair`，第 394 行却对有效拥有者一律 `owned_by_other`，包括相同 channel/路径的当前安装。故第 414 行“外部材料完整与否都不影响这条路径”和第 598 行恢复承诺不成立。此反例不依赖竞争者，也不依赖旧版 helper 的能力。它与 Round 9 的“回执缺失/无效”反例不同。
+- Homebrew 依据：本轮确认源码 HEAD `47b42777c81a72198fd0598a2e5fb02f1701c63a`；`cask/installer.rb:193,272-278` 确认重装先卸载，随后在 `198-202` stage/install_artifacts；`cask/artifact/abstract_uninstall.rb:633-655` 确认脚本必须成功，force 只跳过不存在的脚本。这里是设计状态转换反例，不是产品实现的运行失败报告。
+- 💡 有界修复：为“回执仍有效、只丢失清理材料”的原安装定义可达恢复入口及可信身份来源。任何清理或替换都须在同一次排他锁内校验绑定到本次修复的预期安装身份，防止同路径后继安装被清理；不能简单允许同 channel/路径无条件覆盖，或在延迟清理时从当前回执刷新 ID。同步 Task 5 对该独立状态及竞争者交错的验收。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-ARCH-R9-F1 — CLOSED。** 第 388–418 行明确过期 formula 回执按无主归一化，并为缺失/无效回执的残留目标定义显式授权重装：旧卸载容忍而不删除，新发布在锁内替换，回执提交前保留旧对象。原发现的两个反例已闭合；新增材料单独损坏反例由 R10-F1 独立承载。
+- **ISO-ARCH-R9-F2 — CLOSED。** 第 368、424、433、601 行一致规定系统账户解析及 helper 返回路径，HOME 不一致不导致改写落点，失败不回退；不再以 steps writable_paths 作为经典块的保证。
+- ISO-ARCH-R8-F1/F2 保持关闭：发布块 rescue、独立回滚 artifact、外部材料寿命和 O/N/R 独立清单均保留。环境变量映射为显式 helper 参数与需求 A6 的架构授权边界一致；`system_command.rb:531-558` 的环境继承源码支持可达性，端到端仍待 CI。
+
+#### 📝 总结
+
+上轮两项均关闭，新增一项恢复路径缺口，结论 FAIL。保持架构 Review 未勾选。实际 Homebrew 回归、弃用 DSL 兼容性及产品实现仍由 Task 5 CI 验收承担；本轮未运行真实 brew 或安装产品。requirements.md 第 117 行是 steps 写入能力的既有前提，当前架构已显式记录入口变更及新的验证条件，本轮不把它解释为必须继续使用 steps 的要求，也不另开泛化整改。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 和两份记录的 `python3 scripts/check-review-records.py` 均 exit 0。`python3 scripts/check-docs.py` exit 1，仅报告未改动的 `docs/archive/plans/agentdeck-cli.md` 中 indented list continuation 链接语法；不声称完整 L0 通过。
+
+CEv1: 入口门禁为 NOT_VERIFIED，未误用旧轮失败。写入新候选的 review=fail 与 l0=blocked 后，固定 gate-status 返回精确目标 FAILED；两项证据 applicable=true、malformed=false、invalidated=false、unresolved=false。两份文档共新增三个 ContentState（含 tasks 入口及摘要同步后状态）、四项证据、八条关系；写入工具的新增数量与提交数量一致，八条关系预检均为 ok，门禁读回确认。历史证据未覆盖或重标。
+
+#### 修复交接 — 2026-11-09（ISO-ARCH-R10-F1，待独立复评）
+
+Repair: Codex，未委派。工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；调度载体仍为 `ad-installed-state-ownership-doc-installer-receipts-revision`。本次仅修改 architecture.md、tasks.md 和两份既有评审记录，保留其他既有实现改动；未运行真实 brew、安装产品、提交或推送。
+
+- ISO-ARCH-R10-F1 → repaired in candidate，待独立复评：将“回执有效、仅清理材料丢失”与无主目标分开。新增隐藏只读 `install repair-identity`，由仍有效的原 App helper 在排他锁内验证有效 cask 回执、当前程序及固定 executable，捕获一次原 installation ID，不消费清单、保留副本、定位文件或外部索引。身份捕获失败不执行 brew。
+- 用户为同一条命令显式配对授权变量与 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION`；模板只转成显式 helper 参数，跨子进程/重新求值仍传同一个值。卸载和 register 各在同一次连续排他锁内核对原 ID/channel/规范 executable；材料缺失的卸载只容忍不删除，发布才可原子替换精确匹配的原安装，提交前失败恢复原对象和回执。
+- 同路径、同 channel、同版本的后继 B 仍以不同 ID 拒绝；B 回执再损坏也不能降级为无绑定替换。不在延迟清理或重试中刷新 ID，不伪造清单，不先删回执。材料和 App helper 同时不可用时明确报告恢复限制。无主恢复、过期 formula 迁移、O/N/R 的隔离材料和普通旧清单清理规则保留。
+- 同步 Task 5：三类材料分别单独缺失，无授权与仅授权的拒绝、绑定后的完整恢复及普通卸载；身份捕获后和卸载容忍后插入 B；回执提交前失败恢复；成功后旧 ID 的延迟清理。helper 层真实命令与 CI 完整 Homebrew 分派各自承担验收，不把本次设计修复描述为产品运行通过。
+
+候选 HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`；architecture.md blob `ad141e83c9d7ab675e81e124bc0cb87571e89d95`，fingerprint `ec7cf5d587559a9e01d404cce89f0292d608018bae48a32c2302365a47feba02`；依赖 tasks.md blob `1cb749de0801ad70d2873229e9a9f2ec18078821`。ContentState `installed-state-ownership:arch:repair-r10-f1-20261109-ec7cf5d5`；配方仍为 SHA-256 of `head=<HEAD>;document=<blob>`。入口固定 gate-status 返回 NOT_VERIFIED，缺少本候选的 l0 与独立 review，无 invalidated/unresolved；历史 FAILED 只属于上方 Round 10 的旧目标，未覆盖、重标或自签 PASS。
+
+验证：逐项对照原反例与锁内判定表，原 ID 匹配才可恢复，后继 ID 不匹配必须拒绝；这是设计状态转换核对，不是运行协议模型或产品验收。`python3 scripts/check-docs.py` exit 1，仅报告未改动的 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法；本候选的 L0 因此仍受阻，不声称完整通过。其余结构/空白核对事实由本候选的 CEv1 l0 证据直接记录，不依赖临时日志。
+
+调度同步待办：两次 Beads 读取（含沙箱外的精确 task show）都因现有 Dolt 连接 i/o timeout 失败；未读到当前归属，未认领、改派或变更任务。恢复现有 Beads 访问后，先核对该任务的现有归属/交接，再把本候选及两份记录同步至同一调度载体的 `in_review`。此项是修复后的协调缺口，不授权服务重启、产品开发或下一轮复评。
+
+## Round 11 — 2026-11-10
+
+### 📋 installer-receipts 设计修订独立复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：FAIL
+
+- Reviewer: Claude Code / Claude Opus 5.5，独立冷上下文复评角色；未参与 R10-F1 的设计修复，未委派。
+- Method: 逐项核对 Round 10 发现与修复交接；对“有效回执、仅清理材料丢失”反例沿修复后的身份捕获 → 授权卸载 → 绑定 register 走完状态转换，并核对后继 B 插入、B 回执损坏、回滚/rescue 不带授权等分支；再检查修复新增的命令、参数与环境变量是否同步到本文件的命令签名与“兼容性与契约同步”清单。只读，未运行 brew 或产品程序。
+- Scope: architecture.md 的 cask 授权修复、身份绑定修复及其契约同步；tasks.md 为依赖，结论见任务分解 Round 14。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `ad141e83c9d7ab675e81e124bc0cb87571e89d95`；fingerprint `ec7cf5d587559a9e01d404cce89f0292d608018bae48a32c2302365a47feba02`（本轮重算一致），配方 SHA-256 of `head=<HEAD>;document=<blob>`。本轮未改动 architecture.md。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:repair-r10-f1-20261109-ec7cf5d5`（修复者登记的候选状态，内容身份经本轮核对）。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-ARCH-R11-F1 — P2 / NEW / OPEN：身份绑定修复没有同步到命令签名与契约同步清单，任务 9 会把错误的修复说明写进手册。**
+
+- 位置：`architecture.md:311`（register 签名）、`597`（兼容性清单的隐藏命令）、`602`（cli-manual 同步要求）；对照 `395,402-406,416,423-429,437`。
+- 行为风险：任务 9 只按 [兼容性与契约同步](../architecture.md#兼容性与契约同步) 更新 `cli-design.md` 与 `cli-manual.md`。该节仍只列出 `install register`（`--require-unowned`/`--authorized-repair`）和 `install unregister`，没有隐藏命令 `install repair-identity`、register 的 `--expected-installation`、环境变量 `HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION`；第 602 行要求手册只写无绑定修复命令，并断言它“只授权替换无法证明归属的对象、不授权接管有效拥有者”。按此同步后，回执有效、仅清理材料丢失的用户在手册里拿到的是第 394 行注定以 `owned_by_other` 失败的无绑定命令；稳定规范也漏记一个新增隐藏命令及其 MINOR 契约面。
+- 证据：第 311 行 register 签名停在 `[--require-unowned [--authorized-repair]]`，与第 395、404、432 行使用的 `--expected-installation` 不一致；全文只有第 402、426 行提到 `repair-identity`，第 597 行清单没有它。第 416、437 行明确绑定模式“另允许修复被精确选定的原 cask 安装”，与第 602 行的绝对表述冲突。这些段落由 Round 9 修复写入，Round 10 修复新增身份绑定模式时没有回头更新，所以是本次修复引入的新不一致，不是 Round 10 漏报。
+- 💡 有界修复：在第 311 行签名补上 register 的 `--expected-installation <原 ID>` 并列出 `install repair-identity`；第 597 行补齐该隐藏命令、参数和配对环境变量；第 602 行改为同时列出无主修复与身份绑定修复两条入口，并把授权边界改写为与第 416、437 行一致（不接管其他有效拥有者，绑定模式仅限锁内精确匹配的原 cask 安装）。不改变判定表和协议语义。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-ARCH-R10-F1 — CLOSED。** 原反例沿修复后的契约可以走通：`repair-identity` 在排他锁内只依赖有效回执、现存程序和固定 helper 路径取得原 ID（第 402 行），不读清单、副本、定位文件或可变索引；卸载在锁内核对绑定身份后以 `skipped_unverified` 容忍材料缺失，保留副本缺失时改用 App 内 helper、定位文件缺失时直接用命令绑定的身份（第 406、431 行）；随后 register 命中判定表第 395 行，`RENAME_SWAP` 替换并生成新 attempt/清单/ID，回执提交前失败恢复原对象和回执。环境变量带 `HOMEBREW_` 前缀，可穿过 brew 的环境过滤到达经典块与卸载子进程，并在重新求值时由命令继承，不依赖闭包（第 404 行）。
+- 竞争者边界闭合：捕获后出现同路径同 channel 同版本的 B，卸载与 register 都因 ID 不匹配以 `owned_by_other` 拒绝；B 回执再损坏时“已传预期 ID 却无法验证仍拒绝”，不会退回无主替换（第 397、408 行）。回滚和 rescue 永不带授权、只用新 attempt 的清单 ID（第 437 行），恢复旧版 R 仍严格。材料和 App helper 同时不可用时明确不承诺恢复（第 408、433 行、风险表第 618 行），没有夸大可达性。
+- ISO-ARCH-R9-F1/F2、R8-F1/F2 保持关闭；验证位置第 449 行把新状态及两个插入点列入 CI 真实 brew 回归，并要求 helper 层另行覆盖。
+
+#### 📝 总结
+
+ISO-ARCH-R10-F1 关闭；R10 修复引入的契约同步缺口 ISO-ARCH-R11-F1（P2）开放，结论 FAIL，架构 Review 保持未勾选。历史发现与各轮 FAIL 证据保留。真实 brew、弃用 flight DSL 的兼容性和产品实现仍由任务 5 的 CI 验收承担，本轮未在开发机执行。剩余不确定性：环境变量到达经典块与卸载子进程依赖修复者引用的 `system_command.rb:531-558` 源码事实，本轮未重新读取 Homebrew 源码，端到端仍待 CI 证明。
+
+Evidence: 写完两份记录后，`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py --base HEAD` 覆盖两份记录均 exit 0。`python3 scripts/check-docs.py` exit 1，唯一一行诊断是未改动的 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法；不声称完整 L0 通过。CEv1：对目标状态写入本轮 review=fail 证据；该状态已有修复者登记的 l0=blocked 证据，门禁按两项必需准则对精确目标读回 FAILED。
+
+#### 修复交接 — 2026-11-10
+
+Repair: OpenCode / GPT-6 Astra，未委派；session `ses_e3c1308d4ffexIfhH72pThwN8I`，工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`，调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+
+- ISO-ARCH-R11-F1 → repaired in candidate，待独立复评。确认原 register 签名与同步清单遗漏了已经定义的身份绑定入口；现补齐 register 的 `--expected-installation <原 ID>` 和只读 `install repair-identity` 签名。
+- “兼容性与契约同步”列出隐藏命令、参数、配对环境变量及 MINOR 契约面，并要求 `cli-design.md` 的 Build Identity and Installation 同步这些内容。手册同步要求分别覆盖无主修复与有效原 cask 的身份绑定修复，引用本文件现有完整命令，明确捕获失败不运行 brew、不刷新身份、不降级重试，以及锁内精确身份匹配和不授予清理删除权的边界；判定表和协议语义未变。
+- 核对任务 9：其既有要求直接消费该同步清单，文件范围已覆盖稳定规范和手册，任务定义无需修改。tasks.md 仅同步待复评状态；产品代码、稳定规范和手册留待各自实现任务交付。
+
+候选 HEAD `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`；architecture.md blob `045bf3d9697f50ae0897a6ecbdf60b578233fefa`，tasks.md blob `177b73ea625da47f0c937c9d6644933f0707e178`。本次是设计一致性修复，不自签独立 PASS，不跨越 Task/Topic 完成边界，历史 FAIL 和旧目标 CEv1 证据保持原样。
+
+验证：按原发现逐项对照签名、授权修复节、契约同步节及任务 9，三项新增契约面和两种修复入口均有对应同步要求。`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0。`python3 scripts/check-docs.py` exit 1，仍仅报告未修改的归档文档 `docs/archive/plans/agentdeck-cli.md` 的 indented list continuation 链接语法；完整 L0 仍受阻。未执行产品测试或真实 brew，未提交、推送。
+
+## Round 12 — 2026-11-10
+
+### 📋 installer-receipts 设计修订独立复评（ISO-ARCH-R11-F1）
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Claude Code / Claude Opus 5.5，独立冷上下文复评角色；未参与 R11-F1 修复（修复者为 OpenCode / GPT-6 Astra），未委派。
+- Method: 按 Round 11 的三处位置逐项核对修复候选；用行号偏移核对改动范围（签名区新增一行，其后各节整体后移一行，判定表、身份捕获、授权边界段落内容不变）；对 `python3 scripts/check-docs.py` 的唯一诊断做根因定位。只读，未运行 brew 或产品程序。
+- Scope: architecture.md 的命令签名、兼容性与契约同步清单；tasks.md 任务 9 为依赖，结论见任务分解 Round 15。
+- HEAD: `88cfbfbbfe1df89d59fdd2302106b89ba465b43f`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `045bf3d9697f50ae0897a6ecbdf60b578233fefa`；fingerprint `690d7cf179fbf730e5006f88c723d6bdf06e3e75395417d8deb3f007e32f92d6`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。本轮未改动 architecture.md。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:r12-20261110-690d7cf1`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-ARCH-R11-F1 — CLOSED。** 第 311 行 register 签名补上嵌套在 `--authorized-repair` 下的 `--expected-installation <原 ID>`，与第 405 行“只与授权变量配对”一致；第 313 行新增 `install repair-identity` 签名。第 598 行兼容性清单列出该隐藏命令、绑定参数和配对环境变量，并指向授权修复节为准；第 602 行要求 `cli-design.md` 的 Build Identity and Installation 同步这些内容；第 603 行手册要求分别写明无主修复与身份绑定修复两条入口，写明捕获失败不运行 brew、不刷新 ID、不降级重试，授权边界与第 417、438 行一致。任务 9 照此同步不会再把材料单独丢失的用户引向注定失败的命令。
+- 判定表、身份捕获、竞争者拒绝、回滚不带授权等协议语义未被改动；ISO-ARCH-R10-F1、R9-F1/F2、R8-F1/F2 保持关闭。
+
+#### 📝 总结
+
+唯一开放发现 ISO-ARCH-R11-F1 已关闭，本记录全部发现均已关闭，结论 PASS，架构 Review 勾选。剩余不确定性不变：环境变量到达经典块与卸载子进程、弃用 flight DSL 的兼容性以及真实 Homebrew 分派，仍由任务 5 的 CI 真实 brew 回归证明，本轮未在开发机执行。
+
+**L0 阻塞的根因更正。** 本记录自 Round 8 起把 `python3 scripts/check-docs.py` 的 exit 1 记为“既有归档文档 `docs/archive/plans/agentdeck-cli.md` 的链接语法问题”。本轮定位：同一脚本与同一归档文件在 `main` 上 exit 0，二者在 HEAD 与 `main` 之间没有差异。差别在于脚本无参数运行时把 `git ls-files --others` 的未跟踪文件计入变更集，并在任一变更路径的文件名作为子串出现在不支持的链接行里时报错。工作区根目录有一个未跟踪的 23.3 MB Mach-O 可执行文件 `agentdeck`（构建产物，非本轮或本修订创建），其文件名正是归档行 `[2026-07-22-agentdeck-test-coverage.md](test-coverage.md)` 的子串。用只读探针加载原脚本、仅从变更集中去掉这一个路径后，脚本输出 “Document structural checks passed” 并 exit 0。历史各轮的观察事实保留不改，此处只更正原因归属。该子串匹配属于工具层误判，不在本修订范围，本轮不修改脚本，也不删除该文件。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py --base HEAD`（两份记录）均 exit 0；`python3 scripts/check-docs.py` exit 1，根因如上。CEv1：目标状态写入 review=pass 与 l0=blocked（附根因），门禁读回 BLOCKED。门禁 VERIFIED 的前提：先处理工作区根目录的未跟踪文件 `agentdeck`（移出工作区或加入忽略规则，需用户决定，因为它不是复评创建的），再对同一内容状态重跑 `python3 scripts/check-docs.py` 并登记 l0=pass。
+
+**门禁同步 — 2026-11-10。** 用户决定直接删除工作区根目录的未跟踪构建产物 `agentdeck`（删除前确认未被 Git 跟踪、为 Mach-O 可执行文件）。随后 `python3 scripts/check-docs.py` exit 0，`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0。architecture.md blob 未变，同一目标状态 `installed-state-ownership:arch:r12-20261110-690d7cf1` 登记 l0=pass（`:l0-rerun`，以 supersedes 关系取代原 l0=blocked），门禁读回 VERIFIED。tasks.md 因第 29 行状态摘要同步产生最终状态，见任务分解 Round 15。
