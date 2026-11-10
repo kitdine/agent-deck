@@ -29,6 +29,37 @@ if [[ -z $development_team || $app_group != "$expected_app_group" ]]; then
   exit 1
 fi
 
+# Check target-level overrides as well as the shared Release defaults. Otherwise
+# an isolated Debug plist could silently ship with the installed App's identity.
+python3 - "$project" "$configuration" <<'PY'
+import json
+import subprocess
+import sys
+
+project = json.loads(subprocess.check_output([
+    "plutil", "-convert", "json", "-o", "-", sys.argv[1]
+]))["objects"]
+with open(sys.argv[2]) as source:
+    defaults = dict(line.strip().split(" = ", 1) for line in source
+                    if " = " in line and not line.lstrip().startswith("//"))
+team = defaults["AGENTDECK_DEVELOPMENT_TEAM"]
+for target_name in ("AgentDeck", "AgentDeckWidget"):
+    target, = (value for value in project.values()
+               if value.get("isa") == "PBXNativeTarget" and value.get("name") == target_name)
+    configurations = project[target["buildConfigurationList"]]["buildConfigurations"]
+    for config_id in configurations:
+        config = project[config_id]
+        name = config["name"]
+        settings = defaults | config["buildSettings"]
+        group = settings["AGENTDECK_APP_GROUP"].replace("$(AGENTDECK_DEVELOPMENT_TEAM)", team)
+        expected_group = team + ".group.com.kitdine.agentdeck" + (".debug" if name == "Debug" else "")
+        expected_bundle = "com.kitdine.agentdeck" + (".debug" if name == "Debug" else ".perf" if name == "Perf" else "")
+        if target_name == "AgentDeckWidget":
+            expected_bundle += ".widget"
+        if group != expected_group or settings["PRODUCT_BUNDLE_IDENTIFIER"] != expected_bundle:
+            sys.exit(f"{target_name} {name}: unexpected bundle or App Group identity")
+PY
+
 for entitlements in "$app_entitlements" "$widget_entitlements"; do
   plutil -lint "$entitlements" >/dev/null
   grep -Fq '<string>$(AGENTDECK_APP_GROUP)</string>' "$entitlements"

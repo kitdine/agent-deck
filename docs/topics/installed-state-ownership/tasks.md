@@ -29,7 +29,7 @@ updated: 2026-11-10
 需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 6–9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6、8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -41,7 +41,7 @@ updated: 2026-11-10
 | 4. `installation-diagnostics` | [x] | [x] |
 | 5. `installer-receipts` | [x] | [x] |
 | 6. `app-state-location` | [ ] | [ ] |
-| 7. `debug-app-identity` | [ ] | [ ] |
+| 7. `debug-app-identity` | [x] | [x] |
 | 8. `ownership-acceptance` | [ ] | [ ] |
 | 9. `contract-reconciliation` | [ ] | [ ] |
 
@@ -68,11 +68,11 @@ updated: 2026-11-10
 | 4 `installation-diagnostics` | 2 | 受管命令归属诊断、`desktop state-location` |
 | 5 `installer-receipts` | 2 | 真正的安装/认领/卸载协议及其完整交错测试 |
 | 6 `app-state-location` | 4、7 | App 使用 helper 路径、原生共享会话和 Health 文案 |
-| 7 `debug-app-identity` | 无代码前置；签名/注册验收需操作员登记 Debug App Group | 独立构建身份、签名与静态隔离证据、现有宿主测试回归 |
+| 7 `debug-app-identity` | 无代码前置；需有效签名身份，不需要门户注册 App Group | 独立构建身份、签名与静态隔离证据、现有宿主测试回归 |
 | 8 `ownership-acceptance` | 3、5、6（传递包含 1、2、4、7） | 最终命令集合、真实安装协议与 App 的跨面 A1–A9 验收 |
 | 9 `contract-reconciliation` | 8 | 与已验收行为一致的稳定契约和用户说明 |
 
-建议执行序列：**1（已交付）→ 2 → 3 → 4 → 5 → 7 → 6 → 8 → 9**。任务 7 的操作员前提可提前办理，未满足时不阻塞任务 2–5，也不阻塞任务 7 已有的无签名宿主测试。任务 7 自己验证构建身份变更的原生回归；任务 6 再消费该身份实现并验证新的状态路径/会话行为。现有 `scripts/test-macos-app.sh` 已隔离 HOME 和宿主状态，不能以“等任务 6 隔离”为由延后任务 7 的回归。多个任务会修改 `main.go`、`platform/state.go`、telemetry 或原生构建，因此按序交接文件，不并行修改。
+建议执行序列：**1（已交付）→ 2 → 3 → 4 → 5 → 7 → 6 → 8 → 9**。任务 7 的真实签名核验与无签名宿主测试分别取证；当前 Team ID 前缀 App Group 无门户注册前提。任务 7 自己验证构建身份变更的原生回归；任务 6 再消费该身份实现并验证新的状态路径/会话行为。现有 `scripts/test-macos-app.sh` 已隔离 HOME 和宿主状态，不能以“等任务 6 隔离”为由延后任务 7 的回归。多个任务会修改 `main.go`、`platform/state.go`、telemetry 或原生构建，因此按序交接文件，不并行修改。
 
 ### 共用验证边界
 
@@ -589,20 +589,41 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 **结果**：提供独立 Debug 构建身份（需求 G5），供任务 6 安全运行原生夹具；实际双 App 数据与生命周期互不干扰的 A5 组合验收归任务 8。本任务没有 Go 功能前置依赖。
 
-**人工前提**：签名/注册验收需要操作员在开发者账号下注册 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`，在评审材料中记录。下述现有无签名 XCTest 回归不依赖这个注册；它不能替代真实签名/注册结果。
+**签名验收前提**：`N2FZ2FNRTU.group.com.kitdine.agentdeck.debug` 使用 macOS 的 `<Team ID>.<group name>` 格式，无需门户注册或 App Group provisioning profile。验证实际签名团队为 `N2FZ2FNRTU`，App/Widget 的实际 entitlements 与 Info.plist 一致；无签名 XCTest 不能替代这些真实签名证据。依据与适用边界见[架构](architecture.md#app-与小组件)。用户禁止注册，本任务不创建或修改开发者账号资源。
 
 **文件**：
 - `apps/macos/AgentDeck.xcodeproj/project.pbxproj`：只改 Debug 配置的 bundle ID 和 `AGENTDECK_APP_GROUP`；
 - 检查小组件的 sandbox 校验脚本是否需要同步修改。
 
-**输入/输出接口**：消费架构中已确定的 bundle ID/App Group 表和操作员注册结果；产出 Debug 的 App/Widget 标识、entitlements 与 Info.plist，Release/Perf 配置保持原值。
+**输入/输出接口**：消费架构中已确定的 bundle ID/App Group 表和有效的签名身份；产出 Debug 的 App/Widget 标识、entitlements 与 Info.plist，Release/Perf 配置保持原值。
 
 **实施顺序与验收**：
 - 按[架构](architecture.md#app-与小组件)的表格修改，Release 和 Perf 配置逐项不变。
 - 证明 Debug 构建产物的 entitlements 和 Info.plist 中都是 Debug 的 App Group。
 - Release 构建的签名、`check-widget-sandbox` 都不变。
 
-**验证：L3**。构建 Debug、Release 两种产物，对比 Release/Perf 配置，检查实际签名、Info.plist、entitlements 并运行 `make check-widget-sandbox`。按 `scripts/build-macos-app.sh` 的配置入口选择命令；若 sandbox 检查含固定 Release ID，同步成按构建配置校验，不削弱 Release 断言。**任务 7 必须在自己的候选上运行 `make test-macos-app`**：现有 `scripts/test-macos-app.sh` 为 Debug 宿主设置临时 `HOME`、`CFFIXED_USER_HOME`、`AGENTDECK_TEST_HOME` / `TEST_RUNNER_AGENTDECK_TEST_HOME`，使用 `CODE_SIGNING_ALLOWED=NO`；App 将 helper HOME、App Group 存储和偏好切至测试夹具，现有测试无需等任务 6。确认 `AgentDeckAppTests` 的 Debug `TEST_HOST` 能加载并完成回归；仅 Command Line Tools 下的 Foundation verifier 不覆盖宿主，缺完整 Xcode 时明确保留该项未完成。任务 6 为自己的行为变更再运行该门禁，不接收任务 7 未解决的宿主回归。真实签名/注册前提仍需单独满足，不能用无签名通过代替。
+**验证：L3**。构建 Debug、Release 两种产物，对比 Release/Perf 配置，检查实际签名、Info.plist、entitlements 并运行 `make check-widget-sandbox`。按 `scripts/build-macos-app.sh` 的配置入口选择命令；若 sandbox 检查含固定 Release ID，同步成按构建配置校验，不削弱 Release 断言。**任务 7 必须在自己的候选上运行 `make test-macos-app`**：现有 `scripts/test-macos-app.sh` 为 Debug 宿主设置临时 `HOME`、`CFFIXED_USER_HOME`、`AGENTDECK_TEST_HOME` / `TEST_RUNNER_AGENTDECK_TEST_HOME`，使用 `CODE_SIGNING_ALLOWED=NO`；App 将 helper HOME、App Group 存储和偏好切至测试夹具，现有测试无需等任务 6。确认 `AgentDeckAppTests` 的 Debug `TEST_HOST` 能加载并完成回归；仅 Command Line Tools 下的 Foundation verifier 不覆盖宿主，缺完整 Xcode 时明确保留该项未完成。任务 6 为自己的行为变更再运行该门禁，不接收任务 7 未解决的宿主回归。真实签名、团队前缀和 entitlements 一致性仍需单独验证，不能用无签名通过代替；不要求门户注册。
+
+
+#### 开发进展与验证边界 — 2026-11-10
+
+以下保留当时的开发取证历史；其中门户注册前提的判断已由本任务后续平台规则勘误纠正，不再是当前完成条件。
+
+- 工作区 `agent-deck.installed-state-ownership`，分支 `feature/installed-state-ownership`，基线 HEAD `62e2f239002899fd5d0ba4bf26ea9280c66ba827`。修改 Xcode 项目两个 Debug 目标的 bundle ID/App Group、`scripts/check-widget-sandbox.sh`，并在 `MenuBarViewModelTests.swift` 的两个既有失败消息中补充激活请求结果、activation policy 和前台应用 bundle ID；未改 Go/Swift 产品行为、测试断言、等待期限或跳过条件，未提交或推送。
+- Debug App/Widget 分别为 `com.kitdine.agentdeck.debug` / `com.kitdine.agentdeck.debug.widget`，二者 App Group 为 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`。对项目对象逐项比较，全部 Release/Perf 对象与 HEAD 相同；共享 xcconfig、entitlements 模板与 Info.plist 模板未变。
+- 环境：macOS 26.7.3、Xcode 26.4 (17E192)、Go 1.27.3 darwin/amd64。运行命令前将已有 Go 1.27.3 的 bin 放到本次进程 PATH 首位，修正原 PATH 的 Go 1.27.1 与 GOROOT 1.27.3 不一致；未改全局环境。原生 harness 的 `ps` 及 XCTest 经执行权限批准，仍使用其原有临时 HOME、CFFIXED_USER_HOME 和测试域隔离。
+- `make test-macos-app` 内的 Debug 构建通过；`make build-all DIST_DIR=<临时目录>` 后以 `AGENTDECK_APP_CONFIGURATION=Release AGENTDECK_DIST_DIR=<同目录> AGENTDECK_MACOS_BUILD_DIR=<独立临时构建目录> bash scripts/build-macos-app.sh` 构建 Release 通过。Debug 为 x86_64；Release App、Widget 和 helper 为 x86_64/arm64。产物的 App/Widget Info.plist 均与各自配置的身份一致。
+- 在临时产物副本上按打包脚本相同顺序，对嵌套代码、helper、Widget、App 执行 `codesign --force --sign <本机 Developer ID> --options runtime --timestamp --generate-entitlement-der`；App/Widget 传入按各自产物 App Group 展开的原 entitlements 模板。两种配置的 `codesign --verify --deep --strict` 均通过，签名团队为 `N2FZ2FNRTU`；解码实际签名确认 App Group 与 Info.plist 一致，Widget sandbox 为 true。此为本地签名证据，不是账号端注册或运行时容器访问证据。Release 构建仍自动登记了临时 App（临时 `REGISTER_APP_WITH_LAUNCH_SERVICES=NO` 设置未阻止它），随后已用 `lsregister -u <该临时 App>` 撤销；未启动、安装或公证 Release 产物。
+- `bash -n scripts/check-widget-sandbox.sh`、`make check-widget-sandbox` 通过。独立临时副本中将 Debug bundle 改回安装版身份、将 Release 默认 bundle 改成 Debug 身份，两个负例均被新校验拒绝；原 sandbox/私有数据边界断言保留。
+- 完整 XCTest 两次均为 Shared 122 项通过、App 167 项中 1 项失败和 1 项既有 opt-in skip、Widget 51 项通过。唯一失败为 `MenuBarViewModelTests.testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges`：首轮 line 206 的 rearm 渲染检查失败，数值已更新但宿主 active/key 均为 false；串行复跑在 line 193 的前台/key-window 前置检查失败。复用同一已构建产物、原隔离 harness、`test-without-building -only-testing:AgentDeckAppTests/MenuBarViewModelTests/testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges -test-iterations 3 -test-repetition-relaunch-enabled YES` 的三个独立宿主均通过。此为最初候选的失败记录，未以定向通过替代完整回归；后续结果如下。
+- 用户在本轮明确表示“那就不查呗”，随后要求继续执行，因此停止 Apple 开发者账号端注册查询；注册状态保持未核验，不把本机证书或签名成功写成已注册。
+- 继续诊断时，将 `MenuBarChromeTests` 全组与日期用例组合运行，37 项全部通过；“前序测试保留窗口必然导致失败”的假设未得到复现。仅加入上述失败诊断后，再执行原始 `make test-macos-app`，Shared 122 项、App 167 项、Widget 51 项均通过，合计 340 项、0 failure、1 项既有 opt-in skip（schema 手工验收矩阵）。这次完整套件的日期用例通过，耗时 23.396 秒。未增加重试、延长超时、收起其他窗口或修改产品激活策略来获得通过。
+- 诊断结论：Go 工具链冲突已定位并以单次进程 PATH 修正；原生焦点失败属间歇现象，完整运行已通过，但具体外部焦点竞争或套件时序根因尚未确定，不能声称已根治。保留失败历史和增强诊断供独立评审；任务 6 不承接本任务未执行的回归。
+- 开发交接时 Dev 已完成、Review 未执行。CEv1 WorkUnit 为 `installed-state-ownership:debug-app-identity`，最终候选状态 `installed-state-ownership:debug-app-identity:dev-20261110-xdSv0auq`；复用未变化的身份/Release/Perf/sandbox/本地签名证据，新增完整 XCTest 结果。注册未核验和独立评审缺口保留，任务完成门禁不得宣称 VERIFIED。无真实双 App 运行、安装或 A5 组合验收声明。
+
+#### 评审状态 — 2026-11-10
+
+- Round 1 独立实现评审 PASS 保留，见[任务评审及平台前提更正](reviews/debug-app-identity.md)。更正后的验收 WorkUnit 为 `installed-state-ownership:debug-app-identity:acceptance-v2`，当前 ContentState 为 `installed-state-ownership:debug-app-identity:correction-20261110`，门禁 VERIFIED，等待授权提交。旧注册门禁及开发历史保留，不声称注册已发生；未提交或推送。
 
 ### 8. `ownership-acceptance`
 
@@ -698,4 +719,4 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 旧 Round 8 的具体遗漏与本次重写交接记在 [tasks 评审记录](reviews/tasks.md#重新分解--2026-11-07)。它的历史结论和已交付任务 1 的事实保留；本稿需新的独立评审，不由作者自签 PASS。
 
-仍有两个明确的环境前提：任务 5 在 CI 的 GitHub 托管 macOS runner 上以隔离的真实 brew 执行验收版 helper 的能力（开发机上会被 Gatekeeper 拦截，不在开发机运行），以及任务 7 的 Debug App Group 注册。屏障不可用阻塞需要屏障的任务；原生隔离不可用阻塞任务 6/8 对应证明。失败时保留准确结果并暂停该边界，不能降低验收标准。实现仅在临时状态上试验；不通过数据库降级、真实目录回滚或锁外文件删除来恢复测试/安装。可交付回退和残余清理按架构的锁内安装协议处理。
+仍有明确的环境前提：任务 5 在 CI 的 GitHub 托管 macOS runner 上以隔离的真实 brew 执行验收版 helper 的能力（开发机上会被 Gatekeeper 拦截，不在开发机运行）。任务 7 的门户注册前提已按 Apple 官方 macOS 规则撤销，真实签名验收仍保留。屏障不可用阻塞需要屏障的任务；原生隔离不可用阻塞任务 6/8 对应证明。失败时保留准确结果并暂停该边界，不能降低验收标准。实现仅在临时状态上试验；不通过数据库降级、真实目录回滚或锁外文件删除来恢复测试/安装。可交付回退和残余清理按架构的锁内安装协议处理。

@@ -589,7 +589,7 @@ desktop 快照的 health 部分来自同一个 `doctor.Service`（`internal/desk
 - 偏好设置域随 bundle ID 自动分开。
 - 小组件的 kind 字符串保持不变，因为扩展的 bundle ID 已经不同，系统会把它们当作不同的小组件。
 - `QuotaAlertNotifier` 使用 `Bundle.main.bundleIdentifier`，会自动分开。
-- 在开发者账号下注册 Debug App Group 是人工前提。
+- 当前采用 macOS 的 `<Team ID>.<group name>` 标识，无需在开发者门户注册，也无需为该 App Group 配置 provisioning profile。必须核对实际签名团队与 `N2FZ2FNRTU` 前缀一致，并检查 App/Widget 的实际 entitlements 与 Info.plist。此规则不适用于以 `group.` 开头的 provisioned 标识。依据：[Apple：Use app groups that you don’t provision](https://developer.apple.com/documentation/xcode/accessing-app-group-containers#Use-app-groups-that-you-dont-provision)，2026-11-10 核验；这是平台前提勘误，不改变身份表或签名验收。
 
 **安装版 App 的回执。** cask 安装的 App 中，helper 路径就是回执里登记的路径，App 和它调用的 helper 都按已安装处理。从 DerivedData 运行的任何配置，helper 都是未安装的。
 

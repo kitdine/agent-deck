@@ -181,7 +181,7 @@ final class MenuBarViewModelTests: XCTestCase {
 				previousApplication.activate(options: [.activateIgnoringOtherApps])
 			}
 		}
-		NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+		let activationRequested = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
 		window.makeKeyAndOrderFront(nil)
 		let foregroundClock = ContinuousClock()
 		let foregroundDeadline = foregroundClock.now.advanced(by: .seconds(2))
@@ -190,7 +190,7 @@ final class MenuBarViewModelTests: XCTestCase {
 			try await Task.sleep(for: .milliseconds(20))
 		}
 		guard NSApp.isActive && window.isKeyWindow && window.isVisible && window.occlusionState.contains(.visible) else {
-			XCTFail("Date surface requires active host and visible key window: active=\(NSApp.isActive), key=\(window.isKeyWindow), visible=\(window.isVisible), unoccluded=\(window.occlusionState.contains(.visible))")
+			XCTFail("Date surface requires active host and visible key window: activationRequested=\(activationRequested), policy=\(NSApp.activationPolicy().rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"), active=\(NSApp.isActive), key=\(window.isKeyWindow), visible=\(window.isVisible), unoccluded=\(window.occlusionState.contains(.visible))")
 			return
 		}
 		let amount = try XCTUnwrap(model.hero?.amount)
@@ -204,7 +204,7 @@ final class MenuBarViewModelTests: XCTestCase {
 			clock.value = before
 			dates.post(name: .NSSystemClockDidChange, object: nil)
 			try await waitForDateSurface(diagnostics: {
-				"rearm event=\(event?.rawValue ?? "timer") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) rendered=\(self.lastDateSurfaceText)"
+				"rearm event=\(event?.rawValue ?? "timer") activationRequested=\(activationRequested) policy=\(NSApp.activationPolicy().rawValue) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) rendered=\(self.lastDateSurfaceText)"
 			}) {
 				let rendered = try await self.dateSurfaceText(hosting)
 				return button.title == amount && rendered.contains { $0.contains(amount) }
