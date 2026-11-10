@@ -8035,6 +8035,7 @@
         "period": "today"
       },
       "publication_id": "fixture-session-scope-publication",
+      "generation_id": "fixture-session-scope-generation",
       "generated_at": "2026-08-13T10:00:00Z",
       "origin_coverage": {
         "complete": true,

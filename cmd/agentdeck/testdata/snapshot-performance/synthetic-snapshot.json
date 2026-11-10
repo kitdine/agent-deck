@@ -7539,6 +7539,7 @@
         "period": "today"
       },
       "publication_id": "normalized-session-scope-publication",
+      "generation_id": "normalized-session-scope-generation",
       "generated_at": "2026-08-13T10:00:00Z",
       "origin_coverage": {
         "complete": true,

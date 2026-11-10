@@ -25,14 +25,25 @@ var ErrInvalidSessionScope = errors.New("invalid_session_scope_request")
 
 // SessionScopeRequest is one explicit selection: scope × client × period. It
 // never depends on presentation state such as the Popover's current choice.
+//
+// GenerationID, when set, pins the committed generation the answer must come
+// from: a read that verifies at any other generation is unavailable with
+// generation_unavailable rather than silently answering from the latest one.
+// AsOf, when set, is the instant the period windows and generated_at use, so
+// several selections read as one batch share one window and one time.
 type SessionScopeRequest struct {
-	Scope       string
-	Client      string
-	Period      string
-	RecentLimit int
+	Scope        string
+	Client       string
+	Period       string
+	RecentLimit  int
+	GenerationID string
+	AsOf         time.Time
 }
 
 func (r SessionScopeRequest) Validate() error {
+	if r.GenerationID != "" && !isGenerationID(r.GenerationID) {
+		return fmt.Errorf("%w: generation id must be 64 lowercase hexadecimal characters", ErrInvalidSessionScope)
+	}
 	if r.Scope != sessionorigin.ScopeWork && r.Scope != sessionorigin.ScopeAuxiliary && r.Scope != sessionorigin.ScopeAll {
 		return fmt.Errorf("%w: scope must be work, auxiliary or all", ErrInvalidSessionScope)
 	}
@@ -89,16 +100,19 @@ type SessionScopeRecent struct {
 // was requested) and Reason are meaningful, and every count is absent rather
 // than zero.
 type SessionScopeView struct {
-	Available      bool                       `json:"available"`
-	Reason         *string                    `json:"reason"`
-	Default        sessionorigin.DefaultScope `json:"default"`
-	Selection      *SessionScopeSelection     `json:"selection"`
-	PublicationID  *string                    `json:"publication_id"`
-	GeneratedAt    *string                    `json:"generated_at"`
-	OriginCoverage *SessionOriginCoverage     `json:"origin_coverage"`
-	Counts         *SessionScopeCounts        `json:"counts"`
-	Recent         []SessionScopeRecent       `json:"recent"`
-	WorkSignals    WorkSignalsSnapshot        `json:"work_signals"`
+	Available     bool                       `json:"available"`
+	Reason        *string                    `json:"reason"`
+	Default       sessionorigin.DefaultScope `json:"default"`
+	Selection     *SessionScopeSelection     `json:"selection"`
+	PublicationID *string                    `json:"publication_id"`
+	// GenerationID is sessionorigin.GenerationID of the verified read: shared
+	// by every selection read at the same committed generation.
+	GenerationID   *string                `json:"generation_id"`
+	GeneratedAt    *string                `json:"generated_at"`
+	OriginCoverage *SessionOriginCoverage `json:"origin_coverage"`
+	Counts         *SessionScopeCounts    `json:"counts"`
+	Recent         []SessionScopeRecent   `json:"recent"`
+	WorkSignals    WorkSignalsSnapshot    `json:"work_signals"`
 }
 
 func unavailableSessionScopeView(defaults sessionorigin.DefaultScope, selection *SessionScopeSelection, reason string) SessionScopeView {
@@ -116,11 +130,26 @@ func (s Service) SessionScopeView(ctx context.Context, request SessionScopeReque
 		return SessionScopeView{}, err
 	}
 	now := s.now().UTC()
+	if !request.AsOf.IsZero() {
+		now = request.AsOf.UTC()
+	}
 	core, coreErr := store.OpenReadOnly(ctx, s.StateRoot)
 	if coreErr == nil {
 		defer core.Close()
 	}
 	return s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now), nil
+}
+
+func isGenerationID(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // readSessionScopeDefault reads the saved default the same way
@@ -222,6 +251,12 @@ func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreEr
 		view, _ := sessionorigin.Publish(originSelection, nil, nil, err, nil)
 		return unavailableSessionScopeView(defaults, selection, view.Reason)
 	}
+	generation := sessionorigin.GenerationID(snapshot.Vector)
+	if request.GenerationID != "" && request.GenerationID != generation {
+		// The pinned generation is no longer the committed one. Answering from
+		// the latest generation would splice two generations into one batch.
+		return unavailableSessionScopeView(defaults, selection, sessionorigin.PublicationReasonGenerationUnavailable)
+	}
 	publication := sessionorigin.NewPublication(snapshot, now)
 	recent := make([]SessionScopeRecent, 0, min(request.RecentLimit, len(snapshot.Sessions)))
 	for _, value := range snapshot.Sessions[:min(request.RecentLimit, len(snapshot.Sessions))] {
@@ -251,7 +286,7 @@ func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreEr
 	id, generatedAt := publication.ID, publication.GeneratedAt
 	return SessionScopeView{
 		Available: true, Default: defaults, Selection: selection,
-		PublicationID: &id, GeneratedAt: &generatedAt,
+		PublicationID: &id, GenerationID: &generation, GeneratedAt: &generatedAt,
 		OriginCoverage: &SessionOriginCoverage{Complete: len(reasons) == 0, UnknownCount: &unknown, Reasons: reasons},
 		Counts:         &counts, Recent: recent, WorkSignals: signals,
 	}

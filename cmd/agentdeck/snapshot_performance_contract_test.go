@@ -1043,9 +1043,13 @@ func captureSnapshotPerformanceReference(t *testing.T, state, home string) snaps
 	if view == nil || !view.Available || view.PublicationID == nil || !snapshotScopePublicationPattern.MatchString(`"publication_id":"`+*view.PublicationID+`"`) {
 		t.Fatalf("snapshot session-scope view lacks a publication identity: %+v", view)
 	}
+	if view.GenerationID == nil || !snapshotScopePublicationPattern.MatchString(`"publication_id":"`+*view.GenerationID+`"`) {
+		t.Fatalf("snapshot session-scope view lacks a generation identity: %+v", view)
+	}
 	normalized := *view
-	id := snapshotScopePublicationPlaceholder
+	id, generation := snapshotScopePublicationPlaceholder, snapshotScopeGenerationPlaceholder
 	normalized.PublicationID = &id
+	normalized.GenerationID = &generation
 	result.Snapshot.SessionScopeView = &normalized
 	var stream bytes.Buffer
 	if err = writeDesktopSnapshotStream(&stream, result); err != nil {
@@ -1245,6 +1249,10 @@ func snapshotPerformanceRowsDigest(ctx context.Context, state string) (string, e
 var snapshotScopePublicationPattern = regexp.MustCompile(`^"publication_id":"[0-9a-f]{64}"$`)
 
 const snapshotScopePublicationPlaceholder = "normalized-session-scope-publication"
+
+// snapshotScopeGenerationPlaceholder replaces the view's generation ID, a
+// digest of the same randomly minted epochs.
+const snapshotScopeGenerationPlaceholder = "normalized-session-scope-generation"
 
 func assertSnapshotPerformanceGolden(t *testing.T, payload []byte) {
 	t.Helper()

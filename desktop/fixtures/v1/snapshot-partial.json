@@ -101,6 +101,7 @@
       },
       "selection": null,
       "publication_id": null,
+      "generation_id": null,
       "generated_at": null,
       "origin_coverage": null,
       "counts": null,

@@ -137,6 +137,16 @@ struct AgentDeckWidgetEntry: TimelineEntry {
 	}
 }
 
+enum WidgetSessionScopeRow: Equatable, Sendable {
+	case unavailable
+	/// `retainedAt` is the summary's own success time when it is not this
+	/// snapshot's current answer: the host kept it (stale) after a later batch
+	/// failed, or it is older than the snapshot that carries it. The row then
+	/// shows that age itself, because the footer's time belongs to the newer
+	/// usage snapshot. nil means the summary is as current as the snapshot.
+	case value(scope: DesktopSessionScopeV1, count: Int, unknownCount: Int?, retainedAt: Date?)
+}
+
 struct WidgetSurfaceModel {
 	let entry: AgentDeckWidgetEntry
 	let now: Date
@@ -166,6 +176,30 @@ struct WidgetSurfaceModel {
 		let requested = entry.kind == .trust ? WidgetPeriod.today : entry.kind == .rhythm ? .thirtyDays : entry.period
 		return scope?.periods.items.first { $0.period == requested.rawValue }
 	}
+
+	/// The session row of this entry's actual client and period. Only an
+	/// accepted summary for exactly that client and period is shown; a legacy
+	/// file, an invalid or unavailable summary, a missing, duplicated or
+	/// mismatched item all leave the row unavailable rather than borrowing
+	/// another window's figure or the legacy all-session total.
+	var sessionScopeRow: WidgetSessionScopeRow {
+		guard let snapshot = entry.snapshot, case let .present(set) = snapshot.sessionScopeSummary else {
+			return .unavailable
+		}
+		let matches = set.items.filter { $0.client == entry.client.rawValue && $0.period == entry.period.rawValue }
+		guard matches.count == 1, let value = matches[0].value else { return .unavailable }
+		let snapshotTime = WidgetTimelinePolicy.date(snapshot.generatedAt)
+		let olderThanSnapshot = snapshotTime.map { $0.timeIntervalSince(value.generatedAt) >= Self.sessionScopeTimeTolerance } ?? true
+		return .value(
+			scope: value.scope, count: value.count, unknownCount: value.unknownCount,
+			retainedAt: set.stale || olderThanSnapshot ? value.generatedAt : nil
+		)
+	}
+
+	/// A summary older than its snapshot by less than this is that snapshot's
+	/// answer (clock granularity between the two producers), not a retained
+	/// age. A batch collected for a snapshot is read after it, so is newer.
+	static let sessionScopeTimeTolerance: TimeInterval = 60
 
 	var qualifiers: [WidgetQualifier] {
 		qualifiers(family: .systemLarge)
@@ -415,6 +449,19 @@ enum WidgetFormat {
 			return String(format: "%@$%.1fk", prefix, value / 1_000)
 		}
 		return String(format: "%@$%.2f", prefix, value)
+	}
+
+	/// A session count as shown: a localized integer below 10,000, compact
+	/// above. The compact form never rounds down to a smaller-looking whole
+	/// number's digits alone; `fullCount` is what VoiceOver reads.
+	static func sessionCount(_ value: Int, locale: Locale = .current) -> String {
+		value < 10_000
+			? value.formatted(.number.locale(locale))
+			: value.formatted(.number.notation(.compactName).precision(.fractionLength(0 ... 1)).locale(locale))
+	}
+
+	static func fullCount(_ value: Int, locale: Locale = .current) -> String {
+		value.formatted(.number.locale(locale))
 	}
 
 	static func tokens(_ value: Int64) -> String {

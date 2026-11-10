@@ -180,7 +180,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			host: DesktopHost(runner: runner),
 			quotaRefresher: runner,
 			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
-			snapshotStore: snapshotStore
+			snapshotStore: snapshotStore,
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: runner)
 		)
 		let periodicDriver = DesktopRefreshPeriodicDriver { [weak coordinator] in
 			await coordinator?.requestQuotaRefresh(manual: false)

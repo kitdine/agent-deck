@@ -669,12 +669,25 @@ public struct EmbeddedHelperRunner: Sendable {
 		_ selection: DesktopSessionScopeSelectionV1,
 		recentLimit: Int = Self.defaultRecentLimit
 	) async throws -> DesktopSessionScopeViewV1 {
+		try await sessionScopeView(selection, recentLimit: recentLimit, generationID: nil, asOf: nil)
+	}
+
+	/// The same read pinned to one committed generation and one instant: the
+	/// Widget batch's form (WidgetSessionScopeBatch.swift).
+	public func sessionScopeView(
+		_ selection: DesktopSessionScopeSelectionV1,
+		recentLimit: Int,
+		generationID: String?,
+		asOf: String?
+	) async throws -> DesktopSessionScopeViewV1 {
 		guard (Self.minimumRecentLimit ... Self.maximumRecentLimit).contains(recentLimit) else {
 			throw HelperExecutionError.invalidRecentLimit(recentLimit)
 		}
 		let output = try await process.run(
 			executableURL: embeddedHelperURL(),
-			arguments: helperArguments(Self.sessionScopeArguments(selection, recentLimit: recentLimit)),
+			arguments: helperArguments(Self.sessionScopeArguments(
+				selection, recentLimit: recentLimit, generationID: generationID, asOf: asOf
+			)),
 			environment: environment,
 			timeout: timeout
 		)
@@ -691,12 +704,20 @@ public struct EmbeddedHelperRunner: Sendable {
 		return view
 	}
 
-	public static func sessionScopeArguments(_ selection: DesktopSessionScopeSelectionV1, recentLimit: Int) -> [String] {
-		[
+	public static func sessionScopeArguments(
+		_ selection: DesktopSessionScopeSelectionV1,
+		recentLimit: Int,
+		generationID: String? = nil,
+		asOf: String? = nil
+	) -> [String] {
+		var arguments = [
 			"--format", "json", "desktop", "session-scope",
 			"--scope", selection.scope.rawValue, "--client", selection.client,
 			"--period", selection.period, "--recent-limit", String(recentLimit),
 		]
+		if let generationID { arguments += ["--generation-id", generationID] }
+		if let asOf { arguments += ["--as-of", asOf] }
+		return arguments
 	}
 
 	/// Runs one short session-origin command (SessionOriginTransport.swift) and
@@ -1773,6 +1794,18 @@ public protocol DesktopSessionScopeReading: Sendable {
 
 extension EmbeddedHelperRunner: DesktopSessionScopeReading {}
 
+/// The Widget batch needs only counts, so each read asks for the minimum of
+/// recent rows; those rows never leave the host.
+extension EmbeddedHelperRunner: WidgetSessionScopeReading {
+	public func widgetSessionScopeView(
+		_ selection: DesktopSessionScopeSelectionV1,
+		generationID: String?,
+		asOf: String
+	) async throws -> DesktopSessionScopeViewV1 {
+		try await sessionScopeView(selection, recentLimit: Self.minimumRecentLimit, generationID: generationID, asOf: asOf)
+	}
+}
+
 @MainActor
 public protocol DesktopSnapshotRefreshing: AnyObject {
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1
@@ -2095,6 +2128,7 @@ public final class DesktopRefreshCoordinator {
 	private let quotaRefresher: (any DesktopQuotaRefreshing)?
 	private let alertDeliverer: (any QuotaAlertDelivering)?
 	private let snapshotPublisher: WidgetSnapshotPublisher?
+	@ObservationIgnored private let sessionScopeCollector: WidgetSessionScopeBatchCollector?
 	@ObservationIgnored private let wallNow: @MainActor @Sendable () -> Date
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var activeRestore: Task<Void, Never>?
@@ -2125,10 +2159,12 @@ public final class DesktopRefreshCoordinator {
 		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
 		alertDeliverer: (any QuotaAlertDelivering)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore(),
+		widgetSessionScopeCollector: WidgetSessionScopeBatchCollector? = nil,
 		wallNow: @escaping @MainActor @Sendable () -> Date = Date.init,
 		restoreFirstFallback: Duration = .milliseconds(750)
 	) {
 		self.host = host
+		sessionScopeCollector = widgetSessionScopeCollector
 		self.restoreFirstFallback = restoreFirstFallback
 		self.quotaRefresher = quotaRefresher
 		self.alertDeliverer = alertDeliverer
@@ -2423,7 +2459,8 @@ public final class DesktopRefreshCoordinator {
 				case .refreshing: update(\.state, .refreshing(previous: updated))
 				case .uninitialized: break
 				}
-				await publishWidgetSnapshot(updated)
+				// Only the subscription changed: the batch just published stays.
+				await publishWidgetSnapshot(updated, collectsSessionScope: false)
 			}
 			return
 		}
@@ -2520,7 +2557,8 @@ public final class DesktopRefreshCoordinator {
 		case .uninitialized:
 			return
 		}
-		await publishWidgetSnapshot(updated)
+		// A quota-only update keeps the session-scope batch already published.
+		await publishWidgetSnapshot(updated, collectsSessionScope: false)
 	}
 
 	private func drainPendingQuotaIfPossible() async {
@@ -2572,15 +2610,18 @@ public final class DesktopRefreshCoordinator {
 		scheduleSuccessReset(generation: generation)
 	}
 
-	private func publishWidgetSnapshot(_ envelope: DesktopWireEnvelopeV1) async {
+	private func publishWidgetSnapshot(_ envelope: DesktopWireEnvelopeV1, collectsSessionScope: Bool = true) async {
 		widgetPublicationGeneration &+= 1
 		let publicationGeneration = widgetPublicationGeneration
 		guard let snapshotPublisher else {
 			widgetPublication = .failedBeforeCommit(generation: publicationGeneration, issue: .storageUnavailable)
 			return
 		}
+		let summary = collectsSessionScope
+			? await widgetSessionScopeSummary(for: envelope, publisher: snapshotPublisher)
+			: await snapshotPublisher.lastSessionScopeSummary() ?? .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		let result = await snapshotPublisher.publish(
-			AppGroupDesktopSnapshotV1(envelope: envelope),
+			AppGroupDesktopSnapshotV1(envelope: envelope, sessionScopeSummary: summary),
 			generation: publicationGeneration
 		)
 		switch result {
@@ -2592,6 +2633,34 @@ public final class DesktopRefreshCoordinator {
 			widgetPublication = .failedBeforeCommit(generation: publicationGeneration, issue: issue)
 		case let .indeterminateAfterCommit(_, issue):
 			widgetPublication = .indeterminateAfterCommit(generation: publicationGeneration, issue: issue)
+		}
+	}
+
+	/// The session-scope summaries this publication carries. Their scope is the
+	/// confirmed persistent default the publication reports — never the
+	/// Popover's temporary choice, which is not an input here. Without a
+	/// complete new batch the previous accepted set is kept whole, marked
+	/// stale, so a saved but unpublished default never relabels old numbers;
+	/// with none, the reason is published as unavailable.
+	private func widgetSessionScopeSummary(
+		for envelope: DesktopWireEnvelopeV1,
+		publisher: WidgetSnapshotPublisher
+	) async -> AppGroupSessionScopeSummarySetV1 {
+		let outcome: WidgetSessionScopeBatchOutcome
+		if let sessionScopeCollector {
+			let defaults = envelope.data.sessionScopeView.view?.default ?? .unconfirmed
+			outcome = await sessionScopeCollector.collect(default: defaults)
+		} else {
+			outcome = .rejected(reason: AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		}
+		switch outcome {
+		case let .accepted(set):
+			return set
+		case let .rejected(reason):
+			if let previous = await publisher.retainedSessionScopeSummary() {
+				return previous.retained(reason: reason)
+			}
+			return .unavailable(reason)
 		}
 	}
 

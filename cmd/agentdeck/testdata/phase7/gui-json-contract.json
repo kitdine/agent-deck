@@ -699,6 +699,7 @@
               "value": "string"
             },
             "generated_at": "string",
+            "generation_id": "string",
             "origin_coverage": {
               "complete": "boolean",
               "reasons": [],

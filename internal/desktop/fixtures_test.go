@@ -76,12 +76,16 @@ func firstDifference(existing, generated string) string {
 }
 
 // fixtureSessionScopePublication replaces the session-scope view's
-// publication ID in canonical fixtures. That ID digests the selection and the
-// serving vector, whose epochs every new database mints at random, so no two
-// producer runs emit the same value. Every other byte stays producer output;
+// publication ID in canonical fixtures, and fixtureSessionScopeGeneration its
+// generation ID. Both digest the serving vector, whose epochs every new
+// database mints at random, so no two producer runs emit the same value. Every
+// other byte stays producer output;
 // TestSessionScopeViewPartitionsTheSelectionWithoutTouchingLegacySessions
 // checks the real identity.
-const fixtureSessionScopePublication = "fixture-session-scope-publication"
+const (
+	fixtureSessionScopePublication = "fixture-session-scope-publication"
+	fixtureSessionScopeGeneration  = "fixture-session-scope-generation"
+)
 
 func encodeFixture(t *testing.T, result Result) string {
 	t.Helper()
@@ -89,6 +93,10 @@ func encodeFixture(t *testing.T, result Result) string {
 		normalized := *view
 		id := fixtureSessionScopePublication
 		normalized.PublicationID = &id
+		if normalized.GenerationID != nil {
+			generation := fixtureSessionScopeGeneration
+			normalized.GenerationID = &generation
+		}
 		result.Snapshot.SessionScopeView = &normalized
 	}
 	envelope := output.New("desktop.snapshot", result.Snapshot, fixtureNow)

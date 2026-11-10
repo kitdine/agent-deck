@@ -38,6 +38,22 @@ func NewPublication(snapshot Snapshot, now time.Time) Publication {
 	return Publication{ID: hex.EncodeToString(sum[:]), GeneratedAt: now.UTC().Format(time.RFC3339Nano), Snapshot: snapshot}
 }
 
+// GenerationID identifies the committed generation a selection was read at,
+// independently of which selection it answers: every selection verified at
+// the same serving vector under the same reducer and rules has the same
+// generation ID. A consumer that combines several selections (the Widget's
+// client × period batch) pins and compares this identity; a publication ID
+// cannot serve, because it also digests the selection.
+func GenerationID(vector Vector) string {
+	lines := []string{"session-scope-generation-v1", "reducer=" + ReducerVersion, "rules=" + strings.Join(ruleVersions, ","),
+		"core_epoch=" + strconv.FormatInt(vector.CoreEpoch, 10),
+		"usage_revision=" + strconv.FormatInt(vector.UsageRevision, 10),
+		"session_epoch=" + strconv.FormatInt(vector.SessionEpoch, 10),
+		"session_revision=" + strconv.FormatInt(vector.SessionRevision, 10)}
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n") + "\n"))
+	return hex.EncodeToString(sum[:])
+}
+
 // View is what a consumer shows for one selection: the publication it may
 // render, whether that publication is an older complete result kept after a
 // failed rebuild, and the safe reason when it is stale or unavailable.

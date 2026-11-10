@@ -128,7 +128,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 4. `cli-contract` | [x] | [x] |
 | 5. `desktop-menubar` | [x] | [x] |
 | 6. `settings-control` | [x] | [x] |
-| 7. `widget-summary` | [ ] | [ ] |
+| 7. `widget-summary` | [x] | [x] |
 | 8. `durability` | [ ] | [ ] |
 | 9. `integrated-acceptance` | [ ] | [ ] |
 
@@ -936,3 +936,64 @@ Round 6 对修复范围的 PASS 仍是历史结论，重做后的候选需整体
 2026-11-09 任务 6 Repair 4 独立复评 PASS，见 [reviews/settings-control.md](reviews/settings-control.md) Round 9（Codex，`gpt-6.1-sol`，请求 `reasoningEffort` max）。
 ASC-SC-R8-F1、ASC-SC-R8-F2 已关闭，无新发现；Review 勾选。
 14 路径候选摘要 `8e6d3ac3d00ba1bfd3f3137733f2176e676373c160857503edfdf123dc64ae81` 的 Task 门禁 VERIFIED（10/10）。任务进入 awaiting_commit，按用户授权本地提交，不推送。
+
+2026-11-09 任务 7 `widget-summary` 开发完成（claude-code，未提交，待独立评审）。基线 HEAD `79be619`（任务 6 已提交）。
+
+- 入口：CEv1 WorkUnit `auxiliary-session-classification:widget-summary` 的 13 条 requires 关系按 canonical 预检与 upsert 模板写入。
+  Neo4j MCP 写工具只回报计数器、不返回 RETURN 行；经用户在本会话同意，以按 id 精确读回代替返回的 processed count（节点 15、关系 13，端点一致）。
+  入口门禁 reason 为 null、13 条 required 均缺证据，NOT_VERIFIED。Beads 已由 claude-code 认领。
+- Go（选定“宿主按组合请求”路径，不新增多组合 wire 字段）：
+  - `desktop session-scope` 新增 `--generation-id` 与 `--as-of`。前者把读取钉在指定的已提交代：校验时代次已变则返回 unavailable
+    `generation_unavailable`，绝不改用最新代作答；后者统一窗口与 generated_at，避免跨午夜拼接。
+  - `session_scope_view` 新增 `generation_id`：`sessionorigin.GenerationID` 对服务向量与 reducer/规则版本取摘要，不含 selection，
+    同一代的所有选区相同；publication_id 仍含 selection、语义不变。旧 sessions 字段不变。
+- 宿主：新增 `AgentDeckShared/WidgetSessionScopeBatch.swift`。
+  - 范围只取发布中的已确认持久默认；Popover 临时选择不是输入。默认未确认不发起批次。
+  - 先读 all × today 定下代次，其余 8 个组合钉住该代、共用同一时刻（`--recent-limit 1`，recent 行不离开宿主）。
+  - 默认版本变化、代次变化、selection/身份/时间不一致或任一组合缺失，即丢弃整批；一致性失败最多重试 2 次，重试采用 Go 回报的新确认默认。
+    Auxiliary 的 unknown 非 0 视为不一致；覆盖不完整时 unknown 为 null（显示 —），不补 0。
+  - 无完整新批次时：沿用上一批已接受结果、整份标 stale；没有旧结果则写 unavailable 及安全原因。仅订阅变化的发布沿用已写入的 summary，不重新采集。
+- App Group：新增 `session_scope_summary`（stale、reason、items），item 仅含 available、scope、count、unknown_count（null 显式写出）、
+  client、period、publication_id（批次代次）与 generated_at。原因码为封闭集合，其他值一律写成 `selection_unavailable`。旧 `sessions.total` 不改名。
+  Magnitude 的语义投影纳入该字段，summary 变化只重载 Magnitude。
+- Widget：白名单解码与外层读取分离。缺字段、负数、未知 scope、unknown 越界、Aux 的 unknown 非 0 或为 null、身份/时间无效、
+  client/period 不匹配或重复，都只让会话行显示“会话范围不可用”；整份读取失败仍是整卡 typed failure。
+  Magnitude 小号、大号按条目实际 client/period 显示“tokens · 全部消耗”和“范围 N 会话 · 未知 N”两行，中号不加计数。
+  大于等于 10,000 的计数显示为本地化紧凑数字，VoiceOver 读完整整数、Auxiliary 全称及时间窗口。新增 9 条中英文案。
+- 验证：
+  - 联合 fixture `desktop/fixtures/v1/session-scope-batch.json` 由 Go 产出，可复现校验：每个 client 的 today/7d/30d 计数刻意互不相同。
+    Widget 测试把它依次送经 DesktopWire 解码、宿主批次、App Group 写入与 Widget 读取；9 个实际组合与同代 Go oracle 一致。
+    默认为 Auxiliary 时从不读取 Work；仅切换 Popover 时文件字节不变；确认 All 后整批替换；批次失败时旧值整份保留并标 stale。
+  - `scripts/run-go-test.sh ./...` 通过；`-race`：`./internal/desktop`、`./internal/sessionorigin` 及 cmd 中的 session-scope/快照性能用例通过；
+    `make vet`、`make check-whitespace`、gofmt 通过。canonical、快照性能与 GUI JSON 契约三组金标只新增 `generation_id`。
+  - `swift test`（Shared）146 项全部通过；`make test-macos-app`（隔离 HOME）TEST SUCCEEDED：App 236 项（3 项跳过）、Widget 55 项，0 失败。
+  - 小号、中号、大号在默认与 accessibility5 字号下的渲染作为测试附件保留，已目视检查：两行不溢出，中号无会话数。
+- 已知限制：
+  - `desktop/fixtures/v1/verify.swift` 对 schema-ahead fixture 报 invalid；用 HEAD 版本的 fixture 与脚本复现结果相同，属既有问题，本任务未改动。
+  - 原生 VoiceOver 实际朗读、真实 WidgetKit 时间线调度与真机桌面未验证：本次只有 AX 描述符断言和离屏渲染。
+  - stale 的会话行目前与正常行外观相同，年龄只体现在 footer 的整体快照时间上。
+  - 每次完整刷新增加 9 次只读 helper 调用，成本归任务 9 的性能预算。
+- 候选：HEAD `79be6193cea36ab3137df147ace5fb30428df956` 加 30 个路径（不含本文件），有序 path/blob 列表摘要
+  `c171251a8777eb4b66ad605209e4602e344f2b8f57db6a8d513f4b20b3b073ca`。工具链：go1.27.3、Xcode 26.4、Swift 6.3。Review 未勾选，待独立评审。
+
+2026-11-09 任务 7 Round 1 独立评审 FAIL，ASC-WS-R1-F1/F2/F3 见 [评审记录](reviews/widget-summary.md)。
+Repair 1 已交接待独立复评：HEAD 不变，30 路径候选摘要 `50f74c24763666cba916de77ae9c2d249a86986fcf4ba54bac90af7254cb5fbc`。
+修复者报告隔离 `scripts/test-macos-app.sh` 退出 0：Shared 147 通过，App 236 项含 3 跳过，Widget 57 通过；
+先前两次编译失败在修复后重跑通过。真实 WidgetKit 时间线、配置和桌面点击仍未验收；用户明确排除辅助功能验收。
+修复处置与最终门禁待独立复评，不以修复交接声明 PASS。
+
+2026-11-09 任务 7 Round 2 独立复评 FAIL：Round 1 三项原始触发已修复，但发现单个畸形 summary 会使其余有效窗口丢失（ASC-WS-R2-F1）。见 [评审记录](reviews/widget-summary.md)。候选摘要 `50f74c24763666cba916de77ae9c2d249a86986fcf4ba54bac90af7254cb5fbc` 的 CEv1 候选状态尚未登记，门禁 NOT_VERIFIED；待 Repair 2。
+
+2026-11-09 Repair 2 已交接待独立复评：HEAD 不变，30 路径候选摘要 `fdd7a8c35ee53cdf956d2ecc1db17765598a080223514be64f62849928d783d4`。修复者报告 Shared 149 通过、隔离 macOS App 236 项含 3 跳过、Widget 58 项及两个重启阶段通过；实际 WidgetKit 时间线、系统配置及桌面点击仍未验收。ASC-WS-R2-F1 的最终处置待复评。
+
+2026-11-09 任务 7 Round 3 独立复评 FAIL：R1 三项及 R2-F1 的原始触发已关闭，但畸形重复项经宿主重新发布会使有歧义的选区显示为有效（ASC-WS-R3-F1），见 [评审记录](reviews/widget-summary.md)。候选 `fdd7a8c35ee53cdf956d2ecc1db17765598a080223514be64f62849928d783d4` 的 CEv1 候选状态尚未登记，门禁 NOT_VERIFIED；待 Repair 3。
+
+2026-11-09 Repair 3 已交接待独立复评：HEAD 不变，30 路径候选 `25f664e8bc7d7edfe6f596f865b18e66651c630cff3460751332a3023285c672`。修复者报告 Shared 151 通过、隔离 macOS App 236 项含 3 跳过、Widget 59 项及两个重启阶段通过；此后测试文件仅删除一行末尾空白，相关测试组重跑 7/7。真实 WidgetKit 时间线、系统配置及桌面点击仍未验收。ASC-WS-R3-F1 待独立复评。
+
+2026-11-09 任务 7 Round 4 独立复评 PASS，R1-F1/F2/F3、R2-F1、R3-F1 均关闭，见 [评审记录](reviews/widget-summary.md)。候选 `25f664e8bc7d7edfe6f596f865b18e66651c630cff3460751332a3023285c672` 的 CEv1 状态尚未登记，门禁 NOT_VERIFIED；真实 WidgetKit 时间线、系统配置和桌面点击仍待验收。用户排除所有辅助功能验收；Beads 保持 in_review，待证据门禁。
+
+2026-11-09 独立验证已读回 Go、Xcode 和重启结果，并补做隔离跨进程原子发布诊断；具体结果、语义复用范围及原生隔离缺口见 [评审记录](reviews/widget-summary.md)。候选 ContentState、Round 4 复评及九项软件证据已登记，含跨状态变更和 preserves 评估；CEv1 gate NOT_VERIFIED，10/13 项有目标绑定证据，`atomic-recovery`、`native-display`、`timeline-actions-budget` 的真实 WidgetKit 部分仍未验收。真实 WidgetKit 时间线、系统配置和桌面点击仍须可区分的注册候选、私有 fixture 和进程绑定；Beads 保持 in_review，不进入提交。
+
+2026-11-09 后续隔离 WidgetKit 验证已建立独立签名候选与私有 fixture，并在系统选择器观察三尺寸预览；公开 SDK 确认添加一张测试小号配置。实际桌面卡片未能可靠绑定，配置矩阵、延迟、时间线和点击仍未验收。测试扩展已注销，但 SDK 最后仍报告 1 张测试配置，移除尚待确认；具体观察见 [评审记录](reviews/widget-summary.md)。CEv1 保持 NOT_VERIFIED 10/13，Beads 保持 in_review。
+
+2026-11-09 任务 7 真实 WidgetKit 验收完成（claude-code）：独立签名的隔离候选加私有 fixture，覆盖系统编辑器的九种 client/period 配置及大/中号显示、保存默认与 WidgetKit 延迟下的旧快照完整保留、chronod 按策略调度的时间线刷新，以及桌面点击打开运行中的隔离宿主。用户排除辅助功能验收；宿主到容器的桥接限制等细节见 [评审记录](reviews/widget-summary.md)。候选 `25f664e8bc7d7edfe6f596f865b18e66651c630cff3460751332a3023285c672` 的 Task 门禁 VERIFIED（13/13）。任务进入 awaiting_commit，按用户授权本地提交，不推送、不合并。

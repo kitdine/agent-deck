@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -156,6 +157,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 // such as the Widget publisher uses; it never scans or opens a source.
 func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 	request := desktop.SessionScopeRequest{Client: "all", Period: "today", RecentLimit: desktop.DefaultRecentLimit}
+	asOf := ""
 	command := &cobra.Command{
 		Use:     "session-scope",
 		Short:   "Read one session-scope view from committed state",
@@ -165,6 +167,14 @@ func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.format != "json" {
 				return &inputError{err: errors.New("desktop session-scope requires --format json")}
+			}
+			request.AsOf = time.Time{}
+			if asOf != "" {
+				parsed, err := time.Parse(time.RFC3339Nano, asOf)
+				if err != nil {
+					return &inputError{err: fmt.Errorf("%w: --as-of must be an RFC 3339 time", desktop.ErrInvalidSessionScope)}
+				}
+				request.AsOf = parsed
 			}
 			if err := request.Validate(); err != nil {
 				return &inputError{err: err}
@@ -193,6 +203,8 @@ func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 	command.Flags().StringVar(&request.Client, "client", request.Client, "Client: all, codex or claude")
 	command.Flags().StringVar(&request.Period, "period", request.Period, "Period: today, 7d or 30d")
 	command.Flags().IntVar(&request.RecentLimit, "recent-limit", request.RecentLimit, "Recent sessions to include (1-20)")
+	command.Flags().StringVar(&request.GenerationID, "generation-id", "", "Answer only from this committed generation; otherwise the view is unavailable")
+	command.Flags().StringVar(&asOf, "as-of", "", "RFC 3339 instant for the period window and generated_at (default: now)")
 	return command
 }
 

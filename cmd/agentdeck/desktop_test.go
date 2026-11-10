@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
@@ -289,10 +290,18 @@ func TestDesktopSessionScopeCommand(t *testing.T) {
 		{"--scope", "work", "--client", "gemini"},
 		{"--scope", "work", "--period", "1y"},
 		{"--scope", "work", "--recent-limit", "21"},
+		{"--scope", "work", "--generation-id", "not-a-generation"},
+		{"--scope", "work", "--as-of", "yesterday"},
 	} {
 		if exit, _, stderr := run("json", args...); exit != 2 || !bytes.Contains(stderr, []byte(`"command":"desktop.session-scope"`)) {
 			t.Fatalf("%v: exit %d stderr %s", args, exit, stderr)
 		}
+	}
+	// A well-formed pin and instant pass validation and still read nothing
+	// into existence: an absent state is unavailable, never created.
+	exit, stdout, _ = run("json", "--scope", "work", "--generation-id", strings.Repeat("a", 64), "--as-of", "2026-08-13T10:00:00Z")
+	if exit != 0 || !bytes.Contains(stdout, []byte(`"generation_id":null`)) {
+		t.Fatalf("pinned read of absent state: exit %d %s", exit, stdout)
 	}
 	if exit, _, _ := run("", "--scope", "work"); exit != 2 {
 		t.Fatalf("text output must be rejected, exit %d", exit)

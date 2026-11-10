@@ -1,0 +1,1379 @@
+{
+  "as_of": "2026-08-13T10:00:00Z",
+  "batches": {
+    "all": [
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "all",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 3,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 7,
+            "projects": 1,
+            "known_duration_ms": 8400000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "all",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 10,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 18,
+            "projects": 1,
+            "known_duration_ms": 21600000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "all",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 12,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 24,
+            "projects": 1,
+            "known_duration_ms": 28800000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "codex",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 2,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 3,
+            "projects": 1,
+            "known_duration_ms": 3600000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "codex",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 4,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 6,
+            "projects": 1,
+            "known_duration_ms": 7200000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "codex",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 5,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 10,
+            "projects": 1,
+            "known_duration_ms": 12000000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "claude",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 1,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 4,
+            "projects": 1,
+            "known_duration_ms": 4800000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "claude",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 6,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 12,
+            "projects": 1,
+            "known_duration_ms": 14400000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "all",
+            "revision": 2,
+            "reason": null
+          },
+          "selection": {
+            "scope": "all",
+            "client": "claude",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-all",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 7,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 14,
+            "projects": 1,
+            "known_duration_ms": 16800000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      }
+    ],
+    "auxiliary": [
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "all",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 4,
+            "projects": 1,
+            "known_duration_ms": 4800000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "all",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 8,
+            "projects": 1,
+            "known_duration_ms": 9600000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "all",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 12,
+            "projects": 1,
+            "known_duration_ms": 14400000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "codex",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 1,
+            "projects": 1,
+            "known_duration_ms": 1200000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "codex",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 2,
+            "projects": 1,
+            "known_duration_ms": 2400000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "codex",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 5,
+            "projects": 1,
+            "known_duration_ms": 6000000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "codex",
+              "session_id": "codex-00",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "claude",
+            "period": "today"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 3,
+            "projects": 1,
+            "known_duration_ms": 3600000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "claude",
+            "period": "7d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 6,
+            "projects": 1,
+            "known_duration_ms": 7200000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      },
+      {
+        "schema_version": 1,
+        "command": "desktop.session-scope",
+        "generated_at": "2026-08-13T10:00:00Z",
+        "data": {
+          "available": true,
+          "reason": null,
+          "default": {
+            "confirmed": true,
+            "value": "auxiliary",
+            "revision": 1,
+            "reason": null
+          },
+          "selection": {
+            "scope": "auxiliary",
+            "client": "claude",
+            "period": "30d"
+          },
+          "publication_id": "fixture-session-scope-publication",
+          "generation_id": "fixture-session-scope-generation-auxiliary",
+          "generated_at": "2026-08-13T10:00:00Z",
+          "origin_coverage": {
+            "complete": true,
+            "unknown_count": 0,
+            "reasons": []
+          },
+          "counts": {
+            "sessions": 7,
+            "projects": 1,
+            "known_duration_ms": 8400000,
+            "missing_duration_count": 0
+          },
+          "recent": [
+            {
+              "client": "claude",
+              "session_id": "claude-10",
+              "project": "project",
+              "model": "synthetic",
+              "first_at": "2026-08-13T09:10:00Z",
+              "last_at": "2026-08-13T09:30:00Z",
+              "origin": {
+                "automatic": "auxiliary",
+                "effective": "auxiliary",
+                "reason_code": "maintenance_origin",
+                "rule_version": "codex-otel-background-v1",
+                "override": null,
+                "revision": 0
+              }
+            }
+          ],
+          "work_signals": {
+            "activity": {
+              "available": false,
+              "items": []
+            },
+            "workflow": {
+              "available": false,
+              "items": []
+            },
+            "tooling": {
+              "available": false,
+              "items": []
+            }
+          }
+        },
+        "warnings": [],
+        "partial": false
+      }
+    ]
+  },
+  "popover": {
+    "schema_version": 1,
+    "command": "desktop.session-scope",
+    "generated_at": "2026-08-13T10:00:00Z",
+    "data": {
+      "available": true,
+      "reason": null,
+      "default": {
+        "confirmed": true,
+        "value": "auxiliary",
+        "revision": 1,
+        "reason": null
+      },
+      "selection": {
+        "scope": "work",
+        "client": "all",
+        "period": "today"
+      },
+      "publication_id": "fixture-session-scope-publication",
+      "generation_id": "fixture-session-scope-generation-auxiliary",
+      "generated_at": "2026-08-13T10:00:00Z",
+      "origin_coverage": {
+        "complete": true,
+        "unknown_count": 3,
+        "reasons": []
+      },
+      "counts": {
+        "sessions": 3,
+        "projects": 1,
+        "known_duration_ms": 3600000,
+        "missing_duration_count": 0
+      },
+      "recent": [
+        {
+          "client": "claude",
+          "session_id": "claude-17",
+          "project": "project",
+          "model": "synthetic",
+          "first_at": "2026-08-13T09:10:00Z",
+          "last_at": "2026-08-13T09:30:00Z",
+          "origin": {
+            "automatic": "unknown",
+            "effective": "unknown",
+            "reason_code": "origin_metadata_missing",
+            "rule_version": "origin-reducer-v1",
+            "override": null,
+            "revision": 0
+          }
+        }
+      ],
+      "work_signals": {
+        "activity": {
+          "available": false,
+          "items": []
+        },
+        "workflow": {
+          "available": false,
+          "items": []
+        },
+        "tooling": {
+          "available": false,
+          "items": []
+        }
+      }
+    },
+    "warnings": [],
+    "partial": false
+  },
+  "oracle": {
+    "all": {
+      "all/30d": {
+        "count": 24,
+        "unknown": 12
+      },
+      "all/7d": {
+        "count": 18,
+        "unknown": 10
+      },
+      "all/today": {
+        "count": 7,
+        "unknown": 3
+      },
+      "claude/30d": {
+        "count": 14,
+        "unknown": 7
+      },
+      "claude/7d": {
+        "count": 12,
+        "unknown": 6
+      },
+      "claude/today": {
+        "count": 4,
+        "unknown": 1
+      },
+      "codex/30d": {
+        "count": 10,
+        "unknown": 5
+      },
+      "codex/7d": {
+        "count": 6,
+        "unknown": 4
+      },
+      "codex/today": {
+        "count": 3,
+        "unknown": 2
+      }
+    },
+    "auxiliary": {
+      "all/30d": {
+        "count": 12,
+        "unknown": 0
+      },
+      "all/7d": {
+        "count": 8,
+        "unknown": 0
+      },
+      "all/today": {
+        "count": 4,
+        "unknown": 0
+      },
+      "claude/30d": {
+        "count": 7,
+        "unknown": 0
+      },
+      "claude/7d": {
+        "count": 6,
+        "unknown": 0
+      },
+      "claude/today": {
+        "count": 3,
+        "unknown": 0
+      },
+      "codex/30d": {
+        "count": 5,
+        "unknown": 0
+      },
+      "codex/7d": {
+        "count": 2,
+        "unknown": 0
+      },
+      "codex/today": {
+        "count": 1,
+        "unknown": 0
+      }
+    }
+  }
+}

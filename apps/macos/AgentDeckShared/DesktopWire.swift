@@ -1026,6 +1026,22 @@ public enum DesktopSessionScopeV1: String, Codable, CaseIterable, Equatable, Has
 	case all
 }
 
+/// The closed set of safe reasons the Widget's session-scope summary set may
+/// carry (ux/widget.md: reason is a safe enum or null). The host writes only
+/// these; the Widget treats any other value as an untrusted summary and shows
+/// the session row as unavailable, never the figures beside it.
+public enum DesktopSessionScopeSummaryReasonV1: String, CaseIterable, Equatable, Sendable {
+	case defaultUnconfirmed = "default_unconfirmed"
+	case defaultChanged = "default_changed"
+	case generationUnavailable = "generation_unavailable"
+	case batchInconsistent = "batch_inconsistent"
+	case selectionUnavailable = "selection_unavailable"
+	case summaryUnavailable = "summary_unavailable"
+	case sessionsUnavailable = "sessions_unavailable"
+	case classificationUnavailable = "classification_unavailable"
+	case selectionStale = "selection_stale"
+}
+
 /// One explicit selection: scope × client × period. Every field is required;
 /// there is no implied default.
 public struct DesktopSessionScopeSelectionV1: Codable, Equatable, Hashable, Sendable {
@@ -1207,6 +1223,10 @@ public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
 	public let `default`: DesktopSessionScopeDefaultV1
 	public let selection: DesktopSessionScopeSelectionV1?
 	public let publicationID: String?
+	/// The committed generation the view was verified at, shared by every
+	/// selection read at that generation. Producers before Task 7 omit it; a
+	/// consumer that combines selections must then treat them as unpinnable.
+	public let generationID: String?
 	public let generatedAt: String?
 	public let originCoverage: DesktopSessionOriginCoverageV1?
 	public let counts: DesktopSessionScopeCountsV1?
@@ -1217,6 +1237,7 @@ public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
 		case available, reason, selection, counts, recent
 		case `default`
 		case publicationID = "publication_id"
+		case generationID = "generation_id"
 		case generatedAt = "generated_at"
 		case originCoverage = "origin_coverage"
 		case workSignals = "work_signals"
@@ -1225,8 +1246,10 @@ public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
 	public init(
 		available: Bool, reason: String?, default defaults: DesktopSessionScopeDefaultV1, selection: DesktopSessionScopeSelectionV1?,
 		publicationID: String?, generatedAt: String?, originCoverage: DesktopSessionOriginCoverageV1?,
-		counts: DesktopSessionScopeCountsV1?, recent: [DesktopSessionScopeRecentV1], workSignals: DesktopWorkSignalsV1
+		counts: DesktopSessionScopeCountsV1?, recent: [DesktopSessionScopeRecentV1], workSignals: DesktopWorkSignalsV1,
+		generationID: String? = nil
 	) {
+		self.generationID = generationID
 		self.available = available
 		self.reason = reason
 		self.default = defaults
@@ -1246,6 +1269,7 @@ public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
 		self.default = try container.decode(DesktopSessionScopeDefaultV1.self, forKey: .default)
 		selection = try container.decodeIfPresent(DesktopSessionScopeSelectionV1.self, forKey: .selection)
 		publicationID = try container.decodeIfPresent(String.self, forKey: .publicationID)
+		generationID = try container.decodeIfPresent(String.self, forKey: .generationID)
 		generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
 		originCoverage = try container.decodeIfPresent(DesktopSessionOriginCoverageV1.self, forKey: .originCoverage)
 		counts = try container.decodeIfPresent(DesktopSessionScopeCountsV1.self, forKey: .counts)
@@ -1262,7 +1286,7 @@ public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
 			guard counts == nil, originCoverage == nil, recent.isEmpty else { throw DesktopWireError.invalidEnvelope }
 			return
 		}
-		guard let selection, let publicationID, !publicationID.isEmpty, let counts, let originCoverage,
+		guard let selection, let publicationID, !publicationID.isEmpty, generationID?.isEmpty != true, let counts, let originCoverage,
 			counts.sessions >= 0, counts.projects >= 0, counts.missingDurationCount >= 0,
 			counts.missingDurationCount <= counts.sessions, recent.count <= counts.sessions,
 			(counts.knownDurationMS ?? 0) >= 0, (originCoverage.unknownCount ?? 0) >= 0,
