@@ -221,6 +221,67 @@ class FixtureTests(unittest.TestCase):
                 self.assertEqual(sum(argv[0] == '/usr/bin/pluginkit' for argv in calls), 1)
                 self.assertEqual(sum(argv[0] in ('/usr/bin/codesign', '/usr/bin/plutil') for argv in calls), 6)
 
+    def test_widget_host_probe_never_replaces_original_failure(self):
+        bundle = Path('/fixture/AgentDeck.app')
+        checker = Path('/fixture/check.sh')
+        registrar = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+        for probe in ('baseline-pass', 'pass', 'check-fails', 'register-fails', 'cleanup-fails'):
+            with self.subTest(probe=probe):
+                calls = []
+                original = AssertionError('original registration: no matches')
+                checks = 0
+
+                def run(argv):
+                    nonlocal checks
+                    calls.append(argv)
+                    if argv[0] == 'bash':
+                        checks += 1
+                        if checks == 1:
+                            raise original
+                        if checks == 2 and probe != 'baseline-pass':
+                            raise AssertionError('no matches without host registration')
+                        if probe == 'check-fails':
+                            raise AssertionError('still no matches after host registration')
+                    if argv[0] == registrar:
+                        if '-f' in argv and probe == 'register-fails':
+                            raise AssertionError('host registration refused')
+                        if '-u' in argv and probe == 'cleanup-fails':
+                            raise AssertionError('host probe cleanup refused')
+                    return 'diagnostic output'
+
+                with self.assertRaises(AssertionError) as raised:
+                    verify_fixture_widget_registration(bundle, checker, run)
+                self.assertIs(raised.exception.__cause__, original)
+                self.assertIn('original registration: no matches', str(raised.exception))
+                expected = [] if probe == 'baseline-pass' else [
+                    [registrar, '-f', '-v', bundle], [registrar, '-u', bundle]]
+                self.assertEqual([argv for argv in calls if argv[0] == registrar], expected)
+                self.assertEqual(sum(argv[0] == '/usr/bin/pluginkit' for argv in calls), 1)
+                self.assertEqual(checks, 2 if probe in ('baseline-pass', 'register-fails') else 3)
+                if probe in ('pass', 'cleanup-fails'):
+                    self.assertIn('Exact widget check after host registration: PASS', str(raised.exception))
+                elif probe == 'check-fails':
+                    self.assertIn('still no matches after host registration', str(raised.exception))
+                elif probe == 'register-fails':
+                    self.assertIn('host registration refused', str(raised.exception))
+                else:
+                    self.assertIn('Exact widget check without host registration: PASS', str(raised.exception))
+                if probe == 'cleanup-fails':
+                    self.assertIn('host probe cleanup refused', str(raised.exception))
+
+    def test_widget_add_failure_does_not_probe_host_discovery(self):
+        calls = []
+
+        def run(argv):
+            calls.append(argv)
+            if argv[0] == '/usr/bin/pluginkit':
+                raise AssertionError('add rejected')
+            return 'fixture metadata'
+
+        with self.assertRaisesRegex(AssertionError, 'add rejected'):
+            verify_fixture_widget_registration(Path('/fixture/AgentDeck.app'), Path('/fixture/check.sh'), run)
+        self.assertFalse(any('lsregister' in str(argv[0]) for argv in calls))
+
     def test_completions_are_generated_from_replacement_helper_before_signing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

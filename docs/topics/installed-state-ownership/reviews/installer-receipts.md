@@ -272,7 +272,7 @@ WorkUnit 为 `installed-state-ownership:installer-receipts`，修复目标为 `i
 - Reviewed state：HEAD `fc290163d2bb7ee0776854e7bc91737f0553867f`；入场 48 路径指纹 `04973be972b56c59e77881b0497de8edfe8fdc618aa72d5409abaa26cbe53b84` 与 Repair 3 完全一致。同步 Review/状态后指纹 `87d3c4b232a13964b2f2a13d8c5f2ce4366a64068fdd2e2e23b8c3c7fba31925`，只有 tasks.md 改变，其 blob 为 `308d82ee83b0240361c0aeae47b57a590f66340a`。沿用 HEAD 加 LF、排序 path/blob 加 LF 的 SHA-256 配方，评审载体不纳入集合。
 - WorkUnit：`installed-state-ownership:installer-receipts`。
 - ContentState：`installed-state-ownership:installer-receipts:rereview-r4-20261111-HloMiWBA`。
-- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle4-20261111`，见下方 CI cycle 4；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
+- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle5-20261111`，见下方 CI cycle 5；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
 - 完成门禁：NOT_VERIFIED
 
 ### 🔴 严重问题 — 必须修复
@@ -491,3 +491,28 @@ WORKFLOW_WORKSPACE: agent-deck.installed-state-ownership
 - 第 3 轮常规 CI 监控曾因 GitHub API EOF 退出，不能据此判定 CI 失败。一次实际状态读回确认 run `43016888177` 仍为 in_progress，documentation 和 desktop job `130510569319` 已 success（含 Swift、sandbox、分发及文档要求），Go Verify 当时仍在运行；已重新挂接只读监控，不重跑 CI。
 - 本轮 Go/Swift 产品、原生权限模板、安装协议、cask 声明、依赖及第 2 轮警告/EXIT 清理路径均未变，复用其原有有界证据。11 项局部回归不代替完整 real-brew 或常规 CI，之前的 upgrade 失败也不重标为本候选的新运行结果。
 - WorkUnit 保持 `installed-state-ownership:installer-receipts`，新交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle4-20261111`，提交后绑定实际 SHA/树；仍为 52 项范围，评审载体不入集合。independent-review 按用户决定未执行；真实验收等待本轮实际 SHA 的 CI，不制造 PASS/VERIFIED，不关闭 Task/Topic/来源缺陷。
+
+### 第 4 轮实际交付与结果
+
+- 已签名提交并正常推送 `605b069abc8fd8f887157c941d9a9ea16270e04a`，树 `c2ef94b5900af2df414b93bd20403cf94fd65fae`，父提交 `760d2141`。5 项范围文件、完整英文说明/OpenCode trailer、预期树及实际 SSH 签名均核验，推送后工作区干净且远端同步；`make check-whitespace` 与提交范围的 `git diff --check` 通过。
+- 上轮常规 CI `43016888177` 已在新推送后取消：classify、documentation、desktop 成功，desktop 含 Swift/分发/文档检查；Go Verify job `130510569042` 于 UTC `2026-11-11T12:38:33Z` 被取消，不记作 Go 或整项 CI 通过。
+- 第 4 轮不可变交付态按本节 ID 绑定，9 节点/22 条预检通过关系完整读回；固定门禁当时为 NOT_VERIFIED、6/8，仅缺未执行的 independent-review 和待回收的 real-brew，无当前适用失败或未决影响。这是推送时的历史观察，不是下述失败后的门禁结论。
+- real-brew run `43022040054`、job `130527348983` 在 UTC `2026-11-11T12:38:12Z` 至 `2026-11-11T12:42:24Z` 执行，实际 SHA 为上述 `605b069a`，结论 **failure**。夹具回归与 App/widget 构建成功；真实 install 返回成功后，最初的精确 widget 检查又返回 `(no matches)`，未到 reinstall/upgrade，故本轮没有新增升级超时的中间输出证据。
+- 该次原生诊断确认 host/widget 均 strict verify 成功，host 签入了 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`，widget 签入同一 Group 且 sandbox 为 true，Info.plist 及扩展点一致；仍为 ad-hoc、TeamIdentifier not set。第 3 轮相同登记步骤曾返回成功，本轮缺少权限/签名损坏不能解释最早失败；也不能据此归因为未签团队或提高超时预算。
+- 同 SHA 常规 CI `43022040072` 继续由原异步监控回收，未取得整项结论不记作通过。原第 3 轮 upgrade 超时与本轮登记失败属于不同精确内容/运行观察，均保留。
+
+## CI cycle 5 — 2026-11-11
+
+### 分类与判别实验
+
+- **分类：未定位。** 原命令在第 3 轮通过 widget 检查、第 4 轮却在此失败；两轮夹具与原生身份/权限不变，只有命令超时的诊断包装不同。原 `pluginkit -a` 成功不证明随后登记查询已可见。缺少权限与签名破损已由第 4 轮读回排除；宿主发现前提、异步登记可见性和 runner/系统拒绝仍不能区分，升级问题也未定位。本轮不实施任何推测性的产品或登记修复。
+- 仓库 cask 注释声明签名 App 在首次正常启动时由系统发现扩展，当前 CI 不启动宿主，只显式 add 插件。当前 macOS `pluginkit` 手册说明 registry 自动发现、维护并可清理不满足自动发现资格的显式条目，`lsregister -h` 说明它按给定 App 路径注册宿主。它们仅支持判别实验的选择，不能证明宿主注册就是该失败的唯一根因。
+- 仅在原 checker 失败后，保留既有签名/plist 诊断，再用同一个 checker 做一次**不改变登记状态的只读对照**并记录距原 add 的耗时。若此时已通过，记录可见性变化，不再触碰宿主；仍抛出原始失败。
+- 若对照仍失败，仅在托管 runner 上对**这一个临时 bundle**执行一次 `lsregister -f -v`，再执行同一个精确 checker 并记录结果/耗时；无第二次 `pluginkit -a`、sleep、循环或通过兜底。随后无论注册/检查成功与否，都尝试对同一路径 `lsregister -u` 撤销这次实验，清理失败也写入诊断且不覆盖原错误。观察对照仍需考虑时间推移，单次后验通过不自动证明唯一因果。
+- 原首次 checker 失败始终是函数异常的 `__cause__`，后验检查通过也不能使验收通过。add 自身失败时不执行宿主实验，原首次成功路径完全不变。这样第 6 轮只能依据实际观测选择同步、宿主前提或继续保留阻断，而非把试验直接称作修复。
+
+### 验证与边界
+
+- 新诊断边界回归在原实现上 RED：四种后验状态均没有预期的判别操作。最终 `python3 -B scripts/test-cask-real-brew-fixture.py`：**13 项通过（6.457 秒）**；新增检查覆盖只读对照已通过、宿主后验通过/失败、宿主注册失败、撤销失败，均保留原异常，add 仅一次；另检查 add 失败不操作宿主。其余 11 项夹具、签名、命令超时及真实 helper 补全测试继续通过。所有工具边界均为记录替身，没有在本机调用系统登记。
+- `bash -n scripts/test-cask-real-brew.sh` 通过。Go/Swift 产品、安装协议、原生模板、cask 声明、依赖及警告/EXIT 清理输入未变；有界证据继续按原范围复用，不重新执行未变的全量 Go/native 检查。完整原命令只在新 SHA 的托管 CI 验证，不以局部替身推断实际登记结果。
+- 本候选只有两个 fixture Python 文件及必要 review/tasks 记录；预留交付态为 `installed-state-ownership:installer-receipts:ci-cycle5-20261111`，实际提交后绑定 SHA/树，仍沿用 52 项范围。用户授权上限仍为整体第 6 轮，不评审、不委派；没有本机真实 Homebrew/登记、团队签名/凭据、发布、断言放宽或任务关闭。
