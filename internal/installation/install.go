@@ -89,6 +89,38 @@ var deregisterWidgets = func(root string) error {
 		return nil
 	}
 	for _, extension := range extensions {
+		// A newly published bundle may never have been discovered by pkd.
+		// Prove this exact path absent before skipping deregistration; daemon
+		// failures (including diagnostics with exit 0) must not permit removal.
+		query := exec.Command(pluginkitTool, "-m", "-A", "-D", "-vv")
+		var diagnostics bytes.Buffer
+		query.Stderr = &diagnostics
+		registration, err := query.Output()
+		if err != nil {
+			return fmt.Errorf("query pluginkit before removing %s: %w: %s", extension, err, bytes.TrimSpace(diagnostics.Bytes()))
+		}
+		if diagnostic := bytes.TrimSpace(diagnostics.Bytes()); len(diagnostic) != 0 {
+			return fmt.Errorf("pluginkit query diagnostic before removing %s: %s", extension, diagnostic)
+		}
+		registered, recognized := false, len(bytes.TrimSpace(registration)) == 0
+		for _, line := range strings.Split(string(registration), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "match:") {
+				return fmt.Errorf("pluginkit query diagnostic before removing %s: %s", extension, line)
+			}
+			if path, ok := strings.CutPrefix(line, "Path = "); ok {
+				recognized = true
+				registered = registered || path == extension
+			} else if line == "(0 plug-ins)" {
+				recognized = true
+			}
+		}
+		if !recognized {
+			return fmt.Errorf("unrecognized pluginkit query before removing %s: %s", extension, bytes.TrimSpace(registration))
+		}
+		if !registered {
+			continue
+		}
 		if output, err := exec.Command(pluginkitTool, "-r", extension).CombinedOutput(); err != nil {
 			return fmt.Errorf("pluginkit -r %s: %w: %s", extension, err, bytes.TrimSpace(output))
 		}

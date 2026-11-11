@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-11-05
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Installed State Ownership — Tasks
@@ -29,7 +29,7 @@ updated: 2026-11-10
 需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 已通过 Round 2 独立复评，按 real-brew 时序例外等待授权交付及 CI 取证，见[任务评审](reviews/installer-receipts.md)；真实 Homebrew CI 按本任务已批准的证据时序例外，在授权提交和推送后运行；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 保留 Round 4 独立复评 PASS，validation 已通过；当前门禁 NOT_VERIFIED，仅缺 real-brew，按既定时序例外等待另行授权交付，见[任务评审](reviews/installer-receipts.md) Validation follow-up；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -550,7 +550,7 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 #### 评审交接（2026-11-10）
 
-任务 5 Round 2 独立复评 PASS，Review 已勾选。完成门禁仍待真实 Homebrew CI，按本任务时序例外进入待授权交付。当前复评结论、候选身份和完成门禁以[任务评审记录](reviews/installer-receipts.md)为准。开发交接保留为原候选的历史验证事实。
+任务 5 的早期评审及推送 CI 结果保留各自的历史范围。Round 4 独立复评 PASS 按未改变的安装逻辑范围保留，Dev 与 Review 均已勾选。用户授权处理的 scanruntime 午夜夹具 panic 已修复；全量 Go 28 包、1,591 项顶层测试及 scanruntime race 47 项通过，validation 已通过。当前证据目标为 `installed-state-ownership:installer-receipts:validation-scanruntime-20261111-midnight`，完成门禁 NOT_VERIFIED，七项通过、仅缺 real-brew；按本任务已批准时序例外进入 `awaiting_commit`，任务保持开放。当前候选身份、诊断与验证边界见[任务评审记录](reviews/installer-receipts.md) Validation follow-up。真实 brew 未在本机执行，未提交或推送。
 
 ### 6. `app-state-location`
 

@@ -26,6 +26,9 @@ import time
 
 root, fixture_app = map(Path, sys.argv[1:])
 root, fixture_app = root.resolve(), fixture_app.resolve()
+sys.path.insert(0, str(root / 'scripts'))
+from cask_real_brew_fixture import prepare_fixture_app
+
 os.chdir(root)
 workspace = Path(tempfile.mkdtemp(prefix='agentdeck-real-brew-', dir=os.environ['RUNNER_TEMP'])).resolve()
 children = []
@@ -61,11 +64,7 @@ run(['bash', root / 'scripts/run-go-test.sh', '-c', '-tags', 'agentdeck_acceptan
 archives = {}
 for version in ('1.2.3', '1.2.4'):
     bundle = workspace / version / 'AgentDeck.app'
-    bundle.parent.mkdir()
-    run(['/usr/bin/ditto', fixture_app, bundle])
-    shutil.copy2(helper, bundle / 'Contents/Helpers/agentdeck')
-    (bundle / 'Contents/Resources/version').write_text(version + '\n')
-    run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', bundle])
+    prepare_fixture_app(fixture_app, bundle, helper, version, run)
     archive = workspace / f'AgentDeck-{version}.zip'
     run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', bundle, archive])
     archives[version] = archive
@@ -244,6 +243,21 @@ s.uninstall()
 manifest = s.successor('local_app')
 run([helper, 'install', 'unregister', '--channel', 'local_app', '--executable', s.installed_helper,
      '--expected-installation', s.identity(), '--cleanup-manifest', manifest, '--remove'], env=s.env)
+
+
+# Reproduce the first CI failure deliberately: a missing completion artifact
+# must roll back a published App even before its widget was ever registered.
+s = Scenario('completion-artifact-rollback')
+content = s.cask.read_text()
+source = 'Contents/Resources/completions/agentdeck.bash'
+assert content.count(source) == 1
+s.cask.write_text(content.replace(source, 'Contents/Resources/completions/missing.bash'))
+output = s.command('install', success=False)
+assert 'symlink source' in output and 'missing.bash' in output, output
+assert 'could not be verified for cleanup' not in output, output
+assert not s.app.exists() and not s.receipt.exists()
+assert list(s.attempts.glob('*/manifest.json')) and list(s.attempts.glob('*/helper'))
+assert list(s.attempts.glob('*/cleaned'))
 
 
 # Cleanup must use the retained program even if the final helper is corrupt.

@@ -17,6 +17,17 @@ set -euo pipefail
 #   in CI, in scripts/test-cask-real-brew.sh.
 # - The one real `brew install --cask` below is the formula conflict refusal.
 #   It fails in a preflight step that only runs /bin/sh, before any helper.
+#   --local-only omits that refusal check and never invokes brew.
+
+local_only=0
+if [[ ${1:-} == --local-only ]]; then
+  local_only=1
+  shift
+fi
+if [[ $# != 0 ]]; then
+  echo 'usage: test-cask-migration.sh [--local-only]' >&2
+  exit 2
+fi
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 temporary=$(mktemp -d "${TMPDIR:-/private/tmp}/agentdeck-cask-migration.XXXXXX")
@@ -43,6 +54,9 @@ export AGENTDECK_ACCEPTANCE_PLUGINKIT="$temporary/pluginkit"
 cat >"$AGENTDECK_ACCEPTANCE_PLUGINKIT" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >>"$pluginkit_log"
+if [ "\$1" = -m ]; then
+  printf '    Path = %s\n (1 plug-in)\n' "$appdir/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex"
+fi
 EOF
 chmod 0755 "$AGENTDECK_ACCEPTANCE_PLUGINKIT"
 unset HOMEBREW_AGENTDECK_REPAIR HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
@@ -481,7 +495,7 @@ cask_uninstall "$stable_cask"
 test ! -e "$app"
 test ! -e "$receipt"
 # The widget is unregistered by the helper, for exactly this App's extension.
-[[ $(cat "$pluginkit_log") == "-r $app/Contents/PlugIns/AgentDeckWidget.appex" ]]
+[[ $(cat "$pluginkit_log") == "-m -A -D -vv"$'\n'"-r $app/Contents/PlugIns/AgentDeckWidget.appex" ]]
 test -f "$first_materials/cleaned"
 cask_install "$upgrade_cask" "$second"
 grep -Fx 1.2.4 "$app/Contents/Resources/version" >/dev/null
@@ -515,7 +529,11 @@ test -d "$attempts/$second_attempt"
 # particular, a refusal must unwind the Caskroom receipt as well as leave the
 # app and command absent; checking only stderr and the process status misses the
 # partial installation caused by an exit that bypasses Homebrew's rollback.
-real_brew_install_refusal "$(attempt_count)"
+if [[ $local_only == 0 ]]; then
+  real_brew_install_refusal "$(attempt_count)"
+else
+  printf '%s\n' 'Local-only: real Homebrew conflict refusal not executed.'
+fi
 
 # --- 2. mutual exclusion with the CLI-only formula -----------------------
 

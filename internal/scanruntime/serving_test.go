@@ -360,15 +360,21 @@ func TestServingResponseSizeBoundIsPerMessageNotLifetime(t *testing.T) {
 // admission paths. Gates make the request order deterministic, not timing based.
 func TestServingJoinedRoundPublishesBeforeHistory(t *testing.T) {
 	for _, local := range []bool{false, true} {
-		for _, appFirst := range []bool{false, true} {
-			t.Run(fmt.Sprintf("local=%t/appFirst=%t", local, appFirst), func(t *testing.T) {
+		for _, test := range []struct {
+			appFirst bool
+			hour     int
+		}{{false, 0}, {true, 0}, {false, 12}, {true, 12}} {
+			t.Run(fmt.Sprintf("local=%t/appFirst=%t/hour=%02d", local, test.appFirst, test.hour), func(t *testing.T) {
+				appFirst := test.appFirst
 				home := t.TempDir()
 				root, _, err := prepareStateRoot(filepath.Join(home, ".agentdeck"))
 				if err != nil {
 					t.Fatal(err)
 				}
-				now := time.Now()
-				writeServingSource(t, home, now.UTC().Format("2006/01/02"), now.Add(-time.Minute), 27)
+				// The first batch must contain an event from today even just after
+				// midnight. A relative "one minute ago" fixture can be yesterday.
+				now := time.Date(2026, time.November, 11, test.hour, 0, 30, 0, time.Local)
+				writeServingSource(t, home, now.UTC().Format("2006/01/02"), now, 27)
 				history := writeServingSource(t, home, "2000/01/01", now.AddDate(0, 0, -20), 99)
 				old := now.AddDate(-1, 0, 0)
 				if err := os.Chtimes(history, old, old); err != nil {
@@ -476,7 +482,11 @@ func TestServingJoinedRoundPublishesBeforeHistory(t *testing.T) {
 				if publication == nil || publication.Header.UsageCoverage.Committed != 1 || publication.Header.UsageCoverage.Sources != 2 {
 					t.Fatal("first committed publication missing or history omitted")
 				}
-				if got := publication.Payload.Data.Usage.Presentation.Scopes[0].Periods.Items[0].Totals.Tokens; got != 28 {
+				usage := publication.Payload.Data.Usage
+				if !usage.Available || len(usage.Presentation.Scopes) == 0 || len(usage.Presentation.Scopes[0].Periods.Items) == 0 {
+					t.Fatalf("first usage view unavailable: usage=%+v warnings=%v", usage, publication.Payload.Warnings)
+				}
+				if got := usage.Presentation.Scopes[0].Periods.Items[0].Totals.Tokens; got != 28 {
 					t.Fatalf("first tokens=%d", got)
 				}
 				if !r.covers(ScopeBoth) {
