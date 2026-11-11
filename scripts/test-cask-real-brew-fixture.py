@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import os
+import plistlib
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +13,119 @@ from unittest import mock
 from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
 
 
+def write_fixture_metadata(bundle, group='TESTTEAM.group.com.kitdine.agentdeck.fixture'):
+    widget = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
+    (widget / 'Contents').mkdir(parents=True)
+    for target, identifier in ((bundle, 'com.kitdine.agentdeck.fixture'),
+                               (widget, 'com.kitdine.agentdeck.fixture.widget')):
+        (target / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+            'CFBundleIdentifier': identifier,
+            'AgentDeckAppGroupIdentifier': group,
+        }))
+
+
 class FixtureTests(unittest.TestCase):
+    def test_fixture_signing_resolves_entitlements_and_seals_inside_out(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = root / 'Debug.app'
+            (fixture / 'Contents/Helpers').mkdir(parents=True)
+            (fixture / 'Contents/Resources').mkdir()
+            write_fixture_metadata(fixture)
+            (fixture / 'Contents/Frameworks/AgentDeckShared.framework').mkdir(parents=True)
+            helper = root / 'helper'
+            helper.write_text('replacement helper')
+            bundle = root / '1.2.3/AgentDeck.app'
+            signatures = []
+            verified = []
+
+            def run(argv, *, env=None):
+                if argv[0] == '/usr/bin/ditto':
+                    shutil.copytree(argv[1], argv[2])
+                elif argv[0] == '/usr/bin/codesign':
+                    if '--sign' in argv:
+                        entitlements = None
+                        if '--entitlements' in argv:
+                            entitlements = plistlib.loads(Path(argv[argv.index('--entitlements') + 1]).read_bytes())
+                        signatures.append((argv[-1], entitlements, argv))
+                    else:
+                        verified.append(argv)
+                else:
+                    return 'generated completion\n'
+
+            prepare_fixture_app(fixture, bundle, helper, '1.2.3', run)
+            widget = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
+            self.assertEqual([target for target, _, _ in signatures], [
+                bundle / 'Contents/Helpers/agentdeck',
+                bundle / 'Contents/Frameworks/AgentDeckShared.framework', widget, bundle,
+            ])
+            self.assertEqual(signatures[2][1], {
+                'com.apple.security.app-sandbox': True,
+                'com.apple.security.application-groups': ['TESTTEAM.group.com.kitdine.agentdeck.fixture'],
+            })
+            self.assertEqual(signatures[3][1], {
+                'com.apple.security.application-groups': ['TESTTEAM.group.com.kitdine.agentdeck.fixture'],
+            })
+            for _, _, argv in signatures:
+                self.assertNotIn('--deep', argv)
+            self.assertTrue(any('--verify' in argv and '--deep' in argv and argv[-1] == bundle for argv in verified))
+
+    def test_fixture_signing_refuses_unresolved_or_mismatched_groups(self):
+        for group in ('', '$(AGENTDECK_APP_GROUP)', 'mismatch'):
+            with self.subTest(group=group), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                fixture = root / 'Debug.app'
+                (fixture / 'Contents/Helpers').mkdir(parents=True)
+                (fixture / 'Contents/Resources').mkdir()
+                write_fixture_metadata(fixture, group)
+                if group == 'mismatch':
+                    info = fixture / 'Contents/PlugIns/AgentDeckWidget.appex/Contents/Info.plist'
+                    values = plistlib.loads(info.read_bytes())
+                    values['AgentDeckAppGroupIdentifier'] = 'another.group'
+                    info.write_bytes(plistlib.dumps(values))
+                helper = root / 'helper'
+                helper.write_text('replacement')
+                signatures = []
+
+                def run(argv, *, env=None):
+                    if argv[0] == '/usr/bin/ditto':
+                        shutil.copytree(argv[1], argv[2])
+                    elif argv[0] == '/usr/bin/codesign':
+                        signatures.append(argv)
+                    else:
+                        return 'completion\n'
+
+                with self.assertRaisesRegex(ValueError, 'matching resolved App Group'):
+                    prepare_fixture_app(fixture, root / '1.2.3/AgentDeck.app', helper, '1.2.3', run)
+                self.assertEqual(signatures, [])
+
+    def test_fixture_signing_never_seals_host_after_nested_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = root / 'Debug.app'
+            (fixture / 'Contents/Helpers').mkdir(parents=True)
+            (fixture / 'Contents/Resources').mkdir()
+            write_fixture_metadata(fixture)
+            helper = root / 'helper'
+            helper.write_text('replacement')
+            bundle = root / '1.2.3/AgentDeck.app'
+            widget = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
+            signatures = []
+
+            def run(argv, *, env=None):
+                if argv[0] == '/usr/bin/ditto':
+                    shutil.copytree(argv[1], argv[2])
+                elif argv[0] == '/usr/bin/codesign':
+                    signatures.append(argv[-1])
+                    if argv[-1] == widget:
+                        raise AssertionError('nested signing failure')
+                else:
+                    return 'completion\n'
+
+            with self.assertRaisesRegex(AssertionError, 'nested signing failure'):
+                prepare_fixture_app(fixture, bundle, helper, '1.2.3', run)
+            self.assertEqual(signatures, [bundle / 'Contents/Helpers/agentdeck', widget])
+
     def test_widget_registration_success_still_requires_exact_checker(self):
         bundle = Path('/fixture/AgentDeck.app')
         checker = Path('/fixture/check-registration.sh')
@@ -60,6 +173,7 @@ class FixtureTests(unittest.TestCase):
             fixture = root / 'Debug App.app'
             for path in ('Contents/Helpers', 'Contents/Resources'):
                 (fixture / path).mkdir(parents=True)
+            write_fixture_metadata(fixture)
             (fixture / 'Contents/Helpers/agentdeck').write_text('original helper')
             helper = root / 'acceptance helper'
             helper.write_text('#!/bin/sh\nprintf "completion for %s\\n" "$2"\n')
@@ -75,7 +189,8 @@ class FixtureTests(unittest.TestCase):
                         path = bundle / f'Contents/Resources/completions/agentdeck.{shell}'
                         self.assertEqual(path.read_text(), f'completion for {shell}\n')
                         self.assertEqual(path.stat().st_mode & 0o777, 0o644)
-                    signed.append(argv[-1])
+                    if '--sign' in argv:
+                        signed.append(argv[-1])
                 else:
                     self.assertEqual(Path(argv[0]), bundle / 'Contents/Helpers/agentdeck')
                     self.assertEqual(env['FIXTURE_MARKER'], 'preserved')
@@ -86,7 +201,8 @@ class FixtureTests(unittest.TestCase):
             base_env = dict(PATH=os.defpath, HOME=str(root / 'outer-home'),
                             FIXTURE_MARKER='preserved', HOMEBREW_AGENTDECK_REPAIR='1')
             prepare_fixture_app(fixture, bundle, helper, '1.2.3', run, env=base_env)
-            self.assertEqual(signed, [bundle])
+            self.assertEqual(signed, [bundle / 'Contents/Helpers/agentdeck',
+                                      bundle / 'Contents/PlugIns/AgentDeckWidget.appex', bundle])
             self.assertEqual(base_env['HOME'], str(root / 'outer-home'))
             self.assertEqual(base_env['HOMEBREW_AGENTDECK_REPAIR'], '1')
             self.assertEqual((bundle / 'Contents/Resources/version').read_text(), '1.2.3\n')
@@ -100,6 +216,7 @@ class FixtureTests(unittest.TestCase):
                 fixture = root / 'Debug.app'
                 (fixture / 'Contents/Helpers').mkdir(parents=True)
                 (fixture / 'Contents/Resources').mkdir()
+                write_fixture_metadata(fixture)
                 helper = root / 'helper'
                 helper.write_text('replacement')
                 signed = []
@@ -125,6 +242,7 @@ class FixtureTests(unittest.TestCase):
             fixture = root / 'Debug.app'
             (fixture / 'Contents/Helpers').mkdir(parents=True)
             (fixture / 'Contents/Resources').mkdir()
+            write_fixture_metadata(fixture)
             (fixture / 'Contents/Helpers/agentdeck').write_text('original helper')
             helper = root / 'acceptance-helper'
             build_env = dict(os.environ)
@@ -150,7 +268,8 @@ class FixtureTests(unittest.TestCase):
                 if argv[0] == '/usr/bin/ditto':
                     shutil.copytree(argv[1], argv[2])
                 elif argv[0] == '/usr/bin/codesign':
-                    signed.append(argv[-1])
+                    if '--sign' in argv:
+                        signed.append(argv[-1])
                 else:
                     output = subprocess.check_output(argv, env=env or base_env,
                                                      text=True, stderr=subprocess.STDOUT)
@@ -161,7 +280,8 @@ class FixtureTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, base_env, clear=True):
                 prepare_fixture_app(fixture, bundle, helper, '1.2.3', run)
-            self.assertEqual(signed, [bundle])
+            self.assertEqual(signed, [bundle / 'Contents/Helpers/agentdeck',
+                                      bundle / 'Contents/PlugIns/AgentDeckWidget.appex', bundle])
             self.assertEqual(len(completion_environments), 3)
             for env in completion_environments:
                 self.assertNotEqual(env['HOME'], str(home))

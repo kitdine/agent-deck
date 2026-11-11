@@ -272,7 +272,7 @@ WorkUnit 为 `installed-state-ownership:installer-receipts`，修复目标为 `i
 - Reviewed state：HEAD `fc290163d2bb7ee0776854e7bc91737f0553867f`；入场 48 路径指纹 `04973be972b56c59e77881b0497de8edfe8fdc618aa72d5409abaa26cbe53b84` 与 Repair 3 完全一致。同步 Review/状态后指纹 `87d3c4b232a13964b2f2a13d8c5f2ce4366a64068fdd2e2e23b8c3c7fba31925`，只有 tasks.md 改变，其 blob 为 `308d82ee83b0240361c0aeae47b57a590f66340a`。沿用 HEAD 加 LF、排序 path/blob 加 LF 的 SHA-256 配方，评审载体不纳入集合。
 - WorkUnit：`installed-state-ownership:installer-receipts`。
 - ContentState：`installed-state-ownership:installer-receipts:rereview-r4-20261111-HloMiWBA`。
-- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle2-20261111`，见下方 CI cycle 2；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
+- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle3-20261111`，见下方 CI cycle 3；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
 - 完成门禁：NOT_VERIFIED
 
 ### 🔴 严重问题 — 必须修复
@@ -432,3 +432,29 @@ WORKFLOW_WORKSPACE: agent-deck.installed-state-ownership
 - `python3 -B scripts/test-macos-distribution-cleanup.py`：最终 13 项通过（12.702 秒），包含原 8 项完整 EXIT 清理保护和新增 5 项警告格式/拒绝测试，后者还检查嵌套 annotation 和百分号不能被二次解码以隐藏警告。`python3 -B scripts/test-cask-real-brew-fixture.py`：5 项通过（7.312 秒），保留真实验收 helper 补全及失败前签名边界。两个 shell 脚本的 `bash -n` 和 real-brew 嵌入 Python 的 `ast.parse` 通过。
 - 候选只改 CI 测试/诊断和必要记录；Go 产品、Go 测试、安装/清理协议、模板、依赖及分派契约未改变，原有效的有界 Go/安装事实继续按原环境复用，不重新执行全量 Go 或本机真实 brew。完整 `make check-macos-distribution` 和 real-brew 命令留给托管 CI，本地局部回归不替代它们。
 - WorkUnit 仍为 `installed-state-ownership:installer-receipts`；第 2 轮交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle2-20261111`，将在实际提交后绑定不可变 SHA/树。范围在原 49 项上加入本次修改的 `scripts/test-macos-distribution-cleanup.py`，共 50 项；评审载体仍不入集合。independent-review 按用户决定未执行，真实 CI 仍待本候选推送后取证；不宣称 Task/Topic 或来源缺陷完成。
+
+### 第 2 轮实际结果
+
+- 已正常签名提交并推送 `51f2a913246b2d7f15e068b331c84e9192dfbc29`，树 `5aaf6a74e9aa59840125739a606aabf1f3b08a32`，父提交 `690e373d`。完整暂存差异、7 项范围文件、英文说明/OpenCode trailer、实际树和 SSH 签名均核验；推送后工作区干净、主题分支同步。
+- 第 1 轮常规 CI `43011524430` 已被新推送自动取消：classify/documentation 及其两项文档检查成功，desktop Swift 和 Go Verify 被取消，distribution 跳过；不记作全量 Go/原生或整个 CI 通过。
+- 第 2 轮提交态已绑定到本节预留的 ContentState。连同第 1 轮 real-brew 失败，共新增 10 节点/25 关系，完整载荷、预检及端点读回一致；固定查询第 1 轮目标 FAILED、第 2 轮目标 NOT_VERIFIED（均 6/8），后者当时尚未取得 real-brew 结果，independent-review 按用户决定未执行，无新目标适用失败或未决影响。
+- real-brew run `43014024489`、job `130500480350` 在 UTC `2026-11-11T11:41:33Z` 至 `2026-11-11T11:45:43Z` 执行，结论 failure，实际 SHA 为 `51f2a913`。夹具回归和 App 构建成功；仍在 lifecycle 的精确 widget 登记检查失败、返回 `(no matches)`。
+- 新诊断显示：App 与 widget 均通过 `codesign --verify --deep --strict`，但都是 ad-hoc、`TeamIdentifier=not set`，权限显示没有任何 entitlement；Info.plist 中的宿主/扩展 ID 是各自的 Debug 身份，两者声明的 App Group 都是 `N2FZ2FNRTU.group.com.kitdine.agentdeck.debug`，扩展点为 `com.apple.widgetkit-extension`。因此磁盘签名损坏和两份 Info 的 Group 不一致不是本次已观察到的问题；必需的 sandbox/Group 权限未被签入是一个可直接确认的夹具缺陷，不代表其他登记前提已经成立。
+- 第 2 轮常规 CI `43014024384` 仍在异步跟踪。最终一轮推送可能按既有并发策略取消旧运行；未取得的结果仍不能记作通过。
+
+## CI cycle 3 — 2026-11-11
+
+### 已证实的签名夹具缺陷与修复
+
+- **分类：CI 夹具签名缺陷。** `build-macos-app.sh` 明确以 `CODE_SIGNING_ALLOWED=NO` 构建 Debug App；此前准备函数只调用不带权限文件的 `codesign --force --deep --sign -`，没有执行真实打包脚本的权限解析和逐层签名。仓库 `AgentDeckWidget.entitlements` 明确要求 App Sandbox 和单一 App Group，而 `AgentDeck.entitlements` 要求宿主 Group、宿主不 sandbox。第 2 轮诊断证明这两份权限均未进入 fixture 签名。缺少必需权限的事实已确定，但尚不把它宣称为 `(no matches)` 的唯一根因。
+- 修复仅在 cask 夹具准备中读取已有两份权限模板，从已构建的 host/widget Info.plist 取得一致且已解析的 Debug Group，以结构化 plist 写出临时权限文件。空值、未展开的变量或两份 Group 不一致，在任何签名前拒绝；不把默认 Release Group 硬编码到 Debug fixture，不修改模板或任何产品身份。
+- 按既有打包契约依次签 helper、顶层 frameworks、widget、host；widget/host 各携带对应的解析后权限，使用 DER 权限编码，禁止用 `--deep` 重签子项。最后仅以 `--verify --deep --strict` 验证整个 bundle，临时权限文件随准备结束清理。嵌套签名失败不再签宿主，不归档未完成的 App。仍是 ad-hoc 测试身份，无 Developer ID、notarization、门户或凭据操作。
+- 登记检查继续精确要求唯一目标路径，没有 sleep、重试、宿主重登记或错误兜底。失败诊断改为 `codesign --display --entitlements - --xml`：本机当前 codesign 手册明确区分默认的抽象显示与 XML；该变化只使读回格式确定，并避免旧 `:-` 参数的弃用警告。
+
+### 验证与限度
+
+- 新 inside-out 回归在原准备函数上 RED：实际记录只有一次无权限的整包 `--deep` 签名，而非所需的四层及权限。最终 `python3 -B scripts/test-cask-real-brew-fixture.py` 的 8 项通过（5.598 秒）：新增正确模板/Group/顺序、无效 Group 禁止签名、嵌套失败禁止宿主封印；原真实 helper 补全、空/失败输出禁止签名和严格登记失败保护保持。
+- 一个仅作用于临时普通 Mach-O 文件的原生 codesign 对照，保持同一二进制与 ad-hoc 身份：不带权限文件的签名及 strict verify 均 exit 0，但 XML 读回没有 sandbox/Group；仅显式加入测试权限及 DER 编码后，两命令仍 exit 0，读回 `com.apple.security.app-sandbox=true` 和预设测试 Group，字典与输入完全相等。未执行这个二进制、未操作系统登记或 Homebrew；该对照只证明权限编码，不证明 App Group 可访问或插件登记成功。
+- `bash scripts/check-widget-sandbox.sh` 通过，确认沿用的原生模板和 Debug/Release 身份边界未变。第 2 轮警告/EXIT 清理的 13 项输入及脚本未变，复用既有通过结果；没有重复全量 Go/Xcode 检查，产品 Go/Swift、安装协议、依赖和 cask 声明均未改动。完整托管 CI 是修复后真实登记和完整安装链的唯一新增运行验证，当前不得记作通过。
+- WorkUnit 保持 `installed-state-ownership:installer-receipts`；最终一轮交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle3-20261111`，提交后绑定实际 SHA/树。在上轮 50 项范围上加入实际消费的两份原生权限模板，共 52 项；评审载体仍不入集合。independent-review 按用户决定未执行，不制造 PASS/VERIFIED。
+- 本轮是已授权三轮中的最后一轮，推送后收回常规 CI 与 real-brew 的实际结论。即使仍有失败，也不自动进行第 4 轮修复、提交或推送；保留精确失败及后续前提，Task、Topic 和来源缺陷保持开放。

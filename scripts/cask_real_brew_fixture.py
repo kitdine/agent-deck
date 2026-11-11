@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import tempfile
 
@@ -32,7 +33,39 @@ def prepare_fixture_app(fixture_app, bundle, helper, version, run, *, env=None):
             destination = completions / f'agentdeck.{shell}'
             destination.write_text(output)
             destination.chmod(0o644)
-    run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', bundle])
+    sign_fixture_app(bundle, run)
+
+
+def sign_fixture_app(bundle, run):
+    widget = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
+    app_group = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes()).get('AgentDeckAppGroupIdentifier')
+    widget_group = plistlib.loads((widget / 'Contents/Info.plist').read_bytes()).get('AgentDeckAppGroupIdentifier')
+    if not isinstance(app_group, str) or not app_group or '$(' in app_group or widget_group != app_group:
+        raise ValueError('fixture App and widget must have one matching resolved App Group')
+    entitlements_root = Path(__file__).resolve().parents[1] / 'apps/macos'
+    with tempfile.TemporaryDirectory(prefix='signing-', dir=bundle.parent) as temporary:
+        resolved = {}
+        for name in ('AgentDeck', 'AgentDeckWidget'):
+            entitlements = plistlib.loads((entitlements_root / f'{name}.entitlements').read_bytes())
+            if entitlements.get('com.apple.security.application-groups') != ['$(AGENTDECK_APP_GROUP)']:
+                raise ValueError(f'unexpected fixture App Group entitlement template: {name}')
+            entitlements['com.apple.security.application-groups'] = [app_group]
+            if name == 'AgentDeckWidget' and entitlements.get('com.apple.security.app-sandbox') is not True:
+                raise ValueError('fixture widget must retain its App Sandbox entitlement')
+            destination = Path(temporary) / f'{name}.entitlements'
+            destination.write_bytes(plistlib.dumps(entitlements))
+            resolved[name] = destination
+
+        # Unsigned Debug builds have no entitlements to preserve. Match the
+        # packaging contract: sign nested code explicitly, then seal the host.
+        # --deep signing would re-sign children with the wrong/empty permissions.
+        run(['/usr/bin/codesign', '--force', '--sign', '-', bundle / 'Contents/Helpers/agentdeck'])
+        for framework in sorted((bundle / 'Contents/Frameworks').glob('*.framework')):
+            run(['/usr/bin/codesign', '--force', '--sign', '-', framework])
+        for target, name in ((widget, 'AgentDeckWidget'), (bundle, 'AgentDeck')):
+            run(['/usr/bin/codesign', '--force', '--sign', '-', '--generate-entitlement-der',
+                 '--entitlements', resolved[name], target])
+    run(['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=2', bundle])
 
 
 def verify_fixture_widget_registration(bundle, check_script, run):
@@ -48,7 +81,7 @@ def verify_fixture_widget_registration(bundle, check_script, run):
         for target in (bundle, extension):
             for argv in (
                     ['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=4', target],
-                    ['/usr/bin/codesign', '-d', '--verbose=4', '--entitlements', ':-', target],
+                    ['/usr/bin/codesign', '-d', '--verbose=4', '--entitlements', '-', '--xml', target],
                     ['/usr/bin/plutil', '-p', target / 'Contents/Info.plist']):
                 try:
                     output = run(argv)
