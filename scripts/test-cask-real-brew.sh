@@ -27,7 +27,7 @@ import time
 root, fixture_app = map(Path, sys.argv[1:])
 root, fixture_app = root.resolve(), fixture_app.resolve()
 sys.path.insert(0, str(root / 'scripts'))
-from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
+from cask_real_brew_fixture import prepare_fixture_app, run_fixture_command, verify_fixture_widget_registration
 
 os.chdir(root)
 workspace = Path(tempfile.mkdtemp(prefix='agentdeck-real-brew-', dir=os.environ['RUNNER_TEMP'])).resolve()
@@ -47,11 +47,7 @@ for name in list(base_env):
 
 
 def run(argv, *, env=None, success=True, timeout=180):
-    result = subprocess.run(list(map(str, argv)), env=env or base_env, text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
-    if (result.returncode == 0) != success:
-        raise AssertionError(f'Unexpected exit {result.returncode}: {argv}\n{result.stdout}')
-    return result.stdout
+    return run_fixture_command(argv, env=env or base_env, success=success, timeout=timeout)
 
 
 brew_repository = Path(run(['brew', '--repository']).strip())

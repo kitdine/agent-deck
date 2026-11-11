@@ -2,6 +2,7 @@
 """Fixture preparation regression; no brew, signing, or system registration."""
 
 from pathlib import Path
+import ast
 import os
 import plistlib
 import shutil
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import cask_real_brew_fixture as fixture_module
 from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
 
 
@@ -22,6 +24,58 @@ def write_fixture_metadata(bundle, group='TESTTEAM.group.com.kitdine.agentdeck.f
             'CFBundleIdentifier': identifier,
             'AgentDeckAppGroupIdentifier': group,
         }))
+
+
+class FixtureCommandTests(unittest.TestCase):
+    def runner(self):
+        source = Path(__file__).with_name('test-cask-real-brew.sh').read_text()
+        driver = source.split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        function = next(node for node in ast.parse(driver).body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        namespace = dict(vars(fixture_module), subprocess=subprocess,
+                         base_env={'FIXTURE_ENV': 'base'})
+        exec(compile(ast.Module(body=[function], type_ignores=[]), '<actual CI run wrapper>', 'exec'), namespace)
+        return namespace['run']
+
+    def test_timeout_reports_partial_output_and_preserves_budget(self):
+        for output in (b'==> Upgrading fixture\nwaiting at upgrade marker\n',
+                       b'waiting at upgrade marker\xff\n',
+                       '==> Upgrading fixture\nwaiting at upgrade marker\n'):
+            with self.subTest(output=output):
+                failure = subprocess.TimeoutExpired(['/fixture/brew', 'upgrade'], 180, output=output)
+                with mock.patch('subprocess.run', side_effect=failure) as execute:
+                    with self.assertRaises(Exception) as raised:
+                        self.runner()([Path('/fixture/brew'), 'upgrade'])
+                self.assertIn('waiting at upgrade marker', str(raised.exception))
+                self.assertIn('180', str(raised.exception))
+                self.assertIsInstance(raised.exception, AssertionError)
+                self.assertIs(raised.exception.__cause__, failure)
+                self.assertEqual(execute.call_args.kwargs['timeout'], 180)
+                self.assertEqual(execute.call_args.kwargs['env'], {'FIXTURE_ENV': 'base'})
+                self.assertEqual(execute.call_args.args[0], ['/fixture/brew', 'upgrade'])
+
+    def test_empty_timeout_output_does_not_satisfy_expected_failure(self):
+        failure = subprocess.TimeoutExpired(['/fixture/brew', 'upgrade'], 180)
+        with mock.patch('subprocess.run', side_effect=failure):
+            with self.assertRaises(Exception) as raised:
+                self.runner()(['/fixture/brew', 'upgrade'], success=False)
+        self.assertIn('no captured subprocess output', str(raised.exception))
+        self.assertIs(raised.exception.__cause__, failure)
+
+    def test_command_exit_contract_is_unchanged(self):
+        for code, success in ((0, True), (1, False), (1, True), (0, False)):
+            with self.subTest(code=code, success=success):
+                result = subprocess.CompletedProcess(['/fixture/tool'], code, stdout='command detail\n')
+                with mock.patch('subprocess.run', return_value=result) as execute:
+                    call = lambda: self.runner()(['/fixture/tool'], env={'FIXTURE_ENV': 'explicit'},
+                                                 success=success, timeout=17)
+                    if (code == 0) == success:
+                        self.assertEqual(call(), 'command detail\n')
+                    else:
+                        with self.assertRaisesRegex(AssertionError, 'command detail'):
+                            call()
+                self.assertEqual(execute.call_args.kwargs['timeout'], 17)
+                self.assertEqual(execute.call_args.kwargs['env'], {'FIXTURE_ENV': 'explicit'})
 
 
 class FixtureTests(unittest.TestCase):

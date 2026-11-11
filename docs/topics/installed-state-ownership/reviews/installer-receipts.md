@@ -272,7 +272,7 @@ WorkUnit 为 `installed-state-ownership:installer-receipts`，修复目标为 `i
 - Reviewed state：HEAD `fc290163d2bb7ee0776854e7bc91737f0553867f`；入场 48 路径指纹 `04973be972b56c59e77881b0497de8edfe8fdc618aa72d5409abaa26cbe53b84` 与 Repair 3 完全一致。同步 Review/状态后指纹 `87d3c4b232a13964b2f2a13d8c5f2ce4366a64068fdd2e2e23b8c3c7fba31925`，只有 tasks.md 改变，其 blob 为 `308d82ee83b0240361c0aeae47b57a590f66340a`。沿用 HEAD 加 LF、排序 path/blob 加 LF 的 SHA-256 配方，评审载体不纳入集合。
 - WorkUnit：`installed-state-ownership:installer-receipts`。
 - ContentState：`installed-state-ownership:installer-receipts:rereview-r4-20261111-HloMiWBA`。
-- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle3-20261111`，见下方 CI cycle 3；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
+- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle4-20261111`，见下方 CI cycle 4；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
 - 完成门禁：NOT_VERIFIED
 
 ### 🔴 严重问题 — 必须修复
@@ -458,3 +458,36 @@ WORKFLOW_WORKSPACE: agent-deck.installed-state-ownership
 - `bash scripts/check-widget-sandbox.sh` 通过，确认沿用的原生模板和 Debug/Release 身份边界未变。第 2 轮警告/EXIT 清理的 13 项输入及脚本未变，复用既有通过结果；没有重复全量 Go/Xcode 检查，产品 Go/Swift、安装协议、依赖和 cask 声明均未改动。完整托管 CI 是修复后真实登记和完整安装链的唯一新增运行验证，当前不得记作通过。
 - WorkUnit 保持 `installed-state-ownership:installer-receipts`；最终一轮交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle3-20261111`，提交后绑定实际 SHA/树。在上轮 50 项范围上加入实际消费的两份原生权限模板，共 52 项；评审载体仍不入集合。independent-review 按用户决定未执行，不制造 PASS/VERIFIED。
 - 本轮是已授权三轮中的最后一轮，推送后收回常规 CI 与 real-brew 的实际结论。即使仍有失败，也不自动进行第 4 轮修复、提交或推送；保留精确失败及后续前提，Task、Topic 和来源缺陷保持开放。
+
+### 最终提交及 real-brew 结果
+
+- 最终签名提交并正常推送 `760d2141ba0976bf69d63eef5e2d1af17b10e308`，树 `eb2e8ef679032ebd232fd65710ea05b3d0f382cb`，父提交 `51f2a913`。4 项范围文件、完整英文说明/OpenCode trailer、预期暂存树、实际提交及 SSH 签名全部核验；推送后工作区干净且远端同步。三轮正常提交/推送已全部执行，没有独立评审。
+- 第 2 轮常规 CI `43014024384` 最终为 cancelled：classify/documentation 成功，desktop job `130500966517` 整体 success，含 Swift 构建/单元测试、desktop distribution 和文档要求；Go Verify 于 UTC `2026-11-11T12:02:42Z` 被最终推送自动取消。该结果证实警告处理修复已在真实 CI 的完整 desktop 路径通过，但不是 Go 或最后 SHA 的全工作流通过。
+- 第 2 轮 real-brew 失败及本轮不可变交付态共新增 10 个 CEv1 节点、25 条关系；完整载荷和预检后的端点读回一致。固定查询第 2 轮目标 FAILED、第 3 轮目标当时 NOT_VERIFIED（均 6/8），后者只缺按用户决定未执行的 independent-review 和尚待执行的 real-brew，无适用失败或未决影响。历史事实不覆盖。
+- 最终 real-brew run `43016890483`、job `130510085144`，实际 SHA 为上述 `760d2141`；job 在 UTC `2026-11-11T12:02:27Z` 至 `2026-11-11T12:10:19Z` 执行，结论 **failure**。fixture 回归及 App/widget 构建均成功，随后原 real-brew 命令退出 1。
+- 失败为 `subprocess.TimeoutExpired`：隔离 `brew upgrade --cask --appdir=<本次临时 appdir> agentdeck/test/agentdeck-app` 超过原定 180 秒。Traceback 位于嵌入驱动第 224 行的 `s.command('upgrade')`，经 `Scenario.command` 调用 `run`，不是之前的 widget `(no matches)` 错误。
+- 核对该 SHA 的真实驱动顺序可知，在进入此 upgrade 之前，`brew install`、原精确路径唯一 widget 登记检查、CLI 与三种补全链接断言、同版本 `brew reinstall`、新 installation ID/attempt 断言及原清单/helper 不变断言均已返回通过。该进展是这次真实运行的先行断言结果，不从本地签名对照推断。升级完成、升级后的登记/卸载、后续恢复与竞争/延迟清理场景仍未取得通过证据。
+- 当前公开失败输出没有包含 upgrade 子进程已捕获的中间 stdout、进程等待栈或超时时对象状态，不能据此把原因定为锁死、Homebrew 网络/调度或单纯预算不足。本轮不诊断更多根因、不增加 timeout/sleep、不跳过升级、不重跑 CI，也不进行第 4 轮修复或 Git 交付。
+- 最终常规 CI run `43016888177` 仍待原异步监控回收；未宣称全量 Go、整个常规 CI 或本任务完成。本次实际结果回填只修改本评审载体与 tasks.md，是最终 SHA 之外的本地未提交记录，不更改已运行内容或追加推送。
+- 最终 real-brew 失败新增 1 个 evidence 节点和 3 条关系，完整节点/端点及关系预检均已核验。固定 gate-status 对 `ci-cycle3-20261111` 返回 **FAILED**、`reason=null`：6/8 准则仍有有效通过事实，real-brew 有当前适用失败，independent-review 按用户决定未执行，未决影响为空。原 real-brew pending 占位显式 supersede 后保留，不覆盖历史状态或把先行场景通过当作整个准则通过。
+
+## Additional CI cycles — 2026-11-11
+
+- 用户在第三轮 real-brew 升级超时后明确要求“再继续3轮”。该新授权取代上方“不得追加第 4 轮”的交付上限，允许继续整体第 **4–6 轮**，各轮仍按已明确的“不评审、不委派，修复/必要验证 → 正常提交 → 推送 → 精确 SHA 的 CI”执行；全部 CI 通过则提前停止。第 6 轮之后不再自动追加。
+- 范围仍限 installer-receipts 及相关 CI 阻断，无强推、发布、凭据、门户或开发机真实 Homebrew/系统登记授权。旧轮次的内容身份、失败和未执行评审状态不覆盖；新授权不等同于旧 CI 通过。
+
+## CI cycle 4 — 2026-11-11
+
+### 升级超时的诊断缺口
+
+- 第 3 轮的 upgrade 超时根因仍为 **未定位**。已确认的 harness 缺陷是：原 `run` 使用 `subprocess.run(..., stdout=PIPE, stderr=STDOUT)` 捕获输出，但未处理 `TimeoutExpired.output`；异常默认字符串只显示命令及预算，所以 CI traceback 丢失了升级过程中已经产生的输出。当前证据不足以修改安装协议或增大 180 秒预算。
+- 新回归直接从真实 CI 驱动 AST 提取并执行 `run` 函数，记录 subprocess 边界，不复制第二套 wrapper。原实现对 bytes/str 的已捕获升级阶段标记均 RED，错误字符串中没有标记；空输出同样没有明确说明。成功/预期非零/非预期退出对照按原契约通过。
+- 将执行边界提取为 `run_fixture_command`，原 CI `run` 只透传相同参数和 `base_env`。超时后保留命令、原 timeout 数值、已捕获 stdout/stderr，兼容 bytes/str 与非 UTF-8 内容；没有输出则明确报告。新 AssertionError 通过 `from` 保留原 TimeoutExpired 原因链；即使调用者预期非零退出，超时仍失败。
+- 本轮只补齐诊断，不宣称 upgrade 已修复：没有增加 timeout、sleep、重试、改变 brew 参数/版本、成功判定或任何生命周期断言，也没有输出环境变量或读取凭据。下一次托管 CI 用原预算获取最早可见升级阶段，再按证据决定修复。
+
+### 验证与交付
+
+- `python3 -B scripts/test-cask-real-brew-fixture.py`：11 项通过（9.871 秒），包含原 8 项夹具/签名/登记保护及新增 3 项真实 wrapper 边界测试；覆盖 bytes、str、非法 UTF-8、空输出、预期失败仍拒绝 timeout，以及原环境、argv、显式/默认预算和退出语义。`bash -n scripts/test-cask-real-brew.sh` 通过，测试 AST 同时解析完整嵌入 Python。
+- 第 3 轮常规 CI 监控曾因 GitHub API EOF 退出，不能据此判定 CI 失败。一次实际状态读回确认 run `43016888177` 仍为 in_progress，documentation 和 desktop job `130510569319` 已 success（含 Swift、sandbox、分发及文档要求），Go Verify 当时仍在运行；已重新挂接只读监控，不重跑 CI。
+- 本轮 Go/Swift 产品、原生权限模板、安装协议、cask 声明、依赖及第 2 轮警告/EXIT 清理路径均未变，复用其原有有界证据。11 项局部回归不代替完整 real-brew 或常规 CI，之前的 upgrade 失败也不重标为本候选的新运行结果。
+- WorkUnit 保持 `installed-state-ownership:installer-receipts`，新交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle4-20261111`，提交后绑定实际 SHA/树；仍为 52 项范围，评审载体不入集合。independent-review 按用户决定未执行；真实验收等待本轮实际 SHA 的 CI，不制造 PASS/VERIFIED，不关闭 Task/Topic/来源缺陷。

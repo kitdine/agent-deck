@@ -4,7 +4,26 @@ import os
 from pathlib import Path
 import plistlib
 import shutil
+import subprocess
 import tempfile
+
+
+def run_fixture_command(argv, *, env, success=True, timeout=180):
+    command = list(map(str, argv))
+    try:
+        result = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=timeout)
+    except subprocess.TimeoutExpired as failure:
+        captured = []
+        for stream in (failure.output, failure.stderr):
+            if stream:
+                captured.append(stream.decode('utf-8', errors='replace') if isinstance(stream, bytes) else stream)
+        output = '\n'.join(captured) or '(no captured subprocess output)'
+        raise AssertionError(f'Command timed out after {failure.timeout} seconds: {command}\n'
+                             f'Captured subprocess output:\n{output}') from failure
+    if (result.returncode == 0) != success:
+        raise AssertionError(f'Unexpected exit {result.returncode}: {command}\n{result.stdout}')
+    return result.stdout
 
 
 def prepare_fixture_app(fixture_app, bundle, helper, version, run, *, env=None):
