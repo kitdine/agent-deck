@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -109,6 +110,10 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 	if s.AfterCoreSnapshot != nil {
 		s.AfterCoreSnapshot()
 	}
+	// Only the private snapshot is cleaned; the live core is never written.
+	if err = removeNonPortableOriginState(ctx, coreSnapshot); err != nil {
+		return Manifest{}, fmt.Errorf("prepare core snapshot: %w", err)
+	}
 
 	entries := make(map[string][]byte)
 	if entries[coreName], err = os.ReadFile(coreSnapshot); err != nil {
@@ -173,6 +178,211 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+// originNonPortableTables hold session-origin state that is not a portable
+// fact: automatic classifications, adapter evidence and run summaries are
+// rebuilt from local sources, and mutation receipts only answer retries of
+// requests made against the source machine. origin_preferences and
+// origin_overrides are the user's own choices and are the only origin tables an
+// archive carries.
+var originNonPortableTables = []string{"origin_mutations", "session_origins", "origin_evidence", "origin_adapter_runs"}
+
+// removeNonPortableOriginState empties the non-portable origin tables of a
+// private core snapshot, before its digest is computed. secure_delete zeroes
+// the freed pages, so the archive does not keep the removed rows in free space.
+// The machine-local origin-source configuration lives outside every database
+// and is never part of a snapshot.
+func removeNonPortableOriginState(ctx context.Context, snapshotPath string) (err error) {
+	database, err := sql.Open("sqlite", "file:"+snapshotPath+"?mode=rw")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := database.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	conn, err := database.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := conn.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	if _, err = conn.ExecContext(ctx, "PRAGMA secure_delete=ON"); err != nil {
+		return err
+	}
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+		}
+	}()
+	for _, table := range originNonPortableTables {
+		var present int
+		if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
+			return err
+		}
+		if present == 0 {
+			continue
+		}
+		if _, err = conn.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	// Fold the write-ahead log into the main file that becomes the archive entry.
+	var busy, logFrames, checkpointed int
+	if err = conn.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return err
+	}
+	if busy != 0 {
+		return errors.New("core snapshot checkpoint did not complete")
+	}
+	return nil
+}
+
+// validateOriginState rejects an archive whose portable origin tables could
+// not have been written by AgentDeck: more than one default, a value outside
+// the closed enumerations, a non-integer or non-positive revision, or two
+// overrides for one session. SQLite column types are advisory, so every
+// type is checked on the stored value. Derived rows and receipts are not
+// validated: Restore discards them.
+func validateOriginState(ctx context.Context, database *store.Store) error {
+	// Values are not enough: the write path upserts on these keys, so a table
+	// that lost its key would restore cleanly and then refuse every explicit set.
+	for table, columns := range map[string][]string{"origin_preferences": {"singleton"}, "origin_overrides": {"client", "session_id"}} {
+		if err := requireUniqueKey(ctx, database.DB, table, columns); err != nil {
+			return err
+		}
+	}
+	var defaults int
+	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences`).Scan(&defaults); err != nil || defaults > 1 {
+		return fmt.Errorf("%w: origin preference", ErrInvalidArchive)
+	}
+	var invalid int
+	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences WHERE typeof(singleton)!='integer' OR singleton!=1
+ OR typeof(scope)!='text' OR scope NOT IN ('work','auxiliary','all')
+ OR typeof(revision)!='integer' OR revision<=0 OR typeof(updated_at)!='text'`).Scan(&invalid); err != nil || invalid != 0 {
+		return fmt.Errorf("%w: origin preference", ErrInvalidArchive)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_overrides WHERE typeof(client)!='text' OR client NOT IN ('codex','claude')
+ OR typeof(session_id)!='text' OR session_id='' OR length(session_id)>256
+ OR instr(session_id,char(10))>0 OR instr(session_id,char(13))>0 OR instr(session_id,'/')>0
+ OR typeof(binding_digest)!='text' OR binding_digest='' OR length(binding_digest)>256
+ OR typeof(binding_limited)!='integer' OR binding_limited NOT IN (0,1)
+ OR typeof(binding_state)!='text' OR binding_state NOT IN ('matched','unmatched')
+ OR (value IS NOT NULL AND (typeof(value)!='text' OR value NOT IN ('work','auxiliary')))
+ OR typeof(revision)!='integer' OR revision<=0 OR typeof(updated_at)!='text'`).Scan(&invalid); err != nil || invalid != 0 {
+		return fmt.Errorf("%w: origin override", ErrInvalidArchive)
+	}
+	var duplicates int
+	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM origin_overrides GROUP BY client,session_id HAVING count(*)>1)`).Scan(&duplicates); err != nil || duplicates != 0 {
+		return fmt.Errorf("%w: origin override identity", ErrInvalidArchive)
+	}
+	return nil
+}
+
+// requireUniqueKey confirms the table enforces uniqueness over exactly the
+// given columns, through its primary key or a full (non-partial) unique index,
+// which is what an ON CONFLICT upsert on those columns needs.
+func requireUniqueKey(ctx context.Context, db *sql.DB, table string, columns []string) error {
+	invalid := fmt.Errorf("%w: %s key", ErrInvalidArchive, table)
+	matches := func(found []string) bool { return reflect.DeepEqual(found, columns) }
+	rows, err := db.QueryContext(ctx, `SELECT name FROM pragma_table_info(?) WHERE pk>0 ORDER BY pk`, table)
+	if err != nil {
+		return invalid
+	}
+	var primary []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			rows.Close()
+			return invalid
+		}
+		primary = append(primary, name)
+	}
+	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+		return invalid
+	}
+	if matches(primary) {
+		return nil
+	}
+	indexRows, err := db.QueryContext(ctx, `SELECT name FROM pragma_index_list(?) WHERE "unique"=1 AND partial=0`, table)
+	if err != nil {
+		return invalid
+	}
+	var indexes []string
+	for indexRows.Next() {
+		var name string
+		if err = indexRows.Scan(&name); err != nil {
+			indexRows.Close()
+			return invalid
+		}
+		indexes = append(indexes, name)
+	}
+	if err = errors.Join(indexRows.Err(), indexRows.Close()); err != nil {
+		return invalid
+	}
+	for _, index := range indexes {
+		keyRows, queryErr := db.QueryContext(ctx, `SELECT name FROM pragma_index_info(?) ORDER BY seqno`, index)
+		if queryErr != nil {
+			return invalid
+		}
+		var found []string
+		for keyRows.Next() {
+			var name string
+			if err = keyRows.Scan(&name); err != nil {
+				keyRows.Close()
+				return invalid
+			}
+			found = append(found, name)
+		}
+		if err = errors.Join(keyRows.Err(), keyRows.Close()); err != nil {
+			return invalid
+		}
+		if matches(found) {
+			return nil
+		}
+	}
+	return invalid
+}
+
+// resetRestoredOriginState makes the origin tables of a restored core describe
+// only this state root: automatic classifications, evidence, adapter summaries
+// and the source machine's request receipts are dropped, and every override is
+// left unmatched. An override applies again only when a later scan confirms the
+// same stable birth in this root's own session index, so a restore never attaches
+// a choice to another device's session by key or path alone. Preferences and the
+// overrides' values, bindings and revisions are kept.
+func resetRestoredOriginState(ctx context.Context, database *store.Store) (err error) {
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	for _, table := range originNonPortableTables {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE origin_overrides SET binding_state='unmatched' WHERE binding_state!='unmatched'`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s Service) credentials(ctx context.Context, core *store.Store) ([]byte, error) {
@@ -386,6 +596,10 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		sealed = append(sealed, store.CredentialSecret{CredentialID: credentialID, Algorithm: payload.Algorithm, KeyVersion: payload.KeyVersion, KeyID: payload.KeyID, Nonce: payload.Nonce, Ciphertext: payload.Ciphertext})
 	}
 	if err = database.ReplaceCredentialSecrets(ctx, sealed); err != nil {
+		_ = database.Close()
+		return Manifest{}, err
+	}
+	if err = resetRestoredOriginState(ctx, database); err != nil {
 		_ = database.Close()
 		return Manifest{}, err
 	}
@@ -622,6 +836,9 @@ func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[s
 		return nil, fmt.Errorf("%w: core database migration", ErrInvalidArchive)
 	}
 	defer database.Close()
+	if err = validateOriginState(ctx, database); err != nil {
+		return nil, err
+	}
 	providers, err := database.ListProviders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: provider records", ErrInvalidArchive)

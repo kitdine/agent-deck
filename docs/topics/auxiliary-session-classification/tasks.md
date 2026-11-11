@@ -129,7 +129,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 5. `desktop-menubar` | [x] | [x] |
 | 6. `settings-control` | [x] | [x] |
 | 7. `widget-summary` | [x] | [x] |
-| 8. `durability` | [ ] | [ ] |
+| 8. `durability` | [x] | [x] |
 | 9. `integrated-acceptance` | [ ] | [ ] |
 
 顺序：1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 可串行执行；最低依赖见各任务。
@@ -997,3 +997,56 @@ Repair 1 已交接待独立复评：HEAD 不变，30 路径候选摘要 `50f74c2
 2026-11-09 后续隔离 WidgetKit 验证已建立独立签名候选与私有 fixture，并在系统选择器观察三尺寸预览；公开 SDK 确认添加一张测试小号配置。实际桌面卡片未能可靠绑定，配置矩阵、延迟、时间线和点击仍未验收。测试扩展已注销，但 SDK 最后仍报告 1 张测试配置，移除尚待确认；具体观察见 [评审记录](reviews/widget-summary.md)。CEv1 保持 NOT_VERIFIED 10/13，Beads 保持 in_review。
 
 2026-11-09 任务 7 真实 WidgetKit 验收完成（claude-code）：独立签名的隔离候选加私有 fixture，覆盖系统编辑器的九种 client/period 配置及大/中号显示、保存默认与 WidgetKit 延迟下的旧快照完整保留、chronod 按策略调度的时间线刷新，以及桌面点击打开运行中的隔离宿主。用户排除辅助功能验收；宿主到容器的桥接限制等细节见 [评审记录](reviews/widget-summary.md)。候选 `25f664e8bc7d7edfe6f596f865b18e66651c630cff3460751332a3023285c672` 的 Task 门禁 VERIFIED（13/13）。任务进入 awaiting_commit，按用户授权本地提交，不推送、不合并。
+
+2026-11-10 任务 8 `durability` 开发完成（claude-code，未提交，待独立评审）。基线 HEAD `13fdf29`（任务 7 已提交）。
+
+- 入口：CEv1 WorkUnit `auxiliary-session-classification:durability` 的 8 条 requires 关系（导出、恢复校验与重置、绑定重激活、purge-index、既有合同不变、
+  不访问外部来源、L3 验证、独立评审）按 canonical 预检与 upsert 模板写入，入口状态 `…:durability:entry:13fdf29d…`；写入前按具体 id 查过无历史节点冲突，
+  创建 10 节点、8 关系，读回数量一致。Beads 已由 claude-code 认领；无证据，门禁 NOT_VERIFIED。
+- 导出（`internal/backup/backup.go`）：Create 只在私有 core 快照上清空 `session_origins`、`origin_evidence`、`origin_adapter_runs`、`origin_mutations`，
+  之后才计算归档摘要；开启 secure_delete 并在读取前 checkpoint，被删行不残留在归档页里。偏好与覆盖（含 tombstone）原样保留。
+  本机来源配置位于任何数据库之外，从不进入快照。清理失败则不产生归档。live core 不被写入。
+- 恢复：校验阶段（写目标之前）检查 `origin_preferences`/`origin_overrides` 的行数、枚举、整数类型与正值、client、会话 ID 字符、重复身份，失败为 `invalid_backup`。
+  通过后在同一事务内删除上述四表并把全部覆盖置为 `unmatched`，随后才 mint 新 epoch；任何一步失败沿用既有回滚。值、绑定与 revision 不变。
+- 重激活（`internal/store/session_origin.go`、`internal/sessionorigin/reconcile.go`）：Reconcile 在扫描/重建协调阶段末尾，对 `unmatched`、非 limited 且有值的覆盖，
+  用目标自己会话索引的稳定出生重新计算 binding；摘要精确相等才置 `matched`，只改 binding_state，不动 revision 与 updated_at。
+  limited、同 ID 不同出生、目标未索引的覆盖保持 unmatched，恢复不会按路径或同一个 ID 套用。该规则在 Reconcile 与存储 SQL 各守一次。
+  显式 set 沿用既有路径：`matched` 加新绑定，同值不同绑定记为 saved。
+- purge-index 未改动：实际命令测试确认 sessions 库与检查点之外，core 默认、覆盖与派生 origin 行逐字节不变；重扫后同一出生无需写入即生效。
+- 验证（隔离状态根）：
+  - `scripts/run-go-test.sh ./internal/backup/ ./internal/sessionorigin/... ./internal/store/ ./internal/scanruntime/ ./cmd/agentdeck/` 通过；
+    `-race ./internal/backup/ ./internal/sessionorigin/...` 通过；`go vet ./internal/... ./cmd/...` 干净；新增与改动文件 gofmt 干净（仓库内另有一个既有文件 `cmd/agentdeck/usage_stats_viewer_test.go` 不合 gofmt，本任务未改动）。
+  - 新增 `internal/backup/origin_durability_test.go`：导出只带用户选择（含/不含 include-sessions）、live core 行与 serving revision/epoch 不变、归档页不含被清理标记与来源路径；
+    恢复全部 unmatched 且派生与回执清空；恢复后仅精确出生重新生效（同 ID 异出生、limited、未索引均不生效，二次扫描不写入）；显式 set 重绑；
+    12 种非法 origin 状态被拒且目标未创建；schema-ahead 与损坏 sessions 快照被拒；重置失败与快照清理失败的回滚；`cmd/agentdeck` 新增真实 purge-index 用例。
+  - 变异检查（已逐字节还原，三个文件 SHA-256 与原内容一致）：跳过快照清理、恢复不置 unmatched 被测试抓到；忽略 limited 与忽略摘要比较需同时撤掉存储层 SQL 守卫才会失败，
+    说明两层守卫各自冗余而测试保护的是规则本身。
+- 已知限制：导出清理触发的 serving 触发器会向快照写入 `usage_derived_invalidations`（会话 ID，派生数据），恢复时随新 epoch 重建；
+  未做真实安装或真实 Homebrew 状态的验证，全部使用临时状态根。
+- 候选：HEAD `13fdf29dfd8e589d21fc0774fa3cab868d6fdc0d` 加 5 个路径（不含本文件），有序 path/blob 列表摘要
+  `4a36b6762b5af2d302c04d6902f96fd3cd0a4f026e2f304877fdb94181cc37b1`。工具链：go1.27.3。Review 未勾选，待独立评审。
+
+2026-11-10 任务 8 `durability` 独立评审 Round 1 FAIL；候选指纹保持
+`4a36b6762b5af2d302c04d6902f96fd3cd0a4f026e2f304877fdb94181cc37b1`。
+完成门禁 FAILED，Review 保持未勾选；Beads 返回 in_progress 并释放评审占用，等待修复。
+完整审查与验证边界见 [评审记录](reviews/durability.md)。未提交、未推送。
+
+2026-11-10 任务 8 Round 1 独立评审 FAIL（ASC-DUR-R1-F1），见 [评审记录](reviews/durability.md)。
+Repair 1 已交接待独立复评（claude-code，未提交）：HEAD 不变，5 路径候选摘要 `176cbe65755ed9c4d0d961246837ba11cbc470a870414280afc8a806605c14d8`。
+
+- ASC-DUR-R1-F1：先用回归复现（合法行、去掉主键后 Restore 返回 nil），再修复。`validateOriginState` 在写目标之前新增 `requireUniqueKey`：
+  `origin_preferences` 必须以 `singleton`、`origin_overrides` 必须以 `(client, session_id)` 为键，由主键或完整（非 partial）唯一索引保证，
+  与存储层 `ON CONFLICT` 写路径一致；否则返回 `invalid_backup`，目标不创建。不扩大为其他历史表的通用 schema 审计。
+- 回归：`TestRestoreRejectsInvalidOriginState` 新增三例——合法覆盖缺主键、合法默认缺 singleton 键、仅有 partial 唯一索引；修复前三例均复现 `Restore error = <nil>`，修复后通过。
+  新增正向保护 `TestRestoreAcceptsAnEquivalentFullUniqueKeyAndStillTakesExplicitSets`：以完整唯一索引代替主键的合法归档可恢复，且恢复后显式 set 返回 saved。
+  原有 `two_overrides_for_one_session` 保留。
+- 验证：`scripts/run-go-test.sh ./internal/backup/` 通过；`go vet`、gofmt、`git diff --check` 干净。变更仅在 `internal/backup/backup.go` 与其测试，
+  其余三个产品文件的 blob 与 Round 1 候选相同，故 sessionorigin、store、scanruntime、cmd/agentdeck 的 Round 1 前验证结果沿用，不重跑。
+  `-race ./internal/backup/` 见下条。
+  `-race ./internal/backup/` 首次运行因 go test 默认 10 分钟超时中止（无 DATA RACE 报告，非通过）；以更长超时重跑中，结果见下条。
+  `-race -timeout 40m ./internal/backup/` 重跑通过（退出 0，无 DATA RACE 报告）。
+
+2026-11-10 任务 8 `durability` Round 2 独立复评 PASS；候选
+`176cbe65755ed9c4d0d961246837ba11cbc470a870414280afc8a806605c14d8`，完成门禁 VERIFIED（8/8）。
+本轮补足全量 Go 回归，Beads 进入 awaiting_commit 并释放评审占用；完整结论和证据边界见
+[评审记录](reviews/durability.md)。待用户授权提交，未推送；任务 9 及 Topic 边界保持未完成。

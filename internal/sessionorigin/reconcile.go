@@ -23,10 +23,13 @@ type ReconcileOptions struct {
 
 // ReconcileSummary reports one pass.
 type ReconcileSummary struct {
-	Sessions  int
-	Changed   int
-	Removed   int
-	ClaudeMem *store.OriginAdapterRun
+	Sessions int
+	Changed  int
+	Removed  int
+	// Reactivated counts restored overrides whose stable birth was confirmed
+	// by this pass and which therefore apply again.
+	Reactivated int
+	ClaudeMem   *store.OriginAdapterRun
 }
 
 type originKey struct{ client, sessionID string }
@@ -67,6 +70,7 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 		return summary, err
 	}
 	generations := map[originKey][]SourceGeneration{}
+	copies := map[originKey][]store.SessionOriginSource{}
 	byClient := map[string][]string{}
 	for _, source := range sources {
 		key := originKey{source.Client, source.SessionID}
@@ -74,6 +78,7 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 			byClient[source.Client] = append(byClient[source.Client], source.SessionID)
 		}
 		generations[key] = append(generations[key], SourceGeneration{Identity: source.Identity, PrefixHash: source.PrefixHash, ParserVersion: source.ParserVersion})
+		copies[key] = append(copies[key], source)
 	}
 	summary.Sessions = len(generations)
 
@@ -206,7 +211,33 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 			return summary, err
 		}
 	}
-	return summary, nil
+	summary.Reactivated, err = reactivateOverrides(ctx, core, copies)
+	return summary, err
+}
+
+// reactivateOverrides re-applies the overrides a portable restore left
+// unmatched. An override is confirmed only by the exact binding digest of the
+// session's current stable birth: the same canonical key with a different
+// birth, an incomplete birth or a session this machine has not indexed never
+// matches, so a restored override cannot attach to another device's session.
+func reactivateOverrides(ctx context.Context, core *store.Store, copies map[originKey][]store.SessionOriginSource) (int, error) {
+	waiting, err := core.UnmatchedOriginOverrides(ctx)
+	if err != nil || len(waiting) == 0 {
+		return 0, err
+	}
+	var confirmed []store.OriginActivation
+	for _, override := range waiting {
+		indexed, present := copies[originKey{override.Client, override.SessionID}]
+		if !present {
+			continue
+		}
+		binding := BindingFor(override.Client, override.SessionID, BirthOf(indexed))
+		if binding.Limited || binding.Digest != override.BindingDigest {
+			continue
+		}
+		confirmed = append(confirmed, store.OriginActivation{Client: override.Client, SessionID: override.SessionID, Digest: binding.Digest})
+	}
+	return core.ActivateOriginOverrides(ctx, confirmed)
 }
 
 // keepObservedAt reports whether the evidence set equals the stored one,

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/sessionorigin"
@@ -778,5 +779,78 @@ func TestUsageSignalsWithoutSessionIndexKeepsEverythingInWork(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(state, "sessions.sqlite3")); !os.IsNotExist(err) {
 		t.Fatalf("stored-only stats created the session index: %v", err)
+	}
+}
+
+// purge-index removes only the rebuildable session index and its checkpoint.
+// The user's default scope, their overrides (the matched ones as well as the
+// unmatched ones a restore leaves) and the derived origin rows live in core and
+// must come through byte for byte.
+func TestPurgeIndexKeepsEveryCoreOriginChoice(t *testing.T) {
+	ctx := context.Background()
+	state := seedOriginSessions(t)
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(id, kind, client, sessionID, value string, expected int64) {
+		t.Helper()
+		binding := sessionorigin.BindingFor("codex", sessionID, sessionorigin.Birth{StartedAt: "2026-10-29T10:00:00Z"})
+		if _, applyErr := core.ApplyOriginMutation(ctx, store.OriginMutation{RequestID: id, PayloadHash: "hash-" + id, Kind: kind, Client: client, SessionID: sessionID,
+			Value: value, Binding: binding, ExpectedRevision: expected, Now: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)}); applyErr != nil {
+			t.Fatal(applyErr)
+		}
+	}
+	apply("scope", store.OriginMutationScopeSet, "", "", "all", 0)
+	apply("matched", store.OriginMutationOverrideSet, "codex", "s-matched", "auxiliary", 0)
+	apply("restored", store.OriginMutationOverrideSet, "codex", "s-restored", "work", 0)
+	for _, statement := range []string{
+		`UPDATE origin_overrides SET binding_state='unmatched' WHERE session_id='s-restored'`,
+		`INSERT INTO session_origins(client,session_id,automatic,reason_code,rule_version,input_token,evidence_revision) VALUES('codex','s-matched','auxiliary','maintenance_origin','rule','token',1)`,
+	} {
+		if _, err = core.DB.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const dump = `SELECT 'preference',scope,revision,updated_at,'' FROM origin_preferences
+UNION ALL SELECT 'override',client||'/'||session_id,revision,binding_digest,coalesce(value,'')||'/'||binding_state||'/'||binding_limited FROM origin_overrides
+UNION ALL SELECT 'origin',client||'/'||session_id,evidence_revision,input_token,automatic||'/'||reason_code FROM session_origins ORDER BY 1,2`
+	snapshot := func() string {
+		rows, queryErr := core.DB.Query(dump)
+		if queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var kind, key, digest, extra string
+			var revision int64
+			if scanErr := rows.Scan(&kind, &key, &revision, &digest, &extra); scanErr != nil {
+				t.Fatal(scanErr)
+			}
+			out = append(out, fmt.Sprint(kind, "|", key, "|", revision, "|", digest, "|", extra))
+		}
+		return strings.Join(out, "\n")
+	}
+	before := snapshot()
+	if strings.Count(before, "\n") != 3 {
+		t.Fatalf("fixture rows = %q", before)
+	}
+	if err = core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(state, "sessions.sqlite3")); err != nil {
+		t.Fatalf("fixture has no session index: %v", err)
+	}
+	mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "purge-index"))
+	if _, err = os.Stat(filepath.Join(state, "sessions.sqlite3")); !os.IsNotExist(err) {
+		t.Fatalf("purge-index left the session index: %v", err)
+	}
+	if core, err = store.Open(ctx, state); err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	if after := snapshot(); after != before {
+		t.Fatalf("purge-index changed core origin state:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }

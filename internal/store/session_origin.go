@@ -608,6 +608,85 @@ func (s *Store) ReplaceOriginDerivation(ctx context.Context, d OriginDerivation)
 	return s.secureFiles()
 }
 
+// UnmatchedOriginOverrides lists the effective overrides that wait for their
+// session's stable birth to be confirmed, such as after a portable restore.
+// Binding-limited rows are excluded: without a complete birth there is nothing
+// that could confirm them, so only an explicit set can bind them again.
+func (s *Store) UnmatchedOriginOverrides(ctx context.Context) ([]OriginOverride, error) {
+	absent, err := s.originStorageAbsent(ctx)
+	if err != nil || absent {
+		return nil, err
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT client,session_id,value,binding_digest,binding_limited,binding_state,revision,updated_at FROM origin_overrides WHERE binding_state='unmatched' AND binding_limited=0 AND value IS NOT NULL ORDER BY client,session_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OriginOverride
+	for rows.Next() {
+		override, scanErr := scanOriginOverride(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, override)
+	}
+	return out, rows.Err()
+}
+
+// OriginActivation names one unmatched override together with the binding
+// digest recomputed from the session's current stable birth.
+type OriginActivation struct {
+	Client    string
+	SessionID string
+	Digest    string
+}
+
+// ActivateOriginOverrides re-applies unmatched overrides whose stored binding
+// equals the freshly recomputed digest, and returns how many it applied. It
+// changes only binding_state: the revision and update time belong to the user's
+// last write, so a settings view holding that revision can still save. A row
+// whose binding is limited, whose state is not unmatched or whose digest
+// differs is left exactly as it is.
+func (s *Store) ActivateOriginOverrides(ctx context.Context, items []OriginActivation) (int, error) {
+	if s.readOnly {
+		return 0, ErrDerivedSnapshotGenerationReadOnly
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+	conn, err := s.DB.Conn(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return 0, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+		}
+	}()
+	applied := 0
+	for _, item := range items {
+		result, execErr := conn.ExecContext(ctx, `UPDATE origin_overrides SET binding_state='matched' WHERE client=? AND session_id=? AND binding_state='unmatched' AND binding_limited=0 AND binding_digest=? AND value IS NOT NULL`, item.Client, item.SessionID, item.Digest)
+		if execErr != nil {
+			return 0, execErr
+		}
+		changed, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return 0, rowsErr
+		}
+		applied += int(changed)
+	}
+	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return 0, err
+	}
+	committed = true
+	return applied, s.secureFiles()
+}
+
 // SessionOrigins reads stored classifications for candidate keys, 200 per batch.
 func (s *Store) SessionOrigins(ctx context.Context, client string, sessionIDs []string) (map[string]SessionOrigin, error) {
 	out := map[string]SessionOrigin{}
