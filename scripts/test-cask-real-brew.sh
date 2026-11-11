@@ -64,7 +64,7 @@ run(['bash', root / 'scripts/run-go-test.sh', '-c', '-tags', 'agentdeck_acceptan
 archives = {}
 for version in ('1.2.3', '1.2.4'):
     bundle = workspace / version / 'AgentDeck.app'
-    prepare_fixture_app(fixture_app, bundle, helper, version, run)
+    prepare_fixture_app(fixture_app, bundle, helper, version, run, env=base_env)
     archive = workspace / f'AgentDeck-{version}.zip'
     run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', bundle, archive])
     archives[version] = archive
