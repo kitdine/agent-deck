@@ -27,7 +27,7 @@ import time
 root, fixture_app = map(Path, sys.argv[1:])
 root, fixture_app = root.resolve(), fixture_app.resolve()
 sys.path.insert(0, str(root / 'scripts'))
-from cask_real_brew_fixture import prepare_fixture_app
+from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
 
 os.chdir(root)
 workspace = Path(tempfile.mkdtemp(prefix='agentdeck-real-brew-', dir=os.environ['RUNNER_TEMP'])).resolve()
@@ -155,9 +155,7 @@ class Scenario:
         return digest(self.app), digest(self.receipt)
 
     def widget(self):
-        extension = self.app / 'Contents/PlugIns/AgentDeckWidget.appex'
-        run(['/usr/bin/pluginkit', '-a', extension])
-        run(['bash', root / 'scripts/check-macos-widget-registration.sh', self.app])
+        verify_fixture_widget_registration(self.app, root / 'scripts/check-macos-widget-registration.sh', run)
 
     def uninstall(self):
         extension = self.app / 'Contents/PlugIns/AgentDeckWidget.appex'

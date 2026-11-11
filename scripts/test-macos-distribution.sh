@@ -91,6 +91,33 @@ trap cleanup_distribution_fixtures EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+cask_load_warnings_are_expected() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+allowed = {
+    'Warning: Calling `preflight` is deprecated! Use `preflight_steps` instead.',
+    'Warning: Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.',
+}
+ansi = re.compile(r'\x1b\[[0-9;]*m')
+for raw in Path(sys.argv[1]).read_text().splitlines():
+    text = ansi.sub('', raw)
+    annotation = re.match(r'^::(warning|error)(?: [^:]*)?::(.*)$', text)
+    if annotation:
+        # Homebrew emits escaped workflow annotations under GITHUB_ACTIONS.
+        # Decode once so a second warning in the context cannot be hidden.
+        level, body = annotation.groups()
+        body = body.replace('%0D', '\r').replace('%0A', '\n').replace('%25', '%')
+        text = level.title() + ': ' + body
+    for line in text.splitlines():
+        line = line.strip()
+        if re.search(r'deprecat|^(warning|error|::warning|::error)', line, re.IGNORECASE) and line not in allowed:
+            sys.exit(1)
+PY
+}
+
 cask_template="$root/packaging/homebrew/agentdeck-app.rb.tmpl"
 dmg_sha=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 zip_sha=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -230,10 +257,7 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   # and an unasserted warning is how a deprecation reaches a published tap.
   # The two classic flight blocks are an accepted, documented limitation of the
   # ownership design; any other warning is still a failure.
-  if grep -Ei 'deprecat|^warning' "$load_log" |
-       grep -Fvx 'Warning: Calling `preflight` is deprecated! Use `preflight_steps` instead.' |
-       grep -Fvx 'Warning: Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.' |
-       grep -q .; then
+  if ! cask_load_warnings_are_expected "$load_log"; then
     echo "Homebrew warned while loading the $token cask:" >&2
     cat "$load_log" >&2
     exit 1

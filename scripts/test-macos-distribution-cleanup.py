@@ -10,6 +10,56 @@ import unittest
 SCRIPT = Path(__file__).with_name("test-macos-distribution.sh")
 
 
+class CaskWarningsTests(unittest.TestCase):
+    def verdict(self, text):
+        source = SCRIPT.read_text()
+        check = '  # A deprecated stanza' + source.split('  # A deprecated stanza', 1)[1].split('  # Every artifact class', 1)[0]
+        function = ''
+        marker = 'cask_load_warnings_are_expected() {'
+        if marker in source:
+            function = marker + source.split(marker, 1)[1].split('\nPY\n}\n', 1)[0] + '\nPY\n}\n'
+        with tempfile.TemporaryDirectory(prefix='agentdeck-cask-warning-test-') as temporary:
+            log = Path(temporary) / 'brew-info.log'
+            log.write_text(text)
+            return subprocess.run(['bash', '-c', 'set -euo pipefail\n' + function +
+                                   '\nload_log=$1\ntoken=fixture\n' + check,
+                                   'cask-warning-check', str(log)], capture_output=True, text=True)
+
+    def test_plain_classic_flight_warnings_are_allowed(self):
+        result = self.verdict('Warning: Calling `preflight` is deprecated! Use `preflight_steps` instead.\n'
+                              'Warning: Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_github_annotations_with_homebrew_context_are_allowed(self):
+        result = self.verdict('::warning::Calling `preflight` is deprecated! Use `preflight_steps` instead.'
+                              '%0APlease report this issue to the fixture tap:%0A  /fixture/Casks/app.rb:90%0A%0A\n'
+                              '::warning::Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_colored_classic_flight_warning_is_allowed(self):
+        result = self.verdict('\x1b[33mWarning:\x1b[0m Calling `preflight` is deprecated! Use `preflight_steps` instead.\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_other_warnings_are_not_hidden_by_allowed_annotation(self):
+        allowed = '::warning::Calling `preflight` is deprecated! Use `preflight_steps` instead.'
+        for text in ('Warning: unexpected artifact\n', '::warning::unexpected artifact\n',
+                     allowed + '%0AWarning: unexpected artifact\n',
+                     allowed + '%0A::warning::unexpected artifact\n',
+                     allowed + '%250AWarning: unexpected artifact\n',
+                     '::warning file=fixture.rb,line=1::unexpected artifact\n',
+                     'Warning: Calling `preflight` is deprecated and will be disabled!\n'):
+            with self.subTest(text=text):
+                result = self.verdict(text)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+
+    def test_error_annotations_are_not_allowed_deprecations(self):
+        for text in ('::error::Calling `preflight` is deprecated! Use `preflight_steps` instead.\n',
+                     'Error: cask load failed\n'):
+            with self.subTest(text=text):
+                result = self.verdict(text)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+
+
 class DistributionCleanupTests(unittest.TestCase):
     def run_cleanup(self, exit_code=0, unregister_failure=False, detach_failure=False,
                     not_found=False, still_registered=False, dump_failure=False,

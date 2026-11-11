@@ -272,7 +272,7 @@ WorkUnit 为 `installed-state-ownership:installer-receipts`，修复目标为 `i
 - Reviewed state：HEAD `fc290163d2bb7ee0776854e7bc91737f0553867f`；入场 48 路径指纹 `04973be972b56c59e77881b0497de8edfe8fdc618aa72d5409abaa26cbe53b84` 与 Repair 3 完全一致。同步 Review/状态后指纹 `87d3c4b232a13964b2f2a13d8c5f2ce4366a64068fdd2e2e23b8c3c7fba31925`，只有 tasks.md 改变，其 blob 为 `308d82ee83b0240361c0aeae47b57a590f66340a`。沿用 HEAD 加 LF、排序 path/blob 加 LF 的 SHA-256 配方，评审载体不纳入集合。
 - WorkUnit：`installed-state-ownership:installer-receipts`。
 - ContentState：`installed-state-ownership:installer-receipts:rereview-r4-20261111-HloMiWBA`。
-- 当前证据 ContentState：`installed-state-ownership:installer-receipts:repair-ci-43006525357-completion-env`，见下方 Repair 4；复评、validation 补齐和提交态 CI 的原始门禁仍保留为历史观察。
+- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle2-20261111`，见下方 CI cycle 2；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
 - 完成门禁：NOT_VERIFIED
 
 ### 🔴 严重问题 — 必须修复
@@ -354,7 +354,7 @@ Task checkpoint：`ad-installed-state-ownership-installer-receipts`，content_st
 - `Check cask fixture preparation` 成功，`python3 -B scripts/test-cask-real-brew-fixture.py` 的 2 项测试通过；`Build the fixture App and widget` 也成功。这些成功不等于真实 Homebrew 验收通过。
 - `Exercise the real Homebrew installer` 执行 `bash scripts/test-cask-real-brew.sh --ci apps/macos/build/DerivedData/Build/Products/Debug/AgentDeck.app`，退出 1。`prepare_fixture_app` 在 `scripts/cask_real_brew_fixture.py:16` 调用临时 App 的 `Contents/Helpers/agentdeck completion bash` 时得到 exit 1；驱动在 `run` 的第 41 行抛出 `AssertionError: Unexpected exit 1`。helper 输出 `state_ownership_refused`，`resource: state_root`，`reason: real_root_unresolved`。
 - 此次失败发生在测试 App 的补全生成阶段，尚未进入 `lifecycle` 或任何真实 brew 安装场景。安装、升级恢复、注销、损坏材料修复、身份绑定竞争及 I4/I5 完整 brew 链均不能记为通过；本轮只记录失败层与原始诊断，不推断根因，也不把夹具单元测试成功当作该调用成功。
-- **常规 CI：结果待回收。** run `43006525312` 的异步跟踪仍在进行，尚不声明 `Verify`、desktop 或整个工作流通过。后续按实际 job/step 结果补齐，不以监控进程的退出码代替工作流结论。
+- **常规 CI：cancelled。** run `43006525312` 在第 1 轮新推送后按既有 concurrency 配置自动取消；其中 classify、documentation 成功，Go `Verify` 步骤被取消，不能记作 Go 成功或失败。desktop job `130475660245` 已于 UTC `2026-11-11T10:55:11Z` 失败：Swift 构建/单元测试成功，但 `Check desktop distribution in isolation` 拒绝 Homebrew 的两条 classic flight 弃用警告；原始输出、判别及处理见下方 CI cycle 2。该结果属于 `5804e5cf`，不是后续修复 SHA 的运行结论。
 
 ### 证据与交接
 
@@ -405,3 +405,30 @@ WORKFLOW_WORKSPACE: agent-deck.installed-state-ownership
 - 用户在“修复、提交、推送、验证，3 轮”之后明确澄清：“我意思是不评审 直接进行ci验证”。该真实用户决定取代上方 Repair 4 的独立复评暂停指令：当前 installer-receipts 及其相关 CI 阻断最多执行 3 轮“必要诊断/修复 → 本地验证 → 提交 → 推送 → CI”，全部 CI 通过则提前停止；不委派、不执行独立评审。
 - 这是提交前评审顺序的明确用户例外，不是新的独立 PASS。任务 Review 保持未勾选，CEv1 的 independent-review 继续记录未执行；不擅改全局 required 准则，不据此宣称 Task 门禁 VERIFIED 或关闭 Task/Topic/来源缺陷。本次用户已明确授权三轮内的正常提交与推送，不再重复索取相同授权；无强推、发布或开发机真实 brew 授权。
 - 第 1 轮使用 Repair 4 的同一产品/测试内容和已验证结果，只新增本例外及 tasks.md 的状态投影；没有因授权澄清重跑未变的产品检查。提交后将复用的有界验证事实显式绑定到实际不可变提交/树，CI 结果只认对应 SHA。旧候选 `7eba17007b5fced759d0f27a7897a87003aa5ccf6e28a64763d7a9bd44f964fd` 的原状态和原观察不重标。
+
+## CI cycle 1 — 2026-11-11
+
+- 第 1 轮正常签名提交并推送 `690e373dac328561c29db37e5117bd74f84cf9f2`，树 `f10397822d1f085d6ea32751b73211a852e10f4a`，父提交 `5804e5cf`。5 项范围文件、完整英文提交说明、OpenCode 贡献 trailer、预期树和实际 SSH 签名均核验；推送后工作区干净，远端主题分支同步。
+- 不可变交付态为 `installed-state-ownership:installer-receipts:delivery-690e373d`。新增 9 个节点及 22 条预检通过的关系均已读回；推送时固定查询 NOT_VERIFIED、6/8，仅缺未执行的 independent-review 及尚未取得的 real-brew。评审跳过按用户 CI-cycle exception，不伪造 PASS。
+- real-brew run `43011524396`、job `130492029687` 在 UTC `2026-11-11T11:23:19Z` 至 `2026-11-11T11:28:03Z` 执行，结论 failure，实际 SHA 为上述 `690e373d`。夹具回归及 App/widget 构建成功；补全准备已通过，脚本打印 `Running lifecycle`，实际 brew 安装返回成功并进入 `Scenario.widget()`，因此原缺失账户拒绝不再是本次最早失败。
+- 新失败是 `bash scripts/check-macos-widget-registration.sh <临时已安装 App>` 退出 1：`Widget must have exactly one registration at <本次 extension 路径>`，登记查询返回 `(no matches)`。此前 `pluginkit -a` 返回 0；这不证明扩展已被发现，也不证明注销/升级或后续场景成功。现有输出不足以区分签名/权限、扩展元数据、宿主发现或登记机制问题，本轮不猜测根因。
+- 同 SHA 的常规 CI run `43011524430` 仍由既有异步监控跟踪。后续候选推送可能按配置取消该旧运行；未收回的整项工作流不记作通过。
+
+## CI cycle 2 — 2026-11-11
+
+### 已定位的分发检查缺陷
+
+- **分类：测试 harness 的警告格式处理缺陷。** 上述 `5804e5cf` 的 desktop 失败发生于 `test-macos-distribution.sh` 的已知警告白名单。Homebrew 在 `GITHUB_ACTIONS` 环境下通过 workflow annotation 输出警告，正文的换行转义为 `%0A`；本地普通输出则带 `Warning:`，还可能附 ANSI 色彩。旧链路只逐字允许两条无色的 `Warning: Calling …`，所以 CI 中已明确允许的 classic flight 警告仍被拒绝；不含 `deprecat` 的未知 annotation 警告反而可能漏检。
+- 判别证据为原 CI 的警告拒绝输出、Homebrew 的 `opoo → GitHub::Actions.puts_annotation_if_env_set! → Annotation#to_s` 格式实现，以及直接运行真实 shell 检查段的局部回归：普通允许消息通过，带上下文的 GitHub annotation 和 ANSI 变体在原实现以同一“Homebrew warned while loading”失败，未知 annotation 则错误成功。不是 cask 被拒绝加载，也不需要改变已经批准的 classic flight 设计。
+- 检查现在先去除 ANSI、识别 warning/error annotation，并按 Homebrew 的规则只解码一次换行/百分号，再逐行严格匹配原先的两条允许消息。未知警告、错误、带隐藏第二条 warning 的 annotation、变更措辞的弃用消息仍失败；没有关闭 GitHub 注解、开启测试豁免环境或放宽为任意弃用警告。回归执行实际 shell 检查段，不维护第二份白名单实现。
+
+### 小组件的下一步判别
+
+- 小组件 `(no matches)` 保持 **未定位**。本轮只使同一个 `pluginkit -a` 输出 verbose 信息，并在原严格检查失败后读取这一个 fixture 的 host/extension 签名验证、签名权限和 Info.plist。原失败始终重新抛出，诊断失败也不覆盖它；不增加登记重试、sleep、宿主重登记、跳过或其他兜底。
+- `verify_fixture_widget_registration` 的本地记录工具测试证明成功路径仍调用原精确路径检查器；add 拒绝和 checker 无匹配两类失败均保留原原因、捕获诊断、只执行一次 add。测试不触碰本机系统登记；真正的签名/登记差异需本轮托管 CI 的观测后再决定修复，不能把诊断增强宣称为小组件已修复。
+
+### 验证与交付边界
+
+- `python3 -B scripts/test-macos-distribution-cleanup.py`：最终 13 项通过（12.702 秒），包含原 8 项完整 EXIT 清理保护和新增 5 项警告格式/拒绝测试，后者还检查嵌套 annotation 和百分号不能被二次解码以隐藏警告。`python3 -B scripts/test-cask-real-brew-fixture.py`：5 项通过（7.312 秒），保留真实验收 helper 补全及失败前签名边界。两个 shell 脚本的 `bash -n` 和 real-brew 嵌入 Python 的 `ast.parse` 通过。
+- 候选只改 CI 测试/诊断和必要记录；Go 产品、Go 测试、安装/清理协议、模板、依赖及分派契约未改变，原有效的有界 Go/安装事实继续按原环境复用，不重新执行全量 Go 或本机真实 brew。完整 `make check-macos-distribution` 和 real-brew 命令留给托管 CI，本地局部回归不替代它们。
+- WorkUnit 仍为 `installed-state-ownership:installer-receipts`；第 2 轮交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle2-20261111`，将在实际提交后绑定不可变 SHA/树。范围在原 49 项上加入本次修改的 `scripts/test-macos-distribution-cleanup.py`，共 50 项；评审载体仍不入集合。independent-review 按用户决定未执行，真实 CI 仍待本候选推送后取证；不宣称 Task/Topic 或来源缺陷完成。

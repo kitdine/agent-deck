@@ -33,3 +33,26 @@ def prepare_fixture_app(fixture_app, bundle, helper, version, run, *, env=None):
             destination.write_text(output)
             destination.chmod(0o644)
     run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', bundle])
+
+
+def verify_fixture_widget_registration(bundle, check_script, run):
+    extension = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
+    added = ''
+    try:
+        added = run(['/usr/bin/pluginkit', '-v', '-a', extension])
+        run(['bash', check_script, bundle])
+    except Exception as failure:
+        # A successful add command does not prove discovery. Preserve the exact
+        # registration failure and collect only this fixture's read-only metadata.
+        details = ['PlugInKit add output:\n' + added]
+        for target in (bundle, extension):
+            for argv in (
+                    ['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=4', target],
+                    ['/usr/bin/codesign', '-d', '--verbose=4', '--entitlements', ':-', target],
+                    ['/usr/bin/plutil', '-p', target / 'Contents/Info.plist']):
+                try:
+                    output = run(argv)
+                except Exception as diagnostic_failure:
+                    output = str(diagnostic_failure)
+                details.append(f'{argv!r}\n{output}')
+        raise AssertionError(str(failure) + '\n' + '\n'.join(details)) from failure

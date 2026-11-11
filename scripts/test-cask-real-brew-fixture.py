@@ -9,10 +9,51 @@ import tempfile
 import unittest
 from unittest import mock
 
-from cask_real_brew_fixture import prepare_fixture_app
+from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
 
 
 class FixtureTests(unittest.TestCase):
+    def test_widget_registration_success_still_requires_exact_checker(self):
+        bundle = Path('/fixture/AgentDeck.app')
+        checker = Path('/fixture/check-registration.sh')
+        calls = []
+
+        def run(argv):
+            calls.append(argv)
+            return ''
+
+        verify_fixture_widget_registration(bundle, checker, run)
+        self.assertEqual(calls, [
+            ['/usr/bin/pluginkit', '-v', '-a', bundle / 'Contents/PlugIns/AgentDeckWidget.appex'],
+            ['bash', checker, bundle],
+        ])
+
+    def test_widget_diagnostics_preserve_failure_without_retry_or_fallback(self):
+        bundle = Path('/fixture/AgentDeck.app')
+        for failed_step in ('add', 'check'):
+            with self.subTest(failed_step=failed_step):
+                calls = []
+
+                def run(argv):
+                    calls.append(argv)
+                    if argv[0] == '/usr/bin/pluginkit':
+                        if failed_step == 'add':
+                            raise AssertionError('add rejected')
+                        return 'add accepted'
+                    if argv[0] == 'bash':
+                        raise AssertionError('registration: no matches')
+                    if argv[1] == '--verify':
+                        raise AssertionError('signature diagnostic')
+                    return 'fixture metadata'
+
+                with self.assertRaises(AssertionError) as raised:
+                    verify_fixture_widget_registration(bundle, Path('/fixture/check.sh'), run)
+                self.assertIn('add rejected' if failed_step == 'add' else 'registration: no matches', str(raised.exception))
+                self.assertIn('signature diagnostic', str(raised.exception))
+                self.assertIn('fixture metadata', str(raised.exception))
+                self.assertEqual(sum(argv[0] == '/usr/bin/pluginkit' for argv in calls), 1)
+                self.assertEqual(sum(argv[0] in ('/usr/bin/codesign', '/usr/bin/plutil') for argv in calls), 6)
+
     def test_completions_are_generated_from_replacement_helper_before_signing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
