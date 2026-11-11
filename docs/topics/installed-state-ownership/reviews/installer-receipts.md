@@ -272,7 +272,7 @@ WorkUnit 为 `installed-state-ownership:installer-receipts`，修复目标为 `i
 - Reviewed state：HEAD `fc290163d2bb7ee0776854e7bc91737f0553867f`；入场 48 路径指纹 `04973be972b56c59e77881b0497de8edfe8fdc618aa72d5409abaa26cbe53b84` 与 Repair 3 完全一致。同步 Review/状态后指纹 `87d3c4b232a13964b2f2a13d8c5f2ce4366a64068fdd2e2e23b8c3c7fba31925`，只有 tasks.md 改变，其 blob 为 `308d82ee83b0240361c0aeae47b57a590f66340a`。沿用 HEAD 加 LF、排序 path/blob 加 LF 的 SHA-256 配方，评审载体不纳入集合。
 - WorkUnit：`installed-state-ownership:installer-receipts`。
 - ContentState：`installed-state-ownership:installer-receipts:rereview-r4-20261111-HloMiWBA`。
-- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle5-20261111`，见下方 CI cycle 5；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
+- 当前证据 ContentState：`installed-state-ownership:installer-receipts:ci-cycle6-20261111`，见下方 CI cycle 6；复评、validation 补齐和既有提交态 CI 的原始门禁仍保留为历史观察。
 - 完成门禁：NOT_VERIFIED
 
 ### 🔴 严重问题 — 必须修复
@@ -516,3 +516,28 @@ WORKFLOW_WORKSPACE: agent-deck.installed-state-ownership
 - 新诊断边界回归在原实现上 RED：四种后验状态均没有预期的判别操作。最终 `python3 -B scripts/test-cask-real-brew-fixture.py`：**13 项通过（6.457 秒）**；新增检查覆盖只读对照已通过、宿主后验通过/失败、宿主注册失败、撤销失败，均保留原异常，add 仅一次；另检查 add 失败不操作宿主。其余 11 项夹具、签名、命令超时及真实 helper 补全测试继续通过。所有工具边界均为记录替身，没有在本机调用系统登记。
 - `bash -n scripts/test-cask-real-brew.sh` 通过。Go/Swift 产品、安装协议、原生模板、cask 声明、依赖及警告/EXIT 清理输入未变；有界证据继续按原范围复用，不重新执行未变的全量 Go/native 检查。完整原命令只在新 SHA 的托管 CI 验证，不以局部替身推断实际登记结果。
 - 本候选只有两个 fixture Python 文件及必要 review/tasks 记录；预留交付态为 `installed-state-ownership:installer-receipts:ci-cycle5-20261111`，实际提交后绑定 SHA/树，仍沿用 52 项范围。用户授权上限仍为整体第 6 轮，不评审、不委派；没有本机真实 Homebrew/登记、团队签名/凭据、发布、断言放宽或任务关闭。
+
+### 第 5 轮实际交付与结果
+
+- 已签名提交并正常推送 `df4f821a1911d56c18b149fd02f735395e216428`，树 `2822968c7abd4f347f715a5ea2e8e1c98c5da18e`，父提交 `605b069a`。4 项范围文件、完整提交说明/OpenCode trailer、预期树与实际 SSH 签名均核验；推送后工作区干净、远端同步。
+- 第 4 轮常规 CI `43022040072` 最终 cancelled：classify/documentation/desktop 成功，desktop job `130527936180` 的 Swift、分发与文档检查通过；Go Verify job `130527936101` 于 UTC `2026-11-11T12:51:26Z` 被新推送取消，不记作通过。
+- 第 5 轮常规 CI `43023911537` **整体 success**：classify、documentation、desktop、verify 全部成功；desktop job `130534207006` 的 Swift、分发和文档检查于 UTC `2026-11-11T13:02:59Z` 完成，verify job `130534207129` 的 Verify 及文档要求于 `13:31:06Z` 完成。此为实际运行结果，不从前几轮取消的 Go 检查推断。
+- real-brew run `43023911550`、job `130533662160`，实际 SHA 为上述 `df4f821a`，在 UTC `2026-11-11T12:51:08Z` 至 `12:58:41Z` 执行，结论 **failure**。runner 为 macOS 26.7.2、macos-26-arm64 image `20261102.0473.1`、Go 1.26.0、Python 3.15.2；13 项夹具测试在 CI 用时 27.490 秒通过，App/widget 构建成功。
+- 本次原始 widget 检查直接通过，因此没有执行新增的后验查询或宿主注册诊断，不能据此宣布间歇性登记问题已修复。真实 install、补全链接、同版本 reinstall、新身份/attempt 与旧材料保全断言均先行通过；随后 `brew upgrade --cask` 再次超过 180 秒。
+- 新包装保留的输出依次为：本地 1.2.4 下载完成；1.2.3 → 1.2.4；卸载脚本移除原拥有者；旧链接解除、新 CLI 与三类补全链接建立；旧版 purge；**`agentdeck-app was successfully upgraded!`**；随后 **`Tapping homebrew/core`**、向本场景隔离 prefix 的 `Library/Taps/homebrew/homebrew-core` 克隆。故该次等待发生在 cask 成功输出之后的额外 core tap 获取，不能再把它描述为已证明的安装锁死。brew 自身未正常返回，升级后 widget/卸载及其他恢复/交错场景仍未取得通过证据。
+- CEv1 已先写入第 4 轮失败及本轮不可变状态，共 10 节点/25 条关系，再补入本轮真实失败和整项常规 CI 成功，共 2 节点/6 条关系；载荷、关系预检及端点均完整读回。固定 gate 对第 4、5 轮目标均返回 FAILED、`reason=null`、6/8，无未决影响；各轮 real-brew pending 被自己的失败显式 supersede，independent-review 仍按用户决定未执行。常规 CI 成功补强 validation，不替代 real-brew。
+
+## CI cycle 6 — 2026-11-11
+
+### 已定位的夹具元数据模式缺陷
+
+- **分类：测试环境配置缺陷，高置信。** 场景强制设置 `HOMEBREW_NO_INSTALL_FROM_API=1`；Homebrew 自身对该变量的定义明确为不使用官方 API、改用“大型、缓慢”的 homebrew/core/homebrew-cask checkout。这与本次实际捕获的成功升级后自动克隆 core 完全一致，而下载本地 cask 已完成；提高生命周期预算或修改 AgentDeck 安装协议都不针对该等待。
+- 只读核对的 Homebrew 源码版本 `95d4938386e5b1536b3b961baa9d0267abd57047` 中，`cmd/upgrade.rb` 在 cask 升级后无条件调用 `Reinstall.reinstall_pkgconf_if_needed!`；macOS 实现先调用 `Pkgconf.macos_sdk_mismatch`，其在检查 pkgconf 是否安装**之前**解析 `Formula["pkgconf"]`；`AbstractCoreTap.ensure_installed!` 对显式 no-API 模式才进入 tap 安装。已有固定版本 `47b42777c81a72198fd0598a2e5fb02f1701c63a` 的升级入口也含相同后置调用。CI 没有打印完整 brew commit/等待栈，因此此调用链是受源码支持的触发解释，不冒充该 runner 的栈采样；本次修复只针对已确认的强制 checkout 模式。
+- 删除强制值，并在构造场景环境后移除继承来的同名键，包含空字符串；Homebrew 对此变量按是否设置判断，不能用空值假装未设置。恢复正常 API 元数据模式，不改任何 Homebrew 代码、全局 tap 或服务配置，不禁用依赖/SDK 检查。官方元数据现在可能访问 API；不宣称整个接受测试离线。
+- cask 仍通过 `agentdeck/test/agentdeck-app` 完整限定名读取本场景 local tap，档案仍是已渲染的本地 URL，`--cask`、`--appdir`、临时 prefix/cache/HOME/独立账户、no-auto-update/no-install-cleanup 均不变。真实 install/reinstall/upgrade/uninstall、回滚与身份交错断言、180 秒预算及 widget 原始检查全部保留；未因本轮登记直接成功而加入任何通过兜底。
+
+### 验证与最终授权边界
+
+- 回归直接从真实嵌入驱动 AST 执行 `Scenario`，用临时假 brew 文件与记录工具边界，不执行 Homebrew。原实现对未继承、继承空值、继承 `1` 三种环境全部 RED；最终 **14 项通过（7.971 秒）**，检查场景键确实不存在、调用方环境未变、临时隔离/no-auto-update/no-cleanup 保留，且真实 `Scenario.command('upgrade')` 仍发送原完整限定 cask 与参数。原 13 项补全、签名、失败保全、超时输出和诊断边界继续通过。`bash -n scripts/test-cask-real-brew.sh` 通过。
+- 仅 driver 的一个环境策略、回归及两份必要记录改变；Go/Swift 产品、原生模板、安装协议、cask 声明和依赖不变。第 5 轮完整常规 CI 对这些未变输入仍是可复用事实，不因进入最后轮次重跑本地全量 Go/native；第 6 轮的两个实际 push 工作流仍须回收，局部回归不代表原失败命令已通过。
+- 预留交付态为 `installed-state-ownership:installer-receipts:ci-cycle6-20261111`，提交后绑定实际 SHA/树，仍为 52 项范围。用户的“再继续3轮”及后续“继续”只延续整体第 4–6 轮；本轮是最后一次正常提交/推送。之后只回收 CI、证据及 owning 状态记录，失败也不自动开始第 7 轮、重跑工作流或追加交付。独立评审未执行，Review 未勾选；无 Task/Topic/来源缺陷关闭或发布授权。

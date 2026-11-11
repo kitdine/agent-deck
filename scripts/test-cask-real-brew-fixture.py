@@ -78,6 +78,51 @@ class FixtureCommandTests(unittest.TestCase):
                 self.assertEqual(execute.call_args.kwargs['env'], {'FIXTURE_ENV': 'explicit'})
 
 
+class FixtureScenarioTests(unittest.TestCase):
+    def test_local_cask_keeps_default_core_metadata_mode(self):
+        source = Path(__file__).with_name('test-cask-real-brew.sh').read_text()
+        driver = source.split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        scenario = next(node for node in ast.parse(driver).body
+                        if isinstance(node, ast.ClassDef) and node.name == 'Scenario')
+        for inherited in (None, '', '1'):
+            with self.subTest(inherited=inherited), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                repository = workspace / 'repository'
+                (repository / 'bin').mkdir(parents=True)
+                (repository / 'bin/brew').write_text('not an executable test dependency\n')
+                base_env = {'HOME': '/unused-home', 'FIXTURE_SENTINEL': 'inherited'}
+                if inherited is not None:
+                    base_env['HOMEBREW_NO_INSTALL_FROM_API'] = inherited
+                expected_base = dict(base_env)
+
+                def run(argv, **_kwargs):
+                    return str(workspace / 'metadata-mode/brew') if argv[-1] == '--prefix' else 'command output'
+
+                execute = mock.Mock(side_effect=run)
+                namespace = dict(Path=Path, shutil=shutil, workspace=workspace,
+                                 brew_repository=repository, base_env=base_env,
+                                 run=execute, print=mock.Mock())
+                exec(compile(ast.Module(body=[scenario], type_ignores=[]), '<actual CI Scenario>', 'exec'), namespace)
+                actual = namespace['Scenario']
+                with mock.patch.object(actual, 'render') as render:
+                    fixture = actual('metadata-mode')
+                render.assert_called_once_with('1.2.3')
+                self.assertNotIn('HOMEBREW_NO_INSTALL_FROM_API', fixture.env)
+                self.assertEqual(base_env, expected_base)
+                self.assertEqual(fixture.env['HOME'], str(fixture.home))
+                self.assertEqual(fixture.env['HOMEBREW_CACHE'], str(fixture.directory / 'cache'))
+                self.assertEqual(fixture.env['HOMEBREW_NO_AUTO_UPDATE'], '1')
+                self.assertEqual(fixture.env['HOMEBREW_NO_INSTALL_CLEANUP'], '1')
+                self.assertEqual(fixture.env['HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME'], str(fixture.account))
+                self.assertEqual(fixture.env['FIXTURE_SENTINEL'], 'inherited')
+                fixture.command('upgrade')
+                self.assertEqual(execute.call_args.args[0], [
+                    fixture.brew, 'upgrade', '--cask', f'--appdir={fixture.appdir}',
+                    'agentdeck/test/agentdeck-app',
+                ])
+                self.assertNotIn('HOMEBREW_NO_INSTALL_FROM_API', execute.call_args.kwargs['env'])
+
+
 class FixtureTests(unittest.TestCase):
     def test_fixture_signing_resolves_entitlements_and_seals_inside_out(self):
         with tempfile.TemporaryDirectory() as temporary:

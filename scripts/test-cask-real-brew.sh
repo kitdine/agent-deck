@@ -103,8 +103,12 @@ class Scenario:
         self.env = dict(base_env, HOME=str(self.home), HOMEBREW_CACHE=str(self.directory / 'cache'),
                         HOMEBREW_LOGS=str(self.directory / 'logs'), HOMEBREW_TEMP=str(self.directory / 'temp'),
                         HOMEBREW_NO_ANALYTICS='1', HOMEBREW_NO_AUTO_UPDATE='1', HOMEBREW_NO_ENV_HINTS='1',
-                        HOMEBREW_NO_INSTALL_CLEANUP='1', HOMEBREW_NO_INSTALL_FROM_API='1',
+                        HOMEBREW_NO_INSTALL_CLEANUP='1',
                         HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME=str(self.account))
+        # The fully-qualified fixture cask still loads from our local tap. Keep
+        # official formula metadata in default API mode: forcing Git checkouts
+        # makes upgrade's unrelated pkgconf check clone all of homebrew/core.
+        self.env.pop('HOMEBREW_NO_INSTALL_FROM_API', None)
         assert run([self.brew, '--prefix'], env=self.env).strip() == str(self.prefix)
         self.render('1.2.3')
         print(f'Running {name}', flush=True)

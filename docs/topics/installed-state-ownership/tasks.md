@@ -29,7 +29,7 @@ updated: 2026-11-11
 需求和 CLI 保持已通过状态。installer-receipts 设计修订已通过架构 Round 12、任务分解 Round 15 独立复评，全部发现关闭，两项 Review 勾选；按用户决定删除工作区根目录未跟踪的构建产物 `agentdeck` 后，L0 全部通过，两份文档的证据门禁 VERIFIED（见架构 Round 12 的门禁同步）；任务 5 cask 开发可在对应开发指令下继续。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 第 4 轮 `605b069a` 已推送并取得 real-brew 失败结果，第 5 轮诊断候选的本地验证已完成，正按用户追加第 4–6 轮的授权直接交付 CI。Review 未勾选，任务保持开放；实际结果、范围及授权见[任务评审](reviews/installer-receipts.md) CI cycle 1–5 和 Additional CI cycles；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 第 5 轮 `df4f821a` 的常规 CI 整体通过，real-brew 仍失败；最后第 6 轮本地修复及验证已完成，正按用户第 4–6 轮授权直接交付 CI。Review 未勾选，任务保持开放；实际结果、范围及授权见[任务评审](reviews/installer-receipts.md) CI cycle 1–6 和 Additional CI cycles；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -550,7 +550,7 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 #### 评审交接（2026-11-10）
 
-任务 5 的早期评审、本地 validation 和推送 CI 结果保留各自的历史范围。第 4 轮已签名提交推送 `605b069abc8fd8f887157c941d9a9ea16270e04a`，real-brew `43022040054` 失败，同 SHA 常规 CI `43022040072` 待回收。用户明确追加的第 4–6 轮授权仍有效，不经独立评审；当前第 5 轮本地验证已完成，交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle5-20261111`，提交后绑定实际 SHA/树，再以该 SHA 的 CI 为准。Dev 完成、Review 未勾选，不伪造评审通过或 VERIFIED。当前身份、验证和授权边界见[任务评审记录](reviews/installer-receipts.md) Additional CI cycles 与 CI cycle 5。真实 brew 未在本机执行；Task、Topic 与来源缺陷保持开放。
+任务 5 的早期评审、本地 validation 和推送 CI 结果保留各自的历史范围。第 5 轮已签名提交推送 `df4f821a1911d56c18b149fd02f735395e216428`，常规 CI `43023911537` 整体成功，real-brew `43023911550` 失败，提交态门禁 FAILED。当前为最后第 6 轮，交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle6-20261111`，提交后绑定实际 SHA/树，再以该 SHA 的两个 CI 为准。Dev 完成、Review 未勾选，不伪造评审通过或 VERIFIED，不自动追加第 7 轮。当前身份、验证和授权边界见[任务评审记录](reviews/installer-receipts.md) Additional CI cycles 与 CI cycle 6。真实 brew 未在本机执行；Task、Topic 与来源缺陷保持开放。
 
 ### 6. `app-state-location`
 
