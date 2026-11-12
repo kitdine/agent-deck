@@ -4,10 +4,12 @@ import os
 import sys
 
 # Keep the Python entry point just as restricted as the shell entry point.
-if not (sys.argv[1:] == ['--ci'] and os.environ.get('GITHUB_ACTIONS') == 'true'
+allowed_arguments = (['--ci'], ['--ci', '--focus', 'main-uninstall'], ['--ci', '--focus', 'receipt-lifecycle'])
+if not (sys.argv[1:] in allowed_arguments and os.environ.get('GITHUB_ACTIONS') == 'true'
         and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
         and os.environ.get('RUNNER_OS') == 'macOS'):
     sys.exit('REFUSED: this probe runs only with --ci on GitHub-hosted macOS.')
+focus = sys.argv[3] if len(sys.argv) == 4 else None
 
 import hashlib
 import json
@@ -103,13 +105,14 @@ def register_step(*, absolute_support=None, declare=True):
 
 
 class Scenario:
-    def __init__(self, name, *, home=real_home, account=None, appdir=None):
+    def __init__(self, name, *, home=real_home, account=None, appdir=None, receipt_only=False):
         self.name = name
         self.directory = workspace / name
         self.prefix = self.directory / 'brew'
         self.home = home
         self.appdir = appdir or self.directory / 'Applications'
-        self.token = 'agentdeck-postflight-probe'
+        self.receipt_only = receipt_only
+        self.token = 'agentdeck-receipt-only-control' if receipt_only else 'agentdeck-postflight-probe'
         self.cask = self.prefix / f'Library/Taps/agentdeck/homebrew-probe/Casks/{self.token}.rb'
         self.app = self.appdir / 'AgentDeck.app'
         self.helper = self.app / 'Contents/Helpers/agentdeck'
@@ -129,7 +132,8 @@ class Scenario:
 
     def render(self, version, *, absolute_support=None, skip_register=False, acceptance=False):
         archive = archives[('acceptance' if acceptance else 'production', version)]
-        text = (root / 'scripts/probe-cask-postflight.rb.tmpl').read_text()
+        template = 'probe-cask-receipt-only.rb.tmpl' if self.receipt_only else 'probe-cask-postflight.rb.tmpl'
+        text = (root / 'scripts' / template).read_text()
         values = dict(TOKEN=self.token, VERSION=version, SHA256=hashlib.sha256(archive.read_bytes()).hexdigest(),
                       URL=archive.as_uri(), REGISTER_STEP='' if skip_register else register_step(absolute_support=absolute_support))
         for key, value in values.items():
@@ -214,6 +218,127 @@ end
     return facts
 
 
+def acceptance_probe():
+    account = Path(tempfile.mkdtemp(prefix='agentdeck-probe-account-', dir='/private/tmp')).resolve()
+    assert not account.is_relative_to(real_home)
+    acceptance_helper = workspace / 'acceptance-helper'
+    run(['go', 'build', '-mod=vendor', '-trimpath', '-tags', 'agentdeck_acceptance',
+         '-o', acceptance_helper, './cmd/agentdeck'])
+    info = run(['go', 'version', '-m', acceptance_helper]).stdout
+    assert 'agentdeck_acceptance' in info
+    bundle = workspace / 'acceptance-1.2.3/AgentDeck.app'
+    prepare_fixture_app(fixture, bundle, acceptance_helper, '1.2.3', fixture_run, env=base_env)
+    archive = workspace / 'AgentDeck-acceptance-1.2.3.zip'
+    run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', bundle, archive])
+    archives['acceptance', '1.2.3'] = archive
+    acceptance = Scenario('acceptance-outside-home', account=account, receipt_only=True)
+    acceptance_support = account / 'Library/Application Support/AgentDeck'
+    acceptance_support.parent.mkdir(parents=True)
+    acceptance.render('1.2.3', absolute_support=acceptance_support, acceptance=True)
+    installed = acceptance.command('install', check=False)
+    acceptance_receipt = acceptance_support / 'installation.json'
+    owner = json.loads(acceptance_receipt.read_text()) if acceptance_receipt.exists() else None
+    passed = (installed.returncode == 0 and owner is not None and owner['executable'] == str(acceptance.helper)
+              and (acceptance_support / 'ownership.lock').is_file())
+    observe('Q8', 'PASS' if passed else 'FAIL', command=installed.probe_command, exit=installed.returncode,
+            account=str(account), outside_real_home=True, receipt=owner,
+            receipt_path=str(acceptance_receipt), declared_paths=[str(acceptance_support)],
+            override='HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME', override_value=str(account),
+            stdout=installed.stdout, stderr=installed.stderr)
+
+
+def focused_probe():
+    receipt_only = focus == 'receipt-lifecycle'
+    s = Scenario(focus, receipt_only=receipt_only)
+    s.render('1.2.3')
+    installed = s.command('install', check=False)
+    if installed.returncode:
+        observe('Q2', 'FAIL', command=installed.probe_command, exit=installed.returncode,
+                stdout=installed.stdout, stderr=installed.stderr)
+        raise RuntimeError('STOP: production receipt gate failed; no alternative attempted')
+    initial = json.loads(receipt.read_text())
+    assert initial['executable'] == str(s.helper) and (support / 'ownership.lock').is_file()
+    observe('Q2', 'PASS', command=installed.probe_command, receipt_path=str(receipt),
+            lock_path=str(support / 'ownership.lock'), receipt=initial,
+            declared_paths=['Library/Application Support/AgentDeck'], writable_base='home')
+
+    if not receipt_only:
+        # This is the unchanged failing template, installed once and immediately
+        # uninstalled. No upgrade, launch, registration or recovery in between.
+        extension = s.app / 'Contents/PlugIns/AgentDeckWidget.appex'
+        listing = run(['/usr/bin/pluginkit', '-m', '-A', '-D', '-vv'], check=False)
+        extension_existed = extension.is_dir()
+        before = receipt.read_bytes()
+        uninstalled = s.command('uninstall', check=False)
+        statuses = re.findall(r'PROBE_PLUGINKIT_R_EXIT=([0-9]+)', uninstalled.stdout + uninstalled.stderr)
+        passed = uninstalled.returncode == 0 and statuses == ['0'] and not s.app.exists()
+        observe('Q7', 'PASS' if passed else 'FAIL', command=uninstalled.probe_command,
+                brew_exit=uninstalled.returncode, pluginkit_r_exit=statuses, never_launched=True,
+                extension_existed_before_uninstall=extension_existed,
+                pre_uninstall_query_exit=listing.returncode,
+                target_in_query=str(extension) in listing.stdout + listing.stderr,
+                app_exists_after=s.app.exists(), receipt_byte_equal=receipt.read_bytes() == before,
+                stdout=uninstalled.stdout, stderr=uninstalled.stderr)
+        return 0 if passed else 1
+
+    print('CONTROL_SCOPE: Q4/Q5 receipt-only cask; the main-style uninstall failure is NOT repaired or waived.', flush=True)
+    s.render('1.2.4')
+    upgraded = s.command('upgrade', check=False)
+    after = json.loads(receipt.read_text())
+    identity = location(s.helper, s.env)
+    version = (s.app / 'Contents/Resources/version').read_text().strip()
+    repeated = f'registered {s.helper} (homebrew_cask)' in upgraded.stdout + upgraded.stderr
+    passed = (upgraded.returncode == 0 and version == '1.2.4' and repeated and identity['installed']
+              and initial['executable'] == after['executable'] and initial['channel'] == after['channel'] == 'homebrew_cask')
+    observe('Q4', 'PASS' if passed else 'FAIL', scope='receipt-only control; main-style callback absent',
+            command=upgraded.probe_command, exit=upgraded.returncode, installed_version=version,
+            registered_again=repeated, before_receipt=initial, after_receipt=after, location=identity,
+            stdout=upgraded.stdout, stderr=upgraded.stderr)
+    if not passed:
+        raise RuntimeError('Receipt-only upgrade failed; no retries or repairs')
+
+    before = receipt.read_bytes()
+    s.render('1.2.5', skip_register=True)
+    without_register = s.command('upgrade', check=False)
+    identity = location(s.helper, s.env)
+    version = (s.app / 'Contents/Resources/version').read_text().strip()
+    facts = dict(command=without_register.probe_command, exit=without_register.returncode,
+                 installed_version=version, receipt_byte_equal=receipt.read_bytes() == before,
+                 registered_output_present=f'registered {s.helper} (homebrew_cask)' in without_register.stdout + without_register.stderr,
+                 location=identity, stdout=without_register.stdout, stderr=without_register.stderr)
+    observations['Q4']['upgrade_without_register'] = facts
+    save_observations()
+    print('UPGRADE_WITHOUT_REGISTER: ' + json.dumps(facts, sort_keys=True), flush=True)
+    if not (facts['exit'] == 0 and version == '1.2.5' and facts['receipt_byte_equal']
+            and not facts['registered_output_present'] and identity['installed']):
+        observations['Q4']['result'] = 'FAIL'
+        raise RuntimeError('Upgrade without registration failed; no repair')
+
+    before = receipt.read_bytes()
+    uninstalled = s.command('uninstall', check=False)
+    assert uninstalled.returncode == 0 and not s.app.exists()
+    retained = receipt.read_bytes()
+    stale = json.loads(retained)
+    assert retained == before and not Path(stale['executable']).exists()
+    (output / 'stale-after-uninstall.json').write_bytes(retained)
+    successor = workspace / 'other-channel/bin/agentdeck'
+    successor.parent.mkdir(parents=True)
+    shutil.copy2(helper, successor)
+    registered = register(successor, 'make', s.env)
+    successor_identity = location(successor, s.env)
+    observe('Q5', 'PASS' if successor_identity['installed'] else 'FAIL',
+            scope='receipt-only control; main-style callback absent',
+            uninstall_command=uninstalled.probe_command, uninstall_exit=uninstalled.returncode,
+            command=registered.probe_command, app_absent=True, receipt_retained=True,
+            receipt_byte_equal_after_uninstall=True, stale_executable=stale['executable'],
+            stale_executable_exists=False, successor=str(successor), channel='make', takeover=False,
+            location=successor_identity, stdout=registered.stdout)
+    # Q1/Q2/Q3/Q6 are observed in round 2. Q7's separate job has already finished
+    # (including a preserved FAIL) before this job starts. This is secondary.
+    acceptance_probe()
+    return 0 if observations['Q8']['result'] == 'PASS' else 1
+
+
 archives = {}
 save_observations()
 try:
@@ -239,6 +364,8 @@ try:
         archives['production', version] = archive
     run(['/usr/bin/codesign', '-d', '--verbose=4', workspace / 'production-1.2.3/AgentDeck.app/Contents/Helpers/agentdeck'])
     run(['xcrun', 'stapler', 'validate', workspace / 'production-1.2.3/AgentDeck.app'], check=False)
+    if focus:
+        raise SystemExit(focused_probe())
     home_control = home_base_control(archives['production', '1.2.3'])
 
     s = Scenario('production-lifecycle')

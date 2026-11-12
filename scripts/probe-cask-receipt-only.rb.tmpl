@@ -1,0 +1,17 @@
+# A separately labelled control for Q4/Q5, NOT a fix for the failing Q7 cask.
+# No widget uninstall callback is present in this receipt-only control.
+cask "@TOKEN@" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  url "@URL@"
+  name "AgentDeck receipt-only control"
+  desc "Isolate receipt lifecycle behavior from the unchanged widget uninstall failure"
+  homepage "https://github.com/kitdine/agent-deck"
+  depends_on macos: :tahoe
+
+  app "AgentDeck.app"
+
+  postflight_steps do
+@REGISTER_STEP@
+  end
+end

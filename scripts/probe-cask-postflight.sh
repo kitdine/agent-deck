@@ -63,5 +63,5 @@ PY
 
 if [[ $2 == --run ]]; then
   root=$(cd "$(dirname "$0")/.." && pwd)
-  python3 "$root/scripts/probe-cask-postflight.py" --ci
+  python3 "$root/scripts/probe-cask-postflight.py" --ci "${@:3}"
 fi

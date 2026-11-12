@@ -9,8 +9,49 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  main-uninstall:
     if: github.ref == 'refs/heads/probe/cask-postflight-receipt'
+    runs-on: macos-26
+    timeout-minutes: 35
+    outputs:
+      q2_pass: ${{ steps.gate.outputs.q2_pass }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Observe the unchanged main-style uninstall after no App launch
+        run: bash scripts/probe-cask-postflight.sh --ci --run --focus main-uninstall
+      - name: Preserve the production receipt stop condition across jobs
+        id: gate
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'cask-postflight-probe/observations.json'
+          facts = json.loads(path.read_text()) if path.exists() else {}
+          passed = facts.get('Q2', {}).get('result') == 'PASS'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'q2_pass={str(passed).lower()}\n')
+          PY
+      - name: Preserve complete probe observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cask-postflight-probe-${{ github.job }}-${{ github.sha }}
+          path: ${{ runner.temp }}/cask-postflight-probe
+          if-no-files-found: error
+
+  receipt-lifecycle:
+    needs: main-uninstall
+    # Q7's failure stays a failure. This fresh runner is a separately labelled
+    # receipt-only control, not a fallback or repair of the failed cask.
+    if: always() && needs.main-uninstall.outputs.q2_pass == 'true' && github.ref == 'refs/heads/probe/cask-postflight-receipt'
     runs-on: macos-26
     timeout-minutes: 35
     steps:
@@ -21,12 +62,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Probe real Homebrew without changing the product
-        run: bash scripts/probe-cask-postflight.sh --ci --run
-      - name: Preserve complete probe observations
+      - name: Isolate receipt upgrade and stale-owner behavior from Q7
+        run: bash scripts/probe-cask-postflight.sh --ci --run --focus receipt-lifecycle
+      - name: Preserve complete control observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cask-postflight-probe-${{ github.sha }}
+          name: cask-postflight-probe-${{ github.job }}-${{ github.sha }}
           path: ${{ runner.temp }}/cask-postflight-probe
           if-no-files-found: error
