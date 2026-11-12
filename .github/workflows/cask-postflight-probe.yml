@@ -1,0 +1,28 @@
+name: Cask postflight receipt probe
+
+on:
+  push:
+    branches: ['probe/cask-postflight-receipt']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.ref == 'refs/heads/probe/cask-postflight-receipt'
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Inspect the runner's actual Homebrew step DSL
+        run: bash scripts/probe-cask-postflight.sh --ci --inspect
+      - name: Preserve complete probe observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cask-postflight-probe-${{ github.sha }}
+          path: ${{ runner.temp }}/cask-postflight-probe
+          if-no-files-found: error
