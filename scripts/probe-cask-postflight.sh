@@ -47,7 +47,8 @@ metadata['brew_home'] = os.environ['HOME']
 
 files = []
 for relative in ('install_steps.rb', 'cask/artifact/install_steps.rb', 'cask/artifact/abstract_artifact.rb',
-                 'cask/dsl.rb', 'sandbox.rb', 'cask_artifact.rb'):
+                 'cask/dsl.rb', 'sandbox.rb', 'cask_artifact.rb', 'cask/config.rb', 'cask/cask.rb',
+                 'cask/metadata.rb', 'cask/installer.rb', 'cmd/uninstall.rb'):
     path = repository / 'Library/Homebrew' / relative
     text = path.read_text()
     files.append(path)

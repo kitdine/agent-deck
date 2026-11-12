@@ -4,7 +4,8 @@ import os
 import sys
 
 # Keep the Python entry point just as restricted as the shell entry point.
-allowed_arguments = (['--ci'], ['--ci', '--focus', 'main-uninstall'], ['--ci', '--focus', 'receipt-lifecycle'])
+allowed_arguments = (['--ci'], ['--ci', '--focus', 'main-uninstall'], ['--ci', '--focus', 'receipt-lifecycle'],
+                     ['--ci', '--focus', 'followup-original'], ['--ci', '--focus', 'followup-lifecycle'])
 if not (sys.argv[1:] in allowed_arguments and os.environ.get('GITHUB_ACTIONS') == 'true'
         and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
         and os.environ.get('RUNNER_OS') == 'macOS'):
@@ -15,10 +16,13 @@ import hashlib
 import json
 from pathlib import Path
 import pwd
+import plistlib
 import re
 import shutil
 import subprocess
 import tempfile
+
+from probe_cask_commands import cask_command_argv
 
 root = Path(__file__).resolve().parents[1]
 output = Path(os.environ['RUNNER_TEMP']) / 'cask-postflight-probe'
@@ -31,11 +35,12 @@ support = real_home / 'Library/Application Support/AgentDeck'
 receipt = support / 'installation.json'
 workspace = Path(tempfile.mkdtemp(prefix='cask-postflight-', dir=os.environ['RUNNER_TEMP'])).resolve()
 observations = {f'Q{i}': {'result': 'NOT_EXECUTED'} for i in range(1, 9)}
+observations.update({f'R{i}': {'result': 'NOT_EXECUTED'} for i in range(1, 6)})
 brew_results = []
 command_number = 0
 base_env = {key: value for key, value in os.environ.items()
             if not key.startswith(('AGENTDECK_ACCEPTANCE_', 'HOMEBREW_AGENTDECK_'))
-            and key not in ('HOMEBREW_DEVELOPER', 'HOMEBREW_AVOID_NESTED_SANDBOXING', 'GOFLAGS')}
+            and key not in ('HOMEBREW_DEVELOPER', 'HOMEBREW_AVOID_NESTED_SANDBOXING', 'HOMEBREW_CASK_OPTS', 'GOFLAGS')}
 base_env.update(HOMEBREW_NO_ANALYTICS='1', HOMEBREW_NO_AUTO_UPDATE='1', HOMEBREW_NO_ENV_HINTS='1',
                 HOMEBREW_NO_INSTALL_CLEANUP='1')
 
@@ -105,14 +110,16 @@ def register_step(*, absolute_support=None, declare=True):
 
 
 class Scenario:
-    def __init__(self, name, *, home=real_home, account=None, appdir=None, receipt_only=False):
+    def __init__(self, name, *, home=real_home, account=None, appdir=None, receipt_only=False, tolerant=False):
         self.name = name
         self.directory = workspace / name
         self.prefix = self.directory / 'brew'
         self.home = home
         self.appdir = appdir or self.directory / 'Applications'
         self.receipt_only = receipt_only
-        self.token = 'agentdeck-receipt-only-control' if receipt_only else 'agentdeck-postflight-probe'
+        self.tolerant = tolerant
+        self.token = ('agentdeck-tolerant-probe' if tolerant else
+                      'agentdeck-receipt-only-control' if receipt_only else 'agentdeck-postflight-probe')
         self.cask = self.prefix / f'Library/Taps/agentdeck/homebrew-probe/Casks/{self.token}.rb'
         self.app = self.appdir / 'AgentDeck.app'
         self.helper = self.app / 'Contents/Helpers/agentdeck'
@@ -132,10 +139,13 @@ class Scenario:
 
     def render(self, version, *, absolute_support=None, skip_register=False, acceptance=False):
         archive = archives[('acceptance' if acceptance else 'production', version)]
-        template = 'probe-cask-receipt-only.rb.tmpl' if self.receipt_only else 'probe-cask-postflight.rb.tmpl'
+        template = ('probe-cask-tolerant.rb.tmpl' if self.tolerant else
+                    'probe-cask-receipt-only.rb.tmpl' if self.receipt_only else 'probe-cask-postflight.rb.tmpl')
         text = (root / 'scripts' / template).read_text()
         values = dict(TOKEN=self.token, VERSION=version, SHA256=hashlib.sha256(archive.read_bytes()).hexdigest(),
-                      URL=archive.as_uri(), REGISTER_STEP='' if skip_register else register_step(absolute_support=absolute_support))
+                      URL=archive.as_uri(), REGISTER_STEP='' if skip_register else register_step(absolute_support=absolute_support),
+                      UNINSTALL_SCRIPT='\n'.join('                ' + line for line in tolerant_uninstall_script().splitlines()) if self.tolerant else '',
+                      WIDGET_ID=plistlib.loads((fixture / 'Contents/PlugIns/AgentDeckWidget.appex/Contents/Info.plist').read_bytes())['CFBundleIdentifier'] if self.tolerant else '')
         for key, value in values.items():
             text = text.replace('@' + key + '@', value)
         assert not re.search(r'\b(?:preflight|postflight|uninstall_preflight)\s+do\b', text)
@@ -144,8 +154,7 @@ class Scenario:
         print(f'RENDERED_CASK {self.name} {version}:\n{text}', flush=True)
 
     def command(self, operation, *, check=True):
-        return run([self.brew, operation, '--cask', '--verbose', f'--appdir={self.appdir}',
-                    f'agentdeck/probe/{self.token}'], env=self.env, check=check)
+        return run(cask_command_argv(self.brew, operation, self.appdir, self.token), env=self.env, check=check)
 
     def caskroom_entries(self):
         path = self.prefix / 'Caskroom' / self.token
@@ -339,6 +348,200 @@ def focused_probe():
     return 0 if observations['Q8']['result'] == 'PASS' else 1
 
 
+def tolerant_uninstall_script():
+    return (root / 'scripts/probe-cask-tolerant-uninstall.sh.tmpl').read_text()
+
+
+def installed_record(s, label):
+    caskroom = s.prefix / 'Caskroom' / s.token
+    metadata = caskroom / '.metadata'
+    config_path = metadata / 'config.json'
+    config = json.loads(config_path.read_text()) if config_path.exists() else None
+    caskfiles = [str(path.relative_to(caskroom)) for path in sorted(metadata.rglob('*'))
+                 if path.is_file() and path.parent.name == 'Casks'
+                 and path.name in (s.token + '.rb', s.token + '.json')]
+    if config is not None:
+        (output / f'{s.name}-{label}-brew-config.json').write_bytes(config_path.read_bytes())
+    facts = dict(caskroom_exists=caskroom.exists(), installed_caskfiles=caskfiles,
+                 config_path=str(config_path), config=config,
+                 explicit_appdir=config.get('explicit', {}).get('appdir') if config is not None else None)
+    print('INSTALLED_RECORD ' + label + ': ' + json.dumps(facts, sort_keys=True), flush=True)
+    return facts
+
+
+def lifecycle_state(s, label, observer):
+    present = s.helper.is_file()
+    queried = s.helper if present else observer
+    result = run([queried, '--format', 'json', 'desktop', 'state-location'], env=s.env, check=False)
+    identity = json.loads(result.stdout)['data'] if result.returncode == 0 else None
+    raw_receipt = receipt.read_bytes() if receipt.exists() else None
+    if raw_receipt is not None:
+        (output / f'{s.name}-{label}-installation.json').write_bytes(raw_receipt)
+    version_file = s.app / 'Contents/Resources/version'
+    facts = dict(app_exists=s.app.exists(), installed_helper_exists=present,
+                 queried_helper=str(queried), retained_copy_used=not present,
+                 helper_query_command=result.probe_command, helper_query_exit=result.returncode,
+                 identity=identity, receipt=json.loads(raw_receipt) if raw_receipt is not None else None,
+                 receipt_sha256=hashlib.sha256(raw_receipt).hexdigest() if raw_receipt is not None else None,
+                 version=version_file.read_text().strip() if version_file.exists() else None,
+                 homebrew_record=installed_record(s, label))
+    print('LIFECYCLE_STATE ' + label + ': ' + json.dumps(facts, sort_keys=True), flush=True)
+    return facts
+
+
+def query_streams(result):
+    text = result.stdout.replace('\r\n', '\n')
+    captured = {}
+    for stream in ('STDOUT', 'STDERR'):
+        match = re.search(f'PROBE_QUERY_{stream}_BEGIN\n(.*?)\nPROBE_QUERY_{stream}_END', text, re.S)
+        captured[stream.lower()] = match.group(1) if match else None
+    captured['exit_codes'] = re.findall(r'PROBE_QUERY_EXIT=([0-9]+)', text)
+    return captured
+
+
+def followup_acceptance_probe():
+    account = Path(tempfile.mkdtemp(prefix='agentdeck-followup-account-', dir='/private/tmp')).resolve()
+    assert not account.is_relative_to(real_home)
+    (account / 'Library/Application Support').mkdir(parents=True)
+    acceptance_helper = workspace / 'followup-acceptance-helper'
+    run(['go', 'build', '-mod=vendor', '-trimpath', '-tags', 'agentdeck_acceptance',
+         '-o', acceptance_helper, './cmd/agentdeck'])
+    info = run(['go', 'version', '-m', acceptance_helper]).stdout
+    assert 'agentdeck_acceptance' in info
+    bundle = workspace / 'followup-acceptance-1.2.3/AgentDeck.app'
+    prepare_fixture_app(fixture, bundle, acceptance_helper, '1.2.3', fixture_run, env=base_env)
+    archive = workspace / 'AgentDeck-followup-acceptance-1.2.3.zip'
+    run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', bundle, archive])
+    archives['acceptance', '1.2.3'] = archive
+
+    def attempt(name, brew_home):
+        s = Scenario(name, home=brew_home, account=account, tolerant=True)
+        # Keep the production relative :home grant unchanged. R5's second
+        # attempt changes only the brew HOME premise, not the path whitelist.
+        s.render('1.2.3', acceptance=True)
+        result = s.command('install', check=False)
+        path = account / 'Library/Application Support/AgentDeck/installation.json'
+        owner = json.loads(path.read_text()) if path.exists() else None
+        lock = path.with_name('ownership.lock')
+        passed = (result.returncode == 0 and owner is not None and owner['executable'] == str(s.helper)
+                  and owner['channel'] == 'homebrew_cask' and lock.is_file())
+        return dict(passed=passed, command=result.probe_command, brew_exit=result.returncode,
+                    brew_HOME=str(brew_home), account_override=str(account), outside_real_home=True,
+                    declared_paths=['Library/Application Support/AgentDeck'], writable_base='home',
+                    receipt_path=str(path), receipt=owner, ownership_lock_exists=lock.is_file(),
+                    stdout=result.stdout, stderr=result.stderr)
+
+    first = attempt('followup-acceptance-real-home', real_home)
+    second = attempt('followup-acceptance-matching-home', account) if not first['passed'] else None
+    passed = first['passed'] or (second is not None and second['passed'])
+    observe('R5', 'PASS' if passed else 'FAIL', initial=first, matching_HOME_attempt=second,
+            affects_product_feasibility=False)
+
+
+def followup_probe():
+    original = focus == 'followup-original'
+    s = Scenario(focus, tolerant=not original)
+    s.render('1.2.3')
+    observer = workspace / 'retained-observer/agentdeck'
+    observer.parent.mkdir()
+    shutil.copy2(helper, observer)
+    installed = s.command('install', check=False)
+    install_state = lifecycle_state(s, 'install', observer)
+    if installed.returncode:
+        observe('Q2', 'FAIL', command=installed.probe_command, exit=installed.returncode)
+        observe('R1' if original else 'R3', 'FAIL', failed_stage='install',
+                command=installed.probe_command, brew_exit=installed.returncode, state=install_state,
+                stdout=installed.stdout, stderr=installed.stderr)
+        return 1  # Mandatory stop, including no R5, on a production install failure.
+    observe('Q2', 'PASS', command=installed.probe_command, receipt_path=str(receipt),
+            receipt=install_state['receipt'])
+    assert install_state['homebrew_record']['explicit_appdir'] == str(s.appdir)
+
+    if original:
+        before = receipt.read_bytes()
+        removed = s.command('uninstall', check=False)
+        state = lifecycle_state(s, 'uninstall', observer)
+        statuses = re.findall(r'PROBE_PLUGINKIT_R_EXIT=([0-9]+)', removed.stdout + removed.stderr)
+        passed = removed.returncode == 0 and not state['app_exists'] and not state['homebrew_record']['installed_caskfiles']
+        observe('R1', 'PASS' if passed else 'FAIL', install_command=installed.probe_command,
+                uninstall_command=removed.probe_command, brew_exit=removed.returncode,
+                pluginkit_r_exit=sorted(set(statuses)), never_launched=True,
+                uninstall_argv=cask_command_argv(s.brew, 'uninstall', s.appdir, s.token),
+                before_record=install_state['homebrew_record'], after=state,
+                receipt_byte_equal=receipt.exists() and receipt.read_bytes() == before,
+                stdout=removed.stdout, stderr=removed.stderr)
+        return 0 if passed else 1
+
+    # R2 uses the EXACT script embedded in the R3 cask. The failure control is
+    # explicitly synthetic and cannot register, deregister or remove anything.
+    extension = s.app / 'Contents/PlugIns/AgentDeckWidget.appex'
+    identifier = plistlib.loads((extension / 'Contents/Info.plist').read_bytes())['CFBundleIdentifier']
+    script = tolerant_uninstall_script()
+    queried = run(['/bin/sh', '-c', script, 'probe-r2', extension, identifier], env=s.env, check=False)
+    streams = query_streams(queried)
+    query_call = '/usr/bin/pluginkit -m -A -D -vv -i "$identifier"'
+    assert script.count(query_call) == 1
+    failure_script = script.replace(query_call, '/usr/bin/false', 1)
+    failure = run(['/bin/sh', '-c', failure_script, 'probe-r2-query-failure', extension, identifier], env=s.env, check=False)
+    failure_streams = query_streams(failure)
+    r2_passed = (queried.returncode == 0 and streams['exit_codes'] == ['0']
+                 and 'PROBE_UNREGISTER=skipped_unregistered' in queried.stdout
+                 and failure.returncode != 0 and failure_streams['exit_codes'] == ['1']
+                 and 'PROBE_UNREGISTER=skipped_unregistered' not in failure.stdout)
+    observe('R2', 'PASS' if r2_passed else 'FAIL', command=queried.probe_command,
+            script_sha256=hashlib.sha256(script.encode()).hexdigest(), script_exit=queried.returncode,
+            query_argv=['/usr/bin/pluginkit', '-m', '-A', '-D', '-vv', '-i', identifier],
+            query=streams, target=str(extension), stdout=queried.stdout, stderr=queried.stderr,
+            synthetic_query_failure=dict(command=failure.probe_command, script_exit=failure.returncode,
+                                         query=failure_streams, stdout=failure.stdout, stderr=failure.stderr),
+            registered_removal_branch_verified=False)
+
+    s.render('1.2.4')
+    upgraded = s.command('upgrade', check=False)
+    upgrade_state = lifecycle_state(s, 'upgrade', observer)
+    stages = dict(install=dict(command=installed.probe_command, brew_exit=installed.returncode, state=install_state),
+                  upgrade=dict(command=upgraded.probe_command, brew_exit=upgraded.returncode, state=upgrade_state,
+                               stdout=upgraded.stdout, stderr=upgraded.stderr))
+    if upgraded.returncode:
+        observe('R3', 'FAIL', failed_stage='upgrade', stages=stages)
+        return 1  # Stop immediately: do not uninstall, take over or run R5.
+    assert upgrade_state['homebrew_record']['explicit_appdir'] == str(s.appdir)
+    before = receipt.read_bytes()
+    removed = s.command('uninstall', check=False)
+    uninstall_state = lifecycle_state(s, 'uninstall', observer)
+    stages['uninstall'] = dict(command=removed.probe_command, brew_exit=removed.returncode, state=uninstall_state,
+                               stdout=removed.stdout, stderr=removed.stderr,
+                               argv=cask_command_argv(s.brew, 'uninstall', s.appdir, s.token))
+    r3_passed = (removed.returncode == 0 and (install_state['identity'] or {}).get('installed')
+                 and (upgrade_state['identity'] or {}).get('installed') and upgrade_state['version'] == '1.2.4'
+                 and not uninstall_state['app_exists'] and not uninstall_state['homebrew_record']['installed_caskfiles']
+                 and uninstall_state['identity'] is not None and not uninstall_state['identity']['installed']
+                 and receipt.exists() and receipt.read_bytes() == before)
+    observe('R3', 'PASS' if r3_passed else 'FAIL', stages=stages,
+            uninstall_appdir_source='saved .metadata/config.json explicit.appdir; no argv or HOMEBREW_CASK_OPTS override')
+
+    stale = json.loads(receipt.read_text()) if receipt.exists() else None
+    if removed.returncode == 0 and not s.app.exists() and stale is not None and not Path(stale['executable']).exists():
+        successor = workspace / 'other-channel/bin/agentdeck'
+        successor.parent.mkdir(parents=True)
+        shutil.copy2(observer, successor)
+        claimed = run([successor, 'install', 'register', '--channel', 'make', '--executable', successor],
+                      env=s.env, check=False)
+        current = json.loads(receipt.read_text()) if receipt.exists() else None
+        identity = location(successor, s.env) if claimed.returncode == 0 else None
+        passed = (claimed.returncode == 0 and current is not None and current['channel'] == 'make'
+                  and current['executable'] == str(successor) and current['installation_id'] != stale['installation_id']
+                  and identity['installed'])
+        observe('R4', 'PASS' if passed else 'FAIL', command=claimed.probe_command, brew_uninstall_command=removed.probe_command,
+                register_exit=claimed.returncode, takeover=False, stale_receipt=stale,
+                stale_executable_exists=False, receipt_after=current, successor_identity=identity,
+                stdout=claimed.stdout, stderr=claimed.stderr)
+    else:
+        observe('R4', 'NOT_EXECUTED', reason='R3 did not leave an absent App and a retained stale receipt')
+    followup_acceptance_probe()
+    return 0 if r2_passed and r3_passed and observations['R4']['result'] == 'PASS' else 1
+
+
 archives = {}
 save_observations()
 try:
@@ -356,7 +559,9 @@ try:
     def fixture_run(argv, *, env=None):
         return run(argv, env=env).stdout
 
-    for version in ('1.2.3', '1.2.4', '1.2.5'):
+    versions = (('1.2.3',) if focus == 'followup-original' else
+                ('1.2.3', '1.2.4') if focus == 'followup-lifecycle' else ('1.2.3', '1.2.4', '1.2.5'))
+    for version in versions:
         bundle = workspace / ('production-' + version) / 'AgentDeck.app'
         prepare_fixture_app(fixture, bundle, helper, version, fixture_run, env=base_env)
         archive = workspace / f'AgentDeck-production-{version}.zip'
@@ -364,6 +569,8 @@ try:
         archives['production', version] = archive
     run(['/usr/bin/codesign', '-d', '--verbose=4', workspace / 'production-1.2.3/AgentDeck.app/Contents/Helpers/agentdeck'])
     run(['xcrun', 'stapler', 'validate', workspace / 'production-1.2.3/AgentDeck.app'], check=False)
+    if focus in ('followup-original', 'followup-lifecycle'):
+        raise SystemExit(followup_probe())
     if focus:
         raise SystemExit(focused_probe())
     home_control = home_base_control(archives['production', '1.2.3'])

@@ -23,8 +23,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Observe the unchanged main-style uninstall after no App launch
-        run: bash scripts/probe-cask-postflight.sh --ci --run --focus main-uninstall
+      - name: Check every command argument without executing brew
+        run: python3 -B scripts/check-probe-cask-commands.py
+      - name: R1 original uninstall without any App launch
+        run: bash scripts/probe-cask-postflight.sh --ci --run --focus followup-original
       - name: Preserve the production receipt stop condition across jobs
         id: gate
         if: always()
@@ -47,10 +49,10 @@ jobs:
           path: ${{ runner.temp }}/cask-postflight-probe
           if-no-files-found: error
 
-  receipt-lifecycle:
+  complete-lifecycle:
     needs: main-uninstall
-    # Q7's failure stays a failure. This fresh runner is a separately labelled
-    # receipt-only control, not a fallback or repair of the failed cask.
+    # R1's original callback failure stays a failure. R2-R5 use a fresh runner
+    # and the explicitly requested conditional callback, never a receipt-only cask.
     if: always() && needs.main-uninstall.outputs.q2_pass == 'true' && github.ref == 'refs/heads/probe/cask-postflight-receipt'
     runs-on: macos-26
     timeout-minutes: 35
@@ -62,9 +64,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Isolate receipt upgrade and stale-owner behavior from Q7
-        run: bash scripts/probe-cask-postflight.sh --ci --run --focus receipt-lifecycle
-      - name: Preserve complete control observations
+      - name: Check every command argument without executing brew
+        run: python3 -B scripts/check-probe-cask-commands.py
+      - name: R2-R5 complete lifecycle and optional acceptance account
+        run: bash scripts/probe-cask-postflight.sh --ci --run --focus followup-lifecycle
+      - name: Preserve complete lifecycle observations
         if: always()
         uses: actions/upload-artifact@v4
         with:

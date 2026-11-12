@@ -1,0 +1,25 @@
+# One-off complete lifecycle probe using the R2 conditional uninstall.
+cask "@TOKEN@" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  url "@URL@"
+  name "AgentDeck tolerant uninstall probe"
+  desc "Probe the complete receipt lifecycle without registering or launching the App"
+  homepage "https://github.com/kitdine/agent-deck"
+  depends_on macos: :tahoe
+
+  app "AgentDeck.app"
+
+  postflight_steps do
+@REGISTER_STEP@
+  end
+
+  uninstall quit: "com.kitdine.agentdeck",
+            script: {
+              executable: "/bin/sh",
+              args: ["-c", <<~'SH', "agentdeck-widget-uninstall", "#{appdir}/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex", "@WIDGET_ID@"],
+@UNINSTALL_SCRIPT@
+              SH
+              sudo: false,
+            }
+end
