@@ -6,8 +6,8 @@ if [[ ${1:-} != --ci || ${GITHUB_ACTIONS:-} != true || ${RUNNER_ENVIRONMENT:-} !
   echo 'REFUSED: requires --ci, GITHUB_ACTIONS=true, RUNNER_ENVIRONMENT=github-hosted, and RUNNER_OS=macOS.' >&2
   exit 2
 fi
-if [[ ${2:-} != --inspect ]]; then
-  echo 'usage: probe-cask-postflight.sh --ci --inspect' >&2
+if [[ ${2:-} != --inspect && ${2:-} != --run ]]; then
+  echo 'usage: probe-cask-postflight.sh --ci <--inspect|--run>' >&2
   exit 2
 fi
 
@@ -16,7 +16,6 @@ python3 - <<'PY'
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 
@@ -46,20 +45,23 @@ metadata['brew_commit'] = run(['git', '-C', str(repository), 'rev-parse', 'HEAD'
 metadata['brew_home'] = os.environ['HOME']
 (output / 'runtime.json').write_text(json.dumps(metadata, indent=2) + '\n')
 
-pattern = re.compile(r'postflight_steps|writable_paths|writable_base|class InstallStep|class Sandbox|class AbstractFlightStep')
 files = []
-for path in sorted((repository / 'Library/Homebrew').rglob('*.rb')):
-    if '/test/' in str(path) or '/vendor/' in str(path):
-        continue
+for relative in ('install_steps.rb', 'cask/artifact/install_steps.rb', 'cask/artifact/abstract_artifact.rb',
+                 'cask/dsl.rb', 'sandbox.rb', 'cask_artifact.rb'):
+    path = repository / 'Library/Homebrew' / relative
     text = path.read_text()
-    if pattern.search(text):
-        files.append(path)
-        destination = output / 'brew-source' / path.relative_to(repository)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, destination)
-        print(f'\nSOURCE {path.relative_to(repository)}', flush=True)
-        for number, line in enumerate(text.splitlines(), 1):
-            print(f'{number}: {line}')
+    files.append(path)
+    destination = output / 'brew-source' / path.relative_to(repository)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, destination)
+    print(f'\nSOURCE {path.relative_to(repository)}', flush=True)
+    for number, line in enumerate(text.splitlines(), 1):
+        print(f'{number}: {line}')
 print('INSPECTION_COMPLETE: ' + json.dumps(metadata, sort_keys=True), flush=True)
 print('SOURCE_FILES: ' + json.dumps([str(path.relative_to(repository)) for path in files]), flush=True)
 PY
+
+if [[ $2 == --run ]]; then
+  root=$(cd "$(dirname "$0")/.." && pwd)
+  python3 "$root/scripts/probe-cask-postflight.py" --ci
+fi

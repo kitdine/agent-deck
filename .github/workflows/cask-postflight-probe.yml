@@ -17,8 +17,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Inspect the runner's actual Homebrew step DSL
-        run: bash scripts/probe-cask-postflight.sh --ci --inspect
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Probe real Homebrew without changing the product
+        run: bash scripts/probe-cask-postflight.sh --ci --run
       - name: Preserve complete probe observations
         if: always()
         uses: actions/upload-artifact@v4

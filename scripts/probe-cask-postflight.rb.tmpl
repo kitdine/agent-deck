@@ -1,0 +1,36 @@
+# One-off probe only; this is not the product cask template.
+cask "@TOKEN@" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  url "@URL@"
+  name "AgentDeck postflight probe"
+  desc "Disposable receipt feasibility probe"
+  homepage "https://github.com/kitdine/agent-deck"
+  depends_on macos: :tahoe
+
+  app "AgentDeck.app"
+
+  postflight_steps do
+    run "/bin/sh",
+        args: ["-c", 'printf "PROBE_POSTFLIGHT_VERSION=%s\nPROBE_STEP_HOME=%s\n" "$1" "$HOME"',
+               "probe", "{{version}}"],
+        print_stdout: true
+    run "{{appdir}}/AgentDeck.app/Contents/Helpers/agentdeck",
+        args: ["--version"],
+        print_stdout: true
+@REGISTER_STEP@
+  end
+
+  uninstall quit: "com.kitdine.agentdeck",
+            script: {
+              executable: "/bin/sh",
+              args: ["-c", <<~SH, "agentdeck-widget-uninstall", "#{appdir}/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex"],
+                if [ -d "$1" ]; then /usr/bin/pluginkit -r "$1"; fi
+                status=$?
+                printf 'PROBE_PLUGINKIT_R_EXIT=%s\n' "$status"
+                exit "$status"
+              SH
+              sudo: false,
+              print_stdout: true,
+            }
+end
