@@ -469,6 +469,9 @@ public struct EmbeddedHelperRunner: Sendable {
     private let environment: [String: String]
     private let stateRoot: String
     private let timeout: Duration
+	/// Shared by every copy of this runner: the bootstrap stream fills it and
+	/// the Widget collector reads it.
+	private let deliveredSessionScope = DeliveredSessionScopeBatches()
 
     public init(
         appBundleURL: URL,
@@ -704,6 +707,41 @@ public struct EmbeddedHelperRunner: Sendable {
 		return view
 	}
 
+	/// Reads one scope for every client and period from committed state in one
+	/// helper process (`desktop session-scope --batch`): the Widget batch's
+	/// production form. The producer pins every view to the first one's
+	/// generation; the collector still verifies each view.
+	public func sessionScopeBatch(
+		scope: DesktopSessionScopeV1,
+		recentLimit: Int,
+		asOf: String
+	) async throws -> [DesktopSessionScopeViewV1] {
+		guard (Self.minimumRecentLimit ... Self.maximumRecentLimit).contains(recentLimit) else {
+			throw HelperExecutionError.invalidRecentLimit(recentLimit)
+		}
+		let output = try await process.run(
+			executableURL: embeddedHelperURL(),
+			arguments: helperArguments(Self.sessionScopeBatchArguments(scope: scope, recentLimit: recentLimit, asOf: asOf)),
+			environment: environment,
+			timeout: timeout
+		)
+		guard output.exitStatus == 0, !output.stdoutTruncated, !output.stderrTruncated else {
+			throw HelperExecutionError.nonZeroExit(output.exitStatus)
+		}
+		do {
+			return try decodeDesktopSessionScopeBatchEnvelopeV1(output.stdout)
+		} catch {
+			throw HelperExecutionError.malformedOutput
+		}
+	}
+
+	public static func sessionScopeBatchArguments(scope: DesktopSessionScopeV1, recentLimit: Int, asOf: String) -> [String] {
+		[
+			"--format", "json", "desktop", "session-scope", "--scope", scope.rawValue, "--batch",
+			"--recent-limit", String(recentLimit), "--as-of", asOf,
+		]
+	}
+
 	public static func sessionScopeArguments(
 		_ selection: DesktopSessionScopeSelectionV1,
 		recentLimit: Int,
@@ -748,46 +786,92 @@ public struct EmbeddedHelperRunner: Sendable {
 		return .failed(code: failure.code, currentRevision: failure.currentRevision)
 	}
 
+	/// Returns as soon as the stream's terminal line reports a completed round.
+	/// The helper may still be running then: it follows that line with the
+	/// default scope's Widget batch for the last publication, which reaches
+	/// the Widget collector through `widgetSessionScopeDelivered` instead of a
+	/// second helper. A round that did not complete is reported, as before,
+	/// when the helper has exited.
 	public func bootstrapServingSnapshot(
 		progress: @escaping @Sendable (DesktopScanProgress) -> Void,
 		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void
 	) async throws -> DesktopServingSnapshotV2? {
 		let capture = DesktopBootstrapCapture()
-		let output = try await process.runLines(
-			executableURL: embeddedHelperURL(),
-			arguments: helperArguments(["--format", "ndjson", "desktop", "bootstrap"]),
-			environment: environment,
-			// This is a lifetime-bound background job, not the legacy 120s UI
-			// request. Cancellation closes its owner connection at App exit.
-			timeout: .seconds(24 * 60 * 60),
-			maximumLineBytes: 8 * 1024 * 1024, maximumLines: 0,
-			onLine: { line in
-				do {
-					let probe = try JSONDecoder().decode(DesktopBootstrapProbe.self, from: line)
-					guard probe.schemaVersion == 2, probe.command == "desktop.bootstrap" else {
-						throw HelperExecutionError.malformedOutput
+		let settlement = DesktopBootstrapSettlement()
+		let delivered = deliveredSessionScope
+		let token = delivered.begin()
+		let process = self.process
+		let executableURL = try embeddedHelperURL()
+		let arguments = helperArguments(["--format", "ndjson", "desktop", "bootstrap"])
+		let environment = self.environment
+		let run = Task {
+			defer { delivered.end(token) }
+			do {
+				let output = try await process.runLines(
+					executableURL: executableURL,
+					arguments: arguments,
+					environment: environment,
+					// This is a lifetime-bound background job, not the legacy 120s UI
+					// request. Cancellation closes its owner connection at App exit.
+					timeout: .seconds(24 * 60 * 60),
+					maximumLineBytes: 8 * 1024 * 1024, maximumLines: 0,
+					onLine: { line in
+						do {
+							let probe = try JSONDecoder().decode(DesktopBootstrapProbe.self, from: line)
+							guard probe.schemaVersion == 2, probe.command == "desktop.bootstrap" else {
+								throw HelperExecutionError.malformedOutput
+							}
+							switch probe.type {
+							case "publication":
+								let event = try JSONDecoder().decode(DesktopBootstrapPublication.self, from: line)
+								try event.data.validate()
+								capture.install(event.data)
+								publication(event.data)
+							case "progress":
+								let event = try JSONDecoder().decode(DesktopBootstrapProgress.self, from: line)
+								progress(event.data)
+							case "terminal":
+								capture.finish()
+								if let event = try? JSONDecoder().decode(DesktopBootstrapTerminal.self, from: line),
+									event.data.usage.state == "completed", event.data.session.state == "completed",
+									capture.isComplete, let latest = capture.latest {
+									delivered.expect(token, publication: latest.header.publicationID)
+									settlement.resume(.success(latest))
+								}
+							case "session_scope_batch":
+								// After the terminal line: a batch that cannot be read is
+								// only a missing delivery, never a failed round.
+								if let event = try? JSONDecoder().decode(DesktopBootstrapSessionScopeBatch.self, from: line) {
+									delivered.deliver(token, publication: event.data.publicationID,
+										WidgetSessionScopeDelivery(asOf: event.data.asOf, views: event.data.views))
+								} else {
+									delivered.end(token)
+								}
+							default: throw HelperExecutionError.malformedOutput
+							}
+						} catch { capture.fail() }
 					}
-					switch probe.type {
-					case "publication":
-						let event = try JSONDecoder().decode(DesktopBootstrapPublication.self, from: line)
-						try event.data.validate()
-						capture.install(event.data)
-						publication(event.data)
-					case "progress":
-						let event = try JSONDecoder().decode(DesktopBootstrapProgress.self, from: line)
-						progress(event.data)
-					case "terminal": capture.finish()
-					default: throw HelperExecutionError.malformedOutput
-					}
-				} catch { capture.fail() }
+				)
+				guard output.exitStatus == 0 else {
+					settlement.resume(.failure(HelperExecutionError.nonZeroExit(output.exitStatus)))
+					return
+				}
+				guard !output.stdoutLineTruncated, !output.stderrTruncated, capture.isComplete,
+					let latest = capture.latest
+				else {
+					settlement.resume(.failure(HelperExecutionError.malformedOutput))
+					return
+				}
+				settlement.resume(.success(latest))
+			} catch {
+				settlement.resume(.failure(error))
 			}
-		)
-		guard output.exitStatus == 0 else { throw HelperExecutionError.nonZeroExit(output.exitStatus) }
-		guard !output.stdoutLineTruncated, !output.stderrTruncated, capture.isComplete else {
-			throw HelperExecutionError.malformedOutput
 		}
-		guard let latest = capture.latest else { throw HelperExecutionError.malformedOutput }
-		return latest
+		return try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { settlement.install($0) }
+		} onCancel: {
+			run.cancel()
+		}
 	}
 
 	private func scanIndexes(
@@ -1264,6 +1348,146 @@ private struct DesktopBootstrapProbe: Decodable {
 }
 private struct DesktopBootstrapPublication: Decodable { let data: DesktopServingSnapshotV2 }
 private struct DesktopBootstrapProgress: Decodable { let data: DesktopScanProgress }
+private struct DesktopBootstrapTerminal: Decodable {
+	struct Part: Decodable { let state: String }
+	struct Result: Decodable { let usage: Part; let session: Part }
+	let data: Result
+}
+private struct DesktopBootstrapSessionScopeBatch: Decodable {
+	struct Batch: Decodable {
+		let publicationID: String
+		let asOf: String
+		let views: [DesktopSessionScopeViewV1]
+		enum CodingKeys: String, CodingKey { case publicationID = "publication_id", asOf = "as_of", views }
+	}
+	let data: Batch
+}
+
+/// The bootstrap call's result, settled once: at a completed terminal line, or
+/// when the helper has exited.
+private final class DesktopBootstrapSettlement: @unchecked Sendable {
+	private let lock = NSLock()
+	private var continuation: CheckedContinuation<DesktopServingSnapshotV2?, Error>?
+	private var result: Result<DesktopServingSnapshotV2?, Error>?
+	private var settled = false
+
+	func install(_ continuation: CheckedContinuation<DesktopServingSnapshotV2?, Error>) {
+		lock.lock()
+		if let result {
+			lock.unlock()
+			continuation.resume(with: result)
+			return
+		}
+		self.continuation = continuation
+		lock.unlock()
+	}
+
+	func resume(_ result: Result<DesktopServingSnapshotV2?, Error>) {
+		lock.lock()
+		guard !settled else { lock.unlock(); return }
+		settled = true
+		let continuation = self.continuation
+		self.continuation = nil
+		if continuation == nil { self.result = result }
+		lock.unlock()
+		continuation?.resume(with: result)
+	}
+}
+
+/// The Widget batch a bootstrap stream hands over after its terminal line.
+/// A reader asking for the stream's last publication waits for it, bounded by
+/// the helper's exit and by `patience`; any other publication has none.
+final class DeliveredSessionScopeBatches: @unchecked Sendable {
+	static let patience: Duration = .seconds(10)
+
+	private enum State {
+		case idle
+		case awaiting(publication: String)
+		case delivered(publication: String, WidgetSessionScopeDelivery)
+	}
+
+	private let lock = NSLock()
+	private var token = 0
+	private var state = State.idle
+	private var nextWaiter = 0
+	private var waiters: [Int: CheckedContinuation<WidgetSessionScopeDelivery?, Never>] = [:]
+
+	/// A new stream: whatever an earlier one promised or delivered is gone.
+	func begin() -> Int {
+		lock.lock()
+		token += 1
+		let current = token
+		let abandoned = settle(.idle)
+		lock.unlock()
+		abandoned.forEach { $0.resume(returning: nil) }
+		return current
+	}
+
+	func expect(_ token: Int, publication: String) {
+		lock.lock()
+		guard token == self.token, case .idle = state else { lock.unlock(); return }
+		state = .awaiting(publication: publication)
+		lock.unlock()
+	}
+
+	func deliver(_ token: Int, publication: String, _ delivery: WidgetSessionScopeDelivery) {
+		lock.lock()
+		guard token == self.token, case let .awaiting(expected) = state, expected == publication else {
+			lock.unlock()
+			return
+		}
+		let waiting = settle(.delivered(publication: publication, delivery))
+		lock.unlock()
+		waiting.forEach { $0.resume(returning: delivery) }
+	}
+
+	/// The stream's helper is gone: a batch not delivered by now never will be.
+	func end(_ token: Int) {
+		lock.lock()
+		guard token == self.token, case .awaiting = state else { lock.unlock(); return }
+		let abandoned = settle(.idle)
+		lock.unlock()
+		abandoned.forEach { $0.resume(returning: nil) }
+	}
+
+	func delivery(for publication: String, patience: Duration = DeliveredSessionScopeBatches.patience) async -> WidgetSessionScopeDelivery? {
+		await withCheckedContinuation { continuation in
+			lock.lock()
+			switch state {
+			case let .delivered(delivered, delivery) where delivered == publication:
+				lock.unlock()
+				continuation.resume(returning: delivery)
+			case let .awaiting(expected) where expected == publication:
+				nextWaiter += 1
+				let id = nextWaiter
+				waiters[id] = continuation
+				lock.unlock()
+				Task { [weak self] in
+					try? await Task.sleep(for: patience)
+					self?.expire(id)
+				}
+			default:
+				lock.unlock()
+				continuation.resume(returning: nil)
+			}
+		}
+	}
+
+	private func expire(_ id: Int) {
+		lock.lock()
+		let waiter = waiters.removeValue(forKey: id)
+		lock.unlock()
+		waiter?.resume(returning: nil)
+	}
+
+	/// Call with the lock held.
+	private func settle(_ next: State) -> [CheckedContinuation<WidgetSessionScopeDelivery?, Never>] {
+		state = next
+		let waiting = Array(waiters.values)
+		waiters.removeAll()
+		return waiting
+	}
+}
 
 private final class DesktopBootstrapCapture: @unchecked Sendable {
 	private let lock = NSLock()
@@ -1802,7 +2026,19 @@ extension EmbeddedHelperRunner: WidgetSessionScopeReading {
 		generationID: String?,
 		asOf: String
 	) async throws -> DesktopSessionScopeViewV1 {
-		try await sessionScopeView(selection, recentLimit: Self.minimumRecentLimit, generationID: generationID, asOf: asOf)
+		// The default recent rows, so the Popover can show a batch view as it is.
+		try await sessionScopeView(selection, recentLimit: Self.defaultRecentLimit, generationID: generationID, asOf: asOf)
+	}
+
+	public func widgetSessionScopeBatch(
+		scope: DesktopSessionScopeV1,
+		asOf: String
+	) async throws -> [DesktopSessionScopeViewV1]? {
+		try await sessionScopeBatch(scope: scope, recentLimit: Self.defaultRecentLimit, asOf: asOf)
+	}
+
+	public func widgetSessionScopeDelivered(publication: String) async -> WidgetSessionScopeDelivery? {
+		await deliveredSessionScope.delivery(for: publication)
 	}
 }
 
@@ -2123,6 +2359,16 @@ public final class DesktopRefreshCoordinator {
 	public private(set) var scanProgress: DesktopScanProgress?
 	public private(set) var fullAttempt: DesktopFullAttemptState = .idle
 	public private(set) var widgetPublication: DesktopWidgetPublicationState = .neverPublished
+	/// The complete default-scope views of the last accepted Widget batch and
+	/// the publication they were read for. They are the same Go answers the
+	/// Widget shows; the Popover uses them for client and period changes.
+	public private(set) var sessionScopeBatch: (publication: String, views: [DesktopSessionScopeViewV1])?
+
+	/// The batch view answering `selection` for the installed publication.
+	public func sessionScopeBatchView(_ selection: DesktopSessionScopeSelectionV1, publication: String?) -> DesktopSessionScopeViewV1? {
+		guard let batch = sessionScopeBatch, batch.publication == publication else { return nil }
+		return batch.views.first { $0.available && $0.selection == selection }
+	}
 
 	private let host: any DesktopSnapshotRefreshing
 	private let quotaRefresher: (any DesktopQuotaRefreshing)?
@@ -2649,7 +2895,15 @@ public final class DesktopRefreshCoordinator {
 		let outcome: WidgetSessionScopeBatchOutcome
 		if let sessionScopeCollector {
 			let defaults = envelope.data.sessionScopeView.view?.default ?? .unconfirmed
-			outcome = await sessionScopeCollector.collect(default: defaults)
+			// A publication held while the surface draws is still the bootstrap's
+			// last one: the batch handed over with it is the committed state a
+			// read made now would answer from.
+			let delivered = heldPublication?.header.publicationID ?? servingHeader?.publicationID
+			let collected = await sessionScopeCollector.collectWithViews(default: defaults, publication: delivered)
+			outcome = collected.outcome
+			if case .accepted = outcome {
+				sessionScopeBatch = (servingHeader?.publicationID ?? envelope.data.generatedAt, collected.views)
+			}
 		} else {
 			outcome = .rejected(reason: AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		}

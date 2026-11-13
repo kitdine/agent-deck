@@ -748,7 +748,7 @@ final class MenuBarViewModel {
 		case .attribution:
 			return !scope.quality.available || !scope.pricing.available
 		case .sessions:
-			return sessionScopePanel.state != .ready
+			return !sessionScopePanelIsReady
 		}
 	}
 

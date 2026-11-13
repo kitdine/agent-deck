@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -199,6 +200,98 @@ func TestSessionScopeGenerationIsSharedAcrossSelectionsAndMatchesTheReader(t *te
 	})
 	if *views[0].GenerationID != want || !isGenerationID(want) {
 		t.Fatalf("generation %s, want the serving generation's %s", *views[0].GenerationID, want)
+	}
+}
+
+// One batch read answers exactly what the nine pinned single reads answer.
+func TestSessionScopeBatchEqualsTheNinePinnedReads(t *testing.T) {
+	root := widgetBatchState(t)
+	s := scopeService(t, root)
+	for _, scope := range []string{"work", "auxiliary", "all"} {
+		batch, err := s.SessionScopeBatch(context.Background(), SessionScopeRequest{Scope: scope, RecentLimit: 1, AsOf: fixtureNow})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := readWidgetBatch(t, s, scope, fixtureNow); !reflect.DeepEqual(batch.Views, want) {
+			t.Fatalf("%s batch differs from the pinned single reads:\n%+v\nwant\n%+v", scope, batch.Views, want)
+		}
+	}
+	if !reflect.DeepEqual(SessionScopeBatchClients, widgetBatchClients) || !reflect.DeepEqual(SessionScopeBatchPeriods, widgetBatchPeriods) {
+		t.Fatalf("batch order %v × %v", SessionScopeBatchClients, SessionScopeBatchPeriods)
+	}
+	if _, err := s.SessionScopeBatch(context.Background(), SessionScopeRequest{Scope: "maintenance", RecentLimit: 1}); !errors.Is(err, ErrInvalidSessionScope) {
+		t.Fatalf("invalid scope: %v", err)
+	}
+}
+
+// The batch a publishing process hands over is the saved default's batch at
+// one whole-second instant; a changed default changes its scope, never the
+// instant's form.
+func TestSessionScopeDefaultBatchAnswersTheSavedDefault(t *testing.T) {
+	root := widgetBatchState(t)
+	s := scopeService(t, root)
+	s.Now = func() time.Time { return fixtureNow.Add(750 * time.Millisecond) }
+	for _, scope := range []string{"work", "auxiliary"} {
+		if scope != "work" {
+			setDefaultScope(t, root, scope)
+		}
+		got := s.SessionScopeDefaultBatch(context.Background(), 1)
+		if got.AsOf != fixtureNow.Format(time.RFC3339) || !got.Default.Confirmed || got.Default.Value == nil || *got.Default.Value != scope {
+			t.Fatalf("%s default batch identity = %q %+v", scope, got.AsOf, got.Default)
+		}
+		if want := readWidgetBatch(t, s, scope, fixtureNow); !reflect.DeepEqual(got.Views, want) {
+			t.Fatalf("%s default batch differs from the pinned single reads:\n%+v\nwant\n%+v", scope, got.Views, want)
+		}
+	}
+	// An unconfirmed default starts no batch; it is never read as Work.
+	unreadable := scopeFixture(t)
+	if err := os.WriteFile(filepath.Join(unreadable, "agentdeck.sqlite3"), []byte("not a database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := scopeService(t, unreadable).SessionScopeDefaultBatch(context.Background(), 1); got.Default.Confirmed || got.Views == nil || len(got.Views) != 0 {
+		t.Fatalf("unconfirmed default batch = %+v with %d views", got.Default, len(got.Views))
+	}
+}
+
+// A generation that moves while a batch is being read leaves every later
+// view unavailable; the batch never splices two generations together. A
+// caller's own pin holds from the first view on.
+func TestSessionScopeBatchNeverSplicesGenerations(t *testing.T) {
+	root := widgetBatchState(t)
+	s := scopeService(t, root)
+	sessionScopeBatchObserver = func(index int) {
+		if index == 4 {
+			// Saving a default is a committed core write: the generation moves.
+			setDefaultScope(t, root, "all")
+		}
+	}
+	t.Cleanup(func() { sessionScopeBatchObserver = nil })
+	batch, err := s.SessionScopeBatch(context.Background(), SessionScopeRequest{Scope: "auxiliary", RecentLimit: 1, AsOf: fixtureNow})
+	if err != nil || len(batch.Views) != 9 {
+		t.Fatalf("batch: %d views, %v", len(batch.Views), err)
+	}
+	generation := batch.Views[0].GenerationID
+	for index, view := range batch.Views {
+		if index < 4 {
+			if !view.Available || generation == nil || view.GenerationID == nil || *view.GenerationID != *generation {
+				t.Fatalf("view %d before the move = %+v", index, view)
+			}
+			continue
+		}
+		if view.Available || view.Counts != nil || view.GenerationID != nil || view.Reason == nil ||
+			*view.Reason != sessionorigin.PublicationReasonGenerationUnavailable {
+			t.Fatalf("view %d after the move = %+v", index, view)
+		}
+	}
+	sessionScopeBatchObserver = nil
+	pinned, err := s.SessionScopeBatch(context.Background(), SessionScopeRequest{Scope: "auxiliary", RecentLimit: 1, AsOf: fixtureNow, GenerationID: *generation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, view := range pinned.Views {
+		if view.Available || view.Reason == nil || *view.Reason != sessionorigin.PublicationReasonGenerationUnavailable {
+			t.Fatalf("view %d of a batch pinned to a moved generation = %+v", index, view)
+		}
 	}
 }
 

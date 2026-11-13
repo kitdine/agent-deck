@@ -25,7 +25,7 @@ func (e *deleteCountingExecutor) QueryContext(ctx context.Context, q string, arg
 }
 
 func (e *deleteCountingExecutor) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	if strings.HasPrefix(q, "DELETE FROM session_documents") {
+	if strings.Contains(q, "DELETE FROM session_documents") {
 		e.deletes++
 	}
 	return e.DB.ExecContext(ctx, q, args...)

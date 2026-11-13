@@ -130,7 +130,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
 | 6. `settings-control` | [x] | [x] |
 | 7. `widget-summary` | [x] | [x] |
 | 8. `durability` | [x] | [x] |
-| 9. `integrated-acceptance` | [ ] | [ ] |
+| 9. `integrated-acceptance` | [x] | [x] |
 
 顺序：1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 可串行执行；最低依赖见各任务。
 共享文件变更须顺序协调；此处依赖图不授权并行代理、分支创建或跨工作树合并。
@@ -202,6 +202,11 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   覆盖只 dirty 受影响分区；切换零额外采集、不新增扫描、不强制全量重建。
 - 验证 L3：两库交错事务、直接 SQL 依赖时钟、回滚、token 过渡窗口、重试上限、迟到发布与 epoch 切换；
   全量/增量 oracle、分页与非可加聚合回归；记录触发器写放大，最终预算由任务 9 在集成内容核验。
+  2026-11-11 合同修订（用户决定，任务 9 评审发现 ASC-IA-R1-F1，同步于 ASC-IA-R2-F2）：上文依赖清单与
+  “直接 SQL 依赖时钟”中的“FTS 输入”不再由 trigger 保证。FTS 搜索文本（`session_documents`）是唯一例外：
+  内容影子表不装 trigger，改由 session 包的产品写入路径在同一事务内显式推进 sessions 侧 serving revision；
+  绕过 session 包的直接 SQL 不在保证范围内。理由、保证范围与验证方式以 architecture.md §4 sessions 行与 §6 为准。
+  其余读取依赖仍按上文由 trigger 与直接 SQL 时钟验证。原文保留，不改写已评审的历史。
 
 ### 4. cli-contract
 
@@ -236,6 +241,7 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   文案并带 rule_version），未知码显示通用文案、不推断 auxiliary。
   向任务 7 提供可按显式 Selection 请求的 Go session_scope_view 与 Swift 解码接口；
   不将 Popover 控制器的当前 selection 作为 Widget 数据来源。任务 7 承担 Widget 调用与聚合生产链。
+  反方向自 2026-11-12 起成立：Popover 在默认范围内复用任务 7 被接受批次的视图，见任务 7 的 2026-11-12 合同修订。
 - 验收：快速切换、旧请求迟到、刷新/关闭重开、partial/stale/no-store、unknown 及旧 producer，
   不拼接不同 selection/generation；任务子代理留 Work。金额/额度始终全量，来源详情仅安全字段。
   七个已知原因码各有文案，注入未知码时走通用回退且分类显示不变。
@@ -282,6 +288,17 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   仍失败保留旧完整 App Group 快照并标 stale，无旧结果则 unavailable，不发布拼接代次。
   任务 3/5 的接口接入和对应 Go/Swift 回归在本任务范围内完成，不能留给渲染任务猜测。
   默认未确认不启动新分类批次；Popover 切换不会改变批次 scope 或触发本链重新采集。
+  2026-11-12 合同修订（用户决定，任务 9 评审发现 ASC-IA-R1-F2，同步于 ASC-IA-R2-F2）：上文“宿主按组合请求、
+  不新增多组合 wire 字段”的生产路径已由整批交付取代。现行生产路径：`desktop bootstrap` 在 `terminal` 行之后
+  随 publication 交付一行 `session_scope_batch`（该 publication ID、整秒 as-of、已确认默认范围的九份视图；
+  默认未确认时视图为空）；交付缺失、校验不通过、ID 不符或超时时，宿主以一次 `desktop session-scope --batch`
+  （envelope `desktop.session-scope-batch`）读取整批；逐组合读取仅保留给不支持整批的读取器作兼容。
+  上文组合一致性规则不变：首个视图固定 generation，九份视图同一 as-of，任一不一致即丢弃整批并按原预算重试，
+  交付批次与读取批次走同一逐视图校验。实现与决定经过见文末 2026-11-12 任务 9 修复交接。原文保留，不改写已评审的历史。
+  同一决定的反向依赖（评审发现 ASC-TASKS-R7-F1）：被接受批次的九份默认范围视图按 publication 标识保存，
+  同时供菜单栏 Popover 在默认范围内切换客户端/时段时直接显示，不再发起读取；标识不符或临时切到非默认范围时仍按需读取。
+  批次的最近会话条数因此取 Popover 的默认值（5），不是 Widget 自身所需的 1；改动批次条数、视图集合或保存方式会改变 Popover 的显示。
+  Popover 仍不作为 Widget 的数据来源（任务 5），批次 scope 也不随 Popover 切换改变。
 - 消费实现：session_scope_summary 白名单 codec，只有聚合与安全 publication/time；Magnitude small/large
   消费实际 entry client/period，中号不加 count，其他四种 kind 保持原义。旧 total 不改名。
 - 验收：missing/invalid/unknown enum/client-period mismatch 只降级会话行，外层读失败整卡 typed failure；
@@ -323,6 +340,13 @@ Widget 最终表面已提交于 `6818c682f96eaddcdab227ee96a0609bebbda4b9`；
   同输入 full-view 等价先通过，按该矩阵测 scan/无变化/增量/恢复和前台延迟；不以孤立 microbenchmark 代替。
   scan-performance 已合入 `main` `6fff208`，本分支已刷新包含它，在实际内容上测量；缺最终集成对象时
   仅该联合验收保持未完成，不反向撤销可独立通过的前序任务，不标记 AC8 完成。
+  2026-11-11 用户决定收窄测量条件：只测本条点名的五类，即 P08（无变化/追加）、P09（scan）、P10（增量）、P02 与 P04（恢复）、
+  P01 与 P03（前台延迟），基线臂为合并基 `660c815`；P06 空闲窗口、P07 重建资源与 P11 全新安装首批不在本任务范围。
+  理由：scan-performance 已无数值门，本任务需要的是合并后有无回退的对比，不是重做其 E7 全矩阵。测量方法与样本数仍按该契约。
+  P01 只测首击与重复点击两层（评审发现 ASC-TASKS-R7-F2）；第三层“后台全量重建中点击”不在本任务范围。来源：用户的收窄决定只写了
+  “P01”，未区分层次；该层的执行绑在 P07 全量重建期间，P07 已排除，执行者据此推论该层随之排除。正式矩阵曾误排此层，
+  用户于 2026-11-11 当场反对继续运行（“为啥要跑的东西越来越多 之前不是说不需要全量跑的吗”），该批于 71/100 对停止并作废。
+  因此 `performance-matrix` 证据覆盖的 P01 只含 P01-first 与 P01-repeat。
 - 验证 L3：适用 Go 全量/race/vet 与 macOS 集成/原生检查，复用精确内容可复用证据；
   不运行仅发布需要的 L4，不授予合并/安装/发布。需要超出现有权限的数据或安装时另取得相应授权。
   最后任务通过后按项目要求完成 Topic 证据边界与稳定 specs 同步；不把 Beads closed 当产品通过。
@@ -1050,3 +1074,232 @@ Repair 1 已交接待独立复评（claude-code，未提交）：HEAD 不变，5
 `176cbe65755ed9c4d0d961246837ba11cbc470a870414280afc8a806605c14d8`，完成门禁 VERIFIED（8/8）。
 本轮补足全量 Go 回归，Beads 进入 awaiting_commit 并释放评审占用；完整结论和证据边界见
 [评审记录](reviews/durability.md)。待用户授权提交，未推送；任务 9 及 Topic 边界保持未完成。
+
+2026-11-10 任务 9 `integrated-acceptance` 开发进行中（claude-code，未提交，Dev 未勾选）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`，
+产品代码未改，新增 `cmd/agentdeck/session_origin_acceptance_test.go`（blob `efb4ee95c29df6af6028f08070e2dfbced7b186c`）。
+
+- 功能联合验收：五个 `TestIntegratedAcceptance…` 用例以真实格式的 Claude/Codex 日志、OTel 导出与 claude-mem 15.2.1 fixture 走真实扫描，
+  对照手写 oracle 核对 CLI 列表、`desktop session-scope`（菜单栏视图与固定 generation 的 Widget 批次）、`desktop snapshot` 默认范围和 Settings 读取。
+  覆盖默认/覆盖/清除/重扫/来源停用与启用/purge-index/备份恢复重绑、追加与晚到 rollout 的增量=全量、来源不可读的降级与恢复，
+  以及写放大上界（范围读取零写入；一次覆盖推进 serving revision 一次并只失效该会话分区；启用来源的无变化扫描比停用多且仅多一次）。
+  事件行、token 与费用在全链路逐字节不变；无价模型使总费用保持 null；晚到 rollout 取代 OTel 记录而不重复计量。
+- 变异：关闭恢复后的覆盖重激活、去掉 `codex_exec` 规则条目，均使用例失败，已还原。
+- 验证：`scripts/run-go-test.sh ./...` 通过；`-race -timeout 40m -run '^TestIntegratedAcceptance' ./cmd/agentdeck/` 通过；`go vet ./...` 干净。
+  原生代码自 `13fdf29` 起未变，未重跑 macOS 测试。工具链 go1.27.3。
+- 性能矩阵未完成，AC8 不标记完成：按 scan-performance 测量契约，以合并基 `660c815` 为基线臂、HEAD 为候选臂，锚定日 2026-11-10，
+  语料 `1d9ee56f…`，只跑了工具 pilot。P08、P09、P03 工具无效为 0；App 条件大量工具无效且两臂相近：
+  P02 7/20 与 11/20、P01-first 12/20 与 12/20、P01-rebuild 10/20 与 4/20（collector 打点为空，且与 App 的 `app.refresh_failed`
+  helper_kind=6 exit_status=1 一一对应），P04 19/20 与 20/20、P11-first 16/17 与 16/18（`driver.invalid`，状态栏窗口 `screen=0`）。
+  用户离开电脑后重跑 P02 pilot 仍为 12/20 与 11/20，按用户指示停止；未跑任何正式批次，无对比结果。
+  根因未定位：在 App 之外单独或并发运行 `desktop refresh-indexes` 未能复现退出码 1。基线臂同样失败，故不是本主题候选特有。
+- 观察（未作缺陷处理，供评审判断）：claude-mem 不可读时 `session list` envelope 仍为 availability=available、partial=false、无 warning，
+  仅逐项 reason_code 为 `origin_source_unavailable`；桌面视图给出 `origin_coverage.complete=false`。
+- CEv1 WorkUnit `auxiliary-session-classification:integrated-acceptance` 已建 9 项 required criteria，尚无证据。Beads 保持 in_progress。
+
+2026-11-11 任务 9 续（claude-code，未提交，Dev 未勾选）：
+
+- 工具无效根因已定位，是合并基 `660c815` 上已存在的产品缺陷，不是本主题引入：`internal/store/store.go` 的
+  `preparePrivateSQLiteFiles` 与 `prepareExistingPrivateSQLiteFile` 在每次打开数据库时对已存在的主库及 `-wal`/`-shm` 做一次打开再关闭。
+  POSIX 下进程关闭某文件的任一描述符会释放它在该文件上的全部 fcntl 锁，同进程第二次打开因此释放了首个连接的 SQLite 锁；
+  另一进程随后把自己当作首个连接并重置 WAL 共享内存，首个连接在下一次 WAL 访问时以 SIGBUS 崩溃。
+  证据：让扫描 worker 的 stderr 落盘后复现到 `fatal error: fault [signal SIGBUS]`，栈为 `walFindFrame` ← `AcceptInventory` ←
+  `executeServingDiscovered`；App 侧表现为 `desktop bootstrap` 返回 `unexpected EOF` 与 `app.refresh_failed`，collector 打点因进程崩溃而为空。
+- 修复（本工作树，未提交）：两个函数改为按名字 chmod/lstat，只在文件不存在时以 O_EXCL 创建，不再开关已存在的文件。
+  新增 `internal/store/sqlite_lock_unix_test.go`：子进程用 F_GETLK 探测 `-shm` 的 dead-man-switch 字节，同进程再次打开后必须仍被持有；
+  旧代码下 core 与 sessions 均失败，修复后通过。`scripts/run-go-test.sh ./internal/store/ ./internal/scanruntime/ ./internal/backup/` 通过。
+  行为差异：`prepareExistingPrivateSQLiteFile` 现在用 lstat，符号链接形式的核心库不再被接受，也不再在此处检查可写。
+  验证：打补丁前同一构建手动启动 Perf App 约六成刷新失败，打补丁后 25 次启动 0 次失败。
+- 2026-11-11 用户决定：该缺陷不另走 Lane A，直接在本工作树内修复，随任务 9 的候选一并接受独立评审。
+- 首轮正式矩阵（2026-11-11 00:46 起，未带修复）：P08 两臂逐项相同（无变化 decode 0、读取 0；追加读取 65,064 字节，界 1,040,696）；
+  P09 中位 wall 基线 10,665 ms、候选 11,671 ms，比值 1.094（95% 区间 1.083–1.122），候选变慢，原因未分析。
+  P02、P04、P01-first、P01-repeat、P03 均有工具无效样本（全部为 collector 打点为空），整批作废，不作结论；其后条件已停止。
+- 两臂带同一修复补丁重建后，按收窄范围重跑正式矩阵，逐条件顺序执行、出现工具无效即停。结果见后续记录。
+
+2026-11-11 任务 9 开发完成，待独立评审（claude-code，未提交）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621` 加 9 个路径（不含本文件），
+有序 `path blob` 行的 SHA-256 为 `bfbf0258caa4706a6c6727550eacb5fddb2623a6949fd4f5b107f07606f4b276`。
+
+- 收窄后的正式矩阵（2026-11-11，锚定日同日，语料 `1d9ee56f…`，两臂均带上述 SQLite 锁修复，基线臂为 `660c815` 加同一补丁；
+  全部条件工具无效 0、产品失败 0）：P08 两臂逐项相同；P02 中位 406 对 403 ms，比值 0.992（0.948–1.046）；
+  P04 1,108 对 1,107 ms，0.999（0.970–1.027）；P01-repeat 109 对 112 ms，1.028（0.942–1.089）；
+  P09 全量扫描 10,835 对 12,086 ms，1.115（1.099–1.133）；P10 增量 2,618 对 2,722 ms，1.040（1.035–1.050）；
+  P01-first 首击 85 对 104 ms，1.219（1.107–1.301）；P03 切换面板 66 对 122 ms，1.839，切换客户端与时段中位无差异。
+  P01-rebuild 不属收窄范围，误排后于 71/100 对停止，作废。
+- 界面回退的原因与修复：标签栏每次布局为每个标签调用 `presentedPanel` → `panelTabs` → `sessionScopePanel`，
+  即完整构建会话面板模型只为判断可用性（主线程采样：标签栏闭包 322 对 79 次）。新增 `sessionScopePanelIsReady` 只做判定，
+  `SessionScopeControllerTests` 六处断言其与完整模型结论一致。修复后复测：P03 切换面板中位 66.4 对 66.4 ms；
+  P01-first 103 对 89 ms，比值 0.861（0.794–0.931）。P03 切换面板 p95 仍为 133 对 200 ms，未再分析。
+- 切换期间的 helper：原实现对发布未携带的客户端/时段组合及进入会话面板时启动 `desktop session-scope`（每运行单元约 24 次，基线 0），
+  与 scan-performance 对 P03「切换期间不得有 helper」的行为要求不一致。改为复用 Widget 批次已取回的九份默认范围视图：
+  `WidgetSessionScopeBatchCollector.collectWithViews` 返回被接受批次的完整视图，`DesktopRefreshCoordinator` 按发布标识保存，
+  `SessionScopeController.synchronize` 在发起读取前先查它；批次读取的最近会话条数由 1 改为默认的 5，使视图可直接展示。
+  新增两条原生测试。复测：批次到位后切换零 helper（面板阶段 25 次切换 0 次启动，原为 6 次）；
+  仍记录到 18 条背景打点，来自发布后 Widget 批次自身的九次读取与批次到位前的少量读取，该批次是任务 7 的既有设计。
+  临时切到非默认范围仍按需读取。此项改变了任务 5、7 已评审的行为，须随本候选复评。
+- 扫描与增量回退未修，按已知回退记录：对照构建（各 6–8 次全量扫描）显示扫描末尾的来源分类协调约占 0.3–0.4 秒；
+  去掉 `session_documents_content` 触发器的构建快 0.4–0.7 秒但区间与候选重叠，独立小实验中该触发器对 FTS 写入的开销为零，
+  故未改动它，它承载 ASC-SP-R3-F1 的一致性保证。把触发器改挂 FTS 数据段表的尝试使扫描失败，已放弃。
+  无变化扫描对照（各 8 次）候选比基线慢约 0.15 秒，其中协调约 0.09 秒；协调本身热态约 30 ms。
+  P10 的派生阶段 1,128 对 1,248 ms，其余来自发布携带的范围视图。P09 约一半的增量未解释。
+- 观察：每次发布后 Widget 批次顺序启动九个 helper 进程，合计约 2.3 秒后台 CPU，不在 P10 时延内，未测量其资源影响。
+- 验证：`scripts/run-go-test.sh ./...` 通过；`go vet ./...`、gofmt、`git diff --check` 干净；`make test-macos-app` 通过（0 失败）。
+  验收用例 `-race` 为修复前候选的结果，测试文件未变。未运行 L4。CEv1 尚无证据，由评审绑定。
+
+2026-11-11 任务 9 续：P09、P10 回退的根因与处置（claude-code，未提交）。本条取代上一条中「扫描与增量回退未修」一项及其指纹；
+候选现为 HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621` 加 14 个路径（不含本文件），指纹 `5ce1f4d6b1af0511010ccade12b602e973c221e12d26247c4610d4ae135eb17f`。
+
+- P09 根因：对两臂扫描 worker 取 CPU 画像（各三次全量扫描）做差分，候选多出的 CPU 集中在
+  `sqlite3Fts5StorageContentInsert`（累计 +4.94 秒）及其下的 `VtabSavepoint → Fts5StorageSync → FlushToDisk`（+2.35 秒）和段合并（+1.84 秒）。
+  任务 3 为 ASC-SP-R3-F1 在 `session_documents_content` 上加的三个触发器使 SQLite 为每次 FTS5 内容写入开语句级保存点，
+  FTS5 因此每次都刷盘并合并段。上一条所述「独立小实验中开销为零」的结论有误：那个实验被一条无索引的 DELETE 主导，测不出差别。
+- 修复：`internal/store/serving_generation.go` 不再在内容表上安装触发器，并在可写打开时删除已有的三个；
+  `internal/session/session.go` 新增 `MarkSearchTextChanged`，所有插入、改写、删除 `session_documents` 的产品语句都在同一事务内推进会话 serving revision。
+  保证范围由「任何写入（含直接 SQL）」收窄为「产品写入路径」：绕过 session 包直接写该表不再自动推进 revision。此项改变了任务 3 已评审的合同，须复评。
+  新增 `internal/session/search_text_revision_test.go`（先删掉其余 revision 触发器，再逐一验证插入、替换、移动来源、删除来源、排除五条路径；
+  去掉其中一处推进即失败）；`selection_test.go` 的相关用例改为按产品写法写入，并断言内容表无触发器、旧库在打开时被清理。
+- 复测：P09 正式批次 20 对，基线 12,279 ms、候选 12,644 ms，比值 1.030（1.011–1.044），原为 1.115。
+  剩余约 0.3 秒与画像一致：来源分类协调约 0.06 秒 CPU，发布携带的范围视图约 0.09 秒 CPU，其余为写入。
+- P10 根因：与触发器无关（无变化扫描对照中有无触发器无差别）。每次发布多出两项工作：构建默认范围视图约 93 ms CPU
+  （读取整个会话索引约 43 ms、工作信号约 37 ms），来源分类协调热态约 30 ms。两项合计与 P10 的 +105 ms 相符。
+  这是发布携带范围视图这一功能本身的成本，未改动，按已知成本记录；P10 未重测。
+- 验证：`scripts/run-go-test.sh ./...` 通过，`go vet ./...`、gofmt、`git diff --check` 干净。本轮只改 Go，原生测试未重跑。
+
+2026-11-11 任务 9 `integrated-acceptance` 独立评审 Round 1 FAIL，Review 保持未勾选；候选身份、完整发现与证据门禁见
+[reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-1--2026-11-11)。
+任务返回修复，Beads 回到 in_progress。本轮只新增评审记录并同步状态与证据协调，产品代码、测试与配置未修改，未提交或推送。
+
+2026-11-11 任务 9 修复进行中（claude-code，未提交；评审发现 ASC-IA-R1-F1…F5）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`
+加 24 个路径（不含本文件与评审记录），有序 `path blob` 行（LC_ALL=C 排序）的 SHA-256 为
+`d786ea667e95e7b30940ddd5ab95e9eea7610910bb5987e8c56d9837f2662dc6`。
+
+- 用户决定（2026-11-11）：F1 收窄合同，保留触发器移除；F2 改为单进程批次。
+- F1：architecture.md §4/§6 把 FTS 搜索文本的 revision 保证由「任何写入（含直接 SQL）」改为「产品写入路径」并写明理由与范围，
+  `internal/session/scope_snapshot.go` 注释同步，[reviews/scope-projections.md](reviews/scope-projections.md) 追加保证范围变更说明。
+  architecture.md 的 Review 置回待评审，随复评确认。任务 3 条目中「含直接 SQL I/U/D」对其余依赖表仍成立，未改。
+- F5：`internal/session/search_text_revision_test.go` 为全部十条带前缀的写入语句和 `insertDocuments` 各有一步行为验证
+  （新增空文档替换、project/path/client 排除、追加到已排除会话、纯追加插入、rebuild），另加结构性检查：
+  session 包内每条写 `session_documents` 的语句必须带 `searchTextChanged` 前缀或位于调用 `MarkSearchTextChanged` 的 `insertDocuments`，
+  `internal`、`cmd` 下其他产品包不得写该表。逐点变异（11 处各去掉推进）两条测试均失败，已还原。
+- F4：带范围的 CLI 读取在所选 client/时间窗存在覆盖缺口原因时，envelope 置 `partial=true` 并把原因码写入 `warnings`
+  （`session list`、`session search`、`usage signals/stats` 的范围路径共用）；文本在 Scope 行下输出
+  `PARTIAL: classification coverage is incomplete (<原因>)…`；`session_selection.availability` 保持 available。
+  交互式浏览器未改。验收用例在来源不可读与恢复两步断言三种范围、claude/codex/无 client、search 与文本输出；
+  分别关闭 envelope 标记与文本横幅的变异均使用例失败，已还原。
+- F2：`desktop session-scope` 新增 `--batch`，一个进程按 all/codex/claude × today/7d/30d 输出九份视图
+  （envelope command `desktop.session-scope-batch`，首个可用视图固定 generation，其后逐一 pin，同一 as-of）；
+  `WidgetSessionScopeReading` 新增可选的整批读取，`EmbeddedHelperRunner` 以一次 helper 调用实现，
+  收集器对整批结果逐视图做与单次读取相同的校验，不回退到单次读取。每次发布由九个 helper 进程变为一个。
+  此项改变了任务 7 已评审的 helper 调用形态，须随本候选复评。P03 背景打点以正式批次结果为准，见后续记录。
+- 验证：`scripts/run-go-test.sh ./...` 通过；`-race -timeout 40m ./internal/store/ ./internal/session/ ./internal/sessionorigin/... ./internal/desktop/` 通过；
+  `go vet ./...` 干净；候选 Go 文件 gofmt 无输出；`git diff --check` 干净；`make test-macos-app` 通过（0 失败，含 5 条新增批次用例）。
+- F3 未完成：性能 pilot 与正式批次须在最终内容上运行，结果与 CEv1 证据待补。Beads 保持 in_progress。
+
+2026-11-12 任务 9 修复完成，交回待评审（claude-code，未提交；评审发现 ASC-IA-R1-F1…F5）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`
+加 26 个路径（不含本文件与评审记录），有序 `path blob` 行（LC_ALL=C 排序）的 SHA-256 为
+`b414adfdeae192a56567e775e5767ec666c4feb67880520400570de405178bc9`。上一条记录的 `d786ea66…` 是中间状态，已被本条取代。
+
+- F2 续（用户决定，2026-11-12）：单进程批次后 P03 pilot 的候选背景打点仍为 2（每次发布一个 helper，窗口内两次发布），
+  用户选择把批次并入已在运行的进程。实现：`desktop bootstrap` 在 `terminal` 行之后追加一行 `session_scope_batch`
+  （最后一次 publication 的 ID、整秒 as-of、已保存默认范围的九份视图；默认未确认时视图为空）；
+  `internal/desktop` 新增 `SessionScopeDefaultBatch`。App 侧 `bootstrapServingSnapshot` 在收到两域均 completed 的 `terminal` 行时即返回，
+  helper 随后送出的批次经 `widgetSessionScopeDelivered(publication:)` 交给收集器；收集器对它做与读取结果相同的逐视图校验，
+  不通过、缺失、ID 不符或 10 秒内未到时回退到 `session-scope --batch` 读取，重试预算不变。
+  发布被打开中的界面暂缓时，按被暂缓的那次 publication 取批次。未完成的轮次仍等 helper 退出并按退出码报错。
+  行为变化：bootstrap 调用在 `terminal` 行返回，其后 helper 仍会运行到批次送出（实测约 1.4 秒 CPU），这段时间不再受调用方取消控制；
+  小组件的范围摘要在 bootstrap 路径上来自该 helper 而非另起进程。任务 7 已评审的 helper 调用形态因此再次改变，须随本候选复评。
+- F3：最终内容上先跑八个条件的 pilot（工具无效全为 0，P03 背景打点 0），再各跑一次正式批次
+  （2026-11-12 08:30–10:37 America/New_York）。全部条件与两臂：工具无效 0，产品失败 0；外部打断重跑 1 次（P10 候选臂一个运行单元）。
+  基线为合并基 `660c815` 仅加 SQLite 锁补丁（`internal/store/store.go`），本轮从干净导出重建。
+
+  | 条件 | 样本（每臂） | 中位 基线→候选 ms | 比值（区间） | p95 基线→候选 | p99 基线→候选 |
+  | --- | --- | --- | --- | --- | --- |
+  | P09 | 20 单元 / 10 组 | 10264.0→10556.4 | 1.028（1.010–1.058） | — | — |
+  | P02 | 100 | 293.1→300.1 | 1.024（0.980–1.042） | 349.3→344.3 | 383.2→367.6 |
+  | P04 | 100 | 1042.2→1017.1 | 0.976（0.958–1.000） | 1138.6→1141.4 | 1275.3→1207.1 |
+  | P01-first | 100 | 89.8→79.7 | 0.888（0.801–0.969） | 111.8→135.4 | 219.7→153.9 |
+  | P01-repeat | 200（10 单元） | 109.4→114.2 | 1.043（0.969–1.114） | 171.2→155.7 | 197.0→216.1 |
+  | P03 client | 100 | 66.29→66.19 | 0.999 | 83.2→81.3 | 99.7→99.5 |
+  | P03 period | 100 | 66.39→66.29 | 0.998 | 99.8→99.7 | 106.9→99.8 |
+  | P03 panel | 100 | 66.43→66.37 | 0.999 | 99.8→133.0 | 133.0→166.4 |
+  | P10 | 100（4 单元） | 2518.2→2599.5 | 1.032（1.028–1.039） | 2789.8→2845.2 | 3328.9→3096.6 |
+
+  P03 背景打点两臂均为 0。P08（每臂 3 单元）两臂计数相同：无变化扫描解码 0 条、读取 0 字节；120 个文件追加读取 65,064 字节，
+  等于增量、在上界 1,040,696 字节内，解码 120 条、usage 导入 120、会话文档 111。
+  已知成本按实测记录、不以比值判定：P09 约 3%，P10 约 3%，P03 panel 的 p95/p99 晚一帧（比值 1.333 与 1.251）。
+  工具、二进制、语料、模板与机器身份见 CEv1 证据；原始运行目录不作为引用保留。
+- CEv1：ContentState `auxiliary-session-classification:integrated-acceptance:repair-r1-b414adfdeae192a5`；证据
+  `…:repair-r1-b414adfd:performance-matrix:pass` 与 `…:repair-r1-b414adfd:l3-verification:pass` 已写入并回读。
+  其余七项必需准则在本内容上没有证据，independent-review 仍是 Round 1 的 fail；门禁未通过，待复评。
+- 验证（最终内容）：`scripts/run-go-test.sh ./...` 通过；
+  `-race -timeout 40m ./internal/store/ ./internal/session/ ./internal/sessionorigin/... ./internal/desktop/ ./internal/scanruntime/` 通过；
+  `-race -run '^(TestIntegratedAcceptance|TestDesktopSessionScope|TestDesktopBootstrap)' ./cmd/agentdeck/` 通过；`go vet ./...` 干净；
+  候选 Go 文件 gofmt 无输出；`git diff --check` 干净；`make test-macos-app` 通过（458 条，0 失败）；`python3 scripts/check-docs.py` 结构检查通过。
+  Go 全量与 vet 在最后的 Swift 改动之前运行，其后没有 Go 文件变化。
+- 未改与限制：交互式会话浏览器没有覆盖缺口提示；任务 3 条目中「含直接 SQL I/U/D」的文字未改；
+  architecture.md 的 Review 保持待评审；任务 9 的 Dev 保持已勾选、Review 保持未勾选，未提交或推送。Beads 交回 in_review。
+
+2026-11-12 任务 9 `integrated-acceptance` 独立复评 Round 2 FAIL，Review 保持未勾选；Round 1 的五项发现全部关闭，
+新增两项未关闭发现。候选身份、逐项处置与证据门禁见
+[reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-2--2026-11-12)。
+任务返回修复，Beads 回到 in_progress。本轮只追加评审记录并同步状态与证据协调，产品代码、测试与配置未修改，未提交或推送。
+
+2026-11-12 任务 9 Round 2 修复完成，交回待评审（claude-code，未提交；评审发现 ASC-IA-R2-F1、ASC-IA-R2-F2）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`
+加 28 个路径（不含本文件与评审记录；比 Round 2 多 `cmd/agentdeck/session_browser.go`、`cmd/agentdeck/session_origin_test.go`），
+有序 `path blob` 行（LC_ALL=C 排序）的 SHA-256 为 `a2bb899e5d02b62c4526898fde960e6fe3855fb71a5cd78c85b893c64544d7c9`
+（同一算法对 Round 2 表复算得 `b414adfd…`，已核对）。
+
+- R2-F1：浏览器页模型与状态新增 `coverageGaps`，与文本/JSON 同取自新函数 `selectionCoverageGaps`（`sessionSelectionMeta.fill` 改为调用它）。
+  范围行在 unknown 计数之后标注 `PARTIAL: classification coverage incomplete (<原因码>)`，三种范围均标注，含空集合与范围菜单帧；
+  宽度不足时先省时区、再省原因码，PARTIAL 保留。帧布局行数不变，分类与计数不变。
+  回归：`TestSessionBrowserScopeMenuStateMachine` 增 120/48 列与空 auxiliary 帧断言及页模型断言；
+  `TestIntegratedAcceptanceUnreadableSourceDegradesAndRecovers` 经 `assertBrowserCoverage` 按 `--interactive` 的读取路径对三种范围在不可读/恢复两步断言。
+  变异（overlay，工作树外副本）：去掉页模型取缺口后两条测试均失败。
+- R2-F2：任务 3、任务 7 条目内各追加带日期的合同修订说明（FTS 搜索文本例外指向 architecture.md §4/§6；
+  任务 7 现行路径为 bootstrap 交付整批、`desktop session-scope --batch` 回退、逐组合读取仅作兼容），原文保留。
+  tasks.md 自身的文档 Review 确认须由评审恢复，本次修复不自行勾选。
+- 验证：`scripts/run-go-test.sh -race -timeout 40m ./cmd/agentdeck/` 通过；`go vet ./cmd/agentdeck/` 干净；`git diff --check HEAD` 干净；
+  改动 Go 文件 gofmt 无输出；`python3 scripts/check-docs.py` 结构检查通过。
+- 证据影响：只改 `cmd/agentdeck` 的浏览器渲染与测试，Swift、helper 协议、扫描与发布路径未变；未重跑全量 Go、`make test-macos-app` 与性能矩阵，
+  也未为新内容状态写入 CEv1 证据。`repair-r1-b414adfd` 的 L3 与性能证据绑定旧内容状态，能否复用于 `a2bb899e…` 由复评按 Evidence 规则判定。
+  任务 9 Dev 保持已勾选、Review 保持未勾选，Beads 交回 in_review。
+
+2026-11-12 任务 9 `integrated-acceptance` 独立复评 Round 3 FAIL，Review 保持未勾选；Round 2 的两项发现关闭，新增一项未关闭发现。
+候选身份、逐项处置与证据门禁见 [reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-3--2026-11-12)。
+任务返回修复，Beads 回到 in_progress。本轮只追加评审记录并同步状态与证据协调，产品代码、测试与配置未修改，未提交或推送。
+
+2026-11-12 任务 9 Round 3 修复完成，交回待评审（claude-code，未提交；评审发现 ASC-IA-R3-F1）：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`
+加同样 28 个路径（不含本文件与评审记录），有序 `path blob` 行（LC_ALL=C 排序）的 SHA-256 为
+`d4d02e77cbe4db40563b3106434cc292a41be6cd63ed308fa6b0d126bd64b473`；相对 `a2bb899e…` 只有 `cmd/agentdeck/session_browser.go` 与 `cmd/agentdeck/session_origin_test.go` 变化。
+
+- R3-F1：partial 从范围行移到范围行下方独立的警告行（ux/cli.md §5 标题/范围/警告最多 4 行），范围行恢复为计数与时区，
+  计数再大也不挤占警告。警告行依宽度取第一个放得下的形式：完整语句加原因码与 `Check: agentdeck session origin-source status`（约 118 列）、
+  完整语句加原因码（80 列可容单个原因）、`PARTIAL coverage: <原因码>`（48 列可容单个原因）；仍放不下时从右截断，PARTIAL 始终在行首。
+  有缺口时 viewport 固定行数加一，行号与帮助行不被挤出。分类、计数与文本/JSON 输出不变。
+- 回归：`TestSessionBrowserScopeMenuStateMachine` 改用 12000 会话、4000 unknown 的夹具，在 48×10、80×10、80×24、120×24 断言范围行、
+  逐字的警告行、帧高与选中行号/帮助行，另断言两个原因在 48 列时 PARTIAL 仍在行首、空 auxiliary 帧带警告行。
+  变异（overlay，工作树外副本）：去掉 viewport 的加一后 80×10 断言失败。
+- 验证：`scripts/run-go-test.sh -race -timeout 60m ./...` 通过；`go vet ./...` 干净；`git diff --check HEAD` 干净；改动 Go 文件 gofmt 无输出；
+  `python3 scripts/check-docs.py` 结构检查通过。未重跑 `make test-macos-app` 与性能矩阵（Swift、helper、扫描、发布路径 blob 未变），
+  未为新内容状态写 CEv1 证据，复用判定留给复评。任务 9 Dev 保持已勾选、Review 保持未勾选，Beads 交回 in_review。
+
+2026-11-13 任务 9 `integrated-acceptance` 独立复评 Round 4 PASS，Review 已勾选；本记录的全部发现已关闭，
+另有一项范围外的既有问题转出到 Beads `ad-bug-selection-verify-200ms-deadline`。候选身份、逐项处置与证据复用见
+[reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-4--2026-11-13)。候选 CEv1 门禁 VERIFIED（9/9），到达任务提交检查点，
+Beads 进入 awaiting_commit；未执行 Git 交付。主题边界保持未完成：architecture.md 与本文件任务 3、7 的合同修订尚待各自的文档评审，
+CEv1 中也还没有主题级 WorkUnit。本轮只追加评审记录并同步状态与证据协调，产品代码、测试与配置未修改。
+
+2026-11-13 architecture.md 文档评审 Round 6 FAIL（评审对象为任务 9 候选中的 FTS 保证范围修订），Documents 矩阵的 Review 保持未勾选；
+发现与修复范围见 [reviews/architecture.md](reviews/architecture.md#round-6--2026-11-13)。本轮只追加评审记录并同步状态与证据协调，未修改文档正文、产品代码或测试。
+
+2026-11-13 architecture.md 文档复评 Round 7 PASS，Documents 矩阵的 Review 已勾选；处置与证据见
+[reviews/architecture.md](reviews/architecture.md#round-7--2026-11-13)，文档 CEv1 门禁 VERIFIED（2/2）。
+该文档在任务 9 的候选路径内，修复使任务 9 的候选指纹由 `d4d02e77…` 变为
+`024b6820cd8910ce4331c122291905a20f9f49a485cddb7b9ed9ed6b90604ec8`（仅 architecture.md 的 blob 不同）；
+任务 9 的九项证据已以带影响评估的 roll-up 绑定到新内容状态，门禁仍为 VERIFIED（9/9），见任务 9 评审记录末尾的内容状态更新说明。
+主题边界仍未完成：本文件任务 3、7 的合同修订尚待文档评审，CEv1 中没有主题级 WorkUnit。未提交或推送。
+
+2026-11-13 tasks.md 文档评审 Round 7 FAIL（评审对象为任务 3、7、9 条目内的带日期合同修订），Documents 矩阵中本文档的 Review 置回未勾选；
+发现与修复范围见 [reviews/tasks.md](reviews/tasks.md#round-7--2026-11-13)。任务矩阵各行不受影响。本轮只追加评审记录并同步状态与证据协调，未修改合同正文、产品代码或测试。
+
+2026-11-13 tasks.md 文档复评 Round 8 PASS，Documents 矩阵中本文档的 Review 已勾选；处置与证据见
+[reviews/tasks.md](reviews/tasks.md#round-8--2026-11-13)。至此 Documents 与 Tasks 两个矩阵全部勾选。
+主题边界仍未完成：任务 9 待授权提交，稳定 specs 同步与主题级证据边界尚未进行。未提交或推送。

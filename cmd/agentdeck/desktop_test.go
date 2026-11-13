@@ -306,4 +306,44 @@ func TestDesktopSessionScopeCommand(t *testing.T) {
 	if exit, _, _ := run("", "--scope", "work"); exit != 2 {
 		t.Fatalf("text output must be rejected, exit %d", exit)
 	}
+	// --batch answers the scope for every client and period in one envelope,
+	// in the fixed all/codex/claude × today/7d/30d order, and reads nothing
+	// into existence either.
+	exit, stdout, stderr = run("json", "--scope", "auxiliary", "--batch", "--as-of", "2026-08-13T10:00:00Z")
+	if exit != 0 || len(stderr) != 0 {
+		t.Fatalf("batch exit %d stderr %s", exit, stderr)
+	}
+	var batch struct {
+		Command  string                    `json:"command"`
+		Data     desktop.SessionScopeBatch `json:"data"`
+		Warnings []string                  `json:"warnings"`
+		Partial  bool                      `json:"partial"`
+	}
+	if err := json.Unmarshal(stdout, &batch); err != nil {
+		t.Fatalf("decode batch: %v\n%s", err, stdout)
+	}
+	if batch.Command != "desktop.session-scope-batch" || !batch.Partial || len(batch.Data.Views) != 9 ||
+		!reflect.DeepEqual(batch.Warnings, []string{"sessions_unavailable"}) {
+		t.Fatalf("batch envelope %+v", batch)
+	}
+	for index, view := range batch.Data.Views {
+		want := desktop.SessionScopeSelection{Scope: "auxiliary", Client: desktop.SessionScopeBatchClients[index/3], Period: desktop.SessionScopeBatchPeriods[index%3]}
+		if view.Available || view.Selection == nil || *view.Selection != want {
+			t.Fatalf("batch view %d = %+v, want unavailable %+v", index, view, want)
+		}
+	}
+	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
+		if _, err := os.Stat(filepath.Join(state, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("session-scope --batch created %s: %v", name, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"--batch"},
+		{"--scope", "work", "--batch", "--client", "codex"},
+		{"--scope", "work", "--batch", "--period", "7d"},
+	} {
+		if exit, _, stderr := run("json", args...); exit != 2 || !bytes.Contains(stderr, []byte(`"command":"desktop.session-scope"`)) {
+			t.Fatalf("%v: exit %d stderr %s", args, exit, stderr)
+		}
+	}
 }

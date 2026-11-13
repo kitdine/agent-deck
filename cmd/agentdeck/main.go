@@ -4527,6 +4527,7 @@ func writeResult(w io.Writer, format, command string, data any, quiet ...bool) e
 		envelope := output.New(command, data, time.Now())
 		if selection != nil {
 			envelope.SessionSelection = selection
+			envelope.Partial, envelope.Warnings = selection.withCoverage(envelope.Partial, envelope.Warnings)
 		}
 		return json.NewEncoder(w).Encode(envelope)
 	}
@@ -4589,6 +4590,7 @@ func usageScanIncomplete(command string, partial bool, warnings []string) bool {
 func writeUsageEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet bool, renderOptions usageTextRenderOptions) error {
 	data, selection := unwrapSessionSelection(data)
 	data, resource := unwrapTextResource(data)
+	partial, warnings = selection.withCoverage(partial, warnings)
 	if format == "json" {
 		if warnings == nil {
 			warnings = []string{}

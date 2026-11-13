@@ -2,6 +2,7 @@ package sessionorigin
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -480,7 +481,14 @@ func TestEverySelectionDependencyHasARevisionTrigger(t *testing.T) {
 	}
 	audit(s.core, []string{"session_origins", "origin_overrides", "usage_events", "usage_work_signals", "usage_tool_calls", "usage_tool_files",
 		"usage_sessions", "usage_run_bindings", "usage_runs", "model_prices", "price_catalogs", "providers", "provider_clients", "provider_selections"})
-	audit(s.sessions, []string{"session_metadata", "session_sources", "session_exclusions", "session_documents_content"})
+	audit(s.sessions, []string{"session_metadata", "session_sources", "session_exclusions"})
+	// The FTS5 content table must carry no trigger: one there makes every
+	// content write flush and merge the index. Searchable text moves the
+	// revision through session.MarkSearchTextChanged instead.
+	var contentTriggers int
+	if err := s.sessions.DB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='session_documents_content'`).Scan(&contentTriggers); err != nil || contentTriggers != 0 {
+		t.Fatalf("session_documents_content triggers = %d %v, want none", contentTriggers, err)
+	}
 
 	// Direct SQL on the classification inputs moves the vector.
 	revision := func(db *store.Store) int64 { return servingRevision(t, db.DB) }
@@ -496,9 +504,6 @@ func TestEverySelectionDependencyHasARevisionTrigger(t *testing.T) {
 		{s.core, `DELETE FROM origin_overrides`},
 		{s.sessions, `INSERT INTO session_exclusions(kind,value) VALUES('session','d')`},
 		{s.sessions, `DELETE FROM session_exclusions`},
-		{s.sessions, `INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES('/d.jsonl','claude','d','','user','x')`},
-		{s.sessions, `UPDATE session_documents SET text='y'`},
-		{s.sessions, `DELETE FROM session_documents`},
 	} {
 		before := revision(step.db)
 		if _, err := step.db.DB.Exec(step.statement); err != nil {
@@ -653,14 +658,34 @@ func TestOriginWriteAmplification(t *testing.T) {
 	}
 }
 
-// ASC-SP-R3-F1: searchable text is a selection input. A direct SQL write to
-// session_documents moves the vector and the publication identity; a rolled
-// back one does not; one interleaved with a selection forces a retry.
-func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
-	s := mixedFixture(t)
-	if _, err := s.sessions.DB.Exec(`INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES('/c/c-1.jsonl','claude','c-1','2026-10-29T08:00:00Z','user','clockneedle')`); err != nil {
+// writeSearchText writes session_documents the way the session package does:
+// the statement and session.MarkSearchTextChanged in one transaction.
+func writeSearchText(t *testing.T, db *sql.DB, statement string) {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer tx.Rollback()
+	if err := session.MarkSearchTextChanged(context.Background(), tx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(statement); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ASC-SP-R3-F1: searchable text is a selection input. A text write moves the
+// vector and the publication identity; a rolled back one does not; one
+// interleaved with a selection forces a retry. The revision moves through
+// session.MarkSearchTextChanged in the writing transaction, because the FTS5
+// content table cannot carry a trigger without slowing every write.
+func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
+	s := mixedFixture(t)
+	writeSearchText(t, s.sessions.DB, `INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES('/c/c-1.jsonl','claude','c-1','2026-10-29T08:00:00Z','user','clockneedle')`)
 	selection := Selection{Scope: ScopeWork, Query: "clockneedle"}
 	before := s.selectScope(t, selection)
 	if len(before.Documents) != 1 || before.SelectedSessionCount != 1 {
@@ -670,6 +695,9 @@ func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
 	// A rolled-back text change leaves the generation and the result as they were.
 	tx, err := s.sessions.DB.Begin()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.MarkSearchTextChanged(context.Background(), tx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(`UPDATE session_documents SET text='replacement' WHERE source_path='/c/c-1.jsonl'`); err != nil {
@@ -682,10 +710,8 @@ func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
 		t.Fatalf("rollback moved the vector %+v -> %+v", before.Vector, again.Vector)
 	}
 
-	// A committed direct UPDATE changes the result, the vector and the identity.
-	if _, err := s.sessions.DB.Exec(`UPDATE session_documents SET text='replacement' WHERE source_path='/c/c-1.jsonl'`); err != nil {
-		t.Fatal(err)
-	}
+	// A committed UPDATE changes the result, the vector and the identity.
+	writeSearchText(t, s.sessions.DB, `UPDATE session_documents SET text='replacement' WHERE source_path='/c/c-1.jsonl'`)
 	after := s.selectScope(t, selection)
 	if len(after.Documents) != 0 || after.SelectedSessionCount != 0 {
 		t.Fatalf("search after update %d/%d", len(after.Documents), after.SelectedSessionCount)
@@ -704,9 +730,7 @@ func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
 	beforeSelectionVerify = func(attempt int) {
 		attempts++
 		if attempt == 0 {
-			if _, err := s.sessions.DB.Exec(`UPDATE session_documents SET text='clockneedle again' WHERE source_path='/c/c-1.jsonl'`); err != nil {
-				t.Fatal(err)
-			}
+			writeSearchText(t, s.sessions.DB, `UPDATE session_documents SET text='clockneedle again' WHERE source_path='/c/c-1.jsonl'`)
 		}
 	}
 	interleaved, err := s.reader().Select(context.Background(), selection, nil)
@@ -715,16 +739,16 @@ func TestSearchTextChangesMoveTheSelectionGeneration(t *testing.T) {
 	}
 }
 
-// An index created before the content-table triggers gains them on its next
-// writable open, so an upgraded install is covered too.
-func TestExistingIndexGainsTheSearchTextTriggers(t *testing.T) {
+// An index that carries the content-table triggers of an earlier build loses
+// them on its next writable open.
+func TestExistingIndexLosesTheSearchTextTriggers(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
 	index, err := store.OpenSessions(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, op := range []string{"insert", "update", "delete"} {
-		if _, err := index.DB.Exec(`DROP TRIGGER serving_revision_session_documents_content_` + strings.ToUpper(op)); err != nil {
+	for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
+		if _, err := index.DB.Exec(`CREATE TRIGGER serving_revision_session_documents_content_` + op + ` AFTER ` + op + ` ON session_documents_content BEGIN UPDATE serving_generation SET revision=revision+1 WHERE singleton=1; END`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -735,7 +759,7 @@ func TestExistingIndexGainsTheSearchTextTriggers(t *testing.T) {
 	}
 	defer index.Close()
 	var triggers int
-	if err := index.DB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='session_documents_content'`).Scan(&triggers); err != nil || triggers != 3 {
+	if err := index.DB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='session_documents_content'`).Scan(&triggers); err != nil || triggers != 0 {
 		t.Fatalf("triggers=%d %v", triggers, err)
 	}
 }

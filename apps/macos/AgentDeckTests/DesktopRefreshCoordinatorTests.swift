@@ -1313,6 +1313,37 @@ final class DesktopRefreshCoordinatorWidgetSummaryTests: XCTestCase {
 		return url
 	}
 
+	/// The Widget batch is asked of the bootstrap's last publication even while
+	/// that publication is held behind an opening surface, and again once it is
+	/// released: neither publish has to start a read for another publication.
+	func testAHeldFinalPublicationStillAsksForItsDeliveredBatch() async throws {
+		let first = try servingCoordinatorFixture(id: "first-partial", full: false)
+		let final = try servingCoordinatorFixture(id: "final-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: final)
+		let reader = ScriptedWidgetBatchReader([.failure(.timedOut)])
+		let coordinator = DesktopRefreshCoordinator(
+			host: host, snapshotStore: AppGroupSnapshotStore(directoryURL: storeDirectory()),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow),
+			wallNow: widgetBatchNow
+		)
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		coordinator.holdPublications()
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial")
+		var asks = await reader.deliveryAsks
+		XCTAssertEqual(asks, ["final-full"])
+		coordinator.releasePublications()
+		for _ in 0 ..< 200 {
+			asks = await reader.deliveryAsks
+			if asks.count == 2 { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertEqual(asks, ["final-full", "final-full"])
+	}
+
 	func testSuccessfulRefreshPublishesTheConfirmedDefaultsBatch() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let fixture = try WidgetBatchFixture.load()
@@ -1569,6 +1600,166 @@ extension DesktopRefreshCoordinatorWidgetSummaryTests {
 			XCTAssertEqual(republished.items.count, 10, "round \(round)")
 			XCTAssertEqual(Array(republished.items.prefix(9)), accepted.items, "round \(round)")
 			XCTAssertEqual(republished.items.filter { $0.client == "codex" && $0.period == "7d" }.count, 2, "round \(round)")
+		}
+	}
+}
+
+/// Streams scripted lines, then holds the helper open until released: the
+/// stretch after the terminal line in which the batch is still being answered.
+private final class HeldBootstrapProcess: EmbeddedHelperProcess, @unchecked Sendable {
+	private let head: [Data]
+	private let tail: [Data]
+	private let exitStatus: Int32
+	private let lock = NSLock()
+	private var gate: CheckedContinuation<Void, Never>?
+	private var released = false
+	private(set) var starts = 0
+
+	init(head: [Data], tail: [Data], exitStatus: Int32 = 0) {
+		self.head = head
+		self.tail = tail
+		self.exitStatus = exitStatus
+	}
+
+	private func countStart() {
+		lock.lock()
+		starts += 1
+		lock.unlock()
+	}
+
+	func release() {
+		lock.lock()
+		released = true
+		let waiting = gate
+		gate = nil
+		lock.unlock()
+		waiting?.resume()
+	}
+
+	func run(executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+		countStart()
+		throw HelperExecutionError.launchFailed
+	}
+
+	func runLines(
+		executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration,
+		maximumLineBytes _: Int, maximumLines _: Int, onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
+		countStart()
+		head.forEach(onLine)
+		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+			lock.lock()
+			if released {
+				lock.unlock()
+				continuation.resume()
+			} else {
+				gate = continuation
+				lock.unlock()
+			}
+		}
+		tail.forEach(onLine)
+		return HelperProcessLinesOutput(exitStatus: exitStatus, stdoutLines: [], stdoutBytes: 0)
+	}
+}
+
+final class BootstrapSessionScopeDeliveryTests: XCTestCase {
+	private func line(_ type: String, _ data: Any) throws -> Data {
+		try JSONSerialization.data(withJSONObject: ["schema_version": 2, "command": "desktop.bootstrap", "type": type, "data": data])
+	}
+
+	private func terminal(_ state: String) throws -> Data {
+		try line("terminal", ["usage": ["state": state], "session": ["state": state]])
+	}
+
+	private func batch(publication: String, views: [DesktopSessionScopeViewV1], asOf: String) throws -> Data {
+		try line("session_scope_batch", ["publication_id": publication, "as_of": asOf,
+			"views": JSONSerialization.jsonObject(with: JSONEncoder().encode(views))])
+	}
+
+	private func runner(_ process: HeldBootstrapProcess, in directory: URL) throws -> EmbeddedHelperRunner {
+		EmbeddedHelperRunner(appBundleURL: try makeEmbeddedHelperBundle(in: directory), process: process,
+			environment: ["HOME": directory.path], timeout: .seconds(5))
+	}
+
+	/// The bootstrap answers at its completed terminal line while the helper is
+	/// still running; the batch that helper then hands over reaches the Widget
+	/// reader for that publication, and no second helper is started.
+	func testACompletedBootstrapReturnsAtItsTerminalLineAndHandsOverTheBatch() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let process = HeldBootstrapProcess(head: [publication, try terminal("completed")],
+			tail: [try batch(publication: "publication-final", views: views, asOf: fixture.asOf)])
+		let runner = try runner(process, in: directory)
+
+		let returned = try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+		XCTAssertEqual(returned?.header.publicationID, "publication-final", "returned while the helper is still held open")
+
+		let foreign = await runner.widgetSessionScopeDelivered(publication: "publication-other")
+		XCTAssertNil(foreign)
+		async let waiting = runner.widgetSessionScopeDelivered(publication: "publication-final")
+		try await Task.sleep(for: .milliseconds(50))
+		process.release()
+		let delivered = await waiting
+		XCTAssertEqual(delivered, WidgetSessionScopeDelivery(asOf: fixture.asOf, views: views))
+		// It stays available to every publish of that publication.
+		let again = await runner.widgetSessionScopeDelivered(publication: "publication-final")
+		XCTAssertEqual(again, delivered)
+		XCTAssertEqual(process.starts, 1, "the batch came from the bootstrap helper itself")
+
+		// A new stream discards the previous delivery.
+		let next = HeldBootstrapProcess(head: [publication, try terminal("completed")], tail: [])
+		next.release()
+		_ = try await EmbeddedHelperRunner(appBundleURL: try makeEmbeddedHelperBundle(in: directory), process: next,
+			environment: ["HOME": directory.path], timeout: .seconds(5))
+			.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+	}
+
+	/// A helper that exits without the batch, or with one for another
+	/// publication or one that cannot be read, delivers nothing: the reader
+	/// answers nil and the collector reads the batch itself.
+	func testAHelperThatEndsWithoutAUsableBatchDeliversNone() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		for tail in [[], [try batch(publication: "publication-stale", views: views, asOf: fixture.asOf)],
+			[try line("session_scope_batch", ["publication_id": "publication-final"])]] {
+			let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+			defer { try? FileManager.default.removeItem(at: directory) }
+			let process = HeldBootstrapProcess(head: [publication, try terminal("completed")], tail: tail)
+			let runner = try runner(process, in: directory)
+			_ = try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+			async let waiting = runner.widgetSessionScopeDelivered(publication: "publication-final")
+			try await Task.sleep(for: .milliseconds(50))
+			process.release()
+			let delivered = await waiting
+			XCTAssertNil(delivered)
+		}
+	}
+
+	/// A round that did not complete is not answered at its terminal line: the
+	/// helper's exit decides, as before, and nothing is promised to the Widget.
+	func testAnIncompleteRoundStillWaitsForTheHelperAndFails() async throws {
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let process = HeldBootstrapProcess(head: [publication, try terminal("failed")], tail: [], exitStatus: 1)
+		let runner = try runner(process, in: directory)
+		let call = Task { try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in }) }
+		try await Task.sleep(for: .milliseconds(100))
+		let early = await runner.widgetSessionScopeDelivered(publication: "publication-final")
+		XCTAssertNil(early, "no batch is promised for a round that did not complete")
+		process.release()
+		do {
+			_ = try await call.value
+			XCTFail("an incomplete round must fail")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .nonZeroExit(1))
 		}
 	}
 }

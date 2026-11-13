@@ -901,7 +901,7 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 			// A stronger late cwd may now match an exclusion. Remove this
 			// session's earlier fallback projection in the same cursor transaction.
 			if update.appendOnly {
-				if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", update.path, r.Client, r.SessionID); err != nil {
+				if _, err := executor.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", update.path, r.Client, r.SessionID); err != nil {
 					return 0, err
 				}
 				if _, err := executor.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=? AND client=? AND session_id=?", update.path, r.Client, r.SessionID); err != nil {
@@ -939,13 +939,13 @@ func moveSource(ctx context.Context, executor sessionExecutor, old, new string) 
 	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at,parser_context) SELECT ?,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at,parser_context FROM session_sources WHERE source_path=?", new, old); err != nil {
 		return err
 	}
-	if _, err := executor.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
+	if _, err := executor.ExecContext(ctx, searchTextChanged+"UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
 		return err
 	}
 	return nil
 }
 func deleteSource(ctx context.Context, executor sessionExecutor, path string) error {
-	if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=?", path); err != nil {
+	if _, err := executor.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE source_path=?", path); err != nil {
 		return err
 	}
 	if _, err := executor.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", path); err != nil {
@@ -1571,7 +1571,7 @@ func replace(ctx context.Context, db *sql.DB, r Result) error {
 	return tx.Commit()
 }
 func replaceExec(ctx context.Context, executor sessionExecutor, r Result) error {
-	if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", r.SourcePath, r.Client, r.SessionID); err != nil {
+	if _, err := executor.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", r.SourcePath, r.Client, r.SessionID); err != nil {
 		return err
 	}
 	return insertResult(ctx, executor, r)
@@ -1583,7 +1583,26 @@ func insertResult(ctx context.Context, executor sessionExecutor, r Result) error
 	_, err := executor.ExecContext(ctx, "INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_path,client,session_id) DO UPDATE SET project=CASE WHEN excluded.project='' THEN session_metadata.project ELSE excluded.project END,model=CASE WHEN excluded.model='' THEN session_metadata.model ELSE excluded.model END,parser_version=excluded.parser_version,first_at=CASE WHEN session_metadata.first_at='' OR excluded.first_at<session_metadata.first_at THEN excluded.first_at ELSE session_metadata.first_at END,last_at=CASE WHEN excluded.last_at>session_metadata.last_at THEN excluded.last_at ELSE session_metadata.last_at END", r.SourcePath, r.Client, r.SessionID, r.Project, r.Model, ParserVersion, r.FirstAt, r.LastAt)
 	return err
 }
+
+// searchTextChanged prefixes every statement that deletes or rewrites
+// session_documents rows; inserts go through insertDocuments.
+const searchTextChanged = "UPDATE serving_generation SET revision=revision+1 WHERE singleton=1; "
+
+// MarkSearchTextChanged advances the session serving revision after a write
+// to session_documents. Searchable text is a selection input, so every such
+// write must move the revision in its own transaction; the FTS5 content table
+// cannot carry a trigger for it (see the store's serving storage).
+func MarkSearchTextChanged(ctx context.Context, executor sessionExecutor) error {
+	_, err := executor.ExecContext(ctx, strings.TrimSuffix(searchTextChanged, "; "))
+	return err
+}
+
 func insertDocuments(ctx context.Context, executor sessionExecutor, sourcePath string, documents []Document) error {
+	if len(documents) > 0 {
+		if err := MarkSearchTextChanged(ctx, executor); err != nil {
+			return err
+		}
+	}
 	for start := 0; start < len(documents); {
 		end, bytes := start, 0
 		for end < len(documents) && end-start < 64 && (end == start || bytes+len(documents[end].Text) <= 1<<20) {
@@ -1750,22 +1769,22 @@ func Exclude(ctx context.Context, db *sql.DB, kind, value string) error {
 	}
 	switch kind {
 	case "project":
-		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE (source_path,client,session_id) IN (SELECT source_path,client,session_id FROM session_metadata WHERE project=?)", value)
+		_, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE (source_path,client,session_id) IN (SELECT source_path,client,session_id FROM session_metadata WHERE project=?)", value)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE project=?", value)
 		}
 	case "path":
-		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=?", value)
+		_, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE source_path=?", value)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", value)
 		}
 	case "session":
-		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE session_id=?", value)
+		_, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE session_id=?", value)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE session_id=?", value)
 		}
 	case "client":
-		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE client=?", value)
+		_, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE client=?", value)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE client=?", value)
 		}
@@ -1807,7 +1826,7 @@ func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options Sc
 		return ScanResult{}, err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
+	if _, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
 		return ScanResult{}, err
 	}
 	paths, err := sessionSources(home, options.PreparedSources)

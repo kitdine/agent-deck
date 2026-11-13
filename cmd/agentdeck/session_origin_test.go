@@ -685,6 +685,54 @@ func TestSessionBrowserScopeMenuStateMachine(t *testing.T) {
 			t.Fatalf("browser frame missing %q:\n%s", want, rendered.String())
 		}
 	}
+	// A coverage gap has its own warning line under the scope line, so large
+	// counts never squeeze it: PARTIAL and the reason survive the minimum
+	// width, the wording at 80 columns, the check command at 120.
+	const gap = "origin_source_unavailable"
+	large := sessionBrowserPage{scope: "work", unknown: 4000, coverageGaps: []string{gap}}
+	for index := range 12000 {
+		large.items = append(large.items, session.Metadata{Client: "claude", SessionID: fmt.Sprintf("s-%05d", index)})
+		large.classes = append(large.classes, "unknown")
+	}
+	for _, tc := range []struct {
+		width, height int
+		warning       string
+	}{
+		{48, 10, "PARTIAL coverage: " + gap},
+		{80, 10, "PARTIAL: classification coverage incomplete (" + gap + ")"},
+		{80, 24, "PARTIAL: classification coverage incomplete (" + gap + ")"},
+		{120, 24, "PARTIAL: classification coverage incomplete (" + gap + ") · Check: agentdeck session origin-source status"},
+	} {
+		rendered.Reset()
+		state := newScopedSessionBrowserState(large)
+		state.selected = 11999
+		if err := renderSessionBrowser(&rendered, tc.width, tc.height, state); err != nil {
+			t.Fatal(err)
+		}
+		frame := strings.Split(strings.TrimSuffix(strings.TrimPrefix(rendered.String(), "\x1b[H\x1b[2J"), "\n"), "\n")
+		if len(frame) > tc.height || len(frame) < 4 || !strings.HasPrefix(frame[1], "12000 SESSIONS · Scope: work · 4000 unknown") || frame[2] != tc.warning {
+			t.Fatalf("%dx%d partial frame: scope %q, warning %q, want %q:\n%s", tc.width, tc.height, frame[1], frame[2], tc.warning, rendered.String())
+		}
+		if !strings.Contains(frame[len(frame)-2], "row 12000/12000") || !strings.HasPrefix(frame[len(frame)-1], "↑/↓ select") {
+			t.Fatalf("%dx%d partial frame lost the selected row or help:\n%s", tc.width, tc.height, rendered.String())
+		}
+	}
+	// Two reasons do not fit 48 columns; truncation cuts from the right, so
+	// PARTIAL still leads the line.
+	rendered.Reset()
+	twoGaps := large
+	twoGaps.coverageGaps = []string{"origin_input_mismatch", gap}
+	if err := renderSessionBrowser(&rendered, 48, 10, newScopedSessionBrowserState(twoGaps)); err != nil || !strings.Contains(rendered.String(), "\nPARTIAL coverage: origin_input_mismatch, origin…\n") {
+		t.Fatalf("two-reason partial frame at 48 columns:\n%s %v", rendered.String(), err)
+	}
+	rendered.Reset()
+	partialEmpty := newScopedSessionBrowserState(sessionBrowserPage{scope: "auxiliary", coverageGaps: []string{gap}})
+	if err := renderSessionBrowser(&rendered, 80, 10, partialEmpty); err != nil || !strings.Contains(rendered.String(), "0 SESSIONS · Scope: auxiliary · times in") || !strings.Contains(rendered.String(), "\nPARTIAL: classification coverage incomplete ("+gap+")\n") || !strings.Contains(rendered.String(), "No auxiliary sessions in this selection.") {
+		t.Fatalf("partial empty auxiliary frame = %q %v", rendered.String(), err)
+	}
+	if page := newSessionBrowserPage("work", sessionorigin.Snapshot{CoverageGaps: map[string]int{sessionorigin.ReasonOriginSourceUnavailable: 2, sessionorigin.ReasonOriginInputMismatch: 0}}); !reflect.DeepEqual(page.coverageGaps, []string{sessionorigin.ReasonOriginSourceUnavailable}) {
+		t.Fatalf("browser page coverage gaps = %#v", page.coverageGaps)
+	}
 	rendered.Reset()
 	empty := newScopedSessionBrowserState(sessionBrowserPage{scope: "auxiliary"})
 	if err := renderSessionBrowser(&rendered, 48, 10, empty); err != nil || !strings.Contains(rendered.String(), "No auxiliary sessions in this selection.") {

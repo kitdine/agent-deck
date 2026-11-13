@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,11 @@ type sessionSelectionMeta struct {
 	PublicationID        *string               `json:"publication_id"`
 	// usageScope is the text-only consumption-scope label for usage stats.
 	usageScope string
+	// coverageGaps are the sorted reasons why classification input for the
+	// selection's client and time window could not be read or is stale. They
+	// reach the envelope as warnings with partial set, never as a field here:
+	// the selection itself stays available and its sessions stay unknown.
+	coverageGaps []string
 }
 
 const (
@@ -97,6 +103,7 @@ func newSessionSelectionMeta(scope, source string, requested *string) *sessionSe
 func (m *sessionSelectionMeta) fill(snapshot sessionorigin.Snapshot) {
 	m.Availability = selectionAvailable
 	m.Reason = nil
+	m.coverageGaps = selectionCoverageGaps(snapshot)
 	unknown := snapshot.UnknownCount
 	m.UnknownCount = &unknown
 	vector := snapshot.Vector
@@ -109,8 +116,49 @@ func (m *sessionSelectionMeta) fill(snapshot sessionorigin.Snapshot) {
 	}
 }
 
+// selectionCoverageGaps returns the sorted coverage gap reasons of a
+// selection. Text, JSON and the interactive browser all read them from here so
+// the three surfaces report the same partial fact for the same selection.
+func selectionCoverageGaps(snapshot sessionorigin.Snapshot) []string {
+	var gaps []string
+	for _, reason := range sessionorigin.CoverageGapReasons {
+		if snapshot.CoverageGaps[reason] > 0 {
+			gaps = append(gaps, reason)
+		}
+	}
+	slices.Sort(gaps)
+	return gaps
+}
+
+// withCoverage marks a read partial and names each coverage gap reason as a
+// warning: an unreadable or stale classification source leaves its sessions
+// unknown, and automation reading only the envelope must not take that
+// selection for a complete one.
+func (m *sessionSelectionMeta) withCoverage(partial bool, warnings []string) (bool, []string) {
+	if m == nil || len(m.coverageGaps) == 0 {
+		return partial, warnings
+	}
+	for _, reason := range m.coverageGaps {
+		if !slices.Contains(warnings, reason) {
+			warnings = append(warnings, reason)
+		}
+	}
+	return true, warnings
+}
+
+// renderCoveragePartial is the text form of withCoverage, placed under the
+// scope line.
+func renderCoveragePartial(w io.Writer, meta *sessionSelectionMeta) error {
+	if meta == nil || len(meta.coverageGaps) == 0 {
+		return nil
+	}
+	_, err := fmt.Fprintf(w, "PARTIAL: classification coverage is incomplete (%s). Affected sessions are shown as unknown.\nCheck: agentdeck session origin-source status\n", strings.Join(meta.coverageGaps, ", "))
+	return err
+}
+
 func (m *sessionSelectionMeta) unavailable(err error) {
 	m.Availability = selectionUnavailable
+	m.coverageGaps = nil
 	reason := sessionSelectionReason(err)
 	m.Reason = &reason
 }
@@ -300,8 +348,10 @@ func renderSessionScopeLine(w io.Writer, meta *sessionSelectionMeta, noun string
 	} else if meta.UnknownCount != nil && meta.EffectiveScope != sessionorigin.ScopeAuxiliary {
 		line += fmt.Sprintf(" · %d unknown", *meta.UnknownCount)
 	}
-	_, err := fmt.Fprintln(w, line)
-	return err
+	if _, err := fmt.Fprintln(w, line); err != nil {
+		return err
+	}
+	return renderCoveragePartial(w, meta)
 }
 
 func renderSessionListEmpty(w io.Writer, hint sessionListHint) error {
@@ -1595,6 +1645,9 @@ func renderUsageSelectionScope(w io.Writer, meta *sessionSelectionMeta) error {
 		line += fmt.Sprintf(" · %d unknown", *meta.UnknownCount)
 	}
 	if _, err := fmt.Fprintln(w, line); err != nil {
+		return err
+	}
+	if err := renderCoveragePartial(w, meta); err != nil {
 		return err
 	}
 	if meta.usageScope != "" {

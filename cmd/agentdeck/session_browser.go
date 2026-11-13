@@ -22,12 +22,15 @@ type sessionBrowserPage struct {
 	items   []session.Metadata
 	classes []string
 	unknown int
+	// coverageGaps are the selection's classification coverage gap reasons;
+	// non-empty marks the page partial, as in the text and JSON outputs.
+	coverageGaps []string
 	// indexEmpty distinguishes an empty index from an empty selection.
 	indexEmpty bool
 }
 
 func newSessionBrowserPage(scope string, snapshot sessionorigin.Snapshot) sessionBrowserPage {
-	page := sessionBrowserPage{scope: scope, unknown: snapshot.UnknownCount}
+	page := sessionBrowserPage{scope: scope, unknown: snapshot.UnknownCount, coverageGaps: selectionCoverageGaps(snapshot)}
 	for _, value := range snapshot.Sessions {
 		page.items = append(page.items, value.Metadata)
 		page.classes = append(page.classes, value.Origin.Effective)
@@ -42,9 +45,10 @@ type sessionBrowserState struct {
 	classes  []string
 	selected int
 	// scope is empty for an unscoped browser, which offers no scope menu.
-	scope      string
-	unknown    int
-	indexEmpty bool
+	scope        string
+	unknown      int
+	coverageGaps []string
+	indexEmpty   bool
 	// menuOpen shows the scope menu; menuIndex is its highlighted entry.
 	menuOpen  bool
 	menuIndex int
@@ -79,6 +83,7 @@ func (s *sessionBrowserState) replace(page sessionBrowserPage) {
 		previous = &item
 	}
 	s.items, s.classes, s.scope, s.unknown, s.indexEmpty = page.items, page.classes, page.scope, page.unknown, page.indexEmpty
+	s.coverageGaps = page.coverageGaps
 	s.selected, s.failedScope = 0, ""
 	s.untrusted, s.unavailableScope = false, ""
 	if previous == nil {
@@ -155,6 +160,10 @@ func (s *sessionBrowserState) viewport(width, height int) (start, end, size int)
 	if compact {
 		// The compact header and every compact record use two complete lines.
 		fixedRows, recordRows = 7, 2
+	}
+	if len(s.coverageGaps) > 0 {
+		// The coverage warning line sits above the list.
+		fixedRows++
 	}
 	size = max(1, (height-fixedRows)/recordRows)
 	start = max(0, min(s.selected-size/2, len(s.items)-size))
@@ -395,8 +404,11 @@ func renderSessionBrowser(w io.Writer, width, height int, state *sessionBrowserS
 
 	lines = append(lines,
 		p.style("AGENTDECK · SESSIONS", usageColorBrand)+" · "+p.style("INTERACTIVE", usageColorSession)+" · "+p.style("READ ONLY", usageColorSuccess),
-		statsFit(sessionBrowserSummary(state, p), sessionBrowserCanvasWidth(width)),
+		sessionBrowserSummary(state, p, sessionBrowserCanvasWidth(width)),
 	)
+	if warning := sessionBrowserCoverageWarning(state, p, sessionBrowserCanvasWidth(width)); warning != "" {
+		lines = append(lines, warning)
+	}
 	if state.menuOpen {
 		lines = append(lines, p.style("SESSION SCOPE", usageColorBrand))
 		for index, scope := range sessionBrowserScopes {
@@ -475,15 +487,43 @@ func sessionBrowserScopeLabel(scope string) string {
 	return "All sessions"
 }
 
-func sessionBrowserSummary(state *sessionBrowserState, p usageTextPrimitives) string {
+func sessionBrowserSummary(state *sessionBrowserState, p usageTextPrimitives, width int) string {
+	zone := " · times in " + displayZoneName()
 	if state.scope == "" {
-		return p.style(fmt.Sprintf("%d INDEXED SESSIONS", len(state.items)), usageColorSession) + " · times in " + displayZoneName()
+		return statsFit(p.style(fmt.Sprintf("%d INDEXED SESSIONS", len(state.items)), usageColorSession)+zone, width)
 	}
 	line := p.style(fmt.Sprintf("%d SESSIONS", len(state.items)), usageColorSession) + " · Scope: " + state.scope
 	if state.scope != sessionorigin.ScopeAuxiliary {
 		line += fmt.Sprintf(" · %d unknown", state.unknown)
 	}
-	return line + " · times in " + displayZoneName()
+	return statsFit(line+zone, width)
+}
+
+// sessionBrowserCoverageCheck is where the browser points for the cause of an
+// incomplete classification coverage, as the text output does.
+const sessionBrowserCoverageCheck = "Check: agentdeck session origin-source status"
+
+// sessionBrowserCoverageWarning is the warning line under the scope line, or
+// "" when the selection's classification coverage is complete. It is its own
+// line so the scope line's counts never squeeze it. It names the partial
+// state, its reason codes and the check command; as the width shrinks the
+// check command and then the wording give way before the reason codes, and
+// PARTIAL leads every form, so truncation never removes it.
+func sessionBrowserCoverageWarning(state *sessionBrowserState, p usageTextPrimitives, width int) string {
+	if len(state.coverageGaps) == 0 {
+		return ""
+	}
+	reasons := strings.Join(state.coverageGaps, ", ")
+	for _, candidate := range []string{
+		"PARTIAL: classification coverage incomplete (" + reasons + ") · " + sessionBrowserCoverageCheck,
+		"PARTIAL: classification coverage incomplete (" + reasons + ")",
+		"PARTIAL coverage: " + reasons,
+	} {
+		if statsVisibleWidth(candidate) <= width {
+			return p.style(candidate, usageColorWarning)
+		}
+	}
+	return p.style(statsFit("PARTIAL coverage: "+reasons, width), usageColorWarning)
 }
 
 // readSessionBrowserKeyWhileLoading reads one key while a scope loads. It

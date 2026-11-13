@@ -33,9 +33,11 @@ type IndexedSession struct {
 // session_metadata and session_sources advance serving_generation.revision on
 // every INSERT/UPDATE/DELETE through their triggers; exclusions are applied
 // by deleting rows, so session_exclusions changes reach the same triggers.
-// session_documents is an FTS5 table and cannot carry a trigger itself; its
-// content shadow table session_documents_content does, so every document
-// INSERT, UPDATE and DELETE (direct SQL included) advances the same revision.
+// session_documents is an FTS5 table and carries no trigger, nor does its
+// content shadow table (see the store's serving storage). Every statement of
+// this package that inserts, rewrites or deletes documents advances the same
+// revision itself in the writing transaction; direct SQL that bypasses the
+// package does not, and is not a supported way to write searchable text.
 type IndexSnapshot struct {
 	Epoch    int64
 	Revision int64

@@ -293,3 +293,124 @@ Task checkpoint：ad-auxiliary-session-classification-doc-arch；content_state `
 - WorkUnit: `auxiliary-session-classification:architecture.md`；ContentState: `auxiliary-session-classification:arch-r5-4299e9eae33f0e15`。
 - Completion gate: VERIFIED
 - Gate scope: 本架构文档的独立复评与完整性检查；不认证实现。
+
+## Round 6 — 2026-11-13
+
+## 📋 架构 FTS 保证范围修订评审
+
+📊 总体评分: 8/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+本节一项为 P3，按本项目规则同样须在 PASS 前关闭。
+
+**ASC-ARCH-R6-F1 — P3：§6 把全量扫描的全部回退都归因于触发器，数字与实测不符。状态：OPEN。**
+
+位置：`architecture.md:274`「实测全量扫描因此慢约 11%（P09 比值 1.115，移除后 1.030）」；
+同一说法的副本在 `reviews/scope-projections.md:661`「全量扫描慢约 11%」。
+
+- 行为风险：这一句是收窄合同的理由。括号里的两个比值都是候选相对合并基的比值：带触发器时 1.115，移除后 1.030。
+  触发器造成的是两者之差，约 8 个百分点；余下约 3% 来自来源分类协调与发布携带的范围视图，移除触发器后仍在。
+  「因此慢约 11%」把后者也算进了触发器，夸大了收窄换来的收益；这个数字已被复制到另一份记录，后续引用会继续沿用。
+- 证据：tasks.md 任务 9 交接记录的测量——收窄后的正式矩阵 P09 基线 10,835 ms、候选 12,086 ms，比值 1.115；
+  移除触发器后复测 20 对，12,279 对 12,644 ms，比值 1.030；最终内容的正式批次为 1.028。
+  同一交接写明剩余约 0.3 秒由协调与范围视图构成。
+
+💡 有界修复：把该句改成与实测一致的表述，例如「带这些触发器时全量扫描比合并基慢约 11.5%，移除后约 3%，触发器约占 8 个百分点」，
+括号内的两个比值保留；`reviews/scope-projections.md` 的保证范围变更说明同步改正。不涉及其他文字。
+
+### 🟢 优点
+
+- 修订内容与实现逐项一致（实现侧的核对见 [integrated-acceptance.md](integrated-acceptance.md) 的 ASC-IA-R1-F1 与 ASC-IA-R1-F5）：
+  内容影子表不装触发器、可写打开时删除旧库已有的三个；session 包内每条写 `session_documents` 的产品语句在同一事务显式推进 revision；
+  回归测试逐个写入点验证，结构性检查限定写入只出现在 session 包内。
+- 例外的边界写清楚了：只有 FTS 搜索文本一项；绕过 session 包的直接 SQL 不推进 revision、搜索选择可能沿用旧向量直到下一次受保证的写入、
+  这类写入不属受支持的操作。§1 的修订说明、§4 sessions 行与 §6 三处表述互相一致，其余依赖表的 trigger 保证未被削弱；
+  sessions 侧其余读取依赖（session_metadata、session_sources、session_exclusions）仍在触发器清单内，「唯一例外」成立。
+- 如实说明了保证性质的变化：由结构性保证变为依赖约定加测试守护，没有把它写成等价替换。
+- 新旧二进制混用的情形评审推演过：旧二进制可写打开会重新装上触发器，新二进制下次可写打开再删除；
+  两种状态下 revision 都只会多推进而不会漏推进，无需 schema 版本变化。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code）。与任务 9 的 Round 2–4 复评为同一评审会话；未参与本文档的修订。
+- Method: 单评审者；按设计/合同类维度评审——前提是否成立、与当前实现的一致性、场景覆盖（新旧二进制混用、回滚、绕过写入）、
+  决策完整性、内部矛盾、对约定的依赖；数字与 tasks.md 记录的测量逐项对照；不委派。
+- Scope: 相对 Round 5 已评审并已提交的 blob `416d63c9`（即 HEAD 中的版本）的差异，共 15 行新增、3 行删除：
+  frontmatter 日期、§1 修订说明、§4 sessions 行、§6 的 sessions 覆盖句与新增段落。其余章节未变，沿用 Round 5 结论。
+- Reviewed state: HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；architecture blob `df7eb6fba77025ba973e983b355f9213701fbdfd`（未提交）。
+- Fingerprint: `673401b0500d0d8a494e21ad2fe0103fbea4193dcc45b51ddeb8bb1942489f1a`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Disposition: ASC-ARCH-R6-F1 OPEN。此前各轮发现均已在各自轮次关闭，本轮差异未使其回退。
+- 范围外说明（不属本轮差异，不计入本文档的未关闭发现）：§2 记载读向量核对带 200 ms 截止，§6 只规定了向量变化时的重试与回退，
+  没有规定核对超时如何处理；由此产生的偶发失败已由 Beads `ad-bug-selection-verify-200ms-deadline` 承载。
+- 残余不确定性：未重新评审未变章节；新旧二进制混用为推演，未执行。
+- WorkUnit: `auxiliary-session-classification:architecture.md`；ContentState: `auxiliary-session-classification:arch-r6-673401b0500d0d8a`。
+- Completion gate: FAILED
+- Gate scope: 本架构文档的独立评审与完整性检查；不认证实现。Documents 矩阵中本文档的 Review 保持未勾选。
+
+下一步指令：`修复：auxiliary-session-classification / architecture / ASC-ARCH-R6-F1`
+
+## Repair candidate — 2026-11-13（Round 6 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-ARCH-R6-F1，未委派。
+- ASC-ARCH-R6-F1 → repaired in candidate。§6 该句改为：带这些 trigger 时全量扫描比合并基慢约 11.5%，移除后约 3%，
+  trigger 约占 8 个百分点；括号内保留 P09 比值 1.115 与移除后 1.030，并注明余下部分来自来源分类协调与发布携带的范围视图。
+  `reviews/scope-projections.md` 的“保证范围变更”节同步改为同一归因。其他文字未改。
+- 数字来源：tasks.md 任务 9 交接记录——P09 全量扫描 10,835 对 12,086 ms，比值 1.115；移除触发器后 20 对复测
+  12,279 对 12,644 ms，比值 1.030；1.115 − 1.030 ≈ 8.5 个百分点。
+- 副本核对：在本 topic 文档中检索“约 11%”，除本记录 Round 6 引述原文外已无残留。
+- Candidate identity：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；architecture blob `42986a3c5452e5400fca2635b560899604b1aa7e`。
+- 验证：`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh auxiliary-session-classification`、
+  `scripts/check-whitespace.sh`、`git diff --check -- docs` 均通过；未改产品代码或测试，未运行产品测试。
+- 原 FAIL/OPEN 与 FAILED 门禁保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+- Beads `ad-auxiliary-session-classification-doc-arch` 按 Round 6 处置保持 closed，未认领；本次修复交接以评论记录。
+
+## Round 7 — 2026-11-13
+
+## 📋 架构 FTS 保证范围修订复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-ARCH-R6-F1 — CLOSED**：§6 现写为「带这些 trigger 时全量扫描比合并基慢约 11.5%，移除后约 3%，trigger 约占 8 个百分点
+  （P09 比值 1.115，移除后 1.030；余下部分来自来源分类协调与发布携带的范围视图）」，与 tasks.md 任务 9 交接记录的测量一致
+  （10,835→12,086 ms 为 1.115；12,279→12,644 ms 为 1.030）。`reviews/scope-projections.md` 的保证范围变更说明已同步为同一表述。
+- 修复只动了这一句；Round 6 确认过的其余修订内容（例外的边界、与实现的一致性、保证性质变化的说明）未变。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 6 评审会话；未参与修复。
+- Method: 单评审者；复读 §6 该句及其在 scope-projections 记录中的副本，与测量记录逐项核对；不委派。
+- Scope: ASC-ARCH-R6-F1。相对 HEAD 中已评审的 blob `416d63c9`，本文档的差异为 16 行新增、3 行删除，比 Round 6 多出的一行即该句改写后的折行。
+- Reviewed state: HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；architecture blob `42986a3c5452e5400fca2635b560899604b1aa7e`（未提交）。
+- Fingerprint: `3a67c8e4daa5897515666bd28cde5b8e0ce6f958abd320c7fe6a0307d66f61ce`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Disposition: ASC-ARCH-R6-F1 CLOSED。本记录没有未关闭的发现。
+- 本记录引用的其他记录的发现（归属与关闭都在各自记录，这里只为说明它们不是本文档的遗留项）：
+  - ASC-TASKS-R5-F1 CLOSED：归属 reviews/tasks.md，于该记录 Round 6 关闭（ux/cli.md 改为引用架构 §7，见 reviews/ux-cli.md Round 6）。
+  - ASC-IA-R1-F1 CLOSED：归属 reviews/integrated-acceptance.md，于该记录 Round 2 关闭。
+  - ASC-IA-R1-F5 CLOSED：归属 reviews/integrated-acceptance.md，于该记录 Round 2 关闭。
+- 范围外说明沿用 Round 6：核对超时的处理由 Beads `ad-bug-selection-verify-200ms-deadline` 承载。
+- 残余不确定性：Round 6 的 blob 未进入 Git 对象库，无法逐字节比对两轮之间的差异，「只动了这一句」依据的是相对 HEAD 的行数变化与通读 §6。
+- 交付说明：本文档的 Beads 任务 `ad-auxiliary-session-classification-doc-arch` 已是 closed，未重开；本次修订在任务 9 `integrated-acceptance` 的候选路径内，随其提交交付。
+- WorkUnit: `auxiliary-session-classification:architecture.md`；ContentState: `auxiliary-session-classification:arch-r7-3a67c8e4daa58975`。
+- Completion gate: VERIFIED
+- Gate scope: 本架构文档的独立复评与完整性检查；不认证实现。

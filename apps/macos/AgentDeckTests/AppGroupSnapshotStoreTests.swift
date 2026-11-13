@@ -688,6 +688,46 @@ actor ScriptedWidgetScopeReader: WidgetSessionScopeReading {
 	}
 }
 
+/// Answers the whole batch in one read, as the production runner does: one
+/// scripted answer per attempt, the last one repeating. A single-selection
+/// read is counted and fails, so a test sees that the batch form was used.
+actor ScriptedWidgetBatchReader: WidgetSessionScopeReading {
+	struct BatchRead: Equatable, Sendable {
+		let scope: DesktopSessionScopeV1
+		let asOf: String
+	}
+
+	private var answers: [Result<[DesktopSessionScopeViewV1], HelperExecutionError>]
+	private let delivery: (publication: String, batch: WidgetSessionScopeDelivery)?
+	private(set) var batchReads = [BatchRead]()
+	private(set) var singleReads = 0
+	private(set) var deliveryAsks = [String]()
+
+	init(_ answers: [Result<[DesktopSessionScopeViewV1], HelperExecutionError>],
+		delivery: (publication: String, batch: WidgetSessionScopeDelivery)? = nil) {
+		self.answers = answers
+		self.delivery = delivery
+	}
+
+	func widgetSessionScopeDelivered(publication: String) async -> WidgetSessionScopeDelivery? {
+		deliveryAsks.append(publication)
+		return delivery?.publication == publication ? delivery?.batch : nil
+	}
+
+	func widgetSessionScopeView(
+		_: DesktopSessionScopeSelectionV1, generationID _: String?, asOf _: String
+	) async throws -> DesktopSessionScopeViewV1 {
+		singleReads += 1
+		throw HelperExecutionError.malformedOutput
+	}
+
+	func widgetSessionScopeBatch(scope: DesktopSessionScopeV1, asOf: String) async throws -> [DesktopSessionScopeViewV1]? {
+		batchReads.append(BatchRead(scope: scope, asOf: asOf))
+		let answer = answers.count > 1 ? answers.removeFirst() : answers[0]
+		return try answer.get()
+	}
+}
+
 /// Re-encodes a view with JSON edits, through the production decoder.
 func editedView(_ view: DesktopSessionScopeViewV1, _ edit: (inout [String: Any]) -> Void) throws -> DesktopSessionScopeViewV1 {
 	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(view)) as? [String: Any])
@@ -700,6 +740,159 @@ func editedView(_ view: DesktopSessionScopeViewV1, _ edit: (inout [String: Any])
 let widgetBatchNow: @Sendable () -> Date = { ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")! }
 
 final class WidgetSessionScopeBatchTests: XCTestCase {
+	/// A reader with the batch form is asked once per attempt and never for a
+	/// single selection: a publication starts one helper, not nine.
+	func testABatchReaderIsAskedOnceAndItsAnswerMatchesTheOracle() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let reader = ScriptedWidgetBatchReader([.success(views)])
+		let collected = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow).collectWithViews(default: views[0].default)
+		guard case let .accepted(set) = collected.outcome else { return XCTFail("\(collected.outcome)") }
+		XCTAssertEqual(collected.views, views)
+		XCTAssertEqual(set.items.count, 9)
+		for item in set.items {
+			let row = try XCTUnwrap(fixture.oracle["auxiliary"]?["\(item.client)/\(item.period)"])
+			XCTAssertEqual(item.count, row.count, "\(item.client)/\(item.period)")
+			XCTAssertEqual(item.publicationID, "fixture-session-scope-generation-auxiliary")
+			XCTAssertEqual(item.generatedAt, fixture.asOf)
+		}
+		let batchReads = await reader.batchReads
+		let singleReads = await reader.singleReads
+		XCTAssertEqual(batchReads, [ScriptedWidgetBatchReader.BatchRead(scope: .auxiliary, asOf: fixture.asOf)])
+		XCTAssertEqual(singleReads, 0)
+	}
+
+	/// A batch the publication's producer handed over is taken as it is, at
+	/// its own instant, and no read is started. It is asked for only by the
+	/// publication being published.
+	func testADeliveredBatchIsAcceptedWithoutAnyRead() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let delivery = WidgetSessionScopeDelivery(asOf: fixture.asOf, views: views)
+		let reader = ScriptedWidgetBatchReader([.failure(.timedOut)], delivery: ("publication-a", delivery))
+		// The collector's own clock is elsewhere: the delivery's instant rules.
+		let collector = WidgetSessionScopeBatchCollector(reader: reader, now: { Date(timeIntervalSince1970: 0) })
+		let collected = await collector.collectWithViews(default: views[0].default, publication: "publication-a")
+		guard case let .accepted(set) = collected.outcome else { return XCTFail("\(collected.outcome)") }
+		XCTAssertEqual(collected.views, views)
+		XCTAssertEqual(set.items.map(\.generatedAt), Array(repeating: fixture.asOf, count: 9))
+		var batchReads = await reader.batchReads
+		var singleReads = await reader.singleReads
+		XCTAssertEqual(batchReads.count, 0)
+		XCTAssertEqual(singleReads, 0)
+
+		// Another publication has no delivery, and without a publication none
+		// is asked for: both read the batch themselves.
+		let other = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow)
+			.collect(default: views[0].default, publication: "publication-b")
+		XCTAssertEqual(other, .rejected(reason: AppGroupSessionScopeSummaryReason.selectionUnavailable))
+		_ = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow).collect(default: views[0].default)
+		batchReads = await reader.batchReads
+		singleReads = await reader.singleReads
+		let asks = await reader.deliveryAsks
+		XCTAssertEqual(batchReads.count, 2)
+		XCTAssertEqual(singleReads, 0)
+		XCTAssertEqual(asks, ["publication-a", "publication-b"])
+	}
+
+	/// A delivered batch passes the same checks as a read one. One that fails
+	/// them — another scope, another default, a spliced generation, a short
+	/// answer — is dropped and the batch is read, with its full retry budget.
+	func testAnUnacceptableDeliveredBatchFallsBackToReading() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let otherScope = fixture.batches.keys.sorted().first { $0 != "auxiliary" }
+		let work = try XCTUnwrap(otherScope.flatMap { fixture.batches[$0] })
+		var foreign = views
+		foreign[4] = try editedView(views[4]) { $0["generation_id"] = "fixture-session-scope-generation-other" }
+		for bad in [work, foreign, Array(views.dropLast()), [DesktopSessionScopeViewV1]()] {
+			let reader = ScriptedWidgetBatchReader([.success(foreign), .success(views)],
+				delivery: ("publication-a", WidgetSessionScopeDelivery(asOf: fixture.asOf, views: bad)))
+			let collected = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow)
+				.collectWithViews(default: views[0].default, publication: "publication-a")
+			guard case .accepted = collected.outcome else { return XCTFail("\(collected.outcome)") }
+			XCTAssertEqual(collected.views, views)
+			let batchReads = await reader.batchReads
+			XCTAssertEqual(batchReads.count, 2, "the delivery does not spend a retry")
+		}
+	}
+
+	/// The batch answer is verified view by view exactly like single reads: a
+	/// missing, reordered or foreign-generation view discards the candidate,
+	/// with at most two retries and never a fallback to single reads.
+	func testAnInconsistentBatchAnswerIsDiscardedAndRetriedAtMostTwice() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		var reordered = views
+		reordered.swapAt(1, 2)
+		var foreign = views
+		foreign[4] = try editedView(views[4]) { $0["generation_id"] = "fixture-session-scope-generation-other" }
+		for bad in [Array(views.dropLast()), reordered, foreign, views + [views[0]]] {
+			let reader = ScriptedWidgetBatchReader([.success(bad)])
+			let outcome = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow).collect(default: views[0].default)
+			XCTAssertEqual(outcome, .rejected(reason: AppGroupSessionScopeSummaryReason.batchInconsistent))
+			let batchReads = await reader.batchReads
+			let singleReads = await reader.singleReads
+			XCTAssertEqual(batchReads.count, 3, "three attempts, never more")
+			XCTAssertEqual(singleReads, 0)
+		}
+	}
+
+	/// Go pins the batch itself: when the generation moves mid-batch the later
+	/// views come back unavailable, and the next attempt's whole batch is taken.
+	func testABatchCutByAMovedGenerationRetriesThenSucceeds() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		var cut = views
+		for index in 4 ..< cut.count {
+			cut[index] = try editedView(views[index]) { object in
+				for key in ["counts", "origin_coverage", "publication_id", "generation_id", "generated_at"] { object[key] = NSNull() }
+				object["available"] = false
+				object["reason"] = "generation_unavailable"
+				object["recent"] = [Any]()
+			}
+		}
+		let reader = ScriptedWidgetBatchReader([.success(cut), .success(views)])
+		let collected = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow).collectWithViews(default: views[0].default)
+		guard case let .accepted(set) = collected.outcome else { return XCTFail("\(collected.outcome)") }
+		XCTAssertEqual(set.items.count, 9)
+		XCTAssertEqual(collected.views, views)
+		let batchReads = await reader.batchReads
+		XCTAssertEqual(batchReads.count, 2)
+	}
+
+	func testAFailedBatchReadRejectsWithoutRetryOrSingleReads() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let reader = ScriptedWidgetBatchReader([.failure(.timedOut)])
+		let collected = await WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow).collectWithViews(default: views[0].default)
+		XCTAssertEqual(collected.outcome, .rejected(reason: AppGroupSessionScopeSummaryReason.selectionUnavailable))
+		XCTAssertTrue(collected.views.isEmpty)
+		let batchReads = await reader.batchReads
+		let singleReads = await reader.singleReads
+		XCTAssertEqual(batchReads.count, 1)
+		XCTAssertEqual(singleReads, 0)
+	}
+
+	/// An accepted batch hands back the nine complete views it was built from,
+	/// one per client and period; a rejected one hands back none.
+	func testAnAcceptedBatchKeepsItsCompleteViewsAndARejectedOneKeepsNone() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let defaults = try XCTUnwrap(views.first?.default)
+		let collector = WidgetSessionScopeBatchCollector(reader: ScriptedWidgetScopeReader(views: views), now: widgetBatchNow)
+		let accepted = await collector.collectWithViews(default: defaults)
+		guard case .accepted = accepted.outcome else { return XCTFail("the producer's batch was rejected") }
+		XCTAssertEqual(accepted.views.count, 9)
+		XCTAssertEqual(Set(accepted.views.compactMap(\.selection)).count, 9)
+		XCTAssertEqual(Set(accepted.views.compactMap(\.selection?.scope)), [.auxiliary])
+		XCTAssertTrue(accepted.views.allSatisfy(\.available))
+
+		let rejected = await collector.collectWithViews(default: .unconfirmed)
+		guard case .rejected = rejected.outcome else { return XCTFail("an unconfirmed default started a batch") }
+		XCTAssertTrue(rejected.views.isEmpty)
+	}
+
 	func testGoBatchBecomesNineWhitelistedSummariesThatMatchTheOracle() async throws {
 		let fixture = try WidgetBatchFixture.load()
 		let reader = ScriptedWidgetScopeReader(views: try XCTUnwrap(fixture.batches["auxiliary"]))

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -158,10 +159,11 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 	request := desktop.SessionScopeRequest{Client: "all", Period: "today", RecentLimit: desktop.DefaultRecentLimit}
 	asOf := ""
+	batch := false
 	command := &cobra.Command{
 		Use:     "session-scope",
 		Short:   "Read one session-scope view from committed state",
-		Long:    "Read the session-scope view for one explicit scope, client and period from committed state, without scanning sources, creating state, or using the network.",
+		Long:    "Read the session-scope view for one explicit scope, client and period from committed state, without scanning sources, creating state, or using the network. With --batch, read that scope for every client and period at one committed generation and one instant.",
 		Example: "  agentdeck --format json desktop session-scope --scope auxiliary --client all --period 7d",
 		Args:    exactArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -176,6 +178,9 @@ func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 				}
 				request.AsOf = parsed
 			}
+			if batch && (cmd.Flags().Changed("client") || cmd.Flags().Changed("period")) {
+				return &inputError{err: fmt.Errorf("%w: --batch answers every client and period; --client and --period do not apply", desktop.ErrInvalidSessionScope)}
+			}
 			if err := request.Validate(); err != nil {
 				return &inputError{err: err}
 			}
@@ -188,6 +193,20 @@ func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			service := desktop.Service{StateRoot: stateRoot, Home: home, Now: desktopNow, Location: displayLocation()}
+			if batch {
+				views, err := service.SessionScopeBatch(cmd.Context(), request)
+				if err != nil {
+					return err
+				}
+				partial, warnings := false, []string{}
+				for _, view := range views.Views {
+					partial = partial || !view.Available
+					if view.Reason != nil && !slices.Contains(warnings, *view.Reason) {
+						warnings = append(warnings, *view.Reason)
+					}
+				}
+				return writeEnvelope(opts.stdout, opts.format, "desktop.session-scope-batch", views, partial, warnings)
+			}
 			view, err := service.SessionScopeView(cmd.Context(), request)
 			if err != nil {
 				return err
@@ -205,6 +224,7 @@ func newDesktopSessionScopeCommand(opts *commandOptions) *cobra.Command {
 	command.Flags().IntVar(&request.RecentLimit, "recent-limit", request.RecentLimit, "Recent sessions to include (1-20)")
 	command.Flags().StringVar(&request.GenerationID, "generation-id", "", "Answer only from this committed generation; otherwise the view is unavailable")
 	command.Flags().StringVar(&asOf, "as-of", "", "RFC 3339 instant for the period window and generated_at (default: now)")
+	command.Flags().BoolVar(&batch, "batch", false, "Read the scope for every client and period in one answer")
 	return command
 }
 
@@ -213,6 +233,14 @@ type desktopBootstrapEvent struct {
 	Command       string `json:"command"`
 	Type          string `json:"type"`
 	Data          any    `json:"data"`
+}
+
+// desktopBootstrapSessionScopeBatch follows a completed terminal line: the
+// saved default scope for every client and period, for the stream's last
+// publication.
+type desktopBootstrapSessionScopeBatch struct {
+	PublicationID string `json:"publication_id"`
+	desktop.SessionScopeDefaultBatch
 }
 
 func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
@@ -244,8 +272,12 @@ func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
 		// The App already shows a valid publication: this startup scan runs in
 		// the background. Without one (first import, no cache) it keeps full priority.
 		_, restoreErr := (desktop.Service{StateRoot: root, Home: home, Now: desktopNow}).ReadServingSnapshot(ctx)
+		lastPublication := ""
 		client := scanruntime.Client{StateRoot: root, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow, AppOwned: true,
-			Background: restoreErr == nil, OnPublication: func(value desktop.ServingSnapshot) { emit("publication", value) }}
+			Background: restoreErr == nil, OnPublication: func(value desktop.ServingSnapshot) {
+				lastPublication = value.Header.PublicationID
+				emit("publication", value)
+			}}
 		result, err := client.RequestWithProgress(ctx, scanruntime.ScopeBoth, func(value scanruntime.Progress) { emit("progress", value) })
 		if outputErr != nil {
 			return outputErr
@@ -256,6 +288,13 @@ func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
 		emit("terminal", result)
 		if result.Usage.State != "completed" || result.Session.State != "completed" {
 			return errors.New("desktop bootstrap did not complete")
+		}
+		// The terminal line already told the App the round is over. This
+		// process then hands over the default scope's Widget batch for the
+		// last publication, so publishing it starts no second helper.
+		if lastPublication != "" && outputErr == nil {
+			batch := (desktop.Service{StateRoot: root, Home: home, Now: desktopNow}).SessionScopeDefaultBatch(ctx, desktop.DefaultRecentLimit)
+			emit("session_scope_batch", desktopBootstrapSessionScopeBatch{PublicationID: lastPublication, SessionScopeDefaultBatch: batch})
 		}
 		return outputErr
 	}}

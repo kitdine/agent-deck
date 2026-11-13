@@ -1336,6 +1336,30 @@ public func decodeDesktopSessionScopeEnvelopeV1(_ data: Data) throws -> DesktopS
 	try JSONDecoder().decode(DesktopSessionScopeEnvelopeV1.self, from: data).data
 }
 
+/// desktop.session-scope-batch: one scope read for every client and period in
+/// one helper process, at one committed generation and one instant.
+public struct DesktopSessionScopeBatchEnvelopeV1: Decodable, Equatable, Sendable {
+	public static let command = "desktop.session-scope-batch"
+
+	public let views: [DesktopSessionScopeViewV1]
+
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, data }
+	enum DataKeys: String, CodingKey { case views }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		guard try container.decode(Int.self, forKey: .schemaVersion) == 1,
+			try container.decode(String.self, forKey: .command) == Self.command
+		else { throw DesktopWireError.invalidEnvelope }
+		views = try container.nestedContainer(keyedBy: DataKeys.self, forKey: .data)
+			.decode([DesktopSessionScopeViewV1].self, forKey: .views)
+	}
+}
+
+public func decodeDesktopSessionScopeBatchEnvelopeV1(_ data: Data) throws -> [DesktopSessionScopeViewV1] {
+	try JSONDecoder().decode(DesktopSessionScopeBatchEnvelopeV1.self, from: data).views
+}
+
 public struct DesktopHealthSnapshotV1: Codable, Equatable, Sendable {
     public let available: Bool
     public let status: String?

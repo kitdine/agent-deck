@@ -132,6 +132,45 @@ final class DesktopWireTests: XCTestCase {
 		}
 	}
 
+	/// The Widget batch is one helper process: `session-scope --batch` for the
+	/// scope, answered as nine views; anything else is malformed.
+	func testBatchReadStartsOneHelperAndDecodesItsNineViews() async throws {
+		let views = try WidgetBatchFixture.load().batches["auxiliary"] ?? []
+		XCTAssertEqual(views.count, 9)
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(views))
+		func stdout(command: String) throws -> Data {
+			try JSONSerialization.data(withJSONObject: ["schema_version": 1, "command": command,
+				"generated_at": "2026-08-13T10:00:00Z", "data": ["views": payload], "warnings": [String](), "partial": false] as [String: Any])
+		}
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let bundle = try makeEmbeddedHelperBundle(in: directory)
+		let process = RecordingHelperProcess(behavior: .output(HelperProcessOutput(
+			exitStatus: 0, stdout: try stdout(command: "desktop.session-scope-batch"), stderr: Data()
+		)))
+		let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process, environment: ["HOME": directory.path], timeout: .seconds(5))
+
+		let answered = try await runner.widgetSessionScopeBatch(scope: .auxiliary, asOf: "2026-08-13T10:00:00Z")
+		XCTAssertEqual(answered, views)
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.count, 1)
+		let arguments = try XCTUnwrap(invocations.first?.arguments)
+		XCTAssertEqual(Array(arguments.suffix(11)), ["--format", "json", "desktop", "session-scope", "--scope", "auxiliary", "--batch",
+			"--recent-limit", String(EmbeddedHelperRunner.defaultRecentLimit), "--as-of", "2026-08-13T10:00:00Z"])
+		XCTAssertFalse(arguments.contains("scan"), "a batch read never scans")
+
+		let single = RecordingHelperProcess(behavior: .output(HelperProcessOutput(
+			exitStatus: 0, stdout: try stdout(command: "desktop.session-scope"), stderr: Data()
+		)))
+		let mismatched = EmbeddedHelperRunner(appBundleURL: bundle, process: single, environment: ["HOME": directory.path], timeout: .seconds(5))
+		do {
+			_ = try await mismatched.widgetSessionScopeBatch(scope: .auxiliary, asOf: "2026-08-13T10:00:00Z")
+			XCTFail("a single-selection envelope must not be taken for a batch")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .malformedOutput)
+		}
+	}
+
     func testLaunchServicesStatusesSurviveFullSnapshotDecoding() throws {
         for state in ["consistent", "not_applicable", "conflict", "stale", "unknown"] {
             let warning = !["consistent", "not_applicable"].contains(state)

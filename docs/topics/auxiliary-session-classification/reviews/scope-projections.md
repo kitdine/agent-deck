@@ -652,3 +652,16 @@ Beads CLI 的 workspace gate lock 权限警告仍存在，主操作以 ungated �
 仅 tasks.md 和本记录追加交付元数据。执行前核验暂存范围、消息与 Claude/Codex 贡献者 trailer；
 本提交对象提供实际内容原件。实际提交 ID、tree、SSH 签名核验与提交态 CEv1 对账由对应 Beads 与 CEv1 留存，
 不在本提交正文写入自引用 SHA。未授权推送或开始 cli-contract。
+
+### 保证范围变更 — 2026-11-11
+
+本节只记录后续合同变化，不改写上面各轮的结论与证据；它们仍绑定各自当时的内容。
+
+ASC-SP-R3-F1 在 Round 4 的关闭依据是 `session_documents_content` 上的三个 revision 触发器，保证任何写入（含直接 SQL）
+都推进 sessions 侧 serving revision。任务 9 测得这些触发器使 FTS5 每次内容写入都刷盘并合并段：带触发器时全量扫描比合并基慢约 11.5%，
+移除后约 3%，触发器约占 8 个百分点；
+用户于 2026-11-11 决定收窄该保证：触发器移除，改由 session 包的产品写入路径在同一事务显式推进 revision，
+直接 SQL 不再覆盖。现行合同见 [architecture.md §6](../architecture.md)，变更的评审与证据见
+[integrated-acceptance.md](integrated-acceptance.md) 的 ASC-IA-R1-F1 与 ASC-IA-R1-F5。
+ASC-SP-R3-F1 所指的缺陷（产品写入 FTS 后搜索投影沿用旧 revision）在新合同下仍由回归测试覆盖；
+其原先对直接 SQL 的覆盖自该日起不再成立。

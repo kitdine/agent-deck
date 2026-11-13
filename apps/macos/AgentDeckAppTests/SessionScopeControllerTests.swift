@@ -66,6 +66,7 @@ final class SessionScopeControllerTests: XCTestCase {
 		// The publication already answers the default selection: no request.
 		XCTAssertEqual(pressed(model), .auxiliary)
 		XCTAssertEqual(model.sessionsPanel.scope.state, .ready)
+		XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 		await model.synchronizeSessionScope()
 		var requests = await reader.requests
 		XCTAssertTrue(requests.isEmpty)
@@ -101,6 +102,7 @@ final class SessionScopeControllerTests: XCTestCase {
 
 		let scope = model.sessionsPanel.scope
 		XCTAssertEqual(scope.state, .defaultUnknown)
+		XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 		XCTAssertTrue(scope.choices.isEmpty)
 		XCTAssertTrue(scope.stats.isEmpty)
 		XCTAssertTrue(scope.rows.isEmpty)
@@ -121,6 +123,7 @@ final class SessionScopeControllerTests: XCTestCase {
 		XCTAssertEqual(model.snapshot?.sessions.total, 1, "the legacy all-session total is still decoded")
 		let scope = model.sessionsPanel.scope
 		XCTAssertEqual(scope.state, .legacy)
+		XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 		XCTAssertEqual(scope.notice, t(DesktopCopy.sessionScopeLegacy))
 		XCTAssertEqual(scope.hint, t(DesktopCopy.sessionScopeLegacyHint))
 		XCTAssertTrue(scope.stats.isEmpty && scope.rows.isEmpty && scope.choices.isEmpty)
@@ -136,6 +139,7 @@ final class SessionScopeControllerTests: XCTestCase {
 
 		XCTAssertEqual(model.sessionScopeField, .invalid)
 		XCTAssertEqual(model.sessionsPanel.scope.state, .unavailable)
+		XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 		XCTAssertTrue(model.sessionsPanel.scope.stats.isEmpty)
 		XCTAssertNotNil(model.hero)
 		XCTAssertTrue(model.usagePanel.available)
@@ -343,6 +347,7 @@ final class SessionScopeControllerTests: XCTestCase {
 
 		let scope = model.sessionsPanel.scope
 		XCTAssertEqual(scope.state, .unavailable)
+		XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 		XCTAssertTrue(scope.stats.isEmpty)
 		XCTAssertTrue(scope.rows.isEmpty)
 		XCTAssertEqual(scope.notice, t(DesktopCopy.sessionScopeUnavailable))
@@ -420,6 +425,7 @@ final class SessionScopeControllerTests: XCTestCase {
 
 			let scope = model.sessionsPanel.scope
 			XCTAssertEqual(scope.state, .ready, label)
+			XCTAssertEqual(model.sessionScopePanelIsReady, model.sessionScopePanel.state == .ready, "the tab strip's cheap check must agree with the panel")
 			XCTAssertEqual(scope.selectionKey, "work|all|today", label)
 			XCTAssertTrue(scope.rows.isEmpty, "no session is invented: \(label)")
 			XCTAssertEqual(scope.notice, t(DesktopCopy.sessionScopeEmpty), label)
@@ -549,5 +555,32 @@ final class SessionScopeControllerTests: XCTestCase {
 		XCTAssertEqual(SessionOriginCopy.knownDuration(milliseconds: nil), "—")
 		XCTAssertNotEqual(SessionOriginCopy.knownDuration(milliseconds: 0), "—")
 		XCTAssertEqual(SessionOriginCopy.knownDuration(milliseconds: 5_400_000), DesktopFormat.duration(5_400))
+	}
+
+	/// A view the host already holds for this publication (the Widget batch)
+	/// answers a client or period change without a read; a selection the batch
+	/// does not hold, or a batch of another publication, still reads.
+	func testAPreloadedBatchViewAnswersAClientChangeWithoutARead() async {
+		let embedded = WireFixture.decodedSessionScopeView(WireFixture.sessionScopeView())
+		let claudeWeek = DesktopSessionScopeSelectionV1(scope: .work, client: "claude", period: "7d")
+		let batch = WireFixture.decodedSessionScopeView(WireFixture.sessionScopeView(client: "claude", period: "7d", sessions: 7))
+		let codexToday = DesktopSessionScopeSelectionV1(scope: .work, client: "codex", period: "today")
+		let read = WireFixture.decodedSessionScopeView(WireFixture.sessionScopeView(client: "codex", sessions: 3))
+		let reader = StubSessionScopeReader { _ in .view(read) }
+		let controller = SessionScopeController(reader: reader)
+		controller.beginPresentation(defaults: embedded.default)
+		let preloaded: (DesktopSessionScopeSelectionV1) -> DesktopSessionScopeViewV1? = { $0 == claudeWeek ? batch : nil }
+
+		await controller.synchronize(client: "claude", period: "7d", embedded: .present(embedded), publication: "p1", preloaded: preloaded)
+		XCTAssertEqual(controller.accepted?.selection, claudeWeek)
+		XCTAssertEqual(controller.accepted?.counts?.sessions, 7)
+		XCTAssertEqual(controller.request, .idle)
+		var requests = await reader.requests
+		XCTAssertTrue(requests.isEmpty, "a selection the batch holds must not start a read")
+
+		await controller.synchronize(client: "codex", period: "today", embedded: .present(embedded), publication: "p1", preloaded: preloaded)
+		requests = await reader.requests
+		XCTAssertEqual(requests, [codexToday], "a selection outside the batch still reads")
+		XCTAssertEqual(controller.accepted?.selection, codexToday)
 	}
 }

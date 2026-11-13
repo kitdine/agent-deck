@@ -9,6 +9,40 @@ public protocol WidgetSessionScopeReading: Sendable {
 		generationID: String?,
 		asOf: String
 	) async throws -> DesktopSessionScopeViewV1
+
+	/// The whole batch in one read: `scope` for every client and period, in
+	/// `WidgetSessionScopeBatchCollector.selections` order, at one instant and
+	/// pinned by the producer to one generation. nil means this reader answers
+	/// one selection at a time and the collector reads them itself.
+	func widgetSessionScopeBatch(
+		scope: DesktopSessionScopeV1,
+		asOf: String
+	) async throws -> [DesktopSessionScopeViewV1]?
+
+	/// The batch the process that produced `publication` already answered and
+	/// handed over with it, or nil when there is none: the collector then
+	/// reads one itself. It carries the instant it was answered at.
+	func widgetSessionScopeDelivered(publication: String) async -> WidgetSessionScopeDelivery?
+}
+
+/// A whole batch answered by the producer of a publication, with its instant.
+public struct WidgetSessionScopeDelivery: Equatable, Sendable {
+	public let asOf: String
+	public let views: [DesktopSessionScopeViewV1]
+
+	public init(asOf: String, views: [DesktopSessionScopeViewV1]) {
+		self.asOf = asOf
+		self.views = views
+	}
+}
+
+public extension WidgetSessionScopeReading {
+	func widgetSessionScopeDelivered(publication _: String) async -> WidgetSessionScopeDelivery? { nil }
+
+	func widgetSessionScopeBatch(
+		scope _: DesktopSessionScopeV1,
+		asOf _: String
+	) async throws -> [DesktopSessionScopeViewV1]? { nil }
 }
 
 public enum WidgetSessionScopeBatchOutcome: Equatable, Sendable {
@@ -24,10 +58,14 @@ public enum WidgetSessionScopeBatchOutcome: Equatable, Sendable {
 ///
 /// The host never counts sessions itself: every figure is Go's answer for an
 /// explicit selection whose scope is the confirmed persistent default — never
-/// the Popover's temporary choice. The first read (all × today) fixes the
-/// batch's generation; every later read pins it, so Go answers from that
-/// generation or reports it unavailable instead of silently answering from
-/// a newer one. A changed default, a moved generation, a mismatched
+/// the Popover's temporary choice. The production reader answers the whole
+/// batch from one helper process, so a publication starts one helper rather
+/// than nine; a reader without that form is read one selection at a time.
+/// When the producer of the publication being published already handed its
+/// batch over, that one is checked first and no helper is started at all.
+/// Either way the first view (all × today) fixes the batch's generation and
+/// every later one is pinned to it, so Go answers from that generation or
+/// reports it unavailable instead of silently answering from a newer one. A changed default, a moved generation, a mismatched
 /// selection, identity or time, or any missing combination discards the whole
 /// candidate; consistency failures retry at most `maximumRetries` times.
 public struct WidgetSessionScopeBatchCollector: Sendable {
@@ -45,47 +83,91 @@ public struct WidgetSessionScopeBatchCollector: Sendable {
 		self.now = now
 	}
 
-	public func collect(default initial: DesktopSessionScopeDefaultV1) async -> WidgetSessionScopeBatchOutcome {
+	public func collect(default initial: DesktopSessionScopeDefaultV1, publication: String? = nil) async -> WidgetSessionScopeBatchOutcome {
+		await collectWithViews(default: initial, publication: publication).outcome
+	}
+
+	/// The batch and, when it is accepted, the complete views it was built
+	/// from: the confirmed default scope for every client and period at one
+	/// generation. The Popover shows them when the user changes client or
+	/// period, instead of starting a read of its own for a view this batch
+	/// already holds.
+	public func collectWithViews(
+		default initial: DesktopSessionScopeDefaultV1,
+		publication: String? = nil
+	) async -> (outcome: WidgetSessionScopeBatchOutcome, views: [DesktopSessionScopeViewV1]) {
 		var expected = initial
 		var reason = AppGroupSessionScopeSummaryReason.batchInconsistent
+		// A handed-over batch passes the same checks as a read one. Anything
+		// short of acceptance falls through to the reads below, with their
+		// full retry budget.
+		if expected.confirmed, let scope = expected.value, let publication,
+			let delivery = await reader.widgetSessionScopeDelivered(publication: publication),
+			delivery.views.count == Self.selections.count,
+			case let .accepted(set, views) = await attempt(scope: scope, default: expected, delivery: delivery) {
+			return (.accepted(set), views)
+		}
 		for _ in 0 ... Self.maximumRetries {
 			guard expected.confirmed, let scope = expected.value else {
 				// An unconfirmed default starts no batch; it is never Work.
-				return .rejected(reason: AppGroupSessionScopeSummaryReason.defaultUnconfirmed)
+				return (.rejected(reason: AppGroupSessionScopeSummaryReason.defaultUnconfirmed), [])
 			}
 			switch await attempt(scope: scope, default: expected) {
-			case let .accepted(set):
-				return .accepted(set)
+			case let .accepted(set, views):
+				return (.accepted(set), views)
 			case let .retry(failure, adopted):
 				reason = failure
 				if let adopted { expected = adopted }
 			case let .final(failure):
-				return .rejected(reason: failure)
+				return (.rejected(reason: failure), [])
 			}
 		}
-		return .rejected(reason: reason)
+		return (.rejected(reason: reason), [])
 	}
 
 	private enum Attempt {
-		case accepted(AppGroupSessionScopeSummarySetV1)
+		case accepted(AppGroupSessionScopeSummarySetV1, [DesktopSessionScopeViewV1])
 		/// A consistency failure worth another full batch; `adopted` is a newer
 		/// confirmed default the reads reported.
 		case retry(String, adopted: DesktopSessionScopeDefaultV1?)
 		case final(String)
 	}
 
-	private func attempt(scope: DesktopSessionScopeV1, default expected: DesktopSessionScopeDefaultV1) async -> Attempt {
-		let asOf = Self.timestamp(now())
+	private func attempt(
+		scope: DesktopSessionScopeV1, default expected: DesktopSessionScopeDefaultV1,
+		delivery: WidgetSessionScopeDelivery? = nil
+	) async -> Attempt {
+		let asOf = delivery?.asOf ?? Self.timestamp(now())
 		guard let asOfDate = Self.date(asOf) else { return .final(AppGroupSessionScopeSummaryReason.selectionUnavailable) }
 		var generation: String?
 		var items = [AppGroupSessionScopeSummaryV1]()
-		for (client, period) in Self.selections {
-			let selection = DesktopSessionScopeSelectionV1(scope: scope, client: client, period: period)
-			let view: DesktopSessionScopeViewV1
+		var views = [DesktopSessionScopeViewV1]()
+		let batch: [DesktopSessionScopeViewV1]?
+		if let delivery {
+			batch = delivery.views
+		} else {
 			do {
-				view = try await reader.widgetSessionScopeView(selection, generationID: generation, asOf: asOf)
+				batch = try await reader.widgetSessionScopeBatch(scope: scope, asOf: asOf)
 			} catch {
 				return .final(AppGroupSessionScopeSummaryReason.selectionUnavailable)
+			}
+		}
+		if let batch, batch.count != Self.selections.count {
+			return .retry(AppGroupSessionScopeSummaryReason.batchInconsistent, adopted: nil)
+		}
+		for (index, (client, period)) in Self.selections.enumerated() {
+			let selection = DesktopSessionScopeSelectionV1(scope: scope, client: client, period: period)
+			let view: DesktopSessionScopeViewV1
+			if let batch {
+				// Checked like a single read below: selection, default,
+				// generation and time must all agree.
+				view = batch[index]
+			} else {
+				do {
+					view = try await reader.widgetSessionScopeView(selection, generationID: generation, asOf: asOf)
+				} catch {
+					return .final(AppGroupSessionScopeSummaryReason.selectionUnavailable)
+				}
 			}
 			guard view.default == expected else {
 				let adopted = view.default.confirmed ? view.default : nil
@@ -106,6 +188,7 @@ public struct WidgetSessionScopeBatchCollector: Sendable {
 				return .retry(AppGroupSessionScopeSummaryReason.batchInconsistent, adopted: nil)
 			}
 			generation = publication
+			views.append(view)
 			guard let unknown = Self.unknownCount(scope: scope, sessions: counts.sessions, coverage: coverage) else {
 				return .final(AppGroupSessionScopeSummaryReason.batchInconsistent)
 			}
@@ -117,7 +200,7 @@ public struct WidgetSessionScopeBatchCollector: Sendable {
 		guard items.count == Self.selections.count else {
 			return .final(AppGroupSessionScopeSummaryReason.batchInconsistent)
 		}
-		return .accepted(AppGroupSessionScopeSummarySetV1(stale: false, reason: nil, items: items))
+		return .accepted(AppGroupSessionScopeSummarySetV1(stale: false, reason: nil, items: items), views)
 	}
 
 	/// Unknown sessions of the selected set, or nil (outer) when the answer is

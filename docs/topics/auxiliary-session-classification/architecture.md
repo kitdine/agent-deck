@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-27
-updated: 2026-11-04
+updated: 2026-11-11
 ---
 
 # 辅助会话分类：架构与数据合同
@@ -28,6 +28,9 @@ Widget `3b15e60bb77b3883dc3528e5dd5fd806657a2f25`。其他会话的状态勘误�
 新增 §3.4 的 Codex OTel 后台来源，并把 §4、§6 的事务时钟与发布改为复用已合入的 serving generation 与分区失效机制。
 本分支随后经授权合入 `main` `660c815`（合并提交 `3ec8709`，相对 `6fff208` 只多 status 文档），
 下表“main”所列能力因此已存在于本工作树。
+
+2026-11-11 合同修订（用户决定，任务 9 评审发现 ASC-IA-R1-F1）：§4、§6 对 FTS 搜索文本的 revision 保证由
+“任何写入（含直接 SQL）”收窄为“产品写入路径”，理由与范围见 §6。其余依赖表的 trigger 保证不变。
 
 ## 2. 已核实的当前实现
 
@@ -189,7 +192,7 @@ Memories 记忆提取请求与其来源会话的关联不在本主题实现（de
 | core | origin_evidence：adapter/rule、canonical key、source token、purpose、validated_version、observed_at | 可重建，失效时保守 unknown；本地源路径只通过现有 source registry 定位，不新增可导出路径列 |
 | core | origin_adapter_runs：adapter（主键）、outcome（ok/partial/unavailable/unsupported）、safe reason、validated_version、finished_at | 每个外部适配器最近一次 scan/rebuild 协调阶段的结果摘要，与 origin_evidence 同事务写入；供 §7 来源状态只读展示，不含路径/计数明细；可重建派生，不进 portable backup |
 | core | 复用 serving_generation.revision | 不新增 scope_data_revision。migration 为 origin_preferences、origin_overrides、session_origins、origin_evidence 与 telemetry_sessions 安装 serving revision trigger；origin_mutations 只是回执，不安装，以保持 no_change 不触发发布；serving_generation 不合并 dirty，每次提交写入推进，满足原“每次写入序号”要求 |
-| sessions | 元数据的 origin_input_token；复用 sessions 侧 serving_generation.revision | 不给 session_index_generation 新增 revision；若最终范围 SQL 读取 FTS 输入等 trigger 清单外的表，同一 migration 补齐其 trigger |
+| sessions | 元数据的 origin_input_token；复用 sessions 侧 serving_generation.revision | 不给 session_index_generation 新增 revision；若最终范围 SQL 读取 trigger 清单外的普通表，同一 migration 补齐其 trigger。FTS 搜索文本例外：其内容影子表不装 trigger，由产品写入路径在同一事务显式推进 revision（§6） |
 | 本机非导出配置 | origin-source 的明确数据根与禁用状态 | 只定位来源，不保存凭据；restore 后需重新确认 |
 
 表/索引通过 core 与 session 各自 append-only migration 注册。当前工作树与 main 均为 schema 33；
@@ -263,8 +266,18 @@ core 分类与 sessions 索引不假定跨 WAL 数据库原子提交。读向量
 usage_revision 已覆盖 usage_events、usage_sessions、usage_work_signals；§4 的 migration 把分类/覆盖/偏好/证据与
 telemetry_sessions 加入 core trigger 清单。按实际最终 SQL 形成依赖清单并逐项对照 trigger，
 每个依赖的 INSERT/UPDATE/DELETE（含直接 SQL）都须推进 revision；旧 dirty 位不能替代这一保障。
-sessions 侧已覆盖 session_metadata、session_sources、session_exclusions，FTS 输入如被读取则补齐；
+sessions 侧已覆盖 session_metadata、session_sources、session_exclusions；
 递增在同一事务内提交，回滚不产生可见新版本。额外写放大纳入性能验收，不跳过交易计时。
+
+FTS 搜索文本（`session_documents`）是上述 trigger 保证的唯一例外（2026-11-11 用户决定）。搜索范围读取它，
+但 FTS5 虚表自身不能带 trigger，而其内容影子表 `session_documents_content` 上的任何 trigger 都会让 SQLite
+为每次内容写入开语句级保存点，FTS5 随之逐次刷盘并合并段；实测带这些 trigger 时全量扫描比合并基慢约 11.5%，
+移除后约 3%，trigger 约占 8 个百分点（P09 比值 1.115，移除后 1.030；余下部分来自来源分类协调与发布携带的范围视图）。
+因此内容影子表不装 trigger，可写打开时删除旧库中已有的三个；改由 session 包的产品写入路径负责：
+每条插入、改写或删除 `session_documents` 的产品语句在同一事务内显式推进 sessions 侧 serving revision，回滚同样不产生新版本。
+保证范围是“产品写入路径”：绕过 session 包对该表的直接 SQL 不推进 revision，搜索选择可能沿用旧向量与旧 publication 身份，
+直到下一次任何受保证的写入；这类写入不属受支持的操作。该表的写入只允许出现在 session 包内，
+由回归测试逐个写入点验证推进，并以结构性检查保证包内每条写入语句带有推进、其他产品包不写该表。
 
 分类或覆盖变化对受影响 canonical key 写入既有 `usage_derived_invalidations(kind='session', client, key)`，
 由 scan-performance 的分区归约只 dirty 对应 (client, model, day) 分区；范围维度作为分区 payload 内的

@@ -87,7 +87,14 @@ final class SessionScopeController {
 	/// flight — even one for this same selection. That read belongs to the
 	/// previous synchronization, which SwiftUI cancels when the key changes or
 	/// the area leaves; waiting on it instead could end with no request at all.
-	func synchronize(client: String, period: String, embedded: DesktopSessionScopeFieldV1, publication: String?) async {
+	///
+	/// `preloaded` answers a selection from views the host already holds for
+	/// this publication (the Widget batch), so changing client or period within
+	/// the default scope starts no read.
+	func synchronize(
+		client: String, period: String, embedded: DesktopSessionScopeFieldV1, publication: String?,
+		preloaded: (DesktopSessionScopeSelectionV1) -> DesktopSessionScopeViewV1? = { _ in nil }
+	) async {
 		adoptDefault(embedded.view?.default)
 		guard let scope = requestedScope else { return }
 		let desired = DesktopSessionScopeSelectionV1(scope: scope, client: client, period: period)
@@ -100,6 +107,10 @@ final class SessionScopeController {
 			return
 		}
 		if let view = embedded.view, view.available, view.selection == desired {
+			accept(view, publication: publication)
+			return
+		}
+		if let view = preloaded(desired), view.available, view.selection == desired {
 			accept(view, publication: publication)
 			return
 		}
@@ -353,7 +364,8 @@ extension MenuBarViewModel {
 		guard case .present = sessionScopeField else { return }
 		await sessionScope.synchronize(
 			client: selectedClient, period: selectedPeriod,
-			embedded: sessionScopeField, publication: sessionScopePublicationKey
+			embedded: sessionScopeField, publication: sessionScopePublicationKey,
+			preloaded: { [coordinator, key = sessionScopePublicationKey] in coordinator.sessionScopeBatchView($0, publication: key) }
 		)
 	}
 
@@ -367,6 +379,16 @@ extension MenuBarViewModel {
 			sessionScope.effectiveScope(defaults: sessionScopeField.view?.default)?.rawValue ?? "-", selectedClient, selectedPeriod,
 			sessionScopePublicationKey ?? "-", sessionScopeField.view == nil ? "no-view" : "view",
 		].joined(separator: "|")
+	}
+
+	/// Whether `sessionScopePanel` is ready, decided without building it. The
+	/// tab strip asks this for every tab on every layout; building the whole
+	/// panel model there cost each open and each tab switch several frames.
+	var sessionScopePanelIsReady: Bool {
+		guard case .present = sessionScopeField,
+			let view = sessionScope.displayedView(embedded: sessionScopeField, client: selectedClient, period: selectedPeriod)
+		else { return false }
+		return view.selection != nil && view.counts != nil
 	}
 
 	var sessionScopePanel: SessionScopePanelModel {

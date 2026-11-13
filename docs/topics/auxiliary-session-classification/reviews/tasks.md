@@ -338,3 +338,150 @@ WidgetIntents.swift 中 `WidgetClient`（all/codex/claude）、`WidgetPeriod`（
 - WorkUnit: `auxiliary-session-classification:tasks.md`；ContentState: `auxiliary-session-classification:tasks-r6-58803d3f516baa57`。
 - Completion gate: VERIFIED
 - Residual uncertainty: 本 PASS 只覆盖设计文档；实现的认领、开发、提交与推送各需单独指令或授权。
+
+## Round 7 — 2026-11-13
+
+## 📋 任务合同修订评审（任务 3、7、9 的带日期修订）
+
+📊 总体评分: 8/10
+
+✅ 结论: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+本节两项为 P3，按本项目规则同样须在 PASS 前关闭。
+
+**ASC-TASKS-R7-F1 — P3：任务 7 的修订说明没有写出 Popover 现在也消费 Widget 批次的视图，这层耦合只存在于交接流水里。状态：OPEN。**
+
+位置：`tasks.md:290-296`（任务 7 的 2026-11-12 合同修订）；相关原文 `tasks.md:243`（任务 5「不将 Popover 控制器的当前 selection 作为 Widget 数据来源」）
+与任务 7「Popover 切换不会改变批次 scope 或触发本链重新采集」。
+
+- 行为风险：实现里 Widget 批次的九份视图被按 publication 保存，菜单栏在默认范围内切换客户端或时段时直接显示它们而不再发起读取；
+  为了让这些视图能直接展示，批次的最近会话条数由 1 改成了默认的 5。任务 5、7 的原文只规定了「Popover 不作为 Widget 的数据来源」这一个方向，
+  相反方向的依赖没有写进任何任务条目。后续维护者若按任务 7 的字面把批次当成只供 Widget 的聚合（例如把条数改回 1 以省成本），
+  会在不知情的情况下改掉 Popover 的显示内容。
+- 证据：`apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` 的 `sessionScopeBatchView` 与 `widgetSessionScopeView`/`widgetSessionScopeBatch`（recentLimit 取默认值，注释写明是为 Popover 直接展示）；
+  `apps/macos/AgentDeckApp/SessionScopeController.swift` 的 `synchronize(… preloaded:)`。
+  本文件 2026-11-11 的任务 9 交接自述「此项改变了任务 5、7 已评审的行为，须随本候选复评」，但 2026-11-12 的修订说明只同步了批次的交付路径。
+- 说明：该行为本身与 ux/menubar.md「选择读取已提交视图，不额外启动 scan」一致，不是实现缺陷；缺的是合同文本。
+
+💡 有界修复：在任务 7 的修订说明里补一句（任务 5 条目可加一行指向它）：被接受批次的九份默认范围视图同时供菜单栏在默认范围内切换客户端/时段时复用，
+按 publication 标识匹配，临时切到非默认范围仍按需读取；批次的最近会话条数因此为默认值而非 1。原文保留。
+
+**ASC-TASKS-R7-F2 — P3：任务 9 的测量范围修订没有写明 P01 的「重建中」一层不测，与实际测量和已记录的证据不一致。状态：OPEN。**
+
+位置：`tasks.md:338-340`（任务 9 的 2026-11-11 修订：「P01 与 P03（前台延迟）……P06 空闲窗口、P07 重建资源与 P11 全新安装首批不在本任务范围」）。
+
+- 行为风险：scan-performance 的 P01 有三层（首击、重复点击、后台全量重建中）。修订说明写「P01」而未限定层次，按字面三层都在范围内；
+  实际只测了首击与重复点击，`performance-matrix` 的证据也只有这两层。读者无法从合同文本判断这是遗漏还是决定，证据准则「按契约测量」的覆盖范围因此有歧义。
+- 证据：本文件 2026-11-11 的交接写「P01-rebuild 不属收窄范围，误排后于 71/100 对停止，作废」；
+  2026-11-12 的正式矩阵表与 CEv1 证据 `…:repair-r1-b414adfd:performance-matrix:pass` 列出的条件为 P08、P09、P02、P04、P01-first、P01-repeat、P03、P10。
+  scan-performance 的 performance-evaluation.md 把 P01 重建层的执行绑在 P07 的全量重建期间，P07 被排除时该层随之排除是合理的，但修订说明没有这样写。
+
+💡 有界修复：在该修订说明里写明 P01 只测首击与重复点击两层，「重建中」一层随 P07 一并不在本任务范围，并注明这是 2026-11-11 用户决定的一部分还是其推论。
+若它不是用户决定的内容，须先取得确认。
+
+### 🟢 优点
+
+- 任务 3 的修订说明准确：FTS 搜索文本是 trigger 保证的唯一例外，改由 session 包的产品写入路径显式推进，直接 SQL 不在保证内，
+  并把理由与验证方式指向 architecture.md §4/§6（该文档 Round 7 已 PASS），没有在本文件再存一份会过期的副本。
+- 任务 7 的修订说明对交付路径的描述与实现逐项一致：`terminal` 行之后的 `session_scope_batch`（publication ID、整秒 as-of、九份视图，默认未确认时为空）、
+  缺失/校验不通过/ID 不符/超时回退到一次 `desktop session-scope --batch`、逐组合读取仅作兼容、交付批次与读取批次同一套逐视图校验、原重试预算不变。
+- 三处修订都用带日期的说明追加，原文保留，标明了决定来源与对应的评审发现。
+- Tasks 矩阵第 9 行与 Documents 矩阵 architecture.md 行的勾选与各自评审记录的最新轮次一致。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code）。与任务 9 Round 2–4 复评、architecture Round 6–7 为同一评审会话；未参与本文档的修订。
+- Method: 单评审者；按设计/合同类维度评审——与当前实现的一致性、决策完整性、内部矛盾、隐藏耦合；逐条对照 Swift/Go 实现与测量记录；不委派。
+- Scope: 相对 HEAD 中的 blob `58279812` 的合同正文差异：任务 3、任务 7、任务 9 条目内各一条带日期的修订说明，以及两处矩阵勾选。
+  文末追加的交接流水是状态记录，不作为合同文本评审。HEAD 之前已提交的条目变化不在本轮范围。
+- Reviewed state: HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；tasks.md blob `009f9a09c3f6b2131b67c06924e6814018a8ee11`（未提交，评审前内容）。
+- Fingerprint: `4d9e5c556e484924a70b61ba7bbbb873bbdd84b37991f06356bd8e995a33b1d2`；SHA-256(`head=<HEAD>;document=<blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Disposition: ASC-TASKS-R7-F1 OPEN；ASC-TASKS-R7-F2 OPEN。此前各轮发现均已在各自轮次关闭。
+- 对任务 9 的影响：tasks.md 不在任务 9 的候选指纹内，修复这两处不改变任务 9 的内容状态与门禁。
+  ASC-TASKS-R7-F2 若确认「重建中」层是有意排除，`performance-matrix` 证据的覆盖范围随之明确；若不是，则该准则需要补测。
+- 残余不确定性：未重新评审未变的条目；「重建中」层的排除是否属于用户 2026-11-11 的决定，评审无法从记录确认。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；ContentState: `auxiliary-session-classification:tasks-r7-4d9e5c556e484924`。
+- Completion gate: FAILED
+- Gate scope: 本分解文档的独立评审与完整性检查；不认证实现。Documents 矩阵中本文档的 Review 置为未勾选。
+
+下一步指令：`修复：auxiliary-session-classification / tasks / ASC-TASKS-R7-F1 ASC-TASKS-R7-F2`
+
+## Repair candidate — 2026-11-13（Round 7 后）
+
+- Repairer：Claude Code（claude-code）修复会话；处理 ASC-TASKS-R7-F1、ASC-TASKS-R7-F2，未委派。只追加说明，原文保留。
+- ASC-TASKS-R7-F1 → repaired in candidate。任务 7 的 2026-11-12 修订说明后补一段：被接受批次的九份默认范围视图按 publication 标识保存，
+  同时供 Popover 在默认范围内切换客户端/时段时直接显示、不发起读取；标识不符或临时切到非默认范围时仍按需读取；
+  批次最近会话条数因此取默认值 5 而非 1，改条数、视图集合或保存方式会改变 Popover 显示；Popover 仍不作为 Widget 数据来源。
+  任务 5 条目加一行指向该修订。核对实现：`SessionScopeController.synchronize(… preloaded:)` 在 embedded 视图之后查 batch 视图，
+  `synchronizeSessionScope` 以 `sessionScopePublicationKey` 调 `coordinator.sessionScopeBatchView`；
+  `WidgetSessionScopeBatch.collectWithViews` 注释写明供 Popover 使用；`EmbeddedHelperRunner.defaultRecentLimit = 5`。
+- ASC-TASKS-R7-F2 → repaired in candidate。任务 9 的 2026-11-11 收窄说明后补一段：P01 只测首击与重复点击；“后台全量重建中点击”层不在范围。
+  来源如实写明：用户的收窄决定只写“P01”未区分层次，排除该层是执行者依据“该层绑在 P07 全量重建期间、P07 已排除”的推论；
+  正式矩阵误排此层时，用户于 2026-11-11 当场反对继续运行（原话已引），该批于 71/100 对停止作废。
+  原话出自当日任务 9 开发会话的用户消息，修复时逐字核对；它是对运行该层的明确反对，修复据此视为用户方向而未再次询问。
+  若复评认为这不足以构成用户决定，应保持本发现 OPEN 并向用户确认。
+- Candidate identity：HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；tasks.md blob `069aa17e95a15b4e1de5d65089c68ae12f31fc98`。
+- 验证：`python3 scripts/check-docs.py`、`scripts/check-topic-docs.sh auxiliary-session-classification`、
+  `scripts/check-whitespace.sh`、`git diff --check -- docs` 均通过；未改产品代码或测试，未运行产品测试。
+  tasks.md 不在任务 9 候选指纹内，本修复不改变任务 9 的内容状态与门禁。
+- 原 FAIL/OPEN 与 FAILED 门禁保留；本候选不自称 Review PASS 或 CEv1 VERIFIED，未写 pass 证据。未提交、未推送。
+
+## Round 8 — 2026-11-13
+
+## 📋 任务合同修订复评
+
+📊 总体评分: 9/10
+
+✅ 结论: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- **ASC-TASKS-R7-F1 — CLOSED**：任务 7 的修订说明新增「反向依赖」一段，写明被接受批次的九份默认范围视图按 publication 标识保存，
+  同时供菜单栏 Popover 在默认范围内切换客户端/时段时直接显示；标识不符或临时切到非默认范围时仍按需读取；
+  批次的最近会话条数因此取 Popover 的默认值 5 而不是 Widget 自身所需的 1；并指出改动条数、视图集合或保存方式会改变 Popover 的显示。
+  任务 5 条目加了一行指向它。与实现一致（`sessionScopeBatchView` 按 publication 匹配、`synchronize(… preloaded:)`、`defaultRecentLimit = 5`）。
+- **ASC-TASKS-R7-F2 — CLOSED**：任务 9 的测量范围修订写明 P01 只测首击与重复点击两层，「后台全量重建中点击」一层不在本任务范围，
+  `performance-matrix` 证据覆盖的 P01 只含 P01-first 与 P01-repeat。来源也如实区分了：用户的收窄决定只写了「P01」；
+  该层随 P07 排除是执行者的推论；另记有用户在该层被误排运行时当场反对继续运行的原话，该批于 71/100 对停止并作废。
+  文本没有把推论写成用户决定。
+- Round 7 确认过的任务 3 修订与任务 7 的交付路径描述未变。
+
+### 📝 总结
+
+- Reviewer: Claude Code（claude-code），Round 7 评审会话；未参与修复。
+- Method: 单评审者；复读两处修复的文本，与实现及测量记录对照；不委派。
+- Scope: ASC-TASKS-R7-F1、ASC-TASKS-R7-F2。相对 Round 7 的合同正文变化为任务 5 一行、任务 7 四行、任务 9 四行；其余条目未变。
+- Reviewed state: HEAD `a2c10771f05c5f681f3a091c617f9dd97e821621`；修复候选 blob `069aa17e95a15b4e1de5d65089c68ae12f31fc98`；
+  本轮状态同步（勾选 Review、追加一条状态记录）之后的 blob 为 `d91bcd50860bce59dc2b6b032d48e4e4894105ac`（未提交）。
+- Fingerprint: `d448b97e2b5c1acf80aa9f12725efc6c516bfe64bc6d4c9df3f079a7dde7d247`；SHA-256(`head=<HEAD>;document=<同步后 blob>`)。
+- Evidence: `python3 scripts/check-docs.py` 通过；`bash scripts/check-topic-docs.sh` exit 0；`bash scripts/check-whitespace.sh` exit 0。
+- Disposition: ASC-TASKS-R7-F1 CLOSED；ASC-TASKS-R7-F2 CLOSED。本记录没有未关闭的发现。
+- 本记录早前各轮引用的其他记录的发现（归属与关闭都在各自记录，这里只为说明它们不是本文档的遗留项）：
+  - ASC-ARCH-R3-F1 CLOSED：归属 reviews/architecture.md，于该记录 Round 4 关闭。
+  - ASC-ARCH-R3-F2 CLOSED：归属 reviews/architecture.md，于该记录 Round 4 关闭。
+  - ASC-ARCH-R3-F4 CLOSED：归属 reviews/architecture.md，于该记录 Round 4 关闭。
+  - ASC-ARCH-R3-F5 CLOSED：归属 reviews/architecture.md，于该记录 Round 4 关闭。
+  - ASC-ARCH-R4-F1 CLOSED：归属 reviews/architecture.md，于该记录 Round 5 关闭。
+  - ASC-CLI-R4-F1 CLOSED：归属 reviews/ux-cli.md，于该记录 Round 5 关闭。
+  - ASC-SET-R5-F1 CLOSED：归属 reviews/ux-settings.md，于该记录 Round 6 关闭。
+- 残余不确定性：任务 9 修订中引用的用户原话出自修复会话的记录，评审无法独立核实；「重建中」一层不测的依据是这句话加执行者的推论。
+  若用户的本意并非排除该层，`performance-matrix` 准则需要补测它。Round 7 的 blob 未进入 Git 对象库，两轮之间的差异依据相对 HEAD 的 diff 判定。
+- 交付说明：本文档的 Beads 任务 `ad-auxiliary-session-classification-doc-tasks` 已是 closed，未重开；本文件不在任务 9 的候选指纹内，随任务 9 的提交一并交付。
+- WorkUnit: `auxiliary-session-classification:tasks.md`；ContentState: `auxiliary-session-classification:tasks-r8-d448b97e2b5c1acf`。
+- Completion gate: VERIFIED
+- Gate scope: 本分解文档的独立复评与完整性检查；不认证实现，不代表主题边界完成。

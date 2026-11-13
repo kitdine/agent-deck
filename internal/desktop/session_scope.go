@@ -140,6 +140,93 @@ func (s Service) SessionScopeView(ctx context.Context, request SessionScopeReque
 	return s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now), nil
 }
 
+// SessionScopeBatchClients and SessionScopeBatchPeriods are every client and
+// period a batch answers, in answer order: all × today comes first and fixes
+// the batch's generation.
+var (
+	SessionScopeBatchClients = []string{"all", "codex", "claude"}
+	SessionScopeBatchPeriods = []string{"today", "7d", "30d"}
+)
+
+// sessionScopeBatchObserver is a test seam called before each view of a batch
+// is read, with that view's index. It is nil in production.
+var sessionScopeBatchObserver func(index int)
+
+// SessionScopeBatch is one scope's view for every client and period.
+type SessionScopeBatch struct {
+	Views []SessionScopeView `json:"views"`
+}
+
+// SessionScopeBatch reads one scope for every client and period in one
+// process, the read a consumer that needs all of them (the Widget publisher)
+// makes once per publication instead of starting a helper per selection. The
+// request's Client and Period are ignored. Every view is answered at one
+// instant, and each view after the first available one is pinned to that
+// view's generation, so a generation that moves mid-batch leaves the later
+// views unavailable with generation_unavailable rather than splicing two
+// generations together. Like SessionScopeView it never scans or writes.
+func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequest) (SessionScopeBatch, error) {
+	request.Client, request.Period = SessionScopeBatchClients[0], SessionScopeBatchPeriods[0]
+	if err := request.Validate(); err != nil {
+		return SessionScopeBatch{}, err
+	}
+	now := s.now().UTC()
+	if !request.AsOf.IsZero() {
+		now = request.AsOf.UTC()
+	}
+	core, coreErr := store.OpenReadOnly(ctx, s.StateRoot)
+	if coreErr == nil {
+		defer core.Close()
+	}
+	defaults := readSessionScopeDefault(ctx, core, coreErr)
+	batch := SessionScopeBatch{Views: make([]SessionScopeView, 0, len(SessionScopeBatchClients)*len(SessionScopeBatchPeriods))}
+	for _, client := range SessionScopeBatchClients {
+		for _, period := range SessionScopeBatchPeriods {
+			if sessionScopeBatchObserver != nil {
+				sessionScopeBatchObserver(len(batch.Views))
+			}
+			request.Client, request.Period = client, period
+			view := s.sessionScopeView(ctx, core, coreErr, defaults, request, now)
+			if request.GenerationID == "" && view.Available && view.GenerationID != nil {
+				request.GenerationID = *view.GenerationID
+			}
+			batch.Views = append(batch.Views, view)
+		}
+	}
+	return batch, nil
+}
+
+// SessionScopeDefaultBatch is the batch for the saved default scope, with the
+// instant it was answered at. Views is empty when the default is unconfirmed:
+// an unconfirmed default starts no batch.
+type SessionScopeDefaultBatch struct {
+	AsOf    string                     `json:"as_of"`
+	Default sessionorigin.DefaultScope `json:"default"`
+	Views   []SessionScopeView         `json:"views"`
+}
+
+// SessionScopeDefaultBatch answers SessionScopeBatch for the saved default
+// scope at one whole-second instant. A process that has just published a
+// serving snapshot (the App's bootstrap) hands it over with that publication,
+// so the Widget publisher starts no helper of its own to read it.
+func (s Service) SessionScopeDefaultBatch(ctx context.Context, recentLimit int) SessionScopeDefaultBatch {
+	now := s.now().UTC().Truncate(time.Second)
+	core, coreErr := store.OpenReadOnly(ctx, s.StateRoot)
+	defaults := readSessionScopeDefault(ctx, core, coreErr)
+	if coreErr == nil {
+		core.Close()
+	}
+	result := SessionScopeDefaultBatch{AsOf: now.Format(time.RFC3339), Default: defaults, Views: []SessionScopeView{}}
+	if !defaults.Confirmed || defaults.Value == nil {
+		return result
+	}
+	batch, err := s.SessionScopeBatch(ctx, SessionScopeRequest{Scope: *defaults.Value, RecentLimit: recentLimit, AsOf: now})
+	if err == nil {
+		result.Views = batch.Views
+	}
+	return result
+}
+
 func isGenerationID(value string) bool {
 	if len(value) != 64 {
 		return false
