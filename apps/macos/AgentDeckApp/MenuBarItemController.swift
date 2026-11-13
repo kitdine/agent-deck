@@ -678,14 +678,22 @@ final class SettingsWindowController {
 		let height = min(size.height, available - chrome)
 		let width: CGFloat = 460
 		guard abs(contentView.frame.height - height) > 0.5 || abs(contentView.frame.width - width) > 0.5 else { return }
+		let diagnostics = ProcessInfo.processInfo.environment["AGENTDECK_SETTINGS_ANIMATION_DIAGNOSTICS"] == "1"
 		let frameHeight = height + chrome
 		let frame = NSRect(
 			x: window.frame.minX, y: window.frame.maxY - frameHeight,
 			width: width + (window.frame.width - contentView.frame.width), height: frameHeight
 		)
+		let started = ProcessInfo.processInfo.systemUptime
+		if diagnostics {
+			print("ASC_ANIMATION begin time=\(started) window=\(window.windowNumber) animate=\(animate) duration=\(window.animationResizeTime(frame)) start=\(window.frame) target=\(frame) content=\(contentView.frame) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) reduceMotion=\(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) mode=\(RunLoop.current.currentMode?.rawValue ?? "none")")
+		}
 		isResizing = true
 		window.setFrame(frame, display: true, animate: animate)
 		isResizing = false
+		if diagnostics {
+			print("ASC_ANIMATION end elapsed=\(ProcessInfo.processInfo.systemUptime - started) window=\(window.windowNumber) frame=\(window.frame) content=\(contentView.frame)")
+		}
 		if refitAfterResize {
 			refitAfterResize = false
 			fitSelectedPane(animate: false)

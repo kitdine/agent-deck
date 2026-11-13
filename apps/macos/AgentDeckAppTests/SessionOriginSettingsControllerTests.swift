@@ -1504,6 +1504,13 @@ final class SettingsWindowPaneTests: XCTestCase {
 	/// a toolbar switch animates the window height through intermediate
 	/// values to the new page's natural height and names the page.
 	func testAToolbarSwitchAnimatesTheHeightInTheActiveWindow() async throws {
+		let diagnosticKey = "AGENTDECK_SETTINGS_ANIMATION_DIAGNOSTICS"
+		let previousDiagnosticValue = ProcessInfo.processInfo.environment[diagnosticKey]
+		setenv(diagnosticKey, "1", 1)
+		defer {
+			if let previousDiagnosticValue { setenv(diagnosticKey, previousDiagnosticValue, 1) }
+			else { unsetenv(diagnosticKey) }
+		}
 		let controller = makeWindow()
 		controller.show(pane: .liveUsage)
 		let window = try XCTUnwrap(controller.window)
@@ -1530,7 +1537,10 @@ final class SettingsWindowPaneTests: XCTestCase {
 		XCTAssertGreaterThan(target - start, 40, "the two pages differ enough to see a transition")
 		var observed: [CGFloat] = []
 		let token = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: nil) { _ in
-			MainActor.assumeIsolated { observed.append(window.contentView?.frame.height ?? 0) }
+			MainActor.assumeIsolated {
+				observed.append(window.contentView?.frame.height ?? 0)
+				print("ASC_ANIMATION resize time=\(ProcessInfo.processInfo.systemUptime) window=\(window.windowNumber) frame=\(window.frame) content=\(window.contentView?.frame ?? .zero) mode=\(RunLoop.current.currentMode?.rawValue ?? "none")")
+			}
 		}
 		defer { NotificationCenter.default.removeObserver(token) }
 		let quotaItem = try XCTUnwrap(window.toolbar?.items.first { $0.label == SettingsPane.quota.title })
