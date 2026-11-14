@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-11-09
+updated: 2026-11-13
 ---
 
 # 辅助会话识别与工作视图隔离：实现分解
@@ -375,6 +375,10 @@ store/desktop/backup/Widget/controller 接点，图只用于范围发现，不�
 具体代码文件新增/拆分允许在任务边界内决定；跨任务合同改变必须先核对本计划与已批准架构。
 
 ## 当前交接
+
+当前入口（2026-11-13）：任务 1–9 的上一轮实现已交付至 `f39f86aa1212de2c674667ee343f09c50dc11236`。
+任务 9 稳定 specs 同步已通过独立评审 Round 5；随后用户要求先修复当前分支 CI 再提交，现处于 CI follow-up，见文末记录；
+主题仍 active，尚未达到归档或整体完成边界。详见文末“稳定规格收尾交接”；以下带日期条目保留为历史记录。
 
 分解与文档集曾独立复评 PASS（Round 2），见 [reviews/tasks.md](reviews/tasks.md)；2026-11-03 集成修订后，
 五份文档回到待评审（见 Documents），开发须等复审通过。所有实现 Dev/Review 未勾选。
@@ -1303,3 +1307,98 @@ CEv1 中也还没有主题级 WorkUnit。本轮只追加评审记录并同步状
 2026-11-13 tasks.md 文档复评 Round 8 PASS，Documents 矩阵中本文档的 Review 已勾选；处置与证据见
 [reviews/tasks.md](reviews/tasks.md#round-8--2026-11-13)。至此 Documents 与 Tasks 两个矩阵全部勾选。
 主题边界仍未完成：任务 9 待授权提交，稳定 specs 同步与主题级证据边界尚未进行。未提交或推送。
+
+### 稳定规格收尾交接 — 2026-11-13
+
+用户确认 Claude 已停止本轮工作并交由 Codex 接手；工作区与分支不变，基线 HEAD
+`f39f86aa1212de2c674667ee343f09c50dc11236`，tree `b1c9df4e54d832aa60fdc4547fe2d69a489935ae`。
+承接 Claude 未提交的 `docs/specs/cli-design.md` 与 `docs/specs/cli-manual.md`；本轮未改产品代码、测试、依赖或配置。
+
+- 稳定设计规格升至 version 34，汇总分类规则、保守 unknown、scope、CAS/回执、来源状态、桌面/Widget DTO 与可移植恢复边界。
+  补齐分类覆盖不完整的 text/JSON/browser 表现、FTS 产品写入路径的 serving revision 例外及 bootstrap 批次复用边界；
+  隐私约束明确限定于分类控制 DTO/Widget 摘要，避免与既有 session list/search/show 输出合同冲突。
+- 手册同步命令、参数、错误码、覆盖缺口提示、浏览器范围切换及 `desktop session-scope` 批量读取限制。
+  依据已批准 architecture/ux 合同、Round 4 修复结果和当前实现逐项核对，不新增行为。
+- 旧候选 28 路径按原算法复算仍为 `024b6820cd8910ce4331c122291905a20f9f49a485cddb7b9ed9ed6b90604ec8`；
+  实时查询旧内容状态 `auxiliary-session-classification:integrated-acceptance:arch-r7-024b6820cd8910ce` 为 VERIFIED 9/9，
+  无 invalidated evidence 或 unresolved candidate impact。新文档候选的独立评审不能继承旧 PASS；任务 9 Review 因此置回待评审，
+  不撤销历史 Round 4 对旧候选的结论。产品路径不变，复用已有 L3/原生/性能证据，不重新跑矩阵或全量产品测试。
+- Topic WorkUnit 按本任务末尾的收尾义务补建：直接包含九个实现任务，主题级准则为跨任务集成验收与稳定合同同步。
+  跨任务证据使用任务 9 的联合验收结果；稳定合同候选仍待独立语义评审。Topic 门禁未通过前保持 active，不归档、不关闭主题。
+- 本轮只交付待评审候选；未提交、推送、合并、安装或发布。评审范围为两份稳定 specs、本交接与证据复用边界，
+  无需重复已确认内容未变的实现评审及性能测量。
+- 验证：`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 通过（L0；不代表语义 PASS）。
+  最终 specs blob：cli-design `7fe242acad4d4e0d428e400f83618bad075ad706`，
+  cli-manual `907d221515ed8b1489d35f25ae3a1c0b528a405a`。
+  候选 ContentState 为 `auxiliary-session-classification:stable-specs:f39f86a-7fe242ac-907d2215`，
+  内容配方为上述 HEAD 加两份 specs blob；本文件仅状态/交接变化与评审记录不进入产品候选指纹，沿用原任务排除规则。
+- CEv1 已回读确认 24 个新节点及 65 条关系，包含八项明确的 preserves 影响评估和目标绑定 roll-up。
+  任务门禁 NOT_VERIFIED（8/9），仅缺 `independent-review`；Topic 门禁 NOT_VERIFIED（1/2），仅缺
+  `stable-contract-reconciliation`。两者均无失效证据或未解决候选影响；本轮未自发执行独立评审。
+  允许后续范围为本候选的独立评审与必要状态/证据收尾，提交、推送、集成、发布仍需单独授权。
+
+
+2026-11-13 稳定规格收尾独立评审 Round 5 PASS，任务 9 Review 已勾选；精确候选、证据复用边界与残余限制见
+[reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-5--2026-11-13)。
+本轮只更新评审、状态及证据协调；两份 specs 的候选 blob 不变，未修改产品代码、测试或配置。
+同一候选的任务门禁 VERIFIED 9/9，Topic 门禁 VERIFIED 2/2，均无缺失、失效或未解决影响；
+Beads 移交 awaiting_commit。授权 Git 交付仍待进行，主题保持 active，不在本轮归档。
+
+
+### CI follow-up — 2026-11-13
+
+用户要求先检查并修复当前 GitHub Actions 错误再本地提交，并授权冷上下文只读独立评审；未授权推送。
+CI run [43376342753](https://github.com/kitdine/agent-deck/actions/runs/43376342753) 的 HEAD 为 `f39f86aa1212de2c674667ee343f09c50dc11236`。
+
+- documentation：按 `660c81586f4c13e04e66dbc05cde5331bf09acec..f39f86aa1212de2c674667ee343f09c50dc11236` 检查时，
+  入站链接过滤用 basename 匹配，把未变化的 health-recovery 历史评审中的外部 file URL 误判为受影响链接。
+  修复限于 `scripts/check-docs.py` 和 `scripts/ci/v3_contract_test.py`：能解析目标的缩进续行按完整本地路径归属；
+  外部 URL 和不同路径的同名文件不误报，受影响本地目标及全文检查仍拒绝不支持的语法。
+  新回归修复前 3 个子例失败，修复后通过；原 CI 文档命令通过；`make check-ci-docs-tools check-opencode-hooks` 通过。
+  冷上下文只读评审已认可该修复，并独立运行 LinksV3Test 6/6 通过。
+- verify：产品 Verify 步骤通过，job 的失败由 documentation 结果传播，不是 Go 测试失败。
+- desktop：原始动画用例 `SettingsWindowPaneTests.testAToolbarSwitchAnimatesTheHeightInTheActiveWindow` 在 macOS 15 arm64
+  仅收到内容高度 `[466.0]`，严格中间高度断言失败。本机 macOS 26 / Xcode 26.4 x86_64 的原始用例通过；
+  通知中出现终点/中间值交错，不能据此确认 CI 的实际呈现帧。WindowServer 边界查询和 run-loop timer 两种诊断
+  都不能独立证明动画过渡，相关实验改动均已撤回，生产代码及原测试保持 HEAD 内容。独立评审同样认为根因尚未确定。
+
+Round 5 的 PASS 与 VERIFIED 只覆盖其原稳定规格候选，不是这次 CI follow-up 的完成声明。
+当前不把动画失败标为修复，也不关闭 Task/Topic 或执行提交；后续验证结果在本节补充。
+
+
+CI follow-up 验证补充：对齐本次命令的 PATH 与既有 GOROOT（Go 1.27.3）后，原始 `make test-macos-app`
+完整通过，包含原始动画用例与两个独立进程重启阶段；未修改全局工具链配置。
+但同一远端提交在新 macOS 15 runner 的第二次 desktop job `131762498009` 再次于同一断言得到 `[466.0]`。
+因此不能将首次失败归为一次偶发，也不能声称动画已修复。后续需在 macOS 15 记录真实目标矩形对应的
+animationResizeTime、setFrame 调用前后时序与 resize 回调几何；现有本地证据不足以分类根因。
+诊断补丁仅准备供审批，未应用到产品或测试，未提交、推送。继续远端诊断需要单独的诊断候选提交/推送授权。
+
+
+用户随后明确授权诊断候选提前提交并推送。诊断提交 `6a3532ba90be417528330fa66f2e07dd0594935e`
+仅含 Settings 控制器与原动画测试两个 Swift 文件，独立只读评审认可诊断交付，本地隔离用例通过；
+正文、路径、Codex trailer 与 SSH 签名已核验，已推送至 `origin/feature/auxiliary-session-classification`。
+[CI run 43390451974](https://github.com/kitdine/agent-deck/actions/runs/43390451974) 用于采集 macOS 15 目标矩形、动画时长、激活状态和回调时序。
+原严格断言保留；此提交不是最终修复或新的 Task/Topic 完成声明，稳定 specs 与文档检查器修复仍待交付。
+
+
+CI follow-up 根因与修复候选（Claude Code 经用户确认接手，Beads 负责人已由 codex 转为 claude-code）：
+诊断运行 43390451974 的 desktop job `131769173790` 记录到 `animate=true`、`animationResizeTime` 约 0.345 秒、
+active/key/visible 均为 true、`reduceMotion=true`；`setFrame` 约 1.6 毫秒返回，仅一次 resize 且直接落在终点 `466.0`。
+据此判定 macOS 15 托管 runner 开启了「减弱动态效果」，系统把带动画的缩放一步完成；产品请求动画的行为无误。
+该因果由上述数据推断，未在本机切换系统设置复现。本机（未开启该设置）在高负载下同一严格断言也只收到 `[413.0]`，
+说明「必须出现中间高度」同时依赖系统设置与调度时序，不是产品可保证的行为。
+
+- 修复候选：`MenuBarItemController.swift` 移除全部诊断输出，缩放经可替换的 `resizeWindow` 闭包执行（默认仍为
+  `setFrame(_:display:animate:)`）；动画用例改为断言切页的首个缩放请求带动画，并保留终点高度、标题与选中页断言，
+  不再断言中间高度。blob：控制器 `7deaf6cd02ef30a9abed8b1b1b3dd42a26324527`，
+  测试 `d68233b36624844ed1ca346c5e8e7b8041aa34f8`。
+- 证据形态变化：settings-control Round 8 的 ASC-SC-R8-F2 当时以「观察到中间高度」关闭；本候选改为「请求了动画缩放」，
+  需独立评审确认是否仍满足 native-ux。把切页改为不带动画的变异按构造会使该用例失败，但本轮未实际执行这一变异。
+- 本机验证（`make test-macos-app`，隔离脚本）：动画用例在两次完整运行中均通过；未取得一次全量通过。
+  `SwitchFlowTests.testConfirmationUsesExactlyTheResolvedOption` 三次运行均失败（固定等待 200 毫秒后刷新计数未增加），
+  `TelemetrySettingsControllerTests` 两个用例在一次运行中失败、下一次通过；这些文件本候选未修改，同组用例在 CI 上通过，
+  本机单个用例耗时 9 至 48 秒（CI 整组约 1 秒），归为宿主缓慢，未进一步定位。
+- 文档检查器修复复验：`python3 scripts/check-docs.py --base 660c81586f4c13e04e66dbc05cde5331bf09acec --head HEAD` 与
+  `make check-ci-docs-tools`（93 项）通过。
+- 状态：Task 9 未完成。既有 VERIFIED 9/9 与 Topic 2/2 绑定 `f39f86a` 加两份 specs 的内容状态，不覆盖诊断提交与本候选；
+  八个待交付路径未提交，CI 是否转绿须推送后验证。未提交、未推送，未写入新的完成证据。
