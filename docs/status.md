@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-11-01
+updated: 2026-11-14
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,24 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- Partial v0.7.0 assembly: [PR #64](https://github.com/kitdine/agent-deck/pull/64)
+  integrated `auxiliary-session-classification` into remote main at
+  `e3ff72eb0db6f54c63ab031544a8a6259b417122` on 2026-11-14. Its merge tree
+  `8bc3398976468058299173b93b363155f0ce6d8c` equals the Round 3 independently
+  reviewed integration candidate; target `90535085723f013cb8b24d83f83015e7d60d53b0`
+  and source `0feb0c6d8965b6037de4c7e04bee839b96039dd0` remain its parents.
+  Pre-merge product CI runs `43572725411` and `43572728514` passed all 8 jobs
+  and Round 2 `@codex review` completed with zero findings; GitHub verifies the
+  server-created merge commit's PGP signature as valid (`verified: true,
+  reason: valid`). The exact-merge integration WorkUnit
+  `v0-7-0-contract:integration:auxiliary-session-classification` is recorded as
+  `VERIFIED` (4/4 pass: `ancestry`, `reviewed-result`, `delivery-signature`, and
+  `postmerge-ci`, with `20261114-ci-success` superseding `20261114-e3ff72eb:postmerge-ci`
+  after post-merge CI run `43586186560` passed all 4 jobs: `classify`,
+  `documentation`, `desktop`, `verify`). `cost-transparency` and final combined
+  acceptance remain required. This records batch integration, not v0.7.0 completion
+  or release.
 
 - Partial v0.7.0 assembly: [PR #61](https://github.com/kitdine/agent-deck/pull/61)
   integrated scan-performance into remote main at
