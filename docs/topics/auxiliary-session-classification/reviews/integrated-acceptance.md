@@ -662,3 +662,81 @@ Task checkpoint：`ad-auxiliary-session-classification-integrated-acceptance`；
 推送建议：待单独授权提交并核验提交对象及 SSH 签名，再按单独推送授权交付至 `origin/feature/auxiliary-session-classification`。
 
 Unit completion checkpoint：`auxiliary-session-classification`；同一 ContentState；Topic 门禁 VERIFIED 2/2。评审与证据已满足收尾检查点，Git 交付和后续整体归档仍未执行；当前主题保持 active。
+
+## Round 6 — 2026-11-13
+
+## 📋 Task 9 CI follow-up 独立评审
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+- Reviewer: Codex，独立评审会话；未参与该候选实现，未委派。
+- Method: 冻结提交的增量源码审查、工作树 CodeGraph 调用路径、历史验收与目标态证据复用评估；直接读取 GitHub 作业日志；独立运行文档工具回归。
+- Scope: `f39f86a..74964a2` 的文档检查器与 Swift 修复，稳定 specs 的已评审 blob 对账，以及 Task/Topic 门禁。历史集成实现复用 Round 4/5，不重做无变化的性能矩阵。
+- Reviewed state: HEAD `74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a`，tree `d64c7ae095089ae5d02d3555c1b21f02722d6e5f`，入场工作树干净。
+  ContentState: `auxiliary-session-classification:integrated-acceptance:commit-74964a2a0a8a4bad`。
+  本轮追加的评审与 tasks 状态沿用既有排除规则，不改变产品候选身份。
+
+### 🔴 严重问题 — 必须修复
+
+无。未发现本候选引入的可行动缺陷。
+
+### 🟡 建议改进 — 推荐
+
+无新增发现。ASC-IA-R4-F1 仍由 `ad-bug-selection-verify-200ms-deadline` 承载，不在本轮宣称修复。
+
+### 🟢 优点
+
+- 文档入站检查使用解析后的完整本地目标匹配；外部 URL 与不同目录同名文件不再误报。无法解析的语法仍走保守分支，全文检查仍拒绝不支持的缩进链接，真正受影响的本地目标仍失败。
+- 动画测试使用真实工具栏 action，保持 active/key/visible 前置条件；包装原 `resizeWindow` 而非替换为假实现，断言第一个请求带动画，最终高度、标题和选中页正确。
+- 默认闭包仍将相同 window/frame/animate 传给 `setFrame(_:display:animate:)`，`display` 仍为 true；尺寸计算、可见性判定、重入保护与补偿 refit 均未改变，诊断输出已移除。
+
+### 📝 总结
+
+本轮 PASS；ASC-IA-R1-F1…F5、R2-F1/F2、R3-F1 的关闭状态不变。Round 5 两份稳定规格的 blob 未变：
+cli-design `7fe242acad4d4e0d428e400f83618bad075ad706`，cli-manual `907d221515ed8b1489d35f25ae3a1c0b528a405a`。
+本轮不改产品、测试、配置，不执行提交、推送、集成、归档或发布。
+
+动画验收的证据边界：
+
+- 直接读取诊断 job `131769173790`：2026-11-13 08:09:28 UTC，window 70，`animate=true`、duration `0.34518178083084844` 秒，active/key/visible 均 true，`reduceMotion=true`；
+  内容高从 148 到 466，仅一个 resize 回调，调用耗时 `0.0016253333333224873` 秒。它证明该环境没有观测到中间高度；没有系统设置 A/B 对照，不能把 Reduce Motion 的单因果解释提升为已实验证明。
+- 本次 CI 只直接证明动画请求和最终布局，不能声称本次观测了动画帧。Settings Round 9 已记录活动窗口的真实中间高度与最终状态；
+  相对本次修复前候选，生产路径仅提取默认转发闭包，动画参数、目标几何和同步调用顺序不变，因此该历史原生观察可按语义等价复用。
+- ASC-SC-R8-F2 不重开，也不删除「随页切换并带动画」要求。本次请求断言补充了稳定的自动回归保护；原生过渡结论来自历史实测加本次影响评估，不能单靠 `requested.first == true` 证明。
+  后续若改变默认闭包、动画参数、目标几何或调用顺序，须重新评估原生过渡证据。
+- 本轮未执行变异、未切换用户的系统设置、未重新运行本地 macOS 全套。交接中的本地慢宿主失败原因仍未独立诊断；同一候选的远端完整套件通过，不能据此声称本地失败已修复。
+
+Evidence:
+
+- 独立执行 `python3 -B -m unittest discover -s scripts/ci -p v3_contract_test.py`：25 项通过，退出 0；其中受影响/不受影响入站链接及全文拒绝语义均有直接断言。
+- CI run `43552367297`：classify、documentation、desktop、verify 全部 success。直接读取 desktop 与 verify 日志，均确认 checkout 为本轮完整 HEAD。
+- desktop job `132317671261`：Xcode 26.6（17F113），macOS arm64；App 237 项、跳过 3、失败 0；Shared 163 项与 Widget 59 项均失败 0。
+  动画用例通过（1.069 秒）；`SwitchFlowTests.testConfirmationUsesExactlyTheResolvedOption` 通过（0.222 秒）；主套件 `TEST SUCCEEDED`。
+  随后的两个独立重启阶段各 1 项通过，耗时分别 1.260 与 1.008 秒；主套件中的阶段跳过不充作重启通过。
+  App 构建、Widget sandbox、desktop refresh integration、distribution isolation 各步骤均 success。
+- verify job `132317671304`：Go 1.26.0 darwin/arm64；`scripts/run-go-test.sh ./...`、`scripts/run-go-test.sh -race -p 1 -timeout=20m ./...` 与 `go vet -mod=vendor ./...` 均通过。
+- 复用范围：六项 Go 集成行为与 performance-matrix 的产品、测试、输入及配置不受本次 Settings 缩放闭包和文档工具影响；性能路径 P01/P03 为菜单栏，不经过 Settings 切页。
+  原七项证据及局限通过显式 preserves 与目标绑定 roll-up 复用。L3 使用本轮目标态 CI；独立评审使用本轮观察。
+- 历史目标 `auxiliary-session-classification:stable-specs:f39f86a-7fe242ac-907d2215` 的固定模板查询仍为 VERIFIED 9/9；新目标入场缺 ContentState，NOT_VERIFIED，不能直接借用旧门禁。
+- `python3 scripts/check-docs.py`、`python3 scripts/check-review-records.py --base HEAD docs/topics/auxiliary-session-classification/reviews/integrated-acceptance.md`、`make check-whitespace` 与 `git diff --check` 均通过。
+  上述 CI 事实直接保留在本记录，不依赖临时日志或有保留期限的附件。
+
+残余范围不变：浏览器为渲染帧而非真实 PTY；原性能证据保留原环境与样本局限；P06/P07/P11 与 P01 rebuild 层保持排除；没有新增真实用户数据、插件健康或 Widget 调度验收。
+
+CEv1 WorkUnit: `auxiliary-session-classification:integrated-acceptance`。
+Target ContentState: `auxiliary-session-classification:integrated-acceptance:commit-74964a2a0a8a4bad`。
+完成门禁：VERIFIED。
+
+新建 ContentState、change、八项 preserves 评估与十一项证据，共 21 个节点；55 条关系预检全部 ok。
+写工具回传 nodes_created/relationships_created，随后按提交 ID 集合回读全部节点负载和关系端点，数量及内容均一致。
+固定 gate-status 模板依次查询 Task 与 Topic：VERIFIED 9/9、VERIFIED 2/2，缺失、失效与未解决影响均为空。
+证据前缀为本 ContentState 加 `:r6:`。历史节点未重标，未将旧门禁直接当作新目标结果。
+
+Task checkpoint：`ad-auxiliary-session-classification-integrated-acceptance`；上述 ContentState；VERIFIED 9/9。
+提交建议：仅提交本轮评审与 tasks 状态；产品及稳定 specs 已在历史交付提交中，不重做交付。
+推送建议：本轮记录经单独授权提交及对象/SSH 签名核验后，再按单独授权推送 `origin/feature/auxiliary-session-classification`。
+
+Unit completion checkpoint：`auxiliary-session-classification`；同一 ContentState；VERIFIED 2/2。
+九个实现任务的层级已核实，其余八项 Beads 为 closed；本任务等待评审记录交付。主题保持 active，归档、集成与发布未执行。

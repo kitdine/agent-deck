@@ -1402,3 +1402,13 @@ active/key/visible 均为 true、`reduceMotion=true`；`setFrame` 约 1.6 毫秒
   `make check-ci-docs-tools`（93 项）通过。
 - 状态：Task 9 未完成。既有 VERIFIED 9/9 与 Topic 2/2 绑定 `f39f86a` 加两份 specs 的内容状态，不覆盖诊断提交与本候选；
   八个待交付路径未提交，CI 是否转绿须推送后验证。未提交、未推送，未写入新的完成证据。
+
+### CI follow-up 独立评审 — 2026-11-13
+
+上述待交付说明为当时状态。后续交付已到 `74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a`，本轮入场工作树干净；
+该提交的 CI run `43552367297` 四个作业全部成功，Swift 完整套件及两个重启阶段实际通过。
+任务 9 独立评审 Round 6 PASS，Review 保持勾选；候选身份、动画验收复用依据、CI 结果及限制见
+[reviews/integrated-acceptance.md](reviews/integrated-acceptance.md#round-6--2026-11-13)。
+新候选 `auxiliary-session-classification:integrated-acceptance:commit-74964a2a0a8a4bad` 的 Task 门禁 VERIFIED 9/9、
+Topic 门禁 VERIFIED 2/2，均无缺失、失效或未解决影响。Beads 移交 awaiting_commit，仅本轮评审与交接记录待授权交付。
+主题保持 active；本轮仅更新评审、状态和证据协调，未提交、推送、归档或集成。
