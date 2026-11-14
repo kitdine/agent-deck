@@ -412,6 +412,187 @@ is VERIFIED 4/4, with no missing criteria or unresolved candidate impacts; no
 aggregate task or source acceptance is newly certified. Local record updates
 are not committed or pushed by the merge authorization. No history is rewritten.
 
+### Pending auxiliary-session-classification batch — 2026-11-13
+
+Batch preparation under dispatch `ad-v0-7-0-contract-assemble` (claude-code),
+not an integration result or independent review. Both aggregate checkboxes
+remain unchecked; the Codex and scan-performance batches above remain integrated.
+
+- Source: `feature/auxiliary-session-classification` at
+  `f39f86aa1212de2c674667ee343f09c50dc11236`, tree
+  `b1c9df4e54d832aa60fdc4547fe2d69a489935ae`; the remote ref matches. All nine
+  source task Dev/Review rows and all seven document Review rows are checked.
+  Task 9 passed its Round 4 re-review; its committed tree equals the reviewed
+  candidate fingerprint `024b6820…`.
+- Intended target: remote `main` at `90535085723f013cb8b24d83f83015e7d60d53b0`,
+  tree `5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`. Merge base
+  `660c81586f4c13e04e66dbc05cde5331bf09acec`; 29 source-side and two
+  target-side commits.
+- Target-side changes since the base are governance only: `AGENTS.md`,
+  four `.agent-instructions/` files, `docs/README.md`,
+  `docs/documentation-workflow.md`, `docs/roadmap.md` and
+  `scripts/hooks/beads-consistency.py` (PR #62 status, PR #63 issue-intake
+  ownership). The only same-file overlap is `docs/roadmap.md`: the target
+  rewrites the header and adds a Backlog preface; the source adds one Backlog
+  entry dated 2026-11-03 for `ad-codex-memory-source-linkage`. `git merge-tree`
+  produces tree `c4729f6bb74355b1fd5c21b253c81ee857f1135b` without conflicts.
+  The entry predates the 2026-11-07 ownership change and has a Beads carrier,
+  so it fits the preface's retained-intake rule. A clean textual merge is not
+  proof of compatibility; the integration review uses the actual result.
+- Member closure is incomplete, so this batch is not ready for integration
+  review:
+  - Stable contracts are not reconciled. Source `docs/specs/cli-design.md` and
+    `cli-manual.md` contain none of the topic's command or output contracts
+    (`session origin-source`, session scope views and flags, origin reason
+    codes). The topic's Task 9 assigns this reconciliation to topic closure.
+  - No topic-level CEv1 WorkUnit `auxiliary-session-classification` exists;
+    WorkUnits `…:durability` and `…:integrated-acceptance` have not reached
+    their committed lifecycle state. The scan-performance batch had a VERIFIED
+    delivered topic gate before its PR.
+  - Operator decision 2026-11-13: the member closes in its own topic. The
+    specs reconciliation and topic gate are completed and reviewed in the
+    `auxiliary-session-classification` workspace and delivered on its feature
+    branch, as scan-performance did; they are not moved to contract Task 2.
+    This batch resumes from the resulting source commit, whose identities
+    replace the source line above.
+- Remaining membership: pricing redesign remains deferred; OpenCode remains a
+  registration only. Final combined acceptance remains required.
+
+No PR, merge, commit or push has been performed for this batch.
+
+### Auxiliary-session-classification batch resumed — 2026-11-14
+
+Batch preparation resumed under dispatch `ad-v0-7-0-contract-assemble`
+(claude-code) and CEv1 WorkUnit `v0-7-0-contract:assemble`. This supersedes the
+source identities and the member-closure finding of the pending record above;
+it is not an integration result or an independent review. Both aggregate
+checkboxes remain unchecked.
+
+- Source: `feature/auxiliary-session-classification` at
+  `855a811ad7b93298236c212ebd13ed4fcf2d58dc`, tree
+  `dd2da688951d969aef165444bb767aa696b38e95`; `git ls-remote` returns the same
+  commit. All seven document rows and all nine task Dev/Review rows are checked.
+  Since the pending record the source gained five commits: the animation
+  diagnostic `6a3532b`, the documentation link-checker fix `da0a901`, the
+  stable-spec reconciliation `298bd6b`, the animation test repair `74964a2`
+  and the Round 6 review record `855a811`. CI run 43558290460 on `855a811`
+  succeeded for classify, documentation, desktop and verify.
+- Member closure, resolved in the source topic as the operator decided:
+  - Stable contracts: `docs/specs/cli-design.md` (version 34) and
+    `cli-manual.md` now carry the topic's command, scope, reason-code and DTO
+    contracts; the source's Round 5 review passed that reconciliation.
+  - Review: source Task 9 Round 6 passed at `74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a`.
+    `855a811` adds only that review record and the topic status over `74964a2`.
+  - Evidence: a direct graph read on 2026-11-14 found passing observations
+    bound to ContentState
+    `auxiliary-session-classification:integrated-acceptance:commit-74964a2a0a8a4bad`
+    for all nine `integrated-acceptance` criteria and both topic criteria
+    (`cross-task-acceptance`, `stable-contract-reconciliation`). The source
+    record reports the Task gate VERIFIED 9/9 and the Topic gate VERIFIED 2/2
+    for that target with no invalidated or unresolved evidence; this read did
+    not re-derive the invalidation analysis. The topic WorkUnit now exists.
+- Intended target: remote `main`, unchanged at
+  `90535085723f013cb8b24d83f83015e7d60d53b0`, tree
+  `5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`. Merge base
+  `660c81586f4c13e04e66dbc05cde5331bf09acec`; 34 source-side and two
+  target-side commits. Neither ref is an ancestor of the other, so the
+  operation is a three-way merge.
+- Candidate result: `git merge-tree --write-tree` yields tree
+  `29940cefbc6274ac4e014f04e72c24d24ba7ef26` without textual conflicts. The
+  only same-file overlap is still `docs/roadmap.md`, as analysed above; the
+  result keeps the target's header and Backlog preface and the source's
+  `ad-codex-memory-source-linkage` entry. The target-side delta remains the nine
+  governance paths listed above; the source changes 223 paths.
+- Interactions for the integration review, beyond the roadmap overlap:
+  the source changes `scripts/check-docs.py` and its contract test while the
+  target changes `docs/documentation-workflow.md`, `docs/README.md` and
+  `scripts/hooks/beads-consistency.py`. On an export of the candidate tree,
+  `python3 scripts/check-docs.py`, `make check-ci-docs-tools` (93 tests) and
+  `make check-opencode-hooks` pass. This is L0 for records and tooling; no
+  product check was rerun, because the target delta touches no product path.
+  The source's Go, native and performance evidence is reused for unchanged
+  product behavior.
+- Accepted limitations carried from the source: the Settings page-switch test
+  asserts that an animated resize is requested, not that intermediate frames
+  are drawn, because hosted macOS 15 runners have Reduce Motion on; Round 6
+  reuses the earlier native intermediate-height observation rather than a new
+  CI frame observation. One local `make test-macos-app` run set on a slow host
+  left `SwitchFlowTests.testConfirmationUsesExactlyTheResolvedOption` failing
+  while CI passed it; it was not diagnosed. Keyboard and accessibility
+  acceptance stay excluded by the operator's earlier decision.
+- Residual record state, not changed here: the CEv1 lifecycle attribute of
+  WorkUnits `…:durability` and the topic unit still reads `in_progress`, and
+  the source topic is not archived.
+- Not performed: no PR exists for the source branch, and no merge, commit or
+  push was made for this batch. PR creation and merge each need their own
+  explicit authorization. Following the scan-performance batch, the batch's
+  integration WorkUnit and its ancestry, signature, reviewed-result and
+  post-merge CI evidence are recorded at the actual merge, and the integrated
+  `docs/status.md` projection lands at that boundary.
+- Remaining membership: pricing redesign remains deferred; OpenCode remains a
+  registration only. Final combined acceptance remains required.
+
+### Auxiliary-session-classification batch review — 2026-11-14
+
+Independent integration review Round 2 PASS for source `855a811` and target
+`9053508`, candidate tree `29940cefbc6274ac4e014f04e72c24d24ba7ef26`.
+The full report, evidence reuse boundaries and remaining prerequisites are in
+[Assembly Round 2](reviews/assemble.md#round-2--2026-11-14).
+This is a batch compatibility verdict, not aggregate completion: both assemble
+checkboxes remain unchecked and its required gate remains NOT_VERIFIED.
+The member PR and actual merge/result evidence are still pending; pricing
+membership/delivery and final combined acceptance remain open. The contract
+workspace binding is `v0-7-0-contract`. No commit, push, PR, merge or release was
+performed by this review; the inherited batch preparation edits are preserved.
+
+### Auxiliary-session-classification member PR — 2026-11-14
+
+The operator separately authorized creation of [PR #64](https://github.com/kitdine/agent-deck/pull/64),
+`feature/auxiliary-session-classification` → `main`, without merging.
+GitHub confirmed OPEN/unmerged at source `855a811ad7b93298236c212ebd13ed4fcf2d58dc`
+and base `90535085723f013cb8b24d83f83015e7d60d53b0`, matching Round 2.
+The PR preserves the source acceptance limits and distinguishes prior product CI
+from the latest documents-only run. PR checks and actual integration remain pending;
+aggregate assemble stays in_review, with both task checkboxes unchecked.
+This ledger update is local and uncommitted; no merge, release or contract-wide PR
+was performed or authorized.
+
+### Auxiliary-session-classification PR review and pre-merge batch review — 2026-11-14
+
+Following PR #64 creation, two authorized review-repair commits landed on
+`feature/auxiliary-session-classification` to resolve three P2 `@codex review`
+findings: `a2b01a3cbab249d88cbca57f24c04ea9fa279cf1` (preserving complete
+coverage across helper-classified desktop summary rows in
+`internal/desktop/session_scope.go` and preserving non-interactive exit status
+when `sessions --fix` leaves unrepairable items in `cmd/agentdeck/main.go`, with
+regression tests) and `0feb0c6d8965b6037de4c7e04bee839b96039dd0` (defaulting
+blank `session_origin` when loading incremental snapshot rows from pre-v13
+databases in `internal/scanruntime/serving.go`, with regression test).
+All three review threads (`PRRT_kwDOTe7lus63ZnYu`, `PRRT_kwDOTe7lus63ZnYv`,
+`PRRT_kwDOTe7lus63awJD`) are resolved; full product CI runs `43572725411`
+(`push`) and `43572728514` (`pull_request`) passed all 8 jobs (`classify`,
+`documentation`, `verify`, `desktop`), and Round 2 `@codex review`
+(`IC_kwDOTe7lus8AAAABmcUAqA`) completed on `0feb0c6d89` with zero findings.
+
+Independent integration review Round 3 PASS for updated source
+`0feb0c6d8965b6037de4c7e04bee839b96039dd0` (tree
+`5eb8c6f0a737935b24cebb4016a44749ff7d67e4`), target `main`
+`90535085723f013cb8b24d83f83015e7d60d53b0` (tree
+`5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`), merge base
+`660c81586f4c13e04e66dbc05cde5331bf09acec` (36 source commits, 2 target commits),
+and GitHub's clean pre-merge candidate commit
+`4d8c54dd0125481f2d5dbbb514973e68f6195cba` (tree
+`8bc3398976468058299173b93b363155f0ce6d8c`, matching local
+`git merge-tree --write-tree`). The full report, evidence reuse boundaries,
+source CEv1 state (`74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a` plus PR repair
+verification on `0feb0c6d8965b6037de4c7e04bee839b96039dd0`), and remaining
+prerequisites are in [Assembly Round 3](reviews/assemble.md#round-3--2026-11-14).
+This remains a pre-merge batch compatibility verdict, not aggregate completion:
+both assemble checkboxes stay unchecked and its required gate stays
+`NOT_VERIFIED` until explicit merge authorization, actual merge/post-merge CI
+and signature verification, remaining selected members (`cost-transparency`),
+and final combined acceptance complete.
+
 ### 1. `assemble`
 
 **Prerequisites:** reviewed contract membership with VERIFIED document evidence,
