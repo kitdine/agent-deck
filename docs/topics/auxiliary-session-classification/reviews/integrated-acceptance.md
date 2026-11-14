@@ -601,3 +601,64 @@ architecture.md 的文档评审（[reviews/architecture.md](architecture.md) Rou
 CEv1 已登记内容状态 `auxiliary-session-classification:integrated-acceptance:arch-r7-024b6820cd8910ce`，
 九份证据 `…:r4-024b6820:<准则>:pass` 各以 rolls_up 指向 `…:r4-d4d02e77:` 下的原证据；写入并回读后复查，该 WorkUnit 在新内容状态上九项准则均有通过证据。
 Round 4 的评审结论不变。
+
+
+## Round 5 — 2026-11-13
+
+## 📋 Task 9 稳定规格收尾独立评审
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+- Reviewer: Codex，本轮独立评审会话；未参与前一会话的稳定规格编写或产品实现，未委派。
+- Method: 文档增量语义审查；工作区绑定、Beads 交接及精确 blob 核验；以本工作树 CodeGraph 定位后对照命令处理器、来源状态、FTS 写入与备份恢复源码；复核 CEv1 的目标绑定及证据沿袭。
+- Scope: `docs/specs/cli-design.md`、`docs/specs/cli-manual.md` 的新增分类合同，以及 tasks.md 的稳定规格收尾交接。此前产品实现沿用 Round 4 及其 architecture Round 7 内容更新，不重做未变化的产品评审。
+- Reviewed state: HEAD `f39f86aa1212de2c674667ee343f09c50dc11236`，tree `b1c9df4e54d832aa60fdc4547fe2d69a489935ae`；cli-design blob `7fe242acad4d4e0d428e400f83618bad075ad706`；cli-manual blob `907d221515ed8b1489d35f25ae3a1c0b528a405a`。
+  ContentState: `auxiliary-session-classification:stable-specs:f39f86a-7fe242ac-907d2215`。沿用既有配方：HEAD 加上述两个稳定规格 blob；tasks.md 的状态/交接与本评审记录不进入产品候选身份。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无新增发现。此前范围外 ASC-IA-R4-F1 仍由 `ad-bug-selection-verify-200ms-deadline` 承载，本轮没有改变其归属或宣称修复。
+
+### 🟢 优点
+
+- 分类与消费统计边界清晰：unknown 留在 Work，范围只影响会话分析，不减去维护会话的 token/费用；覆盖与自动原因分离。
+- CLI 文档与处理器一致：classify 的 set/clear/receipt/保留 ID、CAS、scope 默认值，以及 origin-source 的两项固定顺序和封闭原因枚举；clear 无需读取索引。
+- `cmd/agentdeck/desktop.go:newDesktopSessionScopeCommand` 确认 JSON-only、显式 scope、client/period 默认值、batch 与显式 client/period 互斥、RFC3339 时间及 1–20 recent-limit。bootstrap 批次复用没有引入 Widget 的 CLI/SQLite 读取权限。
+- `internal/session/session.go` 的 searchTextChanged 与写入推进路径、architecture §6 及 Round 4 的保证范围一致：FTS 内容不是任意外部 SQL 都受触发器保护。
+- `internal/backup/backup.go` 的非便携表清理与恢复 unmatched 行为支持新增备份说明；分类控制 DTO 的隐私边界没有误覆盖既有 session 正文输出。
+- CLI 的 coverage partial 与 source-status 的三种读取失败 partial 分开陈述；来源状态是已提交事实，不冒充插件实时健康检查。
+
+### 📝 总结
+
+本轮无未关闭的范围内发现，结论 PASS。此前 ASC-IA-R1-F1…F5、R2-F1/F2、R3-F1 的关闭状态不变；本轮文档没有撤销这些修复。
+任务 9 Review 已勾选。产品代码、测试、依赖与配置均未修改，没有执行提交、推送、集成或发布。
+
+Evidence:
+
+- 实时 Git 状态仅有两份 specs 与 tasks.md 的文档变化；两份 specs 的 `git hash-object` 与上述 ContentState 完全相同。
+- 手册参数与 `cmd/agentdeck/session_origin.go`、`cmd/agentdeck/desktop.go` 对照；来源状态 JSON 字段与 `originSourceStatus.MarshalJSON`、`originSourceStatuses` 对照；FTS 与备份边界按上述源码及已批准 architecture 核验。
+- 入场 CEv1 固定模板查询：任务 NOT_VERIFIED 8/9，仅缺 independent-review；invalidated_evidence 与 unresolved_candidate_impacts 均为空。八项目标绑定 roll-up 的源码、测试与配置未变化，因此复用其既有证据及局限，不重跑 L3、原生测试或性能矩阵。
+- 本轮 `python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均退出 0；结构检查不替代语义评审。最终门禁结果见下方字段。
+
+残余不确定性沿用 Round 4：浏览器为渲染帧证据而非真实 PTY；原生与性能结论按已记录影响评估复用；P06/P07/P11 及 P01 rebuild 层不在已批准范围。没有新增真实用户状态、插件运行或 Widget 调度验收。
+
+CEv1 WorkUnit: `auxiliary-session-classification:integrated-acceptance`。
+Target ContentState: `auxiliary-session-classification:stable-specs:f39f86a-7fe242ac-907d2215`。
+完成门禁：VERIFIED。
+
+本轮新增 2 个 evidence 节点、5 条关系，预检均为 ok，写入后回读数量与端点一致。固定 gate-status 模板按内到外查询：
+任务 VERIFIED 9/9；Topic `auxiliary-session-classification` VERIFIED 2/2；均无 missing criteria、invalidated evidence 或 unresolved candidate impact。
+新证据 ID 为本 ContentState 加 `:r5:independent-review:pass` 与 `:r5:stable-contract-reconciliation:pass`。
+Topic 稳定合同证据 rolls_up 本轮独立评审；跨任务验收复用原有八项目标绑定证据。
+
+Task checkpoint：`ad-auxiliary-session-classification-integrated-acceptance`；上述 ContentState；VERIFIED 9/9。
+提交建议：建议在单独授权后提交两份稳定 specs、tasks.md 状态及本评审记录；本候选任务与 Topic 门禁均已 VERIFIED。
+推送建议：待单独授权提交并核验提交对象及 SSH 签名，再按单独推送授权交付至 `origin/feature/auxiliary-session-classification`。
+
+Unit completion checkpoint：`auxiliary-session-classification`；同一 ContentState；Topic 门禁 VERIFIED 2/2。评审与证据已满足收尾检查点，Git 交付和后续整体归档仍未执行；当前主题保持 active。

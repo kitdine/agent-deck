@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-16
-updated: 2026-10-29
+updated: 2026-11-13
 ---
 
 # AgentDeck CLI 目标命令手册
@@ -694,10 +694,10 @@ Session interactive 内容在最多 120 个 visible cells 的左对齐画布内�
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `session --interactive` | 以只读 TTY browser 浏览已索引 sessions，并进入分区详情；不会隐式执行 scan | `--interactive` | 不接受位置参数；要求 text 输出以及 TTY stdin/stdout | `agentdeck session --interactive` |
+| `session --interactive` | 以只读 TTY browser 浏览已索引 sessions，并进入分区详情；不会隐式执行 scan | `--interactive`；`--session-scope`（初始范围） | 不接受位置参数；要求 text 输出以及 TTY stdin/stdout | `agentdeck session --interactive` |
 | `session scan` | 增量建立可清除的 session 搜索索引；启用时在 stderr 报告聚合进度 | 无 | 无 | `agentdeck session scan` |
-| `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
-| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
+| `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--session-scope work\|auxiliary\|all`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
+| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--session-scope`；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
 | `session show <session-id>` | 分区显示一个 session；可按需读取安全 activity/tool 元数据或 normalized invocation usage | `--client codex\|claude`、`--activity`、`--tokens`、`--interactive`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --tokens --page 2` |
 | `session exclude` | 持久化索引排除规则 | `--kind project\|path\|session\|client`；`--value <value>` | 两个 flags 均必填 | `agentdeck session exclude --kind client --value claude` |
 | `session rebuild` | 重建 purgeable index，不删除源日志 | 无 | 无 | `agentdeck session rebuild` |
@@ -774,6 +774,76 @@ selected activity 只展开 safe metadata，selected invocation 展开全部 tok
 中的 session metadata/documents、optional safe activity、optional usage/invocations、
 named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
 一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
+
+### 会话分类与范围
+
+会话分为 `work`、`auxiliary`、`unknown`，用于把后台维护会话从工作视图中隔离；所有用量、
+token 与费用完整保留，`usage summary`、价格、额度及 `usage stats` 的消耗块始终为 all。
+只有明确支持的维护来源元数据能判为 auxiliary，普通来源为 unknown 并留在 Work；
+用户任务子代理不被隐藏。范围：`work` = work + unknown，`auxiliary`，`all` = 两者并集。
+
+| 命令 | 行为 |
+| --- | --- |
+| `--session-scope work\|auxiliary\|all` | 用于 `session list/search/--interactive`、`usage signals`，以及 `usage stats` 的会话/Activity/Workflow/Tooling 块；文本默认 work，JSON 默认 all；`--all` 仍只表示取消分页，可与之组合；`session show` 按精确 ID 不受范围过滤 |
+| `session classify <id> --client <client>` | 只读显示 effective/automatic、原因码、规则版本、覆盖与 revision，不显示来源正文或路径 |
+| `session classify <id> --client <client> --set work\|auxiliary` | 保存一条可逆覆盖；不能设为 unknown；与 `--clear` 互斥 |
+| `session classify <id> --client <client> --clear` | 按 core 覆盖键撤销，client 必填，不要求会话可见；回执的分类字段为 not queried |
+| `session classify list [--page N] [--limit N]` | 列出有效覆盖（含 unmatched），默认 20、上限 200，按 client/session_id 排序 |
+| `session classify --request <request-id>` | 只读读回原操作回执，不重发写入；无确认结果返回 `outcome=unknown` |
+| `session classify --id <id> --client <client>` | ID 与保留子命令（如 `list`）同名时使用；不得与位置 ID 同时提供 |
+| `session scope get` / `session scope set work\|auxiliary\|all` | 读取或保存桌面与 Widget 的默认范围；不改变 CLI 默认 |
+| `session origin-source set claude-mem --data-dir <absolute>` | 配置 claude-mem 元数据根；不修改插件，回显不含路径，不宣称映射已验证 |
+| `session origin-source disable claude-mem` | 停用适配器并使其自动证据失效；不删除覆盖、源日志或用量，不触发扫描 |
+| `session origin-source status` | 只读列出 `claude-mem` 与内建 `codex-otel-background` 两项状态；不扫描、不打开插件库、不写状态 |
+
+写入（classify `--set/--clear`、`scope set`）支持 `--expected-revision` 与 `--request-id`；省略时 CLI
+生成请求 ID 并先读当前 revision 再 CAS。冲突不自动重试为覆盖最新值。同请求 ID 同负载重放原回执；
+同值重复写入返回 NO CHANGE，不递增 revision。回执显示 Request ID、Target、Outcome、Revision 与
+publication_pending；保存成功但视图尚未发布时显示 `Views: pending publication`。错误码：
+`origin_conflict`、`origin_identity_unavailable`、`origin_write_failed`、`origin_write_unknown` 退出 `1`
+（后者在 `error.details.request_id` 保留请求 ID，用 `--request` 核对后再重试）；输入错误退出 `2`。
+
+分类原因码是封闭枚举：`maintenance_origin`（auxiliary），`origin_metadata_missing`、
+`task_child_unconfirmed`、`conflicting_origin`、`origin_source_unavailable`、`origin_rule_unsupported`、
+`origin_input_mismatch`（均为 unknown）。命中哪条维护规则由规则版本表达：`claude-mem-sdk-map-v1`
+或 `codex-otel-background-v1`。内建 Codex 来源只读 AgentDeck 自身的 OTel 会话标记，不可 set/disable
+（调用为参数错误）；要把这类会话计入工作，用单会话 `--set work`。
+
+`origin-source status` 的 JSON command 为 `session.origin_source.status`，`data.sources` 固定两项、
+顺序固定，字段为 source、kind、configured、enabled、available、supported_version、rule_version、
+reason_code，claude-mem 另有 last_run_at，Codex 另有 receiver 与 background_sessions。来源状态原因码
+（与分类原因码分开）为 `source_not_configured`、`source_disabled`、`source_not_yet_read`、
+`source_unavailable`、`source_version_unsupported`、`source_config_unreadable`、`otel_receiver_disabled`、
+`no_background_sessions`、`otel_receiver_unknown`、`core_unavailable`。只有 core、来源配置或接收器配置
+不可读时 `partial: true`；命令除参数错误外均退出 `0`。状态是已提交结果，不代表插件当前运行状态。
+
+JSON 不指定范围时保留原有 data 形状。新增顶层 `session_selection`（requested_scope、effective_scope、
+source_default、availability、unknown_count、read_vector、publication_id），数组元素可加 `origin`，
+搜索分页另有 `selected_session_count`，与匹配文档数分开。`usage stats` 文本在范围行中分别标注
+分析块的 `Scope:` 与消耗块的 `Usage scope: all`，并说明 `All usage and costs remain unchanged.`。会话、分类与范围命令不隐式扫描；`usage stats` 与
+`usage signals` 保持原扫描行为，范围参数不增加扫描。
+
+分类来源不可读或输入过期时，受影响会话保持 unknown；可读取的 selection 仍为 available，
+但 JSON envelope 的 `partial` 为 true，`warnings` 包含对应覆盖原因码。文本在范围行下显示
+独立的 `PARTIAL` 警告、原因及 `Check: agentdeck session origin-source status`。
+交互式浏览器同样在范围行下保留警告，空集合及范围菜单也不例外；48 列起优先保留 PARTIAL
+和可容纳的原因，宽度足够时才显示检查命令。三种范围均适用，auxiliary 为空不代表覆盖完整。
+
+交互式浏览器按 `s` 打开范围菜单，方向键选择，Enter 应用，Escape 取消；这只是本次浏览的
+范围，不保存默认值。加载新范围失败时保留此前列表与范围，并显示失败状态；首次加载失败
+不显示伪造的空列表。
+
+桌面内部只读接口 `agentdeck --format json desktop session-scope --scope work|auxiliary|all`
+返回显式范围的视图，`--client all|codex|claude` 默认 all，`--period today|7d|30d` 默认 today。
+`--batch` 返回受支持 client/period 组合的整批视图，不能与显式 `--client` 或 `--period` 同用。
+`--generation-id` 限定已提交代次，`--as-of` 接受 RFC 3339 时间，`--recent-limit` 为 1–20。
+宿主优先复用 bootstrap 携带的批次，
+必要时才调用批量回退；Widget 只读取 App Group 快照。缺少 `session_scope_summary` 时只将
+Widget 的会话行标为不可用，不把未知数显示为 0，也不影响全量费用显示。
+
+可移植备份只保留默认范围与用户覆盖，不含自动分类、适配器运行摘要、回执或本机数据根；
+恢复后覆盖为 unmatched，待当前来源身份精确重新绑定后才生效。`session purge-index`
+不删除 core 中的默认与覆盖。
 
 ## Scan
 
