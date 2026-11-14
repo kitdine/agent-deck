@@ -19,6 +19,9 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
+	"github.com/kitdine/agent-deck/internal/sessionorigin/adapters/claudemem"
+	"github.com/kitdine/agent-deck/internal/sessionorigin/adapters/claudemem/claudememtest"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -723,5 +726,127 @@ func TestFinalServingPublicationSurvivesAGenerationConflict(t *testing.T) {
 				t.Fatalf("a failed publication was installed: %+v", final.Header)
 			}
 		})
+	}
+}
+
+func TestServingMetadataOnlyReconcilesOriginsAndRestoredOverrides(t *testing.T) {
+	const observerID = "22222222-2222-4222-8222-222222222222"
+	home := claudememtest.Home(t, claudememtest.ReviewedInstall())
+	root, _, err := prepareStateRoot(filepath.Join(home, ".agentdeck"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.October, 20, 12, 0, 0, 0, time.Local)
+	writeServingSource(t, home, "codex-override", now.Add(-time.Minute), 27)
+	observerPath := filepath.Join(home, ".claude", "projects", "-project", observerID+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(observerPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	observerAt := now.Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+	observerText := fmt.Sprintf(
+		`{"type":"user","sessionId":%q,"timestamp":%q,"cwd":"/project","message":{"role":"user","content":"observe"}}`+"\n"+
+			`{"type":"assistant","sessionId":%q,"timestamp":%q,"cwd":"/project","message":{"role":"assistant","id":"msg-observer","model":"claude-haiku-4-5","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"ok"}]}}`+"\n",
+		observerID, observerAt, observerID, observerAt,
+	)
+	if err := os.WriteFile(observerPath, []byte(observerText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	clock := func() time.Time { return now }
+	client := Client{StateRoot: root, Home: home, ForceLocal: true, Now: clock}
+	if result, err := client.Request(ctx, ScopeBoth); err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+		t.Fatalf("seed failed: %+v %v", result, err)
+	}
+
+	sessionsDB, err := store.OpenSessionsReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := sessionorigin.ResolveBinding(ctx, sessionsDB, "codex", "codex-override")
+	sessionsDB.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (sessionorigin.Service{Store: core, Now: clock}).SetOverride(ctx, sessionorigin.OverrideSetRequest{
+		RequestID:        "seed-override",
+		Client:           "codex",
+		SessionID:        "codex-override",
+		Value:            sessionorigin.ClassAuxiliary,
+		Binding:          binding,
+		ImplicitExpected: true,
+	}); err != nil {
+		core.Close()
+		t.Fatal(err)
+	}
+	if _, err := core.DB.ExecContext(ctx, `UPDATE origin_overrides SET binding_state='unmatched' WHERE client='codex' AND session_id='codex-override'`); err != nil {
+		core.Close()
+		t.Fatal(err)
+	}
+	if err := core.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cm := claudememtest.New(t, claudemem.SupportedSchemaVersion, []claudememtest.Mapping{{RowID: 1, ContentID: "11111111-1111-4111-8111-111111111111", MemoryID: observerID}})
+	if err := sessionorigin.SaveSourceConfig(root, sessionorigin.SourceConfig{ClaudeMem: sessionorigin.AdapterConfig{DataDir: cm.Dir}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "desktop-serving-snapshot.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRound(home)
+	r.serving = true
+	r.cacheNow = clock
+	batchCount := 0
+	r.beforeServingBatch = func(int) { batchCount++ }
+	r.execute(ctx, root, false)
+	result, err := r.wait(ctx, ScopeBoth)
+	if err != nil || result.Usage.State != "completed" || result.Session.State != "completed" {
+		t.Fatalf("metadata-only serving round failed: %+v %v", result, err)
+	}
+	if batchCount != 1 {
+		t.Fatalf("metadata-only round ran %d batches, want 1", batchCount)
+	}
+
+	readCore, err := store.OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readCore.Close()
+	origins, err := readCore.SessionOrigins(ctx, "claude", []string{observerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if origin, ok := origins[observerID]; !ok || origin.Automatic != sessionorigin.ClassAuxiliary || origin.RuleVersion != sessionorigin.RuleClaudeMemSDKMapV1 {
+		t.Fatalf("observer origin = %+v (found=%v), want auxiliary via %s", origin, ok, sessionorigin.RuleClaudeMemSDKMapV1)
+	}
+	override, found, err := readCore.OriginOverrideRecord(ctx, "codex", "codex-override")
+	if err != nil || !found || override.BindingState != "matched" || override.Value == nil || *override.Value != sessionorigin.ClassAuxiliary {
+		t.Fatalf("codex-override = %+v (found=%v, err=%v), want matched auxiliary", override, found, err)
+	}
+
+	svc := desktop.Service{StateRoot: root, Home: home, Now: clock}
+	prepared, err := svc.ReadServingSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := prepared.Payload.Data.SessionScopeView
+	if view == nil || !view.Available || view.Counts == nil || view.Counts.Sessions != 0 {
+		t.Fatalf("published work view = %+v, want available with 0 work sessions", view)
+	}
+	auxView, err := svc.SessionScopeView(ctx, desktop.SessionScopeRequest{
+		Scope:       sessionorigin.ScopeAuxiliary,
+		Client:      "all",
+		Period:      "today",
+		RecentLimit: desktop.DefaultRecentLimit,
+	})
+	if err != nil || !auxView.Available || auxView.Counts == nil || auxView.Counts.Sessions != 2 {
+		t.Fatalf("auxiliary view = %+v (err=%v), want 2 auxiliary sessions", auxView, err)
 	}
 }
