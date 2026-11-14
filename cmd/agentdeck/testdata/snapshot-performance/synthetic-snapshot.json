@@ -7437,7 +7437,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 33
+          "count": 34
         },
         {
           "name": "pending_operations",
@@ -7523,6 +7523,198 @@
           "failure": "probe_disabled"
         }
       ]
+    },
+    "session_scope_view": {
+      "available": true,
+      "reason": null,
+      "default": {
+        "confirmed": true,
+        "value": "work",
+        "revision": 0,
+        "reason": null
+      },
+      "selection": {
+        "scope": "work",
+        "client": "all",
+        "period": "today"
+      },
+      "publication_id": "normalized-session-scope-publication",
+      "generation_id": "normalized-session-scope-generation",
+      "generated_at": "2026-08-13T10:00:00Z",
+      "origin_coverage": {
+        "complete": true,
+        "unknown_count": 1,
+        "reasons": []
+      },
+      "counts": {
+        "sessions": 1,
+        "projects": 1,
+        "known_duration_ms": 5000,
+        "missing_duration_count": 0
+      },
+      "recent": [
+        {
+          "client": "codex",
+          "session_id": "codex-contract",
+          "project": "13",
+          "model": "gpt-5.6",
+          "first_at": "2026-08-13T08:00:00Z",
+          "last_at": "2026-08-13T08:00:05Z",
+          "origin": {
+            "automatic": "unknown",
+            "effective": "unknown",
+            "reason_code": "origin_metadata_missing",
+            "rule_version": "origin-reducer-v1",
+            "override": null,
+            "revision": 0
+          }
+        }
+      ],
+      "work_signals": {
+        "activity": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "cost_basis": "turn",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 100,
+                  "cost": 0.00071,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 100,
+                      "cost": 0.00071,
+                      "events": 1
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "workflow": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "first_edit_seconds": null,
+              "files_touched": null,
+              "retries": null,
+              "edits_per_session": 0,
+              "top_file": null,
+              "top_file_edits": null
+            }
+          ]
+        },
+        "tooling": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "calls": 1,
+              "groups": 1,
+              "rows": [
+                {
+                  "kind": "bash",
+                  "calls": 1,
+                  "share": 100
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   },
   "warnings": [],

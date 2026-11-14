@@ -139,13 +139,6 @@ struct AttributionPanelModel: Equatable, Sendable {
 	let unpricedIdentifiers: [String]
 }
 
-struct RecentSessionRow: Identifiable, Equatable, Sendable {
-	let id: String
-	let title: String
-	let detail: String
-	let when: String
-}
-
 enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
 	case activity
 	case workflow
@@ -156,7 +149,6 @@ enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable,
 
 enum WorkSignalPresentationState: Equatable, Sendable {
 	case captured
-	case empty
 	case uncaptured
 }
 
@@ -209,13 +201,14 @@ struct WorkSignalPanelModel: Equatable, Sendable {
 	let topMCPText: String
 }
 
+/// The Sessions tab. Every figure in it comes from one session-scope view;
+/// the legacy all-session `sessions` section never feeds it, so an absent
+/// view is shown as legacy rather than as Work.
 struct SessionsPanelModel: Equatable, Sendable {
 	let available: Bool
-	let stats: [StatChip]
-	let workSignals: WorkSignalPanelModel
-	let projects: [ShareRow]
-	let recent: [RecentSessionRow]
-	let emptyCopy: String?
+	let scope: SessionScopePanelModel
+
+	var workSignals: WorkSignalPanelModel { scope.workSignals }
 }
 
 struct RhythmCell: Identifiable, Equatable, Sendable {
@@ -337,6 +330,8 @@ final class MenuBarViewModel {
 	let coordinator: DesktopRefreshCoordinator
 	let switchController: SwitchController
 	let preferences: DesktopPreferences
+	/// The window's session-scope state; it outlives tab and filter changes.
+	let sessionScope: SessionScopeController
 
 	var selectedClient = "all"
 	var selectedPeriod = "today"
@@ -423,11 +418,13 @@ final class MenuBarViewModel {
 		coordinator: DesktopRefreshCoordinator,
 		switchController: SwitchController,
 		preferences: DesktopPreferences,
+		sessionScopeReader: (any DesktopSessionScopeReading)? = nil,
 		now: @escaping () -> Date = Date.init
 	) {
 		self.coordinator = coordinator
 		self.switchController = switchController
 		self.preferences = preferences
+		self.sessionScope = SessionScopeController(reader: sessionScopeReader)
 		self.now = now
 	}
 
@@ -751,7 +748,7 @@ final class MenuBarViewModel {
 		case .attribution:
 			return !scope.quality.available || !scope.pricing.available
 		case .sessions:
-			return !snapshot.sessions.available || !snapshot.sessions.periods.available
+			return !sessionScopePanelIsReady
 		}
 	}
 
@@ -767,7 +764,7 @@ final class MenuBarViewModel {
 			?? scopes.first
 	}
 
-	private func isPeriodAvailable(_ period: String) -> Bool {
+	func isPeriodAvailable(_ period: String) -> Bool {
 		_ = dateRevision
 		// Historical periods keep their recorded window; today must still name
 		// the installed publication's actual calendar day on every surface.
@@ -1014,75 +1011,34 @@ final class MenuBarViewModel {
 		return snapshot.sessions.periods.items.first(where: { $0.period == selectedPeriod && $0.client == selectedClient })
 	}
 
+	/// The Sessions tab reads only the session-scope view. A today that no
+	/// longer names the installed publication's day is unavailable, as on
+	/// every other surface.
 	var sessionsPanel: SessionsPanelModel {
-		guard isPeriodAvailable(selectedPeriod), let snapshot, snapshot.sessions.available else {
+		guard isPeriodAvailable(selectedPeriod), snapshot != nil else {
 			return SessionsPanelModel(
 				available: false,
-				stats: [],
-				workSignals: workSignalPanel(nil, statistics: nil),
-				projects: [],
-				recent: [],
-				emptyCopy: nil
+				scope: .message(.unavailable, notice: t(DesktopCopy.sessionScopeUnavailable),
+					hint: t(DesktopCopy.sessionScopeUnavailableHint),
+					signals: workSignalPanel(nil, period: selectedPeriod, client: selectedClient))
 			)
 		}
-		let statistics = sessionStatistics
-		let stats: [StatChip] = [
-			StatChip(
-				id: "sessions",
-				label: t(DesktopCopy.sessionsCount),
-				value: statistics.map { DesktopFormat.count(Int64($0.sessions)) } ?? "—",
-				note: nil
-			),
-			StatChip(
-				id: "average",
-				label: t(DesktopCopy.sessionsAverage),
-				value: statistics.map {
-					DesktopFormat.duration($0.sessions > 0 ? $0.totalDurationSeconds / Int64($0.sessions) : 0)
-				} ?? "—",
-				note: nil
-			),
-			StatChip(
-				id: "projects",
-				label: t(DesktopCopy.sessionsProjects),
-				value: statistics.map { DesktopFormat.count(Int64($0.distinctProjects)) } ?? "—",
-				note: nil
-			),
-		]
-		let rows = filteredRecentSessions(snapshot)
-		let projectTotal = max(Int64(1), statistics?.projects.reduce(0) { $0 + $1.durationSeconds } ?? 0)
-		let projects = (statistics?.projects ?? []).map { project -> ShareRow in
-			let fraction = Double(project.durationSeconds) / Double(projectTotal)
-			return ShareRow(
-				id: "project.\(project.project ?? "")",
-				label: project.project ?? t(DesktopCopy.sessionsProjectUnnamed),
-				value: t(DesktopCopy.sessionsProjectCount, Int64(project.sessions)),
-				share: fraction,
-				shareText: DesktopFormat.duration(project.durationSeconds)
-			)
-		}
-		// The row identity is positional on purpose: the wire's session
-		// identifier is a prohibited value and never enters presentation state.
-		let recent = rows.enumerated().map { index, session in
-			RecentSessionRow(
-				id: "session.\(index)",
-				title: session.project ?? t(DesktopCopy.sessionsProjectUnnamed),
-				detail: [clientLabel(session.client), session.model].compactMap(\.self).joined(separator: " · "),
-				when: sessionDuration(session)
-			)
-		}
-		return SessionsPanelModel(
-			available: snapshot.sessions.periods.available,
-			stats: stats,
-			workSignals: workSignalPanel(snapshot.sessions.workSignals, statistics: statistics),
-			projects: projects,
-			recent: recent,
-			emptyCopy: rows.isEmpty ? t(DesktopCopy.sessionsEmpty) : nil
-		)
+		return SessionsPanelModel(available: true, scope: sessionScopePanel)
 	}
 
-	private func workSignalPanel(
+	/// Work signals of one selection. `period` and `client` name the selection
+	/// the signals answer, which is the shown view's own selection; nil signals
+	/// mean no view at all.
+	///
+	/// Each family speaks for itself through its own availability and item.
+	/// The selection's session count never decides it: the session list comes
+	/// from the text index, the signals from usage, and usage with no indexed
+	/// session still belongs to Work. A selection with no listed session can
+	/// therefore still carry real signals.
+	func workSignalPanel(
 		_ signals: DesktopWorkSignalsV1?,
-		statistics: DesktopSessionsPeriodItemV1?
+		period selectedPeriod: String,
+		client selectedClient: String
 	) -> WorkSignalPanelModel {
 		let unavailableSummaries = WorkSignalSection.allCases.map {
 			WorkSignalSummary(id: $0, title: workSignalTitle($0), value: nil)
@@ -1092,18 +1048,6 @@ final class MenuBarViewModel {
 				state: .uncaptured,
 				uncapturedSections: Set(WorkSignalSection.allCases),
 				summaries: unavailableSummaries,
-				activityRows: [],
-				workflowMetrics: [],
-				topFileText: "—",
-				toolingRows: [],
-				topMCPText: "—"
-			)
-		}
-		guard (statistics?.sessions ?? 0) > 0 else {
-			return WorkSignalPanelModel(
-				state: .empty,
-				uncapturedSections: [],
-				summaries: [],
 				activityRows: [],
 				workflowMetrics: [],
 				topFileText: "—",
@@ -1304,47 +1248,6 @@ final class MenuBarViewModel {
 		case "other": t(DesktopCopy.sessionsToolOther)
 		default: kind
 		}
-	}
-
-	private func sessionDuration(_ session: DesktopRecentSessionV1) -> String {
-		guard let firstAt = session.firstAt,
-			let lastAt = session.lastAt,
-			let first = DesktopFormat.timestamp(firstAt),
-			let last = DesktopFormat.timestamp(lastAt),
-			last > first
-		else {
-			return "—"
-		}
-		return DesktopFormat.duration(Int64(last.timeIntervalSince(first)))
-	}
-
-	/// Both filters reach the recent list: the client narrows it and the period
-	/// bounds it. These rows are a display list, never the panel's statistics,
-	/// which stay producer-computed.
-	private func filteredRecentSessions(_ snapshot: DesktopSnapshotV1) -> [DesktopRecentSessionV1] {
-		let bounds = periodBounds(snapshot.generatedAt)
-		return snapshot.sessions.items.filter { session in
-			guard selectedClient == "all" || session.client == selectedClient else { return false }
-			guard let bounds else { return true }
-			guard let raw = session.lastAt ?? session.firstAt, let stamp = DesktopFormat.timestamp(raw) else { return false }
-			return stamp >= bounds.start && stamp <= bounds.end
-		}
-	}
-
-	private func periodBounds(_ generatedAt: String) -> (start: Date, end: Date)? {
-		guard let end = DesktopFormat.timestamp(generatedAt) else { return nil }
-		var calendar = Calendar.current
-		calendar.locale = DesktopLocale.current
-		let startOfDay = calendar.startOfDay(for: end)
-		let days: Int
-		switch selectedPeriod {
-		case "today": days = 0
-		case "7d": days = 6
-		case "30d": days = 29
-		default: return nil
-		}
-		guard let start = calendar.date(byAdding: .day, value: -days, to: startOfDay) else { return nil }
-		return (start, end)
 	}
 
 	private func periodWindow(scope: DesktopUsageScopeV1) -> Set<String> {

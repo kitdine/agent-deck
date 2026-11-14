@@ -44,6 +44,16 @@ func ensureSessionServingStorage(ctx context.Context, db *sql.DB) error {
 	if err = createServingStorage(ctx, tx); err != nil {
 		return err
 	}
+	// session_documents is FTS5. Its content shadow table must carry no
+	// trigger: any trigger there makes SQLite open a statement savepoint for
+	// every FTS5 content write, and FTS5 then flushes its in-memory index and
+	// merges segments on each one. The session package advances the revision
+	// itself wherever it writes searchable text (session.MarkSearchTextChanged).
+	for _, operation := range []string{"INSERT", "UPDATE", "DELETE"} {
+		if _, err = tx.ExecContext(ctx, `DROP TRIGGER IF EXISTS serving_revision_session_documents_content_`+operation); err != nil {
+			return err
+		}
+	}
 	if err = installServingRevisionTriggers(ctx, tx, []string{"session_sources", "session_metadata", "session_exclusions", "domain_coverage_heads", "source_domain_checkpoints"}); err != nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 ---
 status: active
-version: 33
-updated: 2026-10-29
+version: 34
+updated: 2026-11-13
 created: 2026-07-14
 ---
 
@@ -1951,6 +1951,131 @@ session dependency, but its later wire-contract task must still define the
 coherent desktop snapshot, wire version, and Go-owned redaction; it must not
 parse text or interactive rendering.
 
+### Session Origin Classification
+
+Sessions are classified `work`, `auxiliary`, or `unknown` so that background
+maintenance sessions can be separated from the user's work without losing any
+usage. Go owns classification and scope selection; clients consume versioned
+DTOs. Classification never changes usage events, tokens, costs, or pricing, and
+consumption totals (`usage summary`, prices, quota, and the consumption blocks
+of `usage stats`) always remain `all`.
+
+Automatic classification is rebuildable derived state. Only explicitly
+supported maintenance-origin metadata can produce `auxiliary`; directories,
+models, project names, empty projects, and timing similarity are never used.
+Ordinary sources stay `unknown` and remain in the Work view; AgentDeck does not
+claim that an ordinary log is proven work. Task subagents sharing the parent's
+session ID remain that canonical session; a subagent with its own ID and no
+verifiable relation is `unknown`. Two maintenance rules exist:
+
+- `claude-mem-sdk-map-v1` reads the claude-mem plugin's session-mapping
+  metadata read-only from an explicitly configured absolute data root during
+  the existing scan/rebuild stages. The plugin is never modified.
+- `codex-otel-background-v1` is built in. It reads only AgentDeck's own
+  `telemetry_sessions` facts: a Codex session whose marker has
+  `source_kind=codex-otel-background` and a listed support entry
+  (`codex_exec/0.165.0/codex_exec/sse`,
+  `codex-app-server/0.165.0/codex-tui/sse`) is maintenance. When a late JSONL
+  source removes the marker, the evidence lapses and the session is
+  re-reduced; an old `auxiliary` never hides a JSONL session.
+
+`reason_code` is a closed enum, separate from `rule_version`:
+`maintenance_origin` (automatic `auxiliary`), and `origin_metadata_missing`,
+`task_child_unconfirmed`, `conflicting_origin`, `origin_source_unavailable`,
+`origin_rule_unsupported`, `origin_input_mismatch` (all automatic `unknown`).
+Adding a code is a contract change. Consumers that meet an unknown code show a
+generic "reason unavailable", keep the effective/automatic values, and never
+infer `auxiliary` or hide the session.
+
+A user override (`work` or `auxiliary`, never `unknown`) is stored in core,
+takes precedence for `effective`, and preserves the automatic value and its
+reason. Disabling or removing an adapter invalidates its automatic evidence but
+never deletes overrides, source logs, or usage. Writes to overrides and the
+saved default scope use compare-and-set on a confirmed revision with an
+idempotent request ID; a conflict is never retried as an overwrite, and a core
+read failure is never interpreted as revision 0 or no override.
+
+Scopes are `work` = work plus unknown, `auxiliary`, and `all`. Client,
+project, and time filters and the scope apply before ordering, pagination,
+top-N, and statistics; canonical identity and deduplication are unchanged.
+`--session-scope work|auxiliary|all` is accepted by `session list`,
+`session search`, `session --interactive`, and `usage signals`, and by
+`usage stats` for its session, Activity, Workflow, and Tooling analysis
+blocks only. Text defaults to `work`; JSON defaults to `all`, keeping existing
+JSON collections. `--all` still means "no paging" and composes with the scope.
+`session show` resolves an exact ID without scope filtering. Scope reads never
+add a scan; `usage stats` and `usage signals` keep their existing scan
+behavior, and `--no-scan` is unaffected by the scope.
+
+Incomplete classification coverage is distinct from an unavailable selection.
+When committed input is unreadable or stale, affected sessions remain unknown;
+an otherwise readable selection stays available, while JSON sets `partial`
+and adds the coverage reason codes to `warnings`. Text shows a separate
+`PARTIAL` warning with the reasons and `agentdeck session origin-source status`
+as the check command. The interactive browser keeps the warning below the scope
+line, including empty selections and the scope menu; narrow widths retain
+`PARTIAL` and fit the reasons before the check command. This applies to all
+three scopes and does not turn an empty auxiliary selection into proof of
+complete coverage.
+
+Scope publications reuse the core/session read vector and verify it after
+assembly. Classification, override, preference, evidence and telemetry changes
+advance core serving revision through triggers; ordinary session dependencies
+retain their revision triggers. Search text in `session_documents` is the sole
+exception: its FTS5 content shadow table has no revision triggers. Every product
+insert, update or delete of search text advances session serving revision in
+the same transaction, exclusively through the session package. Direct SQL
+writes bypassing that package are unsupported and may retain an old search
+vector/publication until another covered write. Rollback exposes no new
+revision. Scope changes reuse the existing per-session invalidation mechanism;
+they do not introduce another scan or invalidation system.
+
+`session classify` queries one session, sets (`--set work|auxiliary`) or
+withdraws (`--clear`, client required, resolved from the core override without
+reading the index) its override, lists effective overrides
+(`session classify list`, default 20, maximum 200), and reads back an earlier
+receipt (`session classify --request <id>`) without writing; `--id` addresses
+an ID equal to a reserved subcommand. `session scope get|set` reads or saves
+the desktop and Widget default scope and never changes CLI defaults.
+`session origin-source set claude-mem --data-dir <absolute>` and
+`disable claude-mem` manage the only external adapter; the built-in Codex
+source cannot be set or disabled. `session origin-source status`
+(`session.origin_source.status`) is read-only — no scan, no plugin database,
+no listener, no writes — and returns exactly two sources in fixed order,
+`claude-mem` then `codex-otel-background`, with its own closed status reason
+enum. Only unreadable core, unreadable source configuration, or an unreadable
+receiver configuration make it `partial`; it exits 0 except for input errors.
+
+JSON additions are additive. Collections gain a top-level `session_selection`
+(requested and effective scope, default source, availability, unknown count,
+read vector, publication ID), elements may gain an `origin` object, and search
+pagination reports `selected_session_count` beside the document total.
+Write errors are `origin_conflict`, `origin_identity_unavailable`,
+`origin_write_failed`, and `origin_write_unknown` (exit 1; the last keeps the
+request ID so the receipt can be read back). Desktop wire v1 gains an additive
+`session_scope_view`; JSON-only `desktop session-scope` reads one explicit
+scope, or every client and period with `--batch`, from committed state. The
+App Group gains a bounded `session_scope_summary` without IDs, projects,
+models, overrides, or paths; a snapshot without it leaves only the Widget's
+session row unavailable. Classification/control DTOs and the App Group summary
+never contain the configured data root, source paths, session content, or
+credentials; existing session list/search/show content remains governed by
+its own output contract.
+
+The desktop bootstrap response carries the bounded Widget batch for the
+supported client/period combinations. The host reuses that batch when the
+client or period changes; `desktop session-scope --batch` is the fallback,
+and single-combination reads remain compatible. Each view is checked against
+its own client, period, scope and publication identity before use. The batch
+does not authorize extra polling or a new WidgetKit refresh budget, and the
+Widget extension reads only the App Group snapshot, never the CLI or SQLite.
+
+Portable backups keep the saved default scope and overrides but drop derived
+classification, adapter runs, receipts, and the machine-local data root.
+Restore marks overrides unmatched until the current source identity rebinds
+them exactly; it never rebinds by path or bare ID. `session purge-index`
+removes only derived session state; core defaults and overrides survive.
+
 ### Desktop Snapshot Contract
 
 `agentdeck --format json desktop snapshot --wire-version 1 --recent-limit N`
@@ -2917,6 +3042,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 34 | 2026-11-13 | Reconciles auxiliary-session-classification (core schema 34): work/auxiliary/unknown session classification from two maintenance rules with a closed `reason_code` enum; `--session-scope` on session list/search/interactive, `usage signals`, and the `usage stats` analysis blocks (text default `work`, JSON default `all`); `session classify`, `session scope get|set`, and `session origin-source set|disable|status`; CAS/idempotent override writes with `origin_*` error codes; additive `session_selection`, element `origin`, desktop wire-v1 `session_scope_view`, `desktop session-scope`, and the App Group `session_scope_summary`; portable backup keeps only defaults and overrides and restores overrides unmatched. Usage, tokens, costs, and consumption totals are unchanged. |
 | 31 | 2026-10-04 | Reconciles the delivered v0.6.5 LaunchServices doctor addition: bounded separate host/Widget sources, conservative five-state classification, deterministic local evidence and manual safety guidance, with a path-free desktop health projection. The approved exception permits the new doctor/health checks, codes, optional details and consequent warning counts; other commands, exits, database formats and existing-check semantics remain unchanged. Complete-refresh targets are unchanged; accepted performance limits and unverified Widget causality/recovery remain explicit in the topic record. |
 | 30 | 2026-09-26 | Reconciles the v0.6.0 contract over its five retained integrated areas: schema/Hook failure visibility, bounded snapshot performance, subscription quota and reset reporting, desktop/Widget refresh, and cause-specific health recovery. Future-schema ordinary command refusal uses `schema_ahead` at exit 1; desktop wire v1 adds subscription and health metadata without replacing existing sections; quota remains opt-in and distinguishes unavailable values from zero; refresh keeps coherent snapshots and bounded Widget reads; lock and extension recovery preserve read-only doctor and safe action semantics. Manual VoiceOver for health recovery is user-waived and untested, and other recorded native/performance exceptions remain explicit. Cost transparency is outside v0.6.0 with no replacement version assigned. |
 | 29 | 2026-09-08 | Reconciles schema-version-signal: narrows future core-schema refusal to `schema_ahead` at unchanged ordinary-error exit 1; defines lock-failure probe precedence, stored/supported version pairs and additive `supported_count` at desktop wire v1; makes doctor short-circuit reports partial with `checks_skipped`; documents the bounded silent Hook refusal diagnostic, successful-read-write-open clearing versus upgrade suppression, and App-side schema attribution. No product release version is assigned. |

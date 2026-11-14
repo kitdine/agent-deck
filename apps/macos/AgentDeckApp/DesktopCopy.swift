@@ -147,6 +147,66 @@ enum DesktopCopy {
 	static let sessionsSubagent = "Subagent"
 	static let sessionsSubWorkflow = "Skill / workflow"
 
+	// Session scope (auxiliary-session-classification final menu-bar surface).
+	static let sessionScopeTitle = "Session scope"
+	static let sessionScopeWork = "Work"
+	static let sessionScopeAuxiliary = "Auxiliary"
+	static let sessionClassUnknown = "Unknown"
+	static let sessionScopeNote = "Affects sessions and work analysis only. Session counts come from the session index; work analysis may include usage not linked to an indexed session. Usage and costs include all sessions."
+	static let sessionScopeUsageOverview = "Usage overview: all sessions · unaffected by session scope"
+	// Aliases of keys already in the inventory: one catalog key, one entry.
+	static let sessionScopeAllClients = settingsMenuBarScopeAll
+	static let sessionScopeSessions = panelSessions
+	static let sessionOriginUnavailable = quotaUnavailable
+	static let sessionOriginCopied = healthCopied
+	static let sessionScopeUnknownIncluded = "Includes %lld sessions with unknown origin."
+	static let sessionScopeUnknownUnavailable = "Unknown-origin count unavailable."
+	static let sessionScopeEmpty = "No sessions in this selection. Try All or another period."
+	static let sessionScopePartial = "Some origin metadata is missing; unknown sessions remain visible."
+	static let sessionScopeStale = "Showing last successful data; classification update pending."
+	static let sessionScopeLoading = "Loading %1$@; still showing previous %2$@ data."
+	static let sessionScopeLoadingFirst = "Loading %@…"
+	static let sessionScopeFailed = "%1$@ could not load; previous %2$@ data retained."
+	static let sessionScopeRetry = "Retry %@"
+	static let sessionScopeUnavailable = "Session data unavailable; counts cannot be reported."
+	static let sessionScopeUnavailableHint = "Retry using Refresh above; existing scan behavior is unchanged."
+	static let sessionScopeOverride = "Includes a user override; automatic classification retained."
+	static let sessionScopeSourceUnavailable = "Origin metadata unavailable; unconfirmed origins stay Unknown. User overrides remain effective."
+	static let sessionScopeInputMismatch = "Source generation mismatch; stale origin does not hide sessions."
+	static let sessionScopeLegacy = "Scope projection missing; session scope unavailable."
+	static let sessionScopeLegacyHint = "Legacy all-session totals cannot be used as Work counts. Update AgentDeck, then refresh."
+	static let sessionScopeDefaultUnknown = "Default session scope is unconfirmed; session view unavailable."
+	static let sessionScopeDefaultUnknownHint = "Open Settings (⌘,) to read the saved value. No Work default or counts are assumed."
+	static let sessionScopeSnapshotTime = "Session snapshot: %@"
+	static let sessionScopeKnownDuration = "Known duration"
+	static let sessionScopeMissingDuration = "%lld session durations unknown, not zero."
+	static let sessionScopeNoMatches = "No matching sessions"
+	static let sessionScopeProjectsNote = "Projects are distinct within the selection; Work and Auxiliary may overlap."
+	static let sessionScopeAnnouncement = "%1$@ · %2$lld sessions"
+	static let sessionOriginBack = "Back to sessions"
+	static let sessionOriginEffective = "Effective origin"
+	static let sessionOriginAutomatic = "Automatic origin"
+	static let sessionOriginReason = "Reason"
+	static let sessionOriginRuleVersion = "Rule version"
+	static let sessionOriginOverride = "Override"
+	static let sessionOriginOverrideRevision = "Override revision"
+	static let sessionOriginUserOverrideSuffix = " (user override)"
+	static let sessionOriginOverrideSuffix = " (override)"
+	static let sessionOriginOverrideApplied = "Applied · %@"
+	static let sessionOriginOverrideUnmatched = "Not applied · binding unmatched · %@"
+	static let sessionOriginOverrideNone = "None"
+	static let sessionOriginReadOnly = "Use the CLI to inspect or correct origin; this panel is read only."
+	static let sessionOriginCopyCommand = "Copy inspect command"
+	static let sessionOriginCopyFailed = "Copy failed; select the command above to copy manually."
+	static let sessionReasonMaintenance = "Recognized background maintenance origin"
+	static let sessionReasonMetadataMissing = "Origin metadata missing; purpose not inferred"
+	static let sessionReasonTaskChild = "Task agent: purpose unconfirmed, retained in Work as Unknown"
+	static let sessionReasonConflicting = "Conflicting or mixed origin evidence; purpose not inferred"
+	static let sessionReasonSourceUnavailable = "Origin source unavailable"
+	static let sessionReasonRuleUnsupported = "Origin marker not covered by the current rule version"
+	static let sessionReasonInputMismatch = "Origin evidence does not match source generation"
+	static let sessionReasonUnknown = "Reason cannot be shown"
+
 	// Rhythm block.
 	static let rhythmTitle = "Rhythm"
 	static let rhythmScope = "Last 30 days · not affected by the filters above"
@@ -369,6 +429,95 @@ enum DesktopCopy {
 	static let settingsMenuBarScopeAll = "All clients"
 	static let settingsMenuBarScopeFollow = "Follow panel filter"
 
+	// Settings window — Sessions group
+	// (auxiliary-session-classification ux/settings.md, 2026-11-07 redesign).
+	static let originDefaultTitle = "Default session scope"
+	static let originDefaultNote = "Used when the menu bar Sessions tab or the Widget next opens. Work includes sessions of unconfirmed origin."
+	static let originDefaultReading = "Reading the saved scope…"
+	static let originDefaultReadFailed = "The saved scope could not be read. Work is not assumed."
+	static let originDefaultSaving = "Saving as %@…"
+	static let originDefaultNotSaved = "Not saved. Still %@."
+	static let originDefaultReloaded = "Loaded the latest value, %@. Choose again to change it."
+	static let originDefaultSaved = "Saved. An open menu bar keeps its scope; the next open uses this default."
+	static let originDefaultPublicationPending = "Saved. The Widget updates on its next system refresh."
+	static let originUnknown = "The save could not be confirmed. Changes are paused until it is."
+	static let originStillUnknown = "Still unable to confirm whether it was saved."
+	static let originConflict = "Changed elsewhere. Nothing was overwritten."
+	static let originNoChange = "No change."
+	static let originReplayed = "That request had already completed. The latest state is shown."
+	static let originInvalidRequest = "The request ID does not match its contents. Nothing was written."
+	static let originPermissionWarning = "Saved, but hardening the state file permissions failed. Run agentdeck doctor to check; the saved value is kept."
+	static let originLockedByManual = "A classification change is still in progress."
+	static let originLockedByDefault = "A default scope change is still in progress."
+	static let originRequestLabel = "Request"
+	static let originActionReadAgain = "Read again"
+	static let originActionCheckResult = "Check result"
+	static let originActionCheckAgain = "Check again"
+	static let originActionRetryOriginal = "Retry the original request"
+	static let originActionLoadLatest = "Load latest"
+	static let originManualTitle = "Manual classification"
+	static let originManage = "Manage…"
+	static let originOverridesSummaryUnavailable = "Override list unavailable"
+	static let originOverridesSummaryNone = "Correct individual sessions that were detected wrongly"
+	static let originOverridesSummaryCount = "%lld sessions classified manually"
+	static let originOverridesSummaryUnmatched = ", %lld not applied"
+	static let originManualSaving = "Setting %1$@ to %2$@…"
+	static let originManualClearing = "Removing the manual classification of %@…"
+	static let originManualNotSaved = "Not saved. The classification is unchanged."
+	static let originManualReloaded = "Loaded the latest state. Choose again to change it."
+	static let originManualSaved = "Saved. Session views reflect it on their next update."
+	static let originManualCleared = "Manual classification removed. Automatic detection applies."
+	static let originManualPublicationPending = "Saved. Session views have not been updated yet and may be briefly out of date."
+	static let originSheetDescription = "When automatic detection is wrong, set a single session to Work or Auxiliary. Only session statistics change; sessions and source logs are never deleted or modified."
+	static let originSheetCoreUnavailable = "The local usage database cannot be read right now, so sessions cannot be found or reclassified."
+	static let originFindTitle = "Find a session"
+	static let originSessionID = "Complete session ID"
+	static let originFind = "Find"
+	static let originFindHelp = "Copy the complete ID from the menu bar session details or agentdeck session list."
+	static let originNotFound = "No visible session found. Check the client and the complete ID."
+	static let originLookupUnavailable = "Classification unavailable; the session index could not be read."
+	static let originCardClassification = "Classification"
+	static let originCardClassificationLabel = "Classification for this session"
+	static let originChoiceAutomatic = "Automatic"
+	static let originCountsAs = "Counts as"
+	static let originDetected = "Detected"
+	static let originCountsManual = "manual"
+	static let originCountsDetected = "detected"
+	static let originCountsIncludedInWork = ", included in Work"
+	static let originReading = "Reading…"
+	static let originClassificationUnavailable = "Current classification unavailable"
+	static let originCardNote = "Automatic only removes the manual classification; the session is not deleted."
+	static let originOverridesTitle = "Manually classified"
+	static let originOverridesEmpty = "No sessions are classified manually yet."
+	static let originOverridesUnavailable = "The list cannot be read right now; it is not treated as empty."
+	static let originUnmatched = "No matching session; not applied"
+	static let originRemove = "Remove"
+	static let originRemoveLabel = "Remove the manual classification of %1$@ %2$@"
+	static let originShowLabel = "Show %1$@ %2$@"
+	static let originPage = "Page %1$lld of %2$lld"
+	static let originPreviousPage = "Previous page"
+	static let originNextPage = "Next page"
+	static let originDone = "Done"
+	static let originDetectionTitle = "Automatic detection"
+	static let originDetectionNote = "Only background maintenance is detected as Auxiliary; task sub-agents always count as Work."
+	static let originSourceAvailableVersion = "Available · %@"
+	static let originSourceNotConfigured = "Not configured · set up with the CLI"
+	static let originSourceMetadataUnreadable = "Metadata unreadable"
+	static let originSourceVersionUnsupported = "Version not supported"
+	static let originSourceDisabled = "Disabled"
+	static let originSourceNotYetRead = "Not read yet"
+	static let originSourceConfigUnreadable = "Local source configuration unreadable"
+	static let originSourceCoreUnavailable = "Local usage database unreadable"
+	static let originSourceReasonUnknown = "Status reason cannot be shown"
+	static let originCodexName = "Codex background"
+	static let originCodexRecords = "%lld background session records"
+	static let originCodexReceiverOff = "No records · OTel capture is off (see Live usage)"
+	static let originCodexNoRecords = "No records · capture is on, no background session yet"
+	static let originCodexReceiverUnknown = "No records · capture state unknown"
+	static let originSourcesUnavailable = "Origin source status unavailable"
+	static let originSourceNoteAdapter = "While a source is unavailable, detection reports Unknown, which counts as Work. Manual classification still works."
+	static let originSourceNoteCore = "The local usage database cannot be read right now: current and manual classifications are unavailable and cannot be changed. Saved manual classifications are not deleted."
+
 	// Settings window — subscription quota (ux/settings-quota.md).
 	static let settingsGroupQuota = "Subscription quota"
 	static let settingsQuotaProbe = "Read quota"
@@ -498,6 +647,24 @@ enum DesktopCopy {
 		sessionsSubTesting, sessionsSubMaintenance, sessionsSubInvestigation,
 		sessionsSubRepair, sessionsSubExploration, sessionsSubBrainstorming,
 		sessionsSubPlanning, sessionsSubagent, sessionsSubWorkflow,
+		sessionScopeTitle, sessionScopeWork, sessionScopeAuxiliary, sessionClassUnknown,
+		sessionScopeNote, sessionScopeUsageOverview,
+		sessionScopeUnknownIncluded, sessionScopeUnknownUnavailable, sessionScopeEmpty,
+		sessionScopePartial, sessionScopeStale, sessionScopeLoading, sessionScopeLoadingFirst,
+		sessionScopeFailed, sessionScopeRetry, sessionScopeUnavailable, sessionScopeUnavailableHint,
+		sessionScopeOverride, sessionScopeSourceUnavailable, sessionScopeInputMismatch,
+		sessionScopeLegacy, sessionScopeLegacyHint, sessionScopeDefaultUnknown,
+		sessionScopeDefaultUnknownHint, sessionScopeSnapshotTime,
+		sessionScopeKnownDuration, sessionScopeMissingDuration, sessionScopeNoMatches,
+		sessionScopeProjectsNote, sessionScopeAnnouncement, sessionOriginBack,
+		sessionOriginEffective, sessionOriginAutomatic, sessionOriginReason,
+		sessionOriginRuleVersion, sessionOriginOverride, sessionOriginOverrideRevision,
+		sessionOriginUserOverrideSuffix, sessionOriginOverrideSuffix,
+		sessionOriginOverrideApplied, sessionOriginOverrideUnmatched, sessionOriginOverrideNone,
+		sessionOriginReadOnly, sessionOriginCopyCommand,
+		sessionOriginCopyFailed, sessionReasonMaintenance, sessionReasonMetadataMissing,
+		sessionReasonTaskChild, sessionReasonConflicting, sessionReasonSourceUnavailable,
+		sessionReasonRuleUnsupported, sessionReasonInputMismatch, sessionReasonUnknown,
 		rhythmTitle, rhythmScope, rhythmActive, rhythmBusiest, rhythmQuietest,
 		rhythmPeakWindow, rhythmHourOfWeek, rhythmActiveNote, rhythmBusiestNote,
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,
@@ -533,6 +700,25 @@ enum DesktopCopy {
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,
 		settingsMenuBarScopeFollow,
+		originDefaultTitle, originDefaultNote, originDefaultReading, originDefaultReadFailed, originDefaultSaving,
+		originDefaultNotSaved, originDefaultReloaded, originDefaultSaved, originDefaultPublicationPending, originUnknown,
+		originStillUnknown, originConflict, originNoChange, originReplayed, originInvalidRequest, originPermissionWarning,
+		originLockedByManual, originLockedByDefault, originRequestLabel, originActionReadAgain, originActionCheckResult,
+		originActionCheckAgain, originActionRetryOriginal, originActionLoadLatest, originManualTitle, originManage,
+		originOverridesSummaryUnavailable, originOverridesSummaryNone, originOverridesSummaryCount,
+		originOverridesSummaryUnmatched, originManualSaving, originManualClearing, originManualNotSaved,
+		originManualReloaded, originManualSaved, originManualCleared, originManualPublicationPending,
+		originSheetDescription, originSheetCoreUnavailable, originFindTitle, originSessionID, originFind, originFindHelp,
+		originNotFound, originLookupUnavailable, originCardClassification, originCardClassificationLabel,
+		originChoiceAutomatic, originCountsAs, originDetected, originCountsManual, originCountsDetected,
+		originCountsIncludedInWork, originReading, originClassificationUnavailable, originCardNote, originOverridesTitle,
+		originOverridesEmpty, originOverridesUnavailable, originUnmatched, originRemove, originRemoveLabel,
+		originShowLabel, originPage, originPreviousPage, originNextPage, originDone, originDetectionTitle,
+		originDetectionNote, originSourceAvailableVersion, originSourceNotConfigured, originSourceMetadataUnreadable,
+		originSourceVersionUnsupported, originSourceDisabled, originSourceNotYetRead, originSourceConfigUnreadable,
+		originSourceCoreUnavailable, originSourceReasonUnknown, originCodexName, originCodexRecords,
+		originCodexReceiverOff, originCodexNoRecords, originCodexReceiverUnknown, originSourcesUnavailable,
+		originSourceNoteAdapter, originSourceNoteCore,
 		settingsGroupQuota, settingsQuotaProbe, settingsQuotaProbeHint,
 		settingsQuotaClients, settingsQuotaClientsHint,
 		settingsQuotaInterval, settingsQuotaIntervalHint,

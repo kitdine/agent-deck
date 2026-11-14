@@ -7868,7 +7868,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 33
+          "count": 34
         },
         {
           "name": "pending_operations",
@@ -8019,6 +8019,237 @@
           "failure": null
         }
       ]
+    },
+    "session_scope_view": {
+      "available": true,
+      "reason": null,
+      "default": {
+        "confirmed": true,
+        "value": "work",
+        "revision": 0,
+        "reason": null
+      },
+      "selection": {
+        "scope": "work",
+        "client": "all",
+        "period": "today"
+      },
+      "publication_id": "fixture-session-scope-publication",
+      "generation_id": "fixture-session-scope-generation",
+      "generated_at": "2026-08-13T10:00:00Z",
+      "origin_coverage": {
+        "complete": true,
+        "unknown_count": 3,
+        "reasons": []
+      },
+      "counts": {
+        "sessions": 3,
+        "projects": 3,
+        "known_duration_ms": 6600000,
+        "missing_duration_count": 0
+      },
+      "recent": [
+        {
+          "client": "codex",
+          "session_id": "codex-other",
+          "project": "agent-deck",
+          "model": "gpt-5",
+          "first_at": "2026-08-13T09:10:00Z",
+          "last_at": "2026-08-13T09:40:00Z",
+          "origin": {
+            "automatic": "unknown",
+            "effective": "unknown",
+            "reason_code": "origin_metadata_missing",
+            "rule_version": "origin-reducer-v1",
+            "override": null,
+            "revision": 0
+          }
+        },
+        {
+          "client": "claude",
+          "session_id": "claude-today",
+          "project": "notes",
+          "model": "claude-sonnet-5",
+          "first_at": "2026-08-13T09:00:00Z",
+          "last_at": "2026-08-13T09:20:00Z",
+          "origin": {
+            "automatic": "unknown",
+            "effective": "unknown",
+            "reason_code": "origin_metadata_missing",
+            "rule_version": "origin-reducer-v1",
+            "override": null,
+            "revision": 0
+          }
+        },
+        {
+          "client": "codex",
+          "session_id": "codex-today",
+          "project": "agent-deck",
+          "model": "gpt-5",
+          "first_at": "2026-08-13T08:00:00Z",
+          "last_at": "2026-08-13T09:00:00Z",
+          "origin": {
+            "automatic": "unknown",
+            "effective": "unknown",
+            "reason_code": "origin_metadata_missing",
+            "rule_version": "origin-reducer-v1",
+            "override": null,
+            "revision": 0
+          }
+        }
+      ],
+      "work_signals": {
+        "activity": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 2,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "workflow": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.5,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            }
+          ]
+        },
+        "tooling": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "calls": 2,
+              "groups": 2,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 50
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 50
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            }
+          ]
+        }
+      }
     }
   },
   "warnings": [],

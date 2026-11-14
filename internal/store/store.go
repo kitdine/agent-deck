@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 33
+	CurrentSchemaVersion   = 34
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -579,14 +579,32 @@ func (s *Store) IntegrityCheck(ctx context.Context) (string, error) {
 	return result, err
 }
 
+// preparePrivateSQLiteFiles makes the database and its sidecars private
+// without ever opening and closing a file that already exists. SQLite guards a
+// database with POSIX locks on the database file and on its -shm file, and
+// closing any descriptor of a file drops every POSIX lock the process holds on
+// it. A second open of the same database in one process must therefore not
+// touch the existing files through a descriptor: doing so released the first
+// connection's locks, let another process reinitialize the shared memory, and
+// crashed the first one on its next WAL access.
 func preparePrivateSQLiteFiles(path string) error {
 	for _, candidate := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
-		file, err := os.OpenFile(candidate, os.O_RDWR|os.O_CREATE, platform.FileMode)
-		if err != nil {
+		err := os.Chmod(candidate, platform.FileMode)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		if err := file.Chmod(platform.FileMode); err != nil {
-			_ = file.Close()
+		file, err := os.OpenFile(candidate, os.O_RDWR|os.O_CREATE|os.O_EXCL, platform.FileMode)
+		if errors.Is(err, fs.ErrExist) {
+			// Created by another opener since the chmod above.
+			if err = os.Chmod(candidate, platform.FileMode); err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil {
 			return err
 		}
 		if err := file.Close(); err != nil {
@@ -596,13 +614,10 @@ func preparePrivateSQLiteFiles(path string) error {
 	return nil
 }
 
+// prepareExistingPrivateSQLiteFile checks the existing database by name, for
+// the reason given on preparePrivateSQLiteFiles.
 func prepareExistingPrivateSQLiteFile(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR, platform.FileMode)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	info, err := file.Stat()
+	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}

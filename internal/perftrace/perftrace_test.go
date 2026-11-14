@@ -233,3 +233,46 @@ func TestConcurrentMarkersAndClose(t *testing.T) {
 		t.Fatal("valid markers were rejected")
 	}
 }
+
+// The producer holds the trace lock from Start until Close has written and
+// closed the file, so a reader never sees a released trace that is missing
+// its tail, even after the 64 KiB buffer has already flushed a prefix.
+func TestTraceLockIsHeldUntilCloseFinishes(t *testing.T) {
+	dir := privateDir(t)
+	t.Setenv(EnvOut, dir)
+	if !Start(RoleCollector) {
+		t.Fatal("tracing did not start")
+	}
+	path := filepath.Join(dir, "collector-000001.jsonl")
+	released := func(stage string) bool {
+		t.Helper()
+		ok, err := Released(path)
+		if err != nil {
+			t.Fatalf("%s: %v", stage, err)
+		}
+		return ok
+	}
+	if released("after start") {
+		t.Fatal("a fresh trace is released before any record")
+	}
+	for i := 0; i < 2000; i++ {
+		Mark(ScanEnd, Count{"read_bytes", int64(i)})
+	}
+	Mark(ScanBegin, Count{"bad key", 1}) // rejected: Close appends trace.invalid after the lifetime record
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		t.Fatalf("the buffer did not flush a prefix yet: %v %v", info, err)
+	}
+	if released("after partial flush") {
+		t.Fatal("a partly flushed trace is released")
+	}
+	if err := Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !released("after close") {
+		t.Fatal("a closed trace is still held")
+	}
+	lines := readTrace(t, path)
+	if lines[len(lines)-2]["stage"] != "resource.lifetime" || lines[len(lines)-1]["stage"] != "trace.invalid" {
+		t.Fatalf("tail = %v %v", lines[len(lines)-2], lines[len(lines)-1])
+	}
+}

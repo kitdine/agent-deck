@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScanStatus, ScanEmptyPopover } from "./ScanProgress.jsx";
+import { AuxiliarySessions } from "./AuxiliarySessions.jsx";
 import { ServingStatus, ServingEmptyPopover } from "./ServingSnapshot.jsx";
 import {
   ArrowClockwise,
@@ -1394,7 +1395,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, serving = null, onClientChange }) {
+export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, serving = null, onClientChange, auxScenario = null, auxDefaultPreference = null }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -1404,6 +1405,21 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
   const [period, setPeriod] = useState("today");
   // ?tab= 与 ?signal= 让每个面板都能直接链接过去，评审时不必一路点过来
   const params = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
+  const [auxSelection, setAuxSelection] = useState(() => ({
+    scope: auxDefaultPreference && !auxDefaultPreference.confirmed ? null : ['loading','failed'].includes(auxScenario) ? 'work' : auxDefaultPreference?.value || (['work','auxiliary','all'].includes(params?.get('auxDefault')) ? params.get('auxDefault') : 'work'),
+    scenario: auxScenario,
+  }));
+  const auxScope = auxSelection.scope;
+  const auxDefaultUnavailable = auxScenario === 'defaultUnknown' || (auxDefaultPreference !== null && !auxDefaultPreference.confirmed);
+  useEffect(() => {
+    if (auxDefaultPreference !== null) setAuxSelection(current => ({...current,
+      scope: !auxDefaultPreference.confirmed ? null : current.scope ?? auxDefaultPreference.value,
+    }));
+  }, [auxDefaultPreference?.confirmed, auxDefaultPreference?.value]);
+  const setAuxScope = scope => setAuxSelection(current => ({...current, scope}));
+  useEffect(() => {
+    setAuxSelection(current => ({scope: auxDefaultPreference && !auxDefaultPreference.confirmed ? null : ['loading','failed'].includes(auxScenario) ? 'work' : current.scope, scenario: auxScenario}));
+  }, [auxScenario]);
   const [tab, setTab] = useState(() => {
     const value = params?.get("tab");
     return TABS.some((item) => item.key === value) ? value : TABS[0].key;
@@ -1736,6 +1752,8 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
         </div>
       </div>
 
+      {auxScenario && <p className="asc-note" style={{padding:'0 14px'}}>{lang === 'zh' ? '用量总览：全部会话 · 不受下方会话范围影响' : 'Usage overview: all sessions · unaffected by session scope'}</p>}
+
       <div className="segmented periods" role="tablist" aria-label={dict.periods.today}>
         {["today", "7d", "30d"].map((key) => (
           <button
@@ -1814,7 +1832,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
               />
             )}
             {presentedTab === "sessions" && (
-              <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
+              auxScenario ? (auxDefaultUnavailable || auxScope === null ? <section className="panel" data-aux-default-unavailable role="status"><p>{lang === 'zh' ? '默认会话范围尚未确认；会话视图不可用。' : 'Default session scope is unconfirmed; session view unavailable.'}</p><p>{lang === 'zh' ? '打开设置（⌘,）读取已保存值。不会假定工作范围或生成数量。' : 'Open Settings (⌘,) to read the saved value. No Work default or counts are assumed.'}</p></section> : <AuxiliarySessions lang={lang} client={client} period={period} scope={auxScope} onScope={setAuxScope} scenario={auxSelection.scenario} onRetry={() => setAuxSelection({scope:'auxiliary',scenario:'normal'})} />) : <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
             )}
             {!mixed && <RhythmBlock lang={lang} state={state} />}
           </>

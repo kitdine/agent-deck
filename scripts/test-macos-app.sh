@@ -63,6 +63,32 @@ if xcodebuild -version >/dev/null 2>&1; then
     CODE_SIGN_IDENTITY= \
     test
 	test_status=$?
+
+	# Settings restart acceptance (task 6): two separate test-host launches over
+	# one fresh temporary home, so the second phase reads back through the App's
+	# real startup wiring in a new process. Nothing outside the test root.
+	restart_home="$test_root/settings-restart-home"
+	mkdir -p "$restart_home"
+	for phase in 1 2; do
+		[[ $test_status -eq 0 ]] || break
+		env \
+			HOME="$restart_home" \
+			CFFIXED_USER_HOME="$restart_home" \
+			AGENTDECK_TEST_HOME="$restart_home" \
+			TEST_RUNNER_AGENTDECK_TEST_HOME="$restart_home" \
+			TEST_RUNNER_AGENTDECK_SETTINGS_RESTART_PHASE="$phase" \
+			xcodebuild \
+      -project "$repo_root/apps/macos/AgentDeck.xcodeproj" \
+      -scheme AgentDeck \
+      -configuration Debug \
+      -derivedDataPath "$repo_root/apps/macos/build/DerivedData" \
+      CODE_SIGNING_ALLOWED=NO \
+      CODE_SIGNING_REQUIRED=NO \
+      CODE_SIGN_IDENTITY= \
+      -only-testing:"AgentDeckAppTests/SettingsRestartAcceptanceTests/testRestartPhase${phase}" \
+      test-without-building
+		test_status=$?
+	done
 	set -e
 
 	for _ in {1..50}; do

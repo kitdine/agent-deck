@@ -574,6 +574,56 @@ func (s *Store) TelemetrySessionSourceKinds(ctx context.Context, client string, 
 	return out, nil
 }
 
+// TelemetrySessionOriginMarker is the part of a session's OTel marker that
+// the codex-otel-background origin rule reads.
+type TelemetrySessionOriginMarker struct {
+	SourceKind   string
+	SupportEntry string
+	SettledAt    string
+}
+
+// TelemetrySessionOriginMarkers returns the marker of each requested session
+// of client that has one, 200 IDs per parameterized query. It only reads: an
+// empty candidate list issues no query, and no table or row is created.
+func (s *Store) TelemetrySessionOriginMarkers(ctx context.Context, client string, sessionIDs []string) (map[string]TelemetrySessionOriginMarker, error) {
+	out := map[string]TelemetrySessionOriginMarker{}
+	for start := 0; start < len(sessionIDs); start += 200 {
+		batch := sessionIDs[start:min(start+200, len(sessionIDs))]
+		args := []any{client}
+		for _, id := range batch {
+			args = append(args, id)
+		}
+		rows, err := s.DB.QueryContext(ctx, `SELECT session_id, source_kind, support_entry, settled_at FROM telemetry_sessions WHERE client = ? AND session_id IN (?`+strings.Repeat(",?", len(batch)-1)+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			var marker TelemetrySessionOriginMarker
+			if err := rows.Scan(&id, &marker.SourceKind, &marker.SupportEntry, &marker.SettledAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[id] = marker
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// TelemetryBackgroundSessionCount counts the codex-otel-background markers.
+func (s *Store) TelemetryBackgroundSessionCount(ctx context.Context) (int, error) {
+	var count int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM telemetry_sessions WHERE source_kind = ?`, TelemetrySessionSourceKind).Scan(&count)
+	return count, err
+}
+
 // TelemetryCursorPosition reads the journal cursor.
 func (s *Store) TelemetryCursorPosition(ctx context.Context) (TelemetryCursor, error) {
 	var cursor TelemetryCursor

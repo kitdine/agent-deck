@@ -6,6 +6,8 @@ import { scope } from "./data.js";
 import { catalogs, formatCost, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { ScanStageControls, useScanScenario } from "./ScanProgress.jsx";
+import { AUX_MENUBAR_STATES } from "./AuxiliarySessions.jsx";
+import { SETTINGS_SCENARIOS, initialAuxSettings, auxiliarySettingsTransition } from "./auxiliarySettingsModel.js";
 import { ServingStageControls, useServingScenario } from "./ServingSnapshot.jsx";
 import { TELEMETRY_SCENARIOS, TelemetryStageControls } from "./TelemetrySettings.jsx";
 
@@ -97,6 +99,18 @@ export function App() {
     periodicRefresh: serving.enabled ? true : DEFAULT_PREFS.periodicRefresh,
   }));
   const [client, setClient] = useState("all");
+  const [auxScenario, setAuxScenario] = useState(params.get("auxMenu") || "normal");
+  const auxEnabled = params.has("auxMenu");
+  const auxSettingsEnabled=params.has('auxSettings');
+  const [auxSettingsModel,setAuxSettingsModel]=useState(()=>initialAuxSettings(params.get('auxSettings')||'normal'));
+  const auxDispatch=event=>setAuxSettingsModel(current=>auxiliarySettingsTransition(current,event));
+  // 舞台控件只属于原型：设置窗口关着时在页面顶部，开着时排在窗口上方，不再浮盖在窗口上。
+  const auxStage=auxSettingsEnabled&&<div className="scan-stage-controls as-stage" aria-label="Settings specimen controls">
+    <label>Settings scenario (stage) <select data-as-stage value={auxSettingsModel.scenario} onChange={e=>auxDispatch({type:'scenario',value:e.target.value})}>{SETTINGS_SCENARIOS.map(key=><option key={key}>{key}</option>)}</select></label>
+    {!settings&&<button type="button" data-as-open onClick={()=>setSettings(true)}>Open settings (stage)</button>}
+    <button type="button" data-as-complete disabled={!['loading','saving'].includes(auxSettingsModel.status)} onClick={()=>auxDispatch({type:'complete'})}>Complete pending (stage)</button>
+    <small>Sample IDs: codex/task-01 · claude/old-01 · claude/maint-1</small>
+  </div>;
 
   useEffect(() => {
     const onKey = (event) => {
@@ -127,6 +141,8 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} showAnchor showRefresh showHealth />
+      {!settings&&auxStage}
+      {auxEnabled && <label style={{padding:'8px 20px'}}> {lang === 'zh' ? '辅助会话标本状态（舞台）' : 'Auxiliary session scenario (stage)'} <select value={auxScenario} onChange={e=>setAuxScenario(e.target.value)}>{AUX_MENUBAR_STATES.map(value=><option key={value}>{value}</option>)}</select></label>}
       {scan.enabled && !serving.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
       {serving.enabled && <ServingStageControls serving={serving} lang={lang} />}
       {!settings && params.has("telemetry") && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
@@ -164,13 +180,14 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={serving.enabled && ["partial", "mixed"].includes(serving.phase) ? "partial" : state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled && !serving.enabled ? scan : null} serving={serving.enabled ? serving : null} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={serving.enabled && ["partial", "mixed"].includes(serving.phase) ? "partial" : state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled && !serving.enabled ? scan : null} serving={serving.enabled ? serving : null} onClientChange={setClient} auxScenario={auxEnabled ? auxScenario : null} auxDefaultPreference={auxSettingsEnabled ? {value:auxSettingsModel.defaultScope,confirmed:auxSettingsModel.defaultConfirmed} : null} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>
           <div onMouseDown={(event) => event.stopPropagation()}>
-            <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />
-            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} />
+            {auxStage}
+            {!auxSettingsEnabled && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
+            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} tabbed={params.get("settingsTabs") !== "0"} initialPane={params.get("settingsPane")} />
           </div>
         </div>
       )}

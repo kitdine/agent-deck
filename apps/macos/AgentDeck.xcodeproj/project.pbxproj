@@ -68,6 +68,7 @@
 		A10000000000000000000035 /* WidgetCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000033 /* WidgetCopyTests.swift */; };
 		A10000000000000000000036 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002F /* Localizable.xcstrings */; };
 		A10000000000000000000037 /* snapshot-complete.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000034 /* snapshot-complete.json */; };
+		A1000000000000000000005A /* session-scope-batch.json in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000005A /* session-scope-batch.json */; };
 		A10000000000000000000038 /* snapshot-partial.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000035 /* snapshot-partial.json */; };
 		A10000000000000000000039 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
 		A1000000000000000000003A /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
@@ -75,11 +76,19 @@
 		A10000000000000000000050 /* TelemetrySettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000050 /* TelemetrySettingsController.swift */; };
 		A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000038 /* QuotaSettingsControllerTests.swift */; };
 		A10000000000000000000051 /* TelemetrySettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */; };
+		A10000000000000000000052 /* SessionScopeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000052 /* SessionScopeController.swift */; };
+		A10000000000000000000053 /* SessionScopeControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000053 /* SessionScopeControllerTests.swift */; };
+		A10000000000000000000054 /* SessionOriginTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000054 /* SessionOriginTransport.swift */; };
+		A10000000000000000000055 /* SessionOriginSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000055 /* SessionOriginSettingsController.swift */; };
+		A10000000000000000000056 /* SessionOriginSettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */; };
+		A10000000000000000000057 /* SessionOriginTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000057 /* SessionOriginTransportTests.swift */; };
 		A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* QuotaAlertNotifier.swift */; };
 		A1000000000000000000003E /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
 		A1000000000000000000003F /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
 		A10000000000000000000040 /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
 		A10000000000000000000041 /* WidgetSemanticProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003B /* WidgetSemanticProjection.swift */; };
+		A10000000000000000000058 /* WidgetSessionScopeBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000058 /* WidgetSessionScopeBatch.swift */; };
+		A10000000000000000000059 /* WidgetSessionScopeBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000058 /* WidgetSessionScopeBatch.swift */; };
 		A10000000000000000000042 /* WidgetSnapshotPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003C /* WidgetSnapshotPublisher.swift */; };
 		A10000000000000000000043 /* DesktopRefreshScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003D /* DesktopRefreshScheduler.swift */; };
 		A10000000000000000000044 /* DesktopRefreshSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */; };
@@ -123,11 +132,18 @@
 		A20000000000000000000039 /* QuotaAlertNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAlertNotifier.swift; sourceTree = "<group>"; };
 		A2000000000000000000003A /* AppGroupSnapshotBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotBytes.swift; sourceTree = "<group>"; };
 		A2000000000000000000003B /* WidgetSemanticProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSemanticProjection.swift; sourceTree = "<group>"; };
+		A20000000000000000000058 /* WidgetSessionScopeBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSessionScopeBatch.swift; sourceTree = "<group>"; };
 		A2000000000000000000003C /* WidgetSnapshotPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotPublisher.swift; sourceTree = "<group>"; };
 		A2000000000000000000003D /* DesktopRefreshScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshScheduler.swift; sourceTree = "<group>"; };
 		A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshSchedulerTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000038 /* QuotaSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsControllerTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetrySettingsControllerTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000052 /* SessionScopeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScopeController.swift; sourceTree = "<group>"; };
+		A20000000000000000000053 /* SessionScopeControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScopeControllerTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000054 /* SessionOriginTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginTransport.swift; sourceTree = "<group>"; };
+		A20000000000000000000055 /* SessionOriginSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginSettingsController.swift; sourceTree = "<group>"; };
+		A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginSettingsControllerTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000057 /* SessionOriginTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginTransportTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* SwitchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchFlowTests.swift; sourceTree = "<group>"; };
@@ -153,6 +169,7 @@
 		A20000000000000000000032 /* WidgetPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPresentationTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000033 /* WidgetCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCopyTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000034 /* snapshot-complete.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "snapshot-complete.json"; path = "../../desktop/fixtures/v1/snapshot-complete.json"; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000005A /* session-scope-batch.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "session-scope-batch.json"; path = "../../desktop/fixtures/v1/session-scope-batch.json"; sourceTree = SOURCE_ROOT; };
 		A20000000000000000000035 /* snapshot-partial.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "snapshot-partial.json"; path = "../../desktop/fixtures/v1/snapshot-partial.json"; sourceTree = SOURCE_ROOT; };
 		A20000000000000000000036 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -253,6 +270,8 @@
 				A2000000000000000000001C /* SettingsWindowView.swift */,
 				A20000000000000000000037 /* QuotaSettingsController.swift */,
 				A20000000000000000000050 /* TelemetrySettingsController.swift */,
+				A20000000000000000000052 /* SessionScopeController.swift */,
+				A20000000000000000000055 /* SessionOriginSettingsController.swift */,
 				A20000000000000000000039 /* QuotaAlertNotifier.swift */,
 				A20000000000000000000015 /* Assets.xcassets */,
 				A20000000000000000000024 /* AgentDeckMenuBarIcon.png */,
@@ -271,9 +290,11 @@
 				A20000000000000000000004 /* AppGroupSnapshotStore.swift */,
 				A2000000000000000000003A /* AppGroupSnapshotBytes.swift */,
 				A2000000000000000000003B /* WidgetSemanticProjection.swift */,
+				A20000000000000000000058 /* WidgetSessionScopeBatch.swift */,
 				A2000000000000000000003C /* WidgetSnapshotPublisher.swift */,
 				A2000000000000000000003D /* DesktopRefreshScheduler.swift */,
 				A20000000000000000000005 /* EmbeddedHelperRunner.swift */,
+				A20000000000000000000054 /* SessionOriginTransport.swift */,
 				A20000000000000000000006 /* DesktopLog.swift */,
 				A2000000000000000000003F /* PerfTrace.swift */,
 				A20000000000000000000012 /* Info.plist */,
@@ -287,6 +308,7 @@
 				A2000000000000000000000A /* FixtureSupport.swift */,
 				A2000000000000000000000B /* DesktopWireTests.swift */,
 				A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */,
+				A20000000000000000000057 /* SessionOriginTransportTests.swift */,
 				A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */,
 				A2000000000000000000000E /* DesktopLogPolicyTests.swift */,
 				A20000000000000000000042 /* PerfTraceTests.swift */,
@@ -330,6 +352,8 @@
 				A20000000000000000000043 /* PerfClockTests.swift */,
 				A20000000000000000000038 /* QuotaSettingsControllerTests.swift */,
 				A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */,
+				A20000000000000000000053 /* SessionScopeControllerTests.swift */,
+				A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */,
 			);
 			path = AgentDeckAppTests;
 			sourceTree = "<group>";
@@ -358,6 +382,7 @@
 				A20000000000000000000032 /* WidgetPresentationTests.swift */,
 				A20000000000000000000033 /* WidgetCopyTests.swift */,
 				A20000000000000000000034 /* snapshot-complete.json */,
+				A2000000000000000000005A /* session-scope-batch.json */,
 				A20000000000000000000035 /* snapshot-partial.json */,
 			);
 			path = AgentDeckWidgetTests;
@@ -563,6 +588,7 @@
 			files = (
 				A10000000000000000000036 /* Localizable.xcstrings in Resources */,
 				A10000000000000000000037 /* snapshot-complete.json in Resources */,
+				A1000000000000000000005A /* session-scope-batch.json in Resources */,
 				A10000000000000000000038 /* snapshot-partial.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -586,6 +612,8 @@
 				A10000000000000000000017 /* SettingsWindowView.swift in Sources */,
 				A1000000000000000000003B /* QuotaSettingsController.swift in Sources */,
 				A10000000000000000000050 /* TelemetrySettingsController.swift in Sources */,
+				A10000000000000000000052 /* SessionScopeController.swift in Sources */,
+				A10000000000000000000055 /* SessionOriginSettingsController.swift in Sources */,
 				A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */,
 				A10000000000000000000045 /* WidgetIntents.swift in Sources */,
 			);
@@ -599,9 +627,11 @@
 				A10000000000000000000005 /* AppGroupSnapshotStore.swift in Sources */,
 				A1000000000000000000003E /* AppGroupSnapshotBytes.swift in Sources */,
 				A10000000000000000000041 /* WidgetSemanticProjection.swift in Sources */,
+				A10000000000000000000058 /* WidgetSessionScopeBatch.swift in Sources */,
 				A10000000000000000000042 /* WidgetSnapshotPublisher.swift in Sources */,
 				A10000000000000000000043 /* DesktopRefreshScheduler.swift in Sources */,
 				A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */,
+				A10000000000000000000054 /* SessionOriginTransport.swift in Sources */,
 				A10000000000000000000007 /* DesktopLog.swift in Sources */,
 				A10000000000000000000046 /* PerfTrace.swift in Sources */,
 			);
@@ -614,6 +644,7 @@
 				A10000000000000000000008 /* FixtureSupport.swift in Sources */,
 				A10000000000000000000009 /* DesktopWireTests.swift in Sources */,
 				A1000000000000000000000A /* EmbeddedHelperRunnerTests.swift in Sources */,
+				A10000000000000000000057 /* SessionOriginTransportTests.swift in Sources */,
 				A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */,
 				A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */,
 				A10000000000000000000049 /* PerfTraceTests.swift in Sources */,
@@ -635,6 +666,8 @@
 				A1000000000000000000004A /* PerfClockTests.swift in Sources */,
 				A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */,
 				A10000000000000000000051 /* TelemetrySettingsControllerTests.swift in Sources */,
+				A10000000000000000000053 /* SessionScopeControllerTests.swift in Sources */,
+				A10000000000000000000056 /* SessionOriginSettingsControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -661,6 +694,7 @@
 				A10000000000000000000030 /* DesktopWire.swift in Sources */,
 				A10000000000000000000031 /* AppGroupSnapshotStore.swift in Sources */,
 				A10000000000000000000040 /* AppGroupSnapshotBytes.swift in Sources */,
+				A10000000000000000000059 /* WidgetSessionScopeBatch.swift in Sources */,
 				A1000000000000000000003A /* WidgetSnapshot.swift in Sources */,
 				A1000000000000000000002B /* WidgetDomain.swift in Sources */,
 				A1000000000000000000002C /* WidgetIntents.swift in Sources */,

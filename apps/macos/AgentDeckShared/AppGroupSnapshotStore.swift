@@ -14,8 +14,13 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 	public let sessions: AppGroupSessionsSnapshotV1
 	public let health: AppGroupHealthSnapshotV1
 	public let subscription: DesktopSubscriptionSnapshotV1
+	/// The Widget's session-scope summaries (architecture §7). Nil only for a
+	/// file written before Task 7; a current host always writes a set, even an
+	/// unavailable one, so a reader can tell legacy from unavailable.
+	public let sessionScopeSummary: AppGroupSessionScopeSummarySetV1?
 
-	public init(envelope: DesktopWireEnvelopeV1) {
+	public init(envelope: DesktopWireEnvelopeV1, sessionScopeSummary: AppGroupSessionScopeSummarySetV1? = nil) {
+		self.sessionScopeSummary = sessionScopeSummary
 		schemaVersion = Self.schemaVersion
 		generatedAt = envelope.data.generatedAt
 		nextRefreshAt = envelope.data.nextRefreshAt
@@ -39,10 +44,12 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		case sessions
 		case health
 		case subscription
+		case sessionScopeSummary = "session_scope_summary"
 	}
 
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
+		sessionScopeSummary = try? container.decodeIfPresent(AppGroupSessionScopeSummarySetV1.self, forKey: .sessionScopeSummary)
 		schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
 		generatedAt = try container.decode(String.self, forKey: .generatedAt)
 		nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
@@ -53,6 +60,255 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		sessions = try container.decode(AppGroupSessionsSnapshotV1.self, forKey: .sessions)
 		health = try container.decode(AppGroupHealthSnapshotV1.self, forKey: .health)
 		subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
+	}
+}
+
+/// One client × period session count for the Widget. It carries only the
+/// aggregate and the safe identity/time of the batch it was accepted in:
+/// never a session ID, project, model, relationship, path, override list or
+/// request receipt. `unknownCount` is nil when coverage is incomplete, and is
+/// always encoded (as null), because a missing key is a malformed summary.
+public struct AppGroupSessionScopeSummaryV1: Codable, Equatable, Sendable {
+	public let available: Bool
+	public let scope: DesktopSessionScopeV1
+	public let count: Int
+	public let unknownCount: Int?
+	public let client: String
+	public let period: String
+	public let publicationID: String
+	public let generatedAt: String
+
+	public init(
+		scope: DesktopSessionScopeV1, count: Int, unknownCount: Int?, client: String, period: String,
+		publicationID: String, generatedAt: String
+	) {
+		available = true
+		self.scope = scope
+		self.count = count
+		self.unknownCount = unknownCount
+		self.client = client
+		self.period = period
+		self.publicationID = publicationID
+		self.generatedAt = generatedAt
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case available, scope, count, client, period
+		case unknownCount = "unknown_count"
+		case publicationID = "publication_id"
+		case generatedAt = "generated_at"
+	}
+
+	/// Reads a summary item with the Widget's own rules, so the host never
+	/// keeps (and re-publishes) an item the Widget would reject. In particular
+	/// a missing `unknown_count` is malformed while an explicit null is unknown
+	/// coverage: without this, Codable would read both as nil and a later
+	/// retention would re-encode the malformed item as a valid null.
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		guard try container.decode(Bool.self, forKey: .available) else {
+			throw Self.invalid(.available, container, "an accepted summary item is available")
+		}
+		available = true
+		scope = try container.decode(DesktopSessionScopeV1.self, forKey: .scope)
+		count = try container.decode(Int.self, forKey: .count)
+		guard count >= 0 else { throw Self.invalid(.count, container, "count is non-negative") }
+		guard container.contains(.unknownCount) else {
+			throw DecodingError.keyNotFound(CodingKeys.unknownCount, DecodingError.Context(
+				codingPath: container.codingPath,
+				debugDescription: "unknown_count must be present; only an explicit null means unknown coverage"
+			))
+		}
+		if try container.decodeNil(forKey: .unknownCount) {
+			unknownCount = nil
+		} else {
+			let value = try container.decode(Int.self, forKey: .unknownCount)
+			guard value >= 0, value <= count else { throw Self.invalid(.unknownCount, container, "unknown_count is within 0...count") }
+			unknownCount = value
+		}
+		// Auxiliary holds only confirmed auxiliary sessions.
+		guard scope != .auxiliary || unknownCount == 0 else {
+			throw Self.invalid(.unknownCount, container, "auxiliary unknown_count is 0")
+		}
+		client = try container.decode(String.self, forKey: .client)
+		period = try container.decode(String.self, forKey: .period)
+		publicationID = try container.decode(String.self, forKey: .publicationID)
+		guard !publicationID.isEmpty else { throw Self.invalid(.publicationID, container, "publication_id is set") }
+		generatedAt = try container.decode(String.self, forKey: .generatedAt)
+		guard WidgetSessionScopeBatchCollector.date(generatedAt) != nil else {
+			throw Self.invalid(.generatedAt, container, "generated_at is an ISO 8601 time")
+		}
+	}
+
+	private static func invalid(
+		_ key: CodingKeys, _ container: KeyedDecodingContainer<CodingKeys>, _ rule: String
+	) -> DecodingError {
+		.dataCorruptedError(forKey: key, in: container, debugDescription: rule)
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(available, forKey: .available)
+		try container.encode(scope, forKey: .scope)
+		try container.encode(count, forKey: .count)
+		try container.encode(unknownCount, forKey: .unknownCount)
+		try container.encode(client, forKey: .client)
+		try container.encode(period, forKey: .period)
+		try container.encode(publicationID, forKey: .publicationID)
+		try container.encode(generatedAt, forKey: .generatedAt)
+	}
+}
+
+/// The whole accepted batch: every supported client × period for one
+/// confirmed default, one committed generation and one time. It is replaced
+/// only as a whole. `stale` marks a previous accepted batch kept after a later
+/// batch failed; `reason` is a safe code from `AppGroupSessionScopeSummaryReason`.
+///
+/// `unreadable` lists the selections of items the host read but could not
+/// trust (only ever from a file it re-reads, never from a new batch). Each is
+/// written back into `items` as `{"available": false, "client", "period"}`:
+/// no figure, no identity or time, and no `unknown_count`, so a missing key is
+/// never repaired into an explicit null. Keeping the selection matters: the
+/// Widget shows a selection only when exactly one well-formed item answers it,
+/// so a malformed duplicate must keep that selection ambiguous (unavailable)
+/// on every re-publication rather than vanish and leave its twin trusted.
+public struct AppGroupSessionScopeSummarySetV1: Codable, Equatable, Sendable {
+	public let stale: Bool
+	public let reason: String?
+	public let items: [AppGroupSessionScopeSummaryV1]
+	public let unreadable: [DesktopSessionScopeSummarySelectionV1]
+
+	public init(
+		stale: Bool, reason: String?, items: [AppGroupSessionScopeSummaryV1],
+		unreadable: [DesktopSessionScopeSummarySelectionV1] = []
+	) {
+		self.stale = stale
+		self.reason = reason.map(AppGroupSessionScopeSummaryReason.safe)
+		self.items = items
+		self.unreadable = unreadable
+	}
+
+	public static func unavailable(_ reason: String) -> Self {
+		Self(stale: false, reason: reason, items: [])
+	}
+
+	/// The same items, kept visible after a later batch failed; selections
+	/// the host could not trust stay untrusted.
+	public func retained(reason: String) -> Self {
+		Self(stale: true, reason: reason, items: items, unreadable: unreadable)
+	}
+
+	/// Reads a set with the Widget's rules. A reason outside the closed enum
+	/// is a set-level fault and rejects the whole set. A malformed item is an
+	/// item-level fault, exactly as the Widget treats it: its figures are
+	/// discarded, never repaired, while every well-formed item keeps its own
+	/// identity and time. When the malformed item still names a supported
+	/// client and period, that selection is kept in `unreadable`, so it stays
+	/// unavailable however often the set is re-published — including when it
+	/// duplicates a well-formed item. A malformed item without a readable,
+	/// supported selection matches no Widget entry and is dropped, which
+	/// changes nothing the Widget shows. A non-empty list with no well-formed
+	/// item at all carries nothing to keep and rejects the set.
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		stale = try container.decode(Bool.self, forKey: .stale)
+		let rawReason = try container.decodeIfPresent(String.self, forKey: .reason)
+		if let rawReason, DesktopSessionScopeSummaryReasonV1(rawValue: rawReason) == nil {
+			throw DecodingError.dataCorruptedError(
+				forKey: .reason, in: container, debugDescription: "reason is outside the closed summary reason enum"
+			)
+		}
+		reason = rawReason
+		let read = try container.decode([ItemRead].self, forKey: .items)
+		items = read.compactMap(\.item)
+		unreadable = read.compactMap(\.unreadable)
+		guard read.isEmpty || !items.isEmpty else {
+			throw DecodingError.dataCorruptedError(
+				forKey: .items, in: container, debugDescription: "no summary item is well-formed"
+			)
+		}
+	}
+
+	/// One element of `items`, decoded without failing the array.
+	private struct ItemRead: Decodable {
+		let item: AppGroupSessionScopeSummaryV1?
+		let unreadable: DesktopSessionScopeSummarySelectionV1?
+
+		init(from decoder: Decoder) throws {
+			item = try? AppGroupSessionScopeSummaryV1(from: decoder)
+			unreadable = item == nil ? try? DesktopSessionScopeSummarySelectionV1(from: decoder) : nil
+		}
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(stale, forKey: .stale)
+		try container.encode(reason, forKey: .reason)
+		var list = container.nestedUnkeyedContainer(forKey: .items)
+		for item in items { try list.encode(item) }
+		for selection in unreadable { try list.encode(UnreadableItem(selection)) }
+	}
+
+	/// The figure-free form an untrusted selection is written in.
+	private struct UnreadableItem: Encodable {
+		let selection: DesktopSessionScopeSummarySelectionV1
+		init(_ selection: DesktopSessionScopeSummarySelectionV1) { self.selection = selection }
+
+		enum CodingKeys: String, CodingKey { case available, client, period }
+
+		func encode(to encoder: Encoder) throws {
+			var container = encoder.container(keyedBy: CodingKeys.self)
+			try container.encode(false, forKey: .available)
+			try container.encode(selection.client, forKey: .client)
+			try container.encode(selection.period, forKey: .period)
+		}
+	}
+
+	enum CodingKeys: String, CodingKey { case stale, reason, items }
+}
+
+/// A supported client × period, read from an item whose other fields may be
+/// unreadable. Anything outside the supported values is not a selection.
+public struct DesktopSessionScopeSummarySelectionV1: Decodable, Equatable, Hashable, Sendable {
+	public let client: String
+	public let period: String
+
+	public init?(client: String, period: String) {
+		guard DesktopSessionScopeSelectionV1.clients.contains(client), DesktopSessionScopeSelectionV1.periods.contains(period) else {
+			return nil
+		}
+		self.client = client
+		self.period = period
+	}
+
+	enum CodingKeys: String, CodingKey { case client, period }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		let client = try container.decode(String.self, forKey: .client)
+		let period = try container.decode(String.self, forKey: .period)
+		guard let selection = Self(client: client, period: period) else {
+			throw DecodingError.dataCorruptedError(forKey: .client, in: container, debugDescription: "not a supported selection")
+		}
+		self = selection
+	}
+}
+
+/// The closed set of reasons a summary set may carry. Any other code (a newer
+/// producer's, or a source-specific one) is written as the generic
+/// `selection_unavailable`, so no identifying input reaches the Widget.
+public enum AppGroupSessionScopeSummaryReason {
+	public static let defaultUnconfirmed = DesktopSessionScopeSummaryReasonV1.defaultUnconfirmed.rawValue
+	public static let defaultChanged = DesktopSessionScopeSummaryReasonV1.defaultChanged.rawValue
+	public static let generationUnavailable = DesktopSessionScopeSummaryReasonV1.generationUnavailable.rawValue
+	public static let batchInconsistent = DesktopSessionScopeSummaryReasonV1.batchInconsistent.rawValue
+	public static let selectionUnavailable = DesktopSessionScopeSummaryReasonV1.selectionUnavailable.rawValue
+	public static let summaryUnavailable = DesktopSessionScopeSummaryReasonV1.summaryUnavailable.rawValue
+
+	static let allowed = Set(DesktopSessionScopeSummaryReasonV1.allCases.map(\.rawValue))
+
+	public static func safe(_ value: String) -> String {
+		allowed.contains(value) ? value : selectionUnavailable
 	}
 }
 

@@ -19,7 +19,8 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await host.waitUntilSuspended()
 		await quota.waitUntilSuspended()
 		host.resume()
-		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload)
+		let noSummary = AppGroupSessionScopeSummarySetV1.unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload, sessionScopeSummary: noSummary)
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(3))
 		while (try? store.read()) != baseline, clock.now < deadline {
@@ -32,20 +33,23 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let updated = final.payload.replacingSubscription(subscription)
 		XCTAssertNotEqual(updated, final.payload)
 		XCTAssertEqual(coordinator.latestSnapshot, updated)
-		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated), "Widget snapshot must contain the final quota merge without changing the full snapshot")
+		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated, sessionScopeSummary: noSummary), "Widget snapshot must contain the final quota merge without changing the full snapshot")
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
-	func testServingAcceptsTelemetrySchemaAndRejectsUnknownFutureSchema() throws {
-		let snapshot = try servingCoordinatorFixture(id: "telemetry-schema", full: true,
-			generationChanges: ["core_schema": 33])
-		XCTAssertEqual(snapshot.header.generation.coreSchema, 33)
+	func testServingAcceptsSessionOriginSchemaAndRejectsUnknownFutureSchema() throws {
+		let snapshot = try servingCoordinatorFixture(id: "session-origin-schema", full: true,
+			generationChanges: ["core_schema": 34])
+		XCTAssertEqual(snapshot.header.generation.coreSchema, 34)
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
-			generationChanges: ["core_schema": 34]))
+			generationChanges: ["core_schema": 35]))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 34))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 34))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 32))
-		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 34))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 34, current: 33))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 35))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {
@@ -374,7 +378,10 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
-		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
+			envelope: complete,
+			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		))
 		let quotaCalls = await quotaRefresher.recordedManualValues()
 		XCTAssertEqual(quotaCalls, [false])
 	}
@@ -723,7 +730,10 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 			.degraded(previous: complete, issue: .helper(.nonZeroExit(1)))
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
-		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
+			envelope: complete,
+			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		))
 		// The failing helper never reported real progress past the synthetic
 		// `.waiting` set at refresh start, so the failure surface must not keep
 		// showing a stale "waiting to scan" state.
@@ -773,7 +783,10 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 			.degraded(previous: complete, issue: .invalidWire(.invalidTimestamp))
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
-		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
+			envelope: complete,
+			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		))
 	}
 
 	func testUnavailableContainerRecordsFullAndQuotaPublicationFailures() async throws {
@@ -817,7 +830,10 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		await recovered.refresh()
 		XCTAssertEqual(recovered.widgetPublication, .succeeded(generation: 1, affectedKinds: Set(AppGroupWidgetKind.allCases)))
-		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
+			envelope: complete,
+			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
+		))
 		XCTAssertEqual(recovered.state, .ready(complete))
 	}
 
@@ -1278,4 +1294,472 @@ private final class HeldRestoreRefresher: DesktopSnapshotRefreshing, DesktopSnap
 	}
 	func waitUntilRestoreHeld() async { while held == nil { await Task.yield() } }
 	func releaseRestore() { released = true; held?.resume(); held = nil }
+}
+
+// MARK: Task 7 — the coordinator publishes the Widget session-scope batch
+
+/// Fails every read: a helper that cannot answer.
+private struct FailingWidgetScopeReader: WidgetSessionScopeReading {
+	func widgetSessionScopeView(_ selection: DesktopSessionScopeSelectionV1, generationID: String?, asOf: String) async throws -> DesktopSessionScopeViewV1 {
+		throw HelperExecutionError.timedOut
+	}
+}
+
+@MainActor
+final class DesktopRefreshCoordinatorWidgetSummaryTests: XCTestCase {
+	private func storeDirectory() -> URL {
+		let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+		return url
+	}
+
+	/// The Widget batch is asked of the bootstrap's last publication even while
+	/// that publication is held behind an opening surface, and again once it is
+	/// released: neither publish has to start a read for another publication.
+	func testAHeldFinalPublicationStillAsksForItsDeliveredBatch() async throws {
+		let first = try servingCoordinatorFixture(id: "first-partial", full: false)
+		let final = try servingCoordinatorFixture(id: "final-full", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: final)
+		let reader = ScriptedWidgetBatchReader([.failure(.timedOut)])
+		let coordinator = DesktopRefreshCoordinator(
+			host: host, snapshotStore: AppGroupSnapshotStore(directoryURL: storeDirectory()),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow),
+			wallNow: widgetBatchNow
+		)
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		for _ in 0 ..< 40 where coordinator.latestSnapshot == nil { await Task.yield() }
+		coordinator.holdPublications()
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "first-partial")
+		var asks = await reader.deliveryAsks
+		XCTAssertEqual(asks, ["final-full"])
+		coordinator.releasePublications()
+		for _ in 0 ..< 200 {
+			asks = await reader.deliveryAsks
+			if asks.count == 2 { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertEqual(asks, ["final-full", "final-full"])
+	}
+
+	func testSuccessfulRefreshPublishesTheConfirmedDefaultsBatch() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let fixture = try WidgetBatchFixture.load()
+		let store = AppGroupSnapshotStore(directoryURL: storeDirectory())
+		// The publication reports a confirmed Work default; Go answers the
+		// Work read with the saved Auxiliary default, so the batch is redone
+		// for Auxiliary rather than published under a stale scope.
+		let reader = ScriptedWidgetScopeReader(views: try XCTUnwrap(fixture.batches["auxiliary"]) + [fixture.popover])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: store,
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow)
+		)
+		await coordinator.refresh()
+
+		let summary = try XCTUnwrap(try store.read().sessionScopeSummary)
+		XCTAssertFalse(summary.stale)
+		XCTAssertEqual(summary.items.count, 9)
+		XCTAssertEqual(Set(summary.items.map(\.scope)), [.auxiliary])
+		let reads = await reader.reads
+		XCTAssertEqual(reads.first?.selection.scope, .work, "the first attempt uses the publication's confirmed default")
+		XCTAssertEqual(Set(reads.dropFirst().map(\.selection.scope)), [.auxiliary])
+	}
+
+	func testFailedBatchKeepsThePreviousAcceptedNumbersWholeAndStale() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let fixture = try WidgetBatchFixture.load()
+		let directory = storeDirectory()
+		let store = AppGroupSnapshotStore(directoryURL: directory)
+		let first = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: store,
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(
+				reader: ScriptedWidgetScopeReader(views: try XCTUnwrap(fixture.batches["auxiliary"]) + [fixture.popover]), now: widgetBatchNow
+			)
+		)
+		await first.refresh()
+		let accepted = try XCTUnwrap(try store.read().sessionScopeSummary)
+
+		// A later App process (or refresh) whose batch fails: the accepted
+		// numbers, scope and time stay together and are marked stale.
+		let second = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: AppGroupSnapshotStore(directoryURL: directory),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await second.refresh()
+		let retained = try XCTUnwrap(try store.read().sessionScopeSummary)
+		XCTAssertTrue(retained.stale)
+		XCTAssertEqual(retained.reason, AppGroupSessionScopeSummaryReason.selectionUnavailable)
+		XCTAssertEqual(retained.items, accepted.items, "no relabelled or partially replaced figures")
+	}
+
+	func testWithoutAnAcceptedBatchTheSummaryIsUnavailableNotZero() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let store = AppGroupSnapshotStore(directoryURL: storeDirectory())
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: store,
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await coordinator.refresh()
+		XCTAssertEqual(try store.read().sessionScopeSummary, .unavailable(AppGroupSessionScopeSummaryReason.selectionUnavailable))
+	}
+}
+
+// MARK: ASC-WS-R2-F1 — one malformed item never clears the other eight
+
+extension DesktopRefreshCoordinatorWidgetSummaryTests {
+	/// Writes the producer's accepted nine-item Auxiliary set, then removes
+	/// `unknown_count` from the items `malformed` selects, in the file itself.
+	private func nineItemFile(
+		_ directory: URL, envelope: DesktopWireEnvelopeV1, malformed: (String, String) -> Bool
+	) async throws -> AppGroupSessionScopeSummarySetV1 {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		guard case let .accepted(accepted) = await WidgetSessionScopeBatchCollector(
+			reader: ScriptedWidgetScopeReader(views: views), now: widgetBatchNow
+		).collect(default: views[0].default) else {
+			XCTFail("the producer's batch was rejected")
+			throw CocoaError(.fileReadCorruptFile)
+		}
+		XCTAssertEqual(accepted.items.count, 9)
+		try AppGroupSnapshotStore(directoryURL: directory).write(AppGroupDesktopSnapshotV1(envelope: envelope, sessionScopeSummary: accepted))
+		let path = directory.appendingPathComponent(AppGroupSnapshotStore.fileName)
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+		var set = try XCTUnwrap(object["session_scope_summary"] as? [String: Any])
+		var items = try XCTUnwrap(set["items"] as? [[String: Any]])
+		for index in items.indices where malformed(items[index]["client"] as? String ?? "", items[index]["period"] as? String ?? "") {
+			items[index].removeValue(forKey: "unknown_count")
+		}
+		set["items"] = items
+		object["session_scope_summary"] = set
+		try JSONSerialization.data(withJSONObject: object).write(to: path)
+		return accepted
+	}
+
+	private func fileItems(_ directory: URL) throws -> [[String: Any]] {
+		let data = try Data(contentsOf: directory.appendingPathComponent(AppGroupSnapshotStore.fileName))
+		let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+		let set = try XCTUnwrap(object["session_scope_summary"] as? [String: Any])
+		return try XCTUnwrap(set["items"] as? [[String: Any]])
+	}
+
+	func testColdHostRetentionAndRepublicationKeepTheEightWellFormedSummaries() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let directory = storeDirectory()
+		let isCodexWeek: (String, String) -> Bool = { $0 == "codex" && $1 == "7d" }
+		let accepted = try await nineItemFile(directory, envelope: complete, malformed: isCodexWeek)
+		let wellFormed = accepted.items.filter { !isCodexWeek($0.client, $0.period) }
+		XCTAssertEqual(wellFormed.count, 8)
+
+		// A cold host (new process) reads the file before its first publication.
+		let publisher = WidgetSnapshotPublisher(store: AppGroupSnapshotStore(directoryURL: directory), reloader: WidgetTimelineReloader { _ in })
+		let retainedValue = await publisher.retainedSessionScopeSummary()
+		let lastValue = await publisher.lastSessionScopeSummary()
+		XCTAssertEqual(try XCTUnwrap(retainedValue).items, wellFormed, "the retention path keeps every other item with its own identity and time")
+		XCTAssertEqual(try XCTUnwrap(lastValue).items, wellFormed, "the reuse path keeps them too")
+		let codexWeek = try XCTUnwrap(DesktopSessionScopeSummarySelectionV1(client: "codex", period: "7d"))
+		XCTAssertEqual(try XCTUnwrap(retainedValue).unreadable, [codexWeek], "the malformed item's selection stays untrusted")
+
+		// Cold host whose batch fails: re-publishes the eight, whole and stale.
+		let failing = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: AppGroupSnapshotStore(directoryURL: directory),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await failing.refresh()
+		let republished = try XCTUnwrap(try AppGroupSnapshotStore(directoryURL: directory).read().sessionScopeSummary)
+		XCTAssertTrue(republished.stale)
+		XCTAssertEqual(republished.reason, AppGroupSessionScopeSummaryReason.selectionUnavailable)
+		XCTAssertEqual(republished.items, wellFormed)
+		XCTAssertEqual(Set(republished.items.map(\.publicationID)), Set(accepted.items.map(\.publicationID)))
+		XCTAssertEqual(Set(republished.items.map(\.generatedAt)), Set(accepted.items.map(\.generatedAt)))
+		// The malformed item keeps only its selection, never repaired into an
+		// explicit null or given figures, identity or time.
+		let written = try fileItems(directory)
+		XCTAssertEqual(written.count, 9)
+		let marker = try XCTUnwrap(written.first { isCodexWeek($0["client"] as? String ?? "", $0["period"] as? String ?? "") })
+		XCTAssertEqual(Set(marker.keys), ["available", "client", "period"])
+		XCTAssertEqual(marker["available"] as? Bool, false)
+		XCTAssertTrue(written.filter { $0["available"] as? Bool == true }.allSatisfy { ($0["unknown_count"] as? Int) == 0 },
+			"every kept Auxiliary item keeps its explicit 0")
+
+		// A second cold host re-publishing again keeps exactly the same eight.
+		let again = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: AppGroupSnapshotStore(directoryURL: directory),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await again.refresh()
+		XCTAssertEqual(try AppGroupSnapshotStore(directoryURL: directory).read().sessionScopeSummary, republished)
+	}
+
+	func testColdHostKeepsNothingWhenEveryItemIsMalformed() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let directory = storeDirectory()
+		_ = try await nineItemFile(directory, envelope: complete) { _, _ in true }
+		let publisher = WidgetSnapshotPublisher(store: AppGroupSnapshotStore(directoryURL: directory), reloader: WidgetTimelineReloader { _ in })
+		let retained = await publisher.retainedSessionScopeSummary()
+		XCTAssertNil(retained)
+		let last = await publisher.lastSessionScopeSummary()
+		XCTAssertNil(last)
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			snapshotStore: AppGroupSnapshotStore(directoryURL: directory),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await coordinator.refresh()
+		XCTAssertEqual(
+			try AppGroupSnapshotStore(directoryURL: directory).read().sessionScopeSummary,
+			.unavailable(AppGroupSessionScopeSummaryReason.selectionUnavailable)
+		)
+	}
+}
+
+// MARK: ASC-WS-R3-F1 — a malformed duplicate keeps its selection ambiguous
+
+extension DesktopRefreshCoordinatorWidgetSummaryTests {
+	/// Nine well-formed Auxiliary items plus `extra` raw items appended to the
+	/// file; returns the accepted nine.
+	private func nineItemFileWithExtras(
+		_ directory: URL, envelope: DesktopWireEnvelopeV1, extras: ([[String: Any]]) -> [[String: Any]]
+	) async throws -> AppGroupSessionScopeSummarySetV1 {
+		let accepted = try await nineItemFile(directory, envelope: envelope) { _, _ in false }
+		let path = directory.appendingPathComponent(AppGroupSnapshotStore.fileName)
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+		var set = try XCTUnwrap(object["session_scope_summary"] as? [String: Any])
+		let items = try XCTUnwrap(set["items"] as? [[String: Any]])
+		set["items"] = items + extras(items)
+		object["session_scope_summary"] = set
+		try JSONSerialization.data(withJSONObject: object).write(to: path)
+		return accepted
+	}
+
+	private func refreshColdHost(_ directory: URL, envelope: DesktopWireEnvelopeV1) async throws -> AppGroupSessionScopeSummarySetV1 {
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(envelope)]),
+			snapshotStore: AppGroupSnapshotStore(directoryURL: directory),
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: FailingWidgetScopeReader(), now: widgetBatchNow)
+		)
+		await coordinator.refresh()
+		return try XCTUnwrap(try AppGroupSnapshotStore(directoryURL: directory).read().sessionScopeSummary)
+	}
+
+	func testMalformedDuplicateKeepsItsSelectionUntrustedAcrossColdHostRepublications() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let codexWeek = try XCTUnwrap(DesktopSessionScopeSummarySelectionV1(client: "codex", period: "7d"))
+		func twin(_ items: [[String: Any]]) throws -> [String: Any] {
+			var copy = try XCTUnwrap(items.first { $0["client"] as? String == "codex" && $0["period"] as? String == "7d" })
+			copy.removeValue(forKey: "unknown_count")
+			copy["count"] = 105
+			return copy
+		}
+		let cases: [(String, ([[String: Any]]) throws -> [[String: Any]], [DesktopSessionScopeSummarySelectionV1])] = [
+			("readable malformed twin", { [try twin($0)] }, [codexWeek]),
+			("two malformed twins", { [try twin($0), try twin($0)] }, [codexWeek, codexWeek]),
+			("unreadable twin", { items in var value = try twin(items); value.removeValue(forKey: "client"); return [value] }, []),
+			("unsupported client", { items in var value = try twin(items); value["client"] = "gemini"; return [value] }, []),
+		]
+		for (name, extras, untrusted) in cases {
+			let directory = storeDirectory()
+			var extraItems = [[String: Any]]()
+			let accepted = try await nineItemFileWithExtras(directory, envelope: complete) { items in
+				extraItems = (try? extras(items)) ?? []
+				return extraItems
+			}
+			XCTAssertEqual(extraItems.count, max(untrusted.count, 1), name)
+			var previous: AppGroupSessionScopeSummarySetV1?
+			for round in 1 ... 2 {
+				let republished = try await refreshColdHost(directory, envelope: complete)
+				XCTAssertTrue(republished.stale, "\(name) round \(round)")
+				XCTAssertEqual(republished.items, accepted.items, "\(name) round \(round): the nine keep their identity and time")
+				XCTAssertEqual(republished.unreadable, untrusted, "\(name) round \(round)")
+				if let previous { XCTAssertEqual(republished, previous, "\(name): re-publication is stable") }
+				previous = republished
+				let bytes = String(decoding: try Data(contentsOf: directory.appendingPathComponent(AppGroupSnapshotStore.fileName)), as: UTF8.self)
+				XCTAssertFalse(bytes.contains("\"unknown_count\":null"), "\(name): no missing key became null")
+				XCTAssertFalse(bytes.contains("105"), "\(name): the malformed figure is never re-published")
+			}
+		}
+	}
+
+	func testWellFormedDuplicateIsKeptSoItsSelectionStaysAmbiguous() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let directory = storeDirectory()
+		let accepted = try await nineItemFileWithExtras(directory, envelope: complete) { items in
+			var copy = items.first { $0["client"] as? String == "codex" && $0["period"] as? String == "7d" } ?? [:]
+			copy["count"] = 105
+			return [copy]
+		}
+		for round in 1 ... 2 {
+			let republished = try await refreshColdHost(directory, envelope: complete)
+			XCTAssertEqual(republished.items.count, 10, "round \(round)")
+			XCTAssertEqual(Array(republished.items.prefix(9)), accepted.items, "round \(round)")
+			XCTAssertEqual(republished.items.filter { $0.client == "codex" && $0.period == "7d" }.count, 2, "round \(round)")
+		}
+	}
+}
+
+/// Streams scripted lines, then holds the helper open until released: the
+/// stretch after the terminal line in which the batch is still being answered.
+private final class HeldBootstrapProcess: EmbeddedHelperProcess, @unchecked Sendable {
+	private let head: [Data]
+	private let tail: [Data]
+	private let exitStatus: Int32
+	private let lock = NSLock()
+	private var gate: CheckedContinuation<Void, Never>?
+	private var released = false
+	private(set) var starts = 0
+
+	init(head: [Data], tail: [Data], exitStatus: Int32 = 0) {
+		self.head = head
+		self.tail = tail
+		self.exitStatus = exitStatus
+	}
+
+	private func countStart() {
+		lock.lock()
+		starts += 1
+		lock.unlock()
+	}
+
+	func release() {
+		lock.lock()
+		released = true
+		let waiting = gate
+		gate = nil
+		lock.unlock()
+		waiting?.resume()
+	}
+
+	func run(executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+		countStart()
+		throw HelperExecutionError.launchFailed
+	}
+
+	func runLines(
+		executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration,
+		maximumLineBytes _: Int, maximumLines _: Int, onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
+		countStart()
+		head.forEach(onLine)
+		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+			lock.lock()
+			if released {
+				lock.unlock()
+				continuation.resume()
+			} else {
+				gate = continuation
+				lock.unlock()
+			}
+		}
+		tail.forEach(onLine)
+		return HelperProcessLinesOutput(exitStatus: exitStatus, stdoutLines: [], stdoutBytes: 0)
+	}
+}
+
+final class BootstrapSessionScopeDeliveryTests: XCTestCase {
+	private func line(_ type: String, _ data: Any) throws -> Data {
+		try JSONSerialization.data(withJSONObject: ["schema_version": 2, "command": "desktop.bootstrap", "type": type, "data": data])
+	}
+
+	private func terminal(_ state: String) throws -> Data {
+		try line("terminal", ["usage": ["state": state], "session": ["state": state]])
+	}
+
+	private func batch(publication: String, views: [DesktopSessionScopeViewV1], asOf: String) throws -> Data {
+		try line("session_scope_batch", ["publication_id": publication, "as_of": asOf,
+			"views": JSONSerialization.jsonObject(with: JSONEncoder().encode(views))])
+	}
+
+	private func runner(_ process: HeldBootstrapProcess, in directory: URL) throws -> EmbeddedHelperRunner {
+		EmbeddedHelperRunner(appBundleURL: try makeEmbeddedHelperBundle(in: directory), process: process,
+			environment: ["HOME": directory.path], timeout: .seconds(5))
+	}
+
+	/// The bootstrap answers at its completed terminal line while the helper is
+	/// still running; the batch that helper then hands over reaches the Widget
+	/// reader for that publication, and no second helper is started.
+	func testACompletedBootstrapReturnsAtItsTerminalLineAndHandsOverTheBatch() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let process = HeldBootstrapProcess(head: [publication, try terminal("completed")],
+			tail: [try batch(publication: "publication-final", views: views, asOf: fixture.asOf)])
+		let runner = try runner(process, in: directory)
+
+		let returned = try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+		XCTAssertEqual(returned?.header.publicationID, "publication-final", "returned while the helper is still held open")
+
+		let foreign = await runner.widgetSessionScopeDelivered(publication: "publication-other")
+		XCTAssertNil(foreign)
+		async let waiting = runner.widgetSessionScopeDelivered(publication: "publication-final")
+		try await Task.sleep(for: .milliseconds(50))
+		process.release()
+		let delivered = await waiting
+		XCTAssertEqual(delivered, WidgetSessionScopeDelivery(asOf: fixture.asOf, views: views))
+		// It stays available to every publish of that publication.
+		let again = await runner.widgetSessionScopeDelivered(publication: "publication-final")
+		XCTAssertEqual(again, delivered)
+		XCTAssertEqual(process.starts, 1, "the batch came from the bootstrap helper itself")
+
+		// A new stream discards the previous delivery.
+		let next = HeldBootstrapProcess(head: [publication, try terminal("completed")], tail: [])
+		next.release()
+		_ = try await EmbeddedHelperRunner(appBundleURL: try makeEmbeddedHelperBundle(in: directory), process: next,
+			environment: ["HOME": directory.path], timeout: .seconds(5))
+			.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+	}
+
+	/// A helper that exits without the batch, or with one for another
+	/// publication or one that cannot be read, delivers nothing: the reader
+	/// answers nil and the collector reads the batch itself.
+	func testAHelperThatEndsWithoutAUsableBatchDeliversNone() async throws {
+		let fixture = try WidgetBatchFixture.load()
+		let views = try XCTUnwrap(fixture.batches["auxiliary"])
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		for tail in [[], [try batch(publication: "publication-stale", views: views, asOf: fixture.asOf)],
+			[try line("session_scope_batch", ["publication_id": "publication-final"])]] {
+			let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+			defer { try? FileManager.default.removeItem(at: directory) }
+			let process = HeldBootstrapProcess(head: [publication, try terminal("completed")], tail: tail)
+			let runner = try runner(process, in: directory)
+			_ = try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+			async let waiting = runner.widgetSessionScopeDelivered(publication: "publication-final")
+			try await Task.sleep(for: .milliseconds(50))
+			process.release()
+			let delivered = await waiting
+			XCTAssertNil(delivered)
+		}
+	}
+
+	/// A round that did not complete is not answered at its terminal line: the
+	/// helper's exit decides, as before, and nothing is promised to the Widget.
+	func testAnIncompleteRoundStillWaitsForTheHelperAndFails() async throws {
+		let snapshot = try servingCoordinatorFixture(id: "publication-final", full: true)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let process = HeldBootstrapProcess(head: [publication, try terminal("failed")], tail: [], exitStatus: 1)
+		let runner = try runner(process, in: directory)
+		let call = Task { try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in }) }
+		try await Task.sleep(for: .milliseconds(100))
+		let early = await runner.widgetSessionScopeDelivered(publication: "publication-final")
+		XCTAssertNil(early, "no batch is promised for a round that did not complete")
+		process.release()
+		do {
+			_ = try await call.value
+			XCTFail("an incomplete round must fail")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .nonZeroExit(1))
+		}
+	}
 }

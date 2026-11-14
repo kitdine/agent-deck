@@ -131,8 +131,20 @@ def link_errors(path: Path, root: Path, targets: set[Path] | None = None) -> lis
     if not path.resolve().is_relative_to(root):
         return [f'{path}: document escapes repository']
     parsed, unsupported = link_targets(path.read_text(encoding='utf-8'))
+    def affects_target(raw: str) -> bool:
+        if targets is None:
+            return True
+        # Indentation is unsupported, but a simple destination can still be
+        # resolved. An external URL or a different path with the same basename
+        # is not an incoming link to the changed file.
+        if raw.startswith('indented list continuation: '):
+            destinations, unresolved = link_targets(raw.removeprefix('indented list continuation: '))
+            if destinations and not unresolved:
+                return any(not (urlsplit(value).scheme or urlsplit(value).netloc)
+                           and destination(path, value, root) in targets for value in destinations)
+        return any(p.name in raw for p in targets)
     errors = [f'{path}: unsupported link syntax: {raw}' for raw in unsupported
-              if targets is None or any(p.name in raw for p in targets)]
+              if affects_target(raw)]
     for target in parsed:
         url = urlsplit(target)
         if url.scheme or url.netloc:

@@ -864,13 +864,13 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		))
 		let quotaSettings = makeQuotaSettingsController(preferences: preferences, transport: transport)
 		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
-		controller.show()
+		controller.show(pane: .quota)
 		let window = try XCTUnwrap(controller.window)
 		defer { window.close() }
 		await quotaSettings.load()
 		settle(window)
 
-		let hosting = try XCTUnwrap(window.contentViewController?.view)
+		let hosting = try XCTUnwrap(controller.paneController(.quota)?.view)
 		let codex = try XCTUnwrap(findButton(in: hosting, identifier: "quota-client-codex"))
 		let claude = try XCTUnwrap(findButton(in: hosting, identifier: "quota-client-claude"))
 		XCTAssertEqual(codex.title, "Codex")
@@ -914,7 +914,7 @@ final class SettingsWindowLayoutTests: XCTestCase {
 			preferences: preferences, transport: transport, notifications: StubNotificationPermission(granted: false)
 		)
 		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
-		controller.show()
+		controller.show(pane: .quota)
 		let window = try XCTUnwrap(controller.window)
 		defer { window.close() }
 		await quotaSettings.load()
@@ -925,10 +925,10 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		XCTAssertNotNil(quotaSettings.alertsRow)
 		settle(window)
 
-		let hosting = try XCTUnwrap(window.contentViewController?.view)
+		let natural = try XCTUnwrap(controller.naturalSize(of: .quota))
 		XCTAssertGreaterThan(window.contentLayoutRect.height, heightWithoutWarning, "the window did not grow for the warning row")
 		XCTAssertGreaterThanOrEqual(
-			window.contentLayoutRect.height + 0.5, hosting.fittingSize.height,
+			window.contentLayoutRect.height + 0.5, natural.height,
 			"content taller than the window is compressed and overlaps"
 		)
 	}

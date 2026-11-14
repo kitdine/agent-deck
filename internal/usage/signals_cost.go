@@ -99,6 +99,20 @@ func (s *Service) ActivityCostForScope(ctx context.Context, scope SignalScope) (
 	if err != nil {
 		return ActivityCost{}, err
 	}
+	if scope.Sessions != nil {
+		selected := make([]storedEvent, 0, len(events))
+		for _, event := range events {
+			if scope.Sessions.Allows(event.Client, event.SessionID) {
+				selected = append(selected, event)
+			}
+		}
+		for key := range turns {
+			if !scope.Sessions.Allows(key.client, key.session) {
+				delete(turns, key)
+			}
+		}
+		events = selected
+	}
 	if scope.Activity != "" {
 		selected := make(map[turnKey]turnCategory)
 		for key, category := range turns {

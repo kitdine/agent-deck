@@ -3,6 +3,174 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+	// MARK: session_scope_view
+
+	/// The producer's canonical fixtures carry the view: a confirmed Work
+	/// default with an available same-selection answer, and an unreadable state
+	/// whose default is unconfirmed and names no selection.
+	func testCanonicalFixturesCarryTheSessionScopeView() throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let view = try XCTUnwrap(complete.data.sessionScopeView.view)
+		XCTAssertTrue(view.available)
+		XCTAssertEqual(view.default, DesktopSessionScopeDefaultV1(confirmed: true, value: .work, revision: 0, reason: nil))
+		XCTAssertEqual(view.selection, DesktopSessionScopeSelectionV1(scope: .work, client: "all", period: "today"))
+		let counts = try XCTUnwrap(view.counts)
+		XCTAssertEqual(counts.sessions, view.recent.count)
+		XCTAssertEqual(view.originCoverage?.unknownCount, counts.sessions, "with no classification evidence every session is unknown and in Work")
+		XCTAssertTrue(view.recent.allSatisfy { $0.origin.effective == "unknown" && $0.origin.reasonCode == "origin_metadata_missing" })
+		XCTAssertTrue(view.workSignals.activity.items.allSatisfy { $0.period == "today" && $0.client == "all" })
+		// The legacy section keeps its own meaning beside the view.
+		XCTAssertGreaterThanOrEqual(complete.data.sessions.total, counts.sessions)
+
+		for name in ["snapshot-partial.json", "snapshot-schema-ahead.json"] {
+			let unreadable = try XCTUnwrap(decodeDesktopWireEnvelopeV1(desktopFixtureData(name)).data.sessionScopeView.view, name)
+			XCTAssertFalse(unreadable.available)
+			XCTAssertFalse(unreadable.default.confirmed)
+			XCTAssertNil(unreadable.default.value, "an unconfirmed default never names Work")
+			XCTAssertNil(unreadable.selection)
+			XCTAssertNil(unreadable.counts)
+			XCTAssertEqual(unreadable.reason, "default_unconfirmed")
+		}
+		let legacy = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-legacy.json"))
+		XCTAssertEqual(legacy.data.sessionScopeView, .absent)
+	}
+
+	/// A view this consumer cannot trust degrades only the session area: the
+	/// rest of the snapshot still decodes, and nothing defaults to Work.
+	func testUntrustedSessionScopeViewsDegradeOnlyTheirOwnField() throws {
+		let base = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
+		func decoded(_ mutate: (inout [String: Any]) -> Void) throws -> DesktopSnapshotV1 {
+			var fixture = base
+			var data = try XCTUnwrap(fixture["data"] as? [String: Any])
+			var view = try XCTUnwrap(data["session_scope_view"] as? [String: Any])
+			mutate(&view)
+			data["session_scope_view"] = view
+			fixture["data"] = data
+			return try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: fixture)).data
+		}
+		let invalid: [(String, (inout [String: Any]) -> Void)] = [
+			("unknown scope", { $0["selection"] = ["scope": "maintenance", "client": "all", "period": "today"] }),
+			("unknown client", { $0["selection"] = ["scope": "work", "client": "gemini", "period": "today"] }),
+			("missing counts", { $0["counts"] = NSNull() }),
+			("missing publication", { $0["publication_id"] = NSNull() }),
+			("bad time", { $0["generated_at"] = "yesterday" }),
+			("unknown count above sessions", { $0["origin_coverage"] = ["complete": true, "unknown_count": 999, "reasons": [String]()] }),
+			("zero duration claimed for unmeasured sessions", { view in
+				var counts = view["counts"] as? [String: Any] ?? [:]
+				counts["known_duration_ms"] = NSNull()
+				view["counts"] = counts
+			}),
+			("foreign signal item", { view in
+				var signals = view["work_signals"] as? [String: Any] ?? [:]
+				var activity = signals["activity"] as? [String: Any] ?? [:]
+				var items = activity["items"] as? [[String: Any]] ?? []
+				if var first = items.first { first["period"] = "30d"; items[0] = first }
+				activity["items"] = items
+				signals["activity"] = activity
+				view["work_signals"] = signals
+			}),
+		]
+		for (name, mutate) in invalid {
+			let snapshot = try decoded(mutate)
+			XCTAssertEqual(snapshot.sessionScopeView, .invalid, name)
+			XCTAssertTrue(snapshot.usage.available, "\(name) must not fail the snapshot")
+		}
+		// A confirmed default whose value is not a known scope is unconfirmed.
+		let unknownDefault = try decoded { $0["default"] = ["confirmed": true, "value": "maintenance", "revision": 4, "reason": NSNull()] }
+		let defaults = try XCTUnwrap(unknownDefault.sessionScopeView.view?.default)
+		XCTAssertFalse(defaults.confirmed)
+		XCTAssertNil(defaults.value)
+		// An explicit null is the same as an absent view: legacy.
+		var fixture = base
+		var data = try XCTUnwrap(fixture["data"] as? [String: Any])
+		data["session_scope_view"] = NSNull()
+		fixture["data"] = data
+		XCTAssertEqual(try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: fixture)).data.sessionScopeView, .absent)
+	}
+
+	func testSessionScopeViewSurvivesEncodingAndTheExplicitEnvelopeIsChecked() throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let reencoded = try JSONDecoder().decode(DesktopWireEnvelopeV1.self, from: JSONEncoder().encode(complete))
+		XCTAssertEqual(reencoded.data.sessionScopeView, complete.data.sessionScopeView)
+
+		let view = try XCTUnwrap(complete.data.sessionScopeView.view)
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(view))
+		let envelope: [String: Any] = ["schema_version": 1, "command": "desktop.session-scope", "generated_at": "2026-08-13T10:00:00Z",
+			"data": payload, "warnings": [String](), "partial": false]
+		XCTAssertEqual(try decodeDesktopSessionScopeEnvelopeV1(JSONSerialization.data(withJSONObject: envelope)), view)
+		var wrongCommand = envelope
+		wrongCommand["command"] = "desktop.snapshot"
+		XCTAssertThrowsError(try decodeDesktopSessionScopeEnvelopeV1(JSONSerialization.data(withJSONObject: wrongCommand)))
+	}
+
+	/// The explicit-selection read names exactly its selection and refuses an
+	/// answer for any other one.
+	func testExplicitSelectionReadPassesTheSelectionAndRejectsAnotherAnswer() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let view = try XCTUnwrap(complete.data.sessionScopeView.view)
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(view))
+		let stdout = try JSONSerialization.data(withJSONObject: ["schema_version": 1, "command": "desktop.session-scope",
+			"generated_at": "2026-08-13T10:00:00Z", "data": payload, "warnings": [String](), "partial": false] as [String: Any])
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let bundle = try makeEmbeddedHelperBundle(in: directory)
+		let process = RecordingHelperProcess(behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: stdout, stderr: Data())))
+		let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process, environment: ["HOME": directory.path], timeout: .seconds(5))
+
+		let answered = try await runner.sessionScopeView(DesktopSessionScopeSelectionV1(scope: .work, client: "all", period: "today"), recentLimit: 7)
+		XCTAssertEqual(answered, view)
+		let invocations = await process.recordedInvocations()
+		let arguments = try XCTUnwrap(invocations.first?.arguments)
+		XCTAssertEqual(Array(arguments.suffix(12)), ["--format", "json", "desktop", "session-scope", "--scope", "work",
+			"--client", "all", "--period", "today", "--recent-limit", "7"])
+		XCTAssertFalse(arguments.contains("scan"), "an explicit read never scans")
+		do {
+			_ = try await runner.sessionScopeView(DesktopSessionScopeSelectionV1(scope: .auxiliary, client: "all", period: "today"), recentLimit: 7)
+			XCTFail("an answer for another selection must be rejected")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .malformedOutput)
+		}
+	}
+
+	/// The Widget batch is one helper process: `session-scope --batch` for the
+	/// scope, answered as nine views; anything else is malformed.
+	func testBatchReadStartsOneHelperAndDecodesItsNineViews() async throws {
+		let views = try WidgetBatchFixture.load().batches["auxiliary"] ?? []
+		XCTAssertEqual(views.count, 9)
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(views))
+		func stdout(command: String) throws -> Data {
+			try JSONSerialization.data(withJSONObject: ["schema_version": 1, "command": command,
+				"generated_at": "2026-08-13T10:00:00Z", "data": ["views": payload], "warnings": [String](), "partial": false] as [String: Any])
+		}
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let bundle = try makeEmbeddedHelperBundle(in: directory)
+		let process = RecordingHelperProcess(behavior: .output(HelperProcessOutput(
+			exitStatus: 0, stdout: try stdout(command: "desktop.session-scope-batch"), stderr: Data()
+		)))
+		let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process, environment: ["HOME": directory.path], timeout: .seconds(5))
+
+		let answered = try await runner.widgetSessionScopeBatch(scope: .auxiliary, asOf: "2026-08-13T10:00:00Z")
+		XCTAssertEqual(answered, views)
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.count, 1)
+		let arguments = try XCTUnwrap(invocations.first?.arguments)
+		XCTAssertEqual(Array(arguments.suffix(11)), ["--format", "json", "desktop", "session-scope", "--scope", "auxiliary", "--batch",
+			"--recent-limit", String(EmbeddedHelperRunner.defaultRecentLimit), "--as-of", "2026-08-13T10:00:00Z"])
+		XCTAssertFalse(arguments.contains("scan"), "a batch read never scans")
+
+		let single = RecordingHelperProcess(behavior: .output(HelperProcessOutput(
+			exitStatus: 0, stdout: try stdout(command: "desktop.session-scope"), stderr: Data()
+		)))
+		let mismatched = EmbeddedHelperRunner(appBundleURL: bundle, process: single, environment: ["HOME": directory.path], timeout: .seconds(5))
+		do {
+			_ = try await mismatched.widgetSessionScopeBatch(scope: .auxiliary, asOf: "2026-08-13T10:00:00Z")
+			XCTFail("a single-selection envelope must not be taken for a batch")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .malformedOutput)
+		}
+	}
+
     func testLaunchServicesStatusesSurviveFullSnapshotDecoding() throws {
         for state in ["consistent", "not_applicable", "conflict", "stale", "unknown"] {
             let warning = !["consistent", "not_applicable"].contains(state)
@@ -31,7 +199,7 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(envelope.warnings.contains("sessions_unavailable"))
         let schema = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "schema_ahead" })
         XCTAssertEqual(schema.count, 99)
-		XCTAssertEqual(schema.supportedCount, 33)
+		XCTAssertEqual(schema.supportedCount, 34)
         XCTAssertNil(schema.recoveryCommand)
         let hook = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" })
         XCTAssertEqual(hook.count, 2)

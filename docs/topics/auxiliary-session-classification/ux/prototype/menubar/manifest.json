@@ -1,0 +1,284 @@
+{
+  "stage": "final-surface-repair-r3",
+  "date": "2026-10-27",
+  "architecture_blob": "5b5a3b5694827900a9380e3879058a6baca4919a",
+  "retention": "Repository-owned design artifacts retained with topic review history.",
+  "entry": "?tab=sessions&auxMenu=stale",
+  "previous_manifest_sha256": "82e189a191b8bfb51a89f472135af51e4d7c5cc3dd2dfd250a5b2009e39f0cbb",
+  "historical_manifest": {
+    "stage": "final-surface-candidate",
+    "date": "2026-10-27",
+    "architecture_blob": "5b5a3b5694827900a9380e3879058a6baca4919a",
+    "retention": "Repository-owned design artifacts retained with topic review history.",
+    "entry": "?tab=sessions&auxMenu=sourceUnavailable",
+    "previous_manifest_sha256": "cd85cdbc7730aa2cd338177424d484db515d9745f2c717552b708fb40a9ff49e",
+    "historical_files": [
+      {
+        "path": "prototype/src/AuxiliarySessions.jsx",
+        "sha256": "f792c8421edd0d69211c29eb48ed5783b27f4cbd4704cb795f6b53e15e6dc36d"
+      },
+      {
+        "path": "prototype/src/auxiliarySessions.css",
+        "sha256": "a4812b544e10b1b5b07a4881cffa6baa29380942d52373acf8d7e6e2208be24d"
+      },
+      {
+        "path": "prototype/src/App.jsx",
+        "sha256": "0f2c197e2728fad3cbdea975ee0df49867532b028e00368ea9d58fff80cdaa3f"
+      },
+      {
+        "path": "prototype/src/Popover.jsx",
+        "sha256": "be46d0824a630f9689269b328e9cfecd340ec770f8e21b552fe34f0105f35ace"
+      },
+      {
+        "path": "prototype/src/Stage.jsx",
+        "sha256": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1"
+      },
+      {
+        "path": "prototype/src/styles.css",
+        "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+      },
+      {
+        "path": "prototype/src/data.js",
+        "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+      },
+      {
+        "path": "prototype/src/i18n.js",
+        "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+      },
+      {
+        "path": "prototype/tools/check-auxiliary-menubar.js",
+        "sha256": "8039db67824814c919775a6c6e82b4095fcb6d6ae3e922f8464174aec6f1d59f"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/work-zh-dark-280.png",
+        "sha256": "bdc7babe2e1f530bd0d3e403b751968507fc1ab905462508bab0bd755babebe6"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/auxiliary-en-light-420.png",
+        "sha256": "ce8dd5395b8c0fc04703608cb59cec9c35eb073615a2b06c8b3ecd9dca40ed86"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/origin-zh-dark-280.png",
+        "sha256": "1507cfedb8c858e214d078b27b9fc24b119af2c0488a0c802a5f4a096f908717"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/failed-en-light-280.png",
+        "sha256": "5b1a30b4f4642516f8619c26b8ff727d234faecebbc2e44c40aff40d979e7d59"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/unavailable-zh-dark-420.png",
+        "sha256": "30bdc8d3d7be00bb073f0e972ffb1f8b9b71a28eac50926b68171c1c181f1384"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/r1fix-retry-tab-en-280.png",
+        "sha256": "848a10d1c00337290c5617b6d269882e3509cb04b07f47b99ccfac8e23d8fb86"
+      }
+    ],
+    "previous_checks": {
+      "build": "passed",
+      "browser": {
+        "languages": [
+          "en",
+          "zh"
+        ],
+        "widths": [
+          280,
+          420
+        ],
+        "theme": "dark",
+        "checks_per_combination": 149,
+        "assertions": 596,
+        "failures": 0
+      },
+      "regression": "failed -> retry -> Usage -> Sessions retains normal/auxiliary/1; all nine client/period combinations retain recovered status; close/reopen consistent",
+      "reuse": "Unchanged geometry/colors and semantic accessibility markup retain prior design checks; no fresh axe or native claim.",
+      "limitations": "Synthetic browser state transition only; no native implementation, real request race or CEv1 VERIFIED claim."
+    },
+    "checks": {
+      "build": "passed",
+      "matrix": {
+        "languages": [
+          "en",
+          "zh"
+        ],
+        "themes": [
+          "dark",
+          "light"
+        ],
+        "widths": [
+          280,
+          420
+        ],
+        "checks_each": 173,
+        "assertions": 1384,
+        "failures": 0
+      },
+      "timestamp_followup": {
+        "cases": 12,
+        "failures": 0,
+        "reason": "Only stale/loading/failed timestamp formatting changed after matrix; unaffected checks reused."
+      },
+      "axe": {
+        "version": "4.12.1",
+        "scopes": [
+          "light sourceUnavailable",
+          "dark source detail"
+        ],
+        "violations": 0,
+        "incomplete": 0
+      },
+      "limits": "Synthetic presentation only. No real wire decoder, asynchronous races, database, native AX or performance acceptance."
+    },
+    "files": [
+      {
+        "path": "prototype/src/AuxiliarySessions.jsx",
+        "sha256": "120f5833b12717a4f9b38e242fb32cd95c20ccd3effae1727f4f55b3400553e7"
+      },
+      {
+        "path": "prototype/src/auxiliarySessions.css",
+        "sha256": "a4812b544e10b1b5b07a4881cffa6baa29380942d52373acf8d7e6e2208be24d"
+      },
+      {
+        "path": "prototype/src/App.jsx",
+        "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+      },
+      {
+        "path": "prototype/src/Popover.jsx",
+        "sha256": "1e6c6c10ddb40f9f24abfeacbd768b1a622d7408ed5998300cde11005edb32df"
+      },
+      {
+        "path": "prototype/src/Stage.jsx",
+        "sha256": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1"
+      },
+      {
+        "path": "prototype/src/styles.css",
+        "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+      },
+      {
+        "path": "prototype/src/data.js",
+        "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+      },
+      {
+        "path": "prototype/src/i18n.js",
+        "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+      },
+      {
+        "path": "prototype/tools/check-auxiliary-menubar.js",
+        "sha256": "a928600fcdecfc34b76b541a4babafcc685c613dc85861a25ed37a2608c30859"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/final-source-unavailable-en-280.png",
+        "sha256": "4c0f5021c70395444e17e1bf4fed41946a11afe393eaaf2ac5a30914e88f3ad3"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/final-legacy-zh-280.png",
+        "sha256": "d46376fe40023f092ed621147d854ae06f02dd03eee538a96da1910e0edb5044"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/final-origin-unavailable-zh-280.png",
+        "sha256": "2f7a431e3a812ff41576aeb9a0b7cfbf41411e853ef7f90caea76bec16073b5c"
+      },
+      {
+        "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/final-default-unconfirmed-en-420.png",
+        "sha256": "18254188ad35eaad79502c034bf40c7c12c524a3672da025f6e3b37ad7448335"
+      }
+    ]
+  },
+  "checks": {
+    "build": "passed",
+    "browser": {
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "widths": [
+        280,
+        420
+      ],
+      "theme": "dark",
+      "checks_each": 176,
+      "assertions": 704,
+      "failures": 0
+    },
+    "utc": {
+      "zones": [
+        "UTC",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Tokyo"
+      ],
+      "generated_at": "2026-08-18T14:30:00.000Z",
+      "en": "8/18/26, 2:30 PM UTC",
+      "zh": "2026/8/18 14:30 UTC",
+      "failures": 0
+    },
+    "browser_timezone": "America/New_York",
+    "child": {
+      "effective": "unknown",
+      "automatic": "unknown",
+      "override": false,
+      "revision": 0,
+      "reason": "task_child_unconfirmed"
+    },
+    "reuse": "Unchanged colors/roles retain earlier checks; no fresh axe/native claim.",
+    "limits": "Synthetic rendering/fixture checks only; no product/native/timezone acceptance."
+  },
+  "files": [
+    {
+      "path": "prototype/src/AuxiliarySessions.jsx",
+      "sha256": "b403ee828888e93de3cd40300f883ada0676a4361bb78a4098743b9f131ca7c5"
+    },
+    {
+      "path": "prototype/src/auxiliarySessions.css",
+      "sha256": "a4812b544e10b1b5b07a4881cffa6baa29380942d52373acf8d7e6e2208be24d"
+    },
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "ee47c57b5b57382dbfe91193278596af744c27226835aa434217e26410e5afc5"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "1e6c6c10ddb40f9f24abfeacbd768b1a622d7408ed5998300cde11005edb32df"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "d63bdf2676f9bb34fbd23dff6b099c9d3f0762aa49db2266cc63570dd98e7e12"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-menubar.js",
+      "sha256": "04295f4ec73113cc966f68651dd71369de7944a41f688b1c2a47e860224bf668"
+    },
+    {
+      "path": "prototype/src/auxiliaryMenuTime.js",
+      "sha256": "3993eda4ae60ab323eb447e60791db124856afc89b4204ca91104a74bac2c744"
+    },
+    {
+      "path": "prototype/tools/check-auxiliary-menu-time.mjs",
+      "sha256": "f1aab1bb6198f9f86ee8f02dbc983974c4844b4576740e3f314b008b2d536d4b"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/r3fix-time-en-280.png",
+      "sha256": "287948fdee91f978a821ecaf56c0bda0a51880e0f68fcba95db20fc314212766"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/r3fix-child-zh-280.png",
+      "sha256": "f9beb456abd8eede04d53adbe09dd06d09230d8b742e9e447fa8d3daaefffadd"
+    },
+    {
+      "path": "docs/topics/auxiliary-session-classification/ux/prototype/menubar/r3fix-source-unavailable-en-280.png",
+      "sha256": "f56f2245bf97c3baeac6bfd5983b333c448c89bbcb0209f4b261643102a44b57"
+    }
+  ]
+}

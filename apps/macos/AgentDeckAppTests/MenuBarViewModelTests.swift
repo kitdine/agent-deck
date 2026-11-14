@@ -54,7 +54,11 @@ final class MenuBarViewModelTests: XCTestCase {
 		preferences: DesktopPreferences? = nil
 	) async -> MenuBarViewModel {
 		let host = StubDesktopHost(behavior: .envelope(envelope))
-		let model = await makeModel(host: host, preferences: preferences, snapshotStore: healthySnapshotStore())
+		// Any selection other than the publication's own is read through the
+		// explicit-selection reader, answered from the same synthetic sessions.
+		let views = WireFixture.fixtureScopeViews()
+		let reader = StubSessionScopeReader { .view(views[$0]!) }
+		let model = await makeModel(host: host, preferences: preferences, snapshotStore: healthySnapshotStore(), sessionScopeReader: reader)
 		await model.coordinator.refresh()
 		return model
 	}
@@ -88,7 +92,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.clientTabs.contains { $0.value != "—" })
 		XCTAssertGreaterThan(try XCTUnwrap(model.sessionStatistics).sessions, 0)
 		XCTAssertTrue(model.sessionsPanel.available)
-		XCTAssertFalse(model.sessionsPanel.projects.isEmpty)
+		XCTAssertFalse(model.sessionsPanel.scope.rows.isEmpty)
 		preferences.menuBarValue = .cost
 		XCTAssertNotNil(model.menuBarText)
 		preferences.menuBarValue = .tokens
@@ -112,9 +116,8 @@ final class MenuBarViewModelTests: XCTestCase {
 			XCTAssertFalse(model.attributionPanel.pricingAvailable)
 			XCTAssertNil(model.sessionStatistics)
 			XCTAssertFalse(model.sessionsPanel.available)
-			XCTAssertTrue(model.sessionsPanel.stats.isEmpty)
-			XCTAssertTrue(model.sessionsPanel.projects.isEmpty)
-			XCTAssertTrue(model.sessionsPanel.recent.isEmpty)
+			XCTAssertTrue(model.sessionsPanel.scope.stats.isEmpty)
+			XCTAssertTrue(model.sessionsPanel.scope.rows.isEmpty)
 			XCTAssertTrue(model.sessionsPanel.workSignals.activityRows.isEmpty)
 			XCTAssertTrue(model.panelTabs.filter { $0.id != .quota }.allSatisfy(\.marked))
 			for followsPanel in [false, true] {
@@ -542,7 +545,9 @@ final class MenuBarViewModelTests: XCTestCase {
 		model.selectedPeriod = "today"
 		model.selectedClient = "claude"
 		XCTAssertEqual(model.sessionStatistics?.client, "claude")
-		XCTAssertEqual(model.sessionsPanel.stats.first?.value, DesktopFormat.count(0))
+		await model.synchronizeSessionScope()
+		XCTAssertEqual(model.sessionsPanel.scope.selectionLine?.contains("Claude"), true)
+		XCTAssertEqual(model.sessionsPanel.scope.stats.first?.value, DesktopFormat.count(0))
 	}
 
 	// The rhythm block is reused across selections but follows a new publication.
@@ -668,7 +673,9 @@ final class MenuBarViewModelTests: XCTestCase {
 			WireFixture.scope(client: "all", qualityAvailable: false, pricingAvailable: false),
 			WireFixture.scope(client: "codex"),
 		]
-		let model = await readyModel(envelope: WireFixture.envelope(scopes: scopes, sessionsPeriodsAvailable: false))
+		let model = await readyModel(envelope: WireFixture.envelope(
+			sessionScope: .custom(WireFixture.unavailableSessionScopeView(reason: "sessions_unavailable")),
+			scopes: scopes, sessionsPeriodsAvailable: false))
 
 		let tabs = Dictionary(uniqueKeysWithValues: model.panelTabs.map { ($0.id, $0) })
 		XCTAssertTrue(tabs[.attribution]?.marked ?? false)
@@ -677,6 +684,12 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(tabs[.attribution]?.accessibilityLabel, t(DesktopCopy.panelUnavailableMark, MenuBarPanel.attribution.title))
 		XCTAssertFalse(model.attributionPanel.qualityAvailable)
 		XCTAssertFalse(model.attributionPanel.pricingAvailable)
+
+		// The Sessions tab follows its scope view; the legacy all-session
+		// period family no longer feeds it, so its absence alone marks nothing.
+		let legacyPeriodsOnly = await readyModel(envelope: WireFixture.envelope(sessionsPeriodsAvailable: false))
+		XCTAssertEqual(legacyPeriodsOnly.sessionsPanel.scope.state, .ready)
+		XCTAssertFalse(legacyPeriodsOnly.panelTabs.first { $0.id == .sessions }?.marked ?? true)
 	}
 
 	func testIncompleteCostIsNeverLabeledComplete() async {
@@ -790,18 +803,34 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.usagePanel.chips.first?.note, t(DesktopCopy.notCapturedYet))
 	}
 
-	func testSessionStatisticsComeFromTheProducerRatherThanTheRecentList() async {
-		let model = await readyModel(envelope: WireFixture.envelope(sessionItems: [WireFixture.defaultSessionItem]))
-		model.selectedClient = "codex"
+	func testSessionStatisticsComeFromTheScopeViewRatherThanItsRecentRows() async {
+		let view = WireFixture.sessionScopeView(sessions: 7, projects: 3, knownDurationMS: 5_400_000, missing: 2, unknownCount: 4,
+			recent: [WireFixture.scopeRecent()])
+		let model = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(view)))
+		model.selectedClient = "all"
 		model.selectedPeriod = "today"
 
-		XCTAssertEqual(model.sessionsPanel.stats.first(where: { $0.id == "sessions" })?.value, DesktopFormat.count(2))
-		XCTAssertEqual(model.sessionsPanel.stats.map(\.id), ["sessions", "average", "projects"])
-		XCTAssertEqual(model.sessionsPanel.stats.first(where: { $0.id == "average" })?.value, DesktopFormat.duration(3_600))
-		XCTAssertEqual(model.sessionsPanel.projects.map(\.label), ["agent-deck", "ai-tools"])
-		XCTAssertEqual(model.sessionsPanel.projects.map(\.shareText), [DesktopFormat.duration(4_200), DesktopFormat.duration(3_000)])
-		XCTAssertEqual(model.sessionsPanel.recent.count, 1, "the recent list stays a bounded recent list")
-		XCTAssertEqual(model.sessionsPanel.recent[0].when, DesktopFormat.duration(18 * 60))
+		let scope = model.sessionsPanel.scope
+		XCTAssertEqual(scope.state, .ready)
+		XCTAssertEqual(scope.stats.map(\.id), ["sessions", "projects", "known-duration"])
+		XCTAssertEqual(scope.stats.map(\.value), [DesktopFormat.count(7), DesktopFormat.count(3), DesktopFormat.duration(5_400)])
+		XCTAssertEqual(scope.missingDurationNote, t(DesktopCopy.sessionScopeMissingDuration, Int64(2)))
+		XCTAssertEqual(scope.unknownLine, t(DesktopCopy.sessionScopeUnknownIncluded, Int64(4)))
+		XCTAssertEqual(scope.rows.count, 1, "recent rows stay a bounded list, never the count")
+		XCTAssertEqual(scope.rows[0].when, DesktopFormat.duration(18 * 60))
+		// The legacy all-session figures never reach the session area.
+		XCTAssertFalse(scope.stats.contains { $0.value == DesktopFormat.duration(3_600) })
+	}
+
+	func testKnownDurationIsADashOnlyWhenEveryDurationIsMissing() async {
+		let allMissing = WireFixture.sessionScopeView(sessions: 2, knownDurationMS: NSNull(), missing: 2, recent: [])
+		let missing = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(allMissing)))
+		XCTAssertEqual(missing.sessionsPanel.scope.stats.last?.value, "—")
+		let empty = WireFixture.sessionScopeView(sessions: 0, projects: 0, knownDurationMS: 0, unknownCount: 0, recent: [])
+		let trustedZero = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(empty)))
+		XCTAssertNotEqual(trustedZero.sessionsPanel.scope.stats.last?.value, "—")
+		XCTAssertEqual(trustedZero.sessionsPanel.scope.notice, t(DesktopCopy.sessionScopeEmpty))
+		XCTAssertEqual(trustedZero.sessionsPanel.scope.emptyCopy, t(DesktopCopy.sessionScopeNoMatches))
 	}
 
 	func testCapturedWorkSignalsUseTheSelectedScopeAndFixedOrders() async {
@@ -834,18 +863,25 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		model.selectedClient = "codex"
 		model.selectedPeriod = "30d"
+		await model.synchronizeSessionScope()
 		let thirtyDays = model.sessionsPanel.workSignals
 		XCTAssertEqual(thirtyDays.state, .captured)
 		XCTAssertEqual(thirtyDays.workflowMetrics[0].value, DesktopFormat.workSignalDuration(180))
 		XCTAssertEqual(thirtyDays.topFileText, "tasks.md ×6")
 	}
 
-	func testWorkSignalStateDistinguishesEmptyScopeFromLegacyUncapturedPayload() async {
+	func testAnEmptySessionSelectionKeepsItsSignalFamiliesAndALegacyPayloadStaysUncaptured() async {
+		// Claude lists no session and its families report no item: the signal
+		// area does not follow the session list into an empty state, it shows
+		// each available family honestly as unmeasured.
 		let captured = await readyModel()
 		captured.selectedClient = "claude"
 		captured.selectedPeriod = "today"
-		XCTAssertEqual(captured.sessionsPanel.workSignals.state, .empty)
-		XCTAssertTrue(captured.sessionsPanel.workSignals.summaries.isEmpty)
+		await captured.synchronizeSessionScope()
+		XCTAssertEqual(captured.sessionsPanel.scope.notice, t(DesktopCopy.sessionScopeEmpty))
+		XCTAssertEqual(captured.sessionsPanel.workSignals.state, .captured)
+		XCTAssertTrue(captured.sessionsPanel.workSignals.uncapturedSections.isEmpty)
+		XCTAssertEqual(captured.sessionsPanel.workSignals.summaries.map(\.value), ["—", "—", "—"])
 
 		let legacy = await readyModel(envelope: WireFixture.envelope(includeWorkSignals: false))
 		XCTAssertEqual(legacy.sessionsPanel.workSignals.state, .uncaptured)
@@ -983,14 +1019,21 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertLessThan(failingIndex!, partialIndex!, "reachability precedes completeness")
 	}
 
-	func testSessionIdentifiersNeverReachPresentationState() async {
-		let model = await readyModel()
-		model.selectedClient = "codex"
+	/// The legacy all-session recent list never feeds the session area: only
+	/// the scope view's own rows do, and their detail carries only safe fields.
+	func testLegacyRecentSessionsNeverReachTheSessionArea() async {
+		let view = WireFixture.sessionScopeView(recent: [WireFixture.scopeRecent(id: "scoped-1", project: "notes")])
+		let model = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(view), sessionItems: [WireFixture.defaultSessionItem]))
 
-		let presented = model.sessionsPanel.recent.flatMap { [$0.id, $0.title, $0.detail, $0.when] }
-			+ model.sessionsPanel.projects.map(\.label)
+		let rows = model.sessionsPanel.scope.rows
+		XCTAssertEqual(rows.map(\.origin.sessionID), ["scoped-1"])
+		let presented = rows.flatMap { row in
+			[row.title, row.detail, row.classLabel, row.when, row.origin.subtitle, row.origin.effective, row.origin.automatic,
+			 row.origin.reason, row.origin.ruleVersion, row.origin.override, row.origin.overrideRevision, row.origin.command]
+		}
 		for value in presented {
-			XCTAssertFalse(value.contains("session-secret-1"))
+			XCTAssertFalse(value.contains("session-secret-1"), value)
+			XCTAssertFalse(value.contains("/"), "no path reaches the detail: \(value)")
 		}
 	}
 
