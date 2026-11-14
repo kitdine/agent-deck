@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,17 +20,7 @@ func init() {
 			break
 		}
 	}
-	prepareHelperCommand = func(command *exec.Cmd) {
-		if AcceptanceHelperCommand != nil {
-			AcceptanceHelperCommand(command)
-		}
-	}
 }
-
-// AcceptanceHelperCommand lets an acceptance test process adjust how a cleanup
-// helper is started, because its helper is the test binary itself. Only
-// acceptance builds compile this; production binaries start helpers as given.
-var AcceptanceHelperCommand func(*exec.Cmd)
 
 // acceptanceInstallHook reads AGENTDECK_ACCEPTANCE_INSTALL_HOOK, or its
 // HOMEBREW_-prefixed twin when that one is unset, a comma-separated list of <point>=fail or <point>=wait:<directory>. A wait

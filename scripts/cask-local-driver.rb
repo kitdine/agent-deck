@@ -1,95 +1,54 @@
 # Test support for scripts/test-cask-migration.sh. Not part of any installation.
 #
-# Evaluates a rendered cask without Homebrew and runs the cask's own preflight
-# block, rollback block and uninstall script against directories the caller
-# chooses. The commands those declarations run are executed for real, so the
-# helper they name must be an agentdeck_acceptance build in a temporary
-# account. Nothing here stages, downloads or quarantines anything, and no
-# Homebrew-staged program is executed.
+# Evaluates a rendered cask without Homebrew and reports the declarations the
+# local checks need: the app artifact, the formula conflict step, the postflight
+# registration step and the uninstall script. It runs nothing itself. The caller
+# decides what to execute, so a declaration that names a system tool can be run
+# against a stub instead.
 #
-# usage: ruby cask-local-driver.rb <cask> <staged-path> <appdir> <prefix> <action>
-#   install            run the publishing preflight block
-#   install-rollback   run it, then the rollback block as a later failure would
-#   uninstall          run the uninstall script, then the rollback block
-#   binaries           print "<source>\t<target>" for every binary artifact
-#   formulae           print the formulae the preflight step refuses
-#   uninstall-argv     print the uninstall script's arguments, NUL-separated
-require "open3"
+# usage: ruby cask-local-driver.rb <cask> <appdir> <prefix> <action>
+#   apps                 print every app artifact
+#   binaries             print "<source>\t<target>" for every binary artifact
+#   formulae             print the formulae the preflight step refuses
+#   postflight-argv      print the registration step's argv, NUL-separated
+#   postflight-options   print the registration step's sandbox declarations
+#   uninstall-argv       print the uninstall script's argv, NUL-separated
+#   uninstall-quit       print the bundle identifier the uninstall quits
 
-cask_file, staged_path, appdir, prefix, action = ARGV
-abort "usage: cask-local-driver.rb <cask> <staged-path> <appdir> <prefix> <action>" if action.nil?
+cask_file, appdir, prefix, action = ARGV
+abort "usage: cask-local-driver.rb <cask> <appdir> <prefix> <action>" if action.nil?
 
 HOMEBREW_PREFIX = prefix
 
-module Cask
-  class CaskError < StandardError; end
-end
-
-# The subset of SystemCommand the cask uses.
-class LocalCommand
-  Result = Struct.new(:status, :stdout, :stderr) do
-    def success?
-      status.success?
-    end
-  end
-
-  def self.run(executable, args: [], **_options)
-    stdout, stderr, status = Open3.capture3(executable.to_s, *args.map(&:to_s))
-    $stderr.print(stderr)
-    Result.new(status, stdout, stderr)
-  rescue SystemCallError => e
-    $stderr.puts(e.message)
-    Result.new(Struct.new(:success?).new(false), "", e.message)
-  end
-end
-
-# What a classic flight block can see.
-class FlightContext
-  attr_reader :token, :version, :staged_path, :appdir
-
-  def initialize(token, version, staged_path, appdir)
-    @token = token
-    @version = version
-    @staged_path = staged_path
-    @appdir = appdir
-  end
-
-  def command
-    LocalCommand
-  end
-
-  def system_command(executable, **options)
-    result = LocalCommand.run(executable, **options)
-    raise Cask::CaskError, "command failed: #{executable}" unless result.success?
-
-    result
-  end
-end
-
-# Records the paths the formula conflict step would test.
+# Records what a *_steps block declares. Homebrew substitutes {{name}} template
+# variables when it runs a step; the driver substitutes the ones it is given.
 class StepRecorder
-  attr_reader :paths
+  attr_reader :paths, :runs
 
   def initialize
     @paths = []
+    @runs = []
   end
 
   def if_path_exists(path)
     @paths << path
+    yield if block_given?
   end
 
-  def run(*); end
+  def run(executable, args: [], **options)
+    @runs << { executable: executable, args: args, options: options }
+  end
 end
 
 class LocalCask
-  attr_reader :token, :staged_path, :appdir, :binaries, :flights, :uninstall_directives, :formula_paths
+  attr_reader :token, :appdir, :apps, :binaries, :uninstall_directives, :formula_paths, :postflight_runs
 
-  def initialize(token, staged_path, appdir)
+  def initialize(token, appdir)
     @token = token
-    @staged_path = staged_path
     @appdir = appdir
+    @apps = []
     @binaries = []
-    @flights = {}
+    @postflight_runs = []
   end
 
   def version(value = nil)
@@ -97,16 +56,12 @@ class LocalCask
     @version
   end
 
+  def app(source)
+    @apps << source
+  end
+
   def binary(source, target: nil)
     @binaries << [source, target || File.join(HOMEBREW_PREFIX, "bin", File.basename(source))]
-  end
-
-  def preflight(&block)
-    @flights[:preflight] = block
-  end
-
-  def uninstall_preflight(&block)
-    @flights[:uninstall_preflight] = block
   end
 
   def preflight_steps(&block)
@@ -115,62 +70,68 @@ class LocalCask
     @formula_paths = recorder.paths
   end
 
+  def postflight_steps(&block)
+    recorder = StepRecorder.new
+    recorder.instance_eval(&block)
+    @postflight_runs = recorder.runs
+  end
+
   def uninstall(**directives)
     @uninstall_directives = directives
   end
 
-  def app(*)
-    abort "the cask declares an app stanza; the local driver cannot publish outside the ownership lock"
+  # The classic Ruby flight blocks are deprecated by Homebrew and are how the
+  # withdrawn cask protocol published the App itself. A cask that brings one
+  # back must fail these checks rather than be silently ignored.
+  %i[preflight postflight uninstall_preflight uninstall_postflight].each do |stanza|
+    define_method(stanza) { |*| abort "the cask declares a classic #{stanza} block" }
   end
 
   # Metadata stanzas that do not affect installation.
   %i[sha256 url name desc homepage depends_on conflicts_with caveats zap].each do |stanza|
     define_method(stanza) { |*_args, **_kwargs| nil }
   end
-
-  def run_flight(key)
-    block = flights.fetch(key)
-    FlightContext.new(token, version, staged_path, appdir).instance_eval(&block)
-  end
 end
 
-$local_cask_directories = [staged_path, appdir]
+$local_cask_appdir = appdir
 $local_cask = nil
 
 def cask(token, &block)
-  $local_cask = LocalCask.new(token, *$local_cask_directories)
+  $local_cask = LocalCask.new(token, $local_cask_appdir)
   $local_cask.instance_eval(&block)
 end
 load cask_file
 loaded = $local_cask
 
-def uninstall_argv(cask)
-  script = cask.uninstall_directives.fetch(:script)
-  [script.fetch(:executable), *script.fetch(:args).map(&:to_s)]
+def registration_step(cask)
+  abort "the cask must declare exactly one postflight step" unless cask.postflight_runs.length == 1
+  cask.postflight_runs.first
 end
 
-begin
-  case action
-  when "install"
-    loaded.run_flight(:preflight)
-  when "install-rollback"
-    loaded.run_flight(:preflight)
-    loaded.run_flight(:uninstall_preflight)
-  when "uninstall"
-    system(*uninstall_argv(loaded))
-    status = $?.exitstatus
-    loaded.run_flight(:uninstall_preflight)
-    exit status
-  when "binaries"
-    loaded.binaries.each { |source, target| puts "#{source}\t#{target}" }
-  when "formulae"
-    loaded.formula_paths.each { |path| puts File.basename(path) }
-  when "uninstall-argv"
-    print uninstall_argv(loaded).join("\0")
-  else
-    abort "unknown action #{action}"
+def substitute(cask, value)
+  value.to_s.gsub("{{appdir}}", cask.appdir)
+end
+
+case action
+when "apps"
+  loaded.apps.each { |source| puts source }
+when "binaries"
+  loaded.binaries.each { |source, target| puts "#{source}\t#{target}" }
+when "formulae"
+  loaded.formula_paths.each { |path| puts File.basename(path) }
+when "postflight-argv"
+  step = registration_step(loaded)
+  print [step.fetch(:executable), *step.fetch(:args)].map { |value| substitute(loaded, value) }.join("\0")
+when "postflight-options"
+  registration_step(loaded).fetch(:options).sort_by { |name, _| name.to_s }.each do |name, value|
+    puts "#{name}=#{value.inspect}"
   end
-rescue Cask::CaskError, RuntimeError => e
-  $stderr.puts "Error: #{e.message}"
-  exit 1
+when "uninstall-argv"
+  script = loaded.uninstall_directives.fetch(:script)
+  abort "the uninstall script must not use sudo" unless script.fetch(:sudo) == false
+  print [script.fetch(:executable), *script.fetch(:args).map(&:to_s)].join("\0")
+when "uninstall-quit"
+  puts loaded.uninstall_directives.fetch(:quit)
+else
+  abort "unknown action #{action}"
 end

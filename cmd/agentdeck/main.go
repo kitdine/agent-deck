@@ -503,9 +503,6 @@ func errorDetails(err error) any {
 	}
 	var installRefused *installation.InstallError
 	if errors.As(err, &installRefused) {
-		if installRefused.Detail != "" {
-			return map[string]string{"reason": installRefused.Reason, "detail": installRefused.Detail}
-		}
 		return map[string]string{"reason": installRefused.Reason}
 	}
 	var contention *store.ErrLockContention

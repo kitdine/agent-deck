@@ -97,10 +97,8 @@ from pathlib import Path
 import re
 import sys
 
-allowed = {
-    'Warning: Calling `preflight` is deprecated! Use `preflight_steps` instead.',
-    'Warning: Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.',
-}
+# The cask uses only step stanzas, so Homebrew has nothing to warn about.
+allowed = set()
 ansi = re.compile(r'\x1b\[[0-9;]*m')
 for raw in Path(sys.argv[1]).read_text().splitlines():
     text = ansi.sub('', raw)
@@ -147,13 +145,16 @@ grep -F '["agentdeck", "agentdeck-rc"].each do |conflicting_formula|' "$stable_c
 grep -F 'preflight_steps do' "$stable_cask" >/dev/null
 grep -F 'if_path_exists "{{HOMEBREW_CELLAR}}/#{conflicting_formula}" do' "$stable_cask" >/dev/null
 grep -F 'run "/bin/sh", args: ["-c", <<~SH]' "$stable_cask" >/dev/null
-# The App is published by the staged helper inside AgentDeck's ownership lock,
-# never by an `app` stanza that would move it outside that lock.
-if grep -Eq '^[[:space:]]*app "' "$stable_cask"; then
-  echo "cask must not publish the App with an app stanza" >&2
+# Homebrew publishes and removes the App; the installed helper only records
+# ownership afterwards, from a step that may write the installation records.
+grep -Fx '  app "AgentDeck.app"' "$stable_cask" >/dev/null
+grep -F 'postflight_steps do' "$stable_cask" >/dev/null
+grep -F 'writable_paths: ["Library/Application Support/AgentDeck"],' "$stable_cask" >/dev/null
+grep -F 'writable_base: :home,' "$stable_cask" >/dev/null
+if grep -Eq '^[[:space:]]*(preflight|postflight|uninstall_preflight|uninstall_postflight) do' "$stable_cask"; then
+  echo "cask must not use a classic flight block" >&2
   exit 1
 fi
-grep -F '"--require-unowned"' "$stable_cask" >/dev/null
 grep -F 'binary "#{appdir}/AgentDeck.app/Contents/Helpers/agentdeck"' "$stable_cask" >/dev/null
 grep -F 'etc/bash_completion.d/agentdeck' "$stable_cask" >/dev/null
 grep -F 'share/zsh/site-functions/_agentdeck' "$stable_cask" >/dev/null
@@ -217,10 +218,8 @@ if ! command -v brew >/dev/null 2>&1; then
 fi
 homebrew_fixture_config="$temporary/homebrew-config"
 mkdir -p "$homebrew_fixture_config"
-# The cask publishes through classic `preflight` and `uninstall_preflight`
-# blocks, which Homebrew deprecates and refuses to load in developer mode. The
-# load check therefore runs as an ordinary user does, without developer mode,
-# and section 4 asserts that those two deprecations are the only warnings.
+# The load check runs as an ordinary user does, without developer mode, and
+# section 4 asserts that loading the cask produces no warning at all.
 fixture_brew() {
   env -u HOMEBREW_DEVELOPER HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
     XDG_CONFIG_HOME="$homebrew_fixture_config" \
@@ -255,8 +254,7 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   fi
   # A deprecated stanza still loads, so its warning is the only signal it emits
   # and an unasserted warning is how a deprecation reaches a published tap.
-  # The two classic flight blocks are an accepted, documented limitation of the
-  # ownership design; any other warning is still a failure.
+  # The cask declares no classic flight block, so every warning is a failure.
   if ! cask_load_warnings_are_expected "$load_log"; then
     echo "Homebrew warned while loading the $token cask:" >&2
     cat "$load_log" >&2

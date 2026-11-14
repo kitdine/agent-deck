@@ -26,10 +26,10 @@ updated: 2026-11-14
 - **小组件**：Debug 配置改用独立的扩展身份，这是构建身份的变化，界面不变。
 - **Settings**：不涉及。
 
-需求和 CLI 的历史通过状态保留；本次未修改它们。architecture/tasks 的 cask 修订 Draft 已就绪；架构修复候选在[架构评审](reviews/architecture.md) Round 14 复评 PASS，证据门禁 VERIFIED，评审者不独立的限制见该轮记录；任务分解修复候选在[任务分解评审](reviews/tasks.md) Round 17 复评 PASS，证据门禁 VERIFIED，同样带有评审者不独立的限制；Round 16 的 FAIL/FAILED 保留为原内容态的历史结论。两份文档待授权提交。旧架构 Round 12、任务分解 Round 15 的 PASS/VERIFIED 不覆盖变化。用户于 2026-11-13 已确认 G7/G9/A9/A6 的范围，见[决定及需求原文清单](architecture.md#保证变化与需求核对)；requirements.md 的文本落地由它自己的设计/评审处理，不再等待重复决定，也不声称该文本已改。按 2026-11-14 用户排期决定，该文本修订及其评审不阻塞任务 5 开发，只阻塞任务 8 的最终验收结论。本次不开发、提交或推送。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
+需求和 CLI 的历史通过状态保留；本次未修改它们。architecture/tasks 的 cask 修订 Draft 已就绪；架构修复候选在[架构评审](reviews/architecture.md) Round 14 复评 PASS，证据门禁 VERIFIED，评审者不独立的限制见该轮记录；任务分解修复候选在[任务分解评审](reviews/tasks.md) Round 17 复评 PASS，证据门禁 VERIFIED，同样带有评审者不独立的限制；Round 16 的 FAIL/FAILED 保留为原内容态的历史结论。两份文档已按用户授权分别提交：架构 `ec1fac0`、任务分解 `3d43d9b`；历史评审限制保留。旧架构 Round 12、任务分解 Round 15 的 PASS/VERIFIED 不覆盖变化。用户于 2026-11-13 已确认 G7/G9/A9/A6 的范围，见[决定及需求原文清单](architecture.md#保证变化与需求核对)；requirements.md 的文本落地由它自己的设计/评审处理，不再等待重复决定，也不声称该文本已改。按 2026-11-14 用户排期决定，该文本修订及其评审不阻塞任务 5 开发，只阻塞任务 8 的最终验收结论。任务 5 的 cask 简化已于 2026-11-14 在本地实现，Dev 与 Review 均勾选；当前实现 Round 6 复评 PASS，六项本地准则证据已补齐，完成门禁 NOT_VERIFIED（仅 real-brew），精确态证据与验证边界见[任务评审](reviews/installer-receipts.md)当前轮，CI 的 real-brew 尚未运行；历史实现与第 6 轮最终结果保留。本次已获 Task 5 提交、推送和 CI 证据回填授权，结果见任务评审记录。CLI 的逐字符标本在共享原型 `?surface=cli&ownership=<state>`（`prototype/src/ownership.js`）。逐文档记录见
 [需求](reviews/requirements.md)、[CLI](reviews/ux-cli.md)、
 [架构](reviews/architecture.md)、[任务分解](reviews/tasks.md)。
-`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 第 5 轮 `df4f821a` 的常规 CI 整体通过，real-brew 仍失败；最后第 6 轮本地修复及验证已完成，正按用户第 4–6 轮授权直接交付 CI。Review 未勾选，任务保持开放；实际结果、范围及授权见[任务评审](reviews/installer-receipts.md) CI cycle 1–6 和 Additional CI cycles；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
+`installation-identity` 已通过独立复评，提交态门禁 VERIFIED，并在本地提交 `1425256d96b510e060a9bd0496df769b67495c33` 中交付；见[任务评审](reviews/installation-identity.md)。`state-root-guard` 已通过 Round 2 独立复评；评审候选与证据门禁见[任务评审](reviews/state-root-guard.md)，本地提交交付由 Beads `ad-installed-state-ownership-state-root-guard` 的交付记录及对应 Git 提交核验。`client-config-guard` 已通过 Round 4 独立复评，全部发现已关闭，精确状态门禁 VERIFIED，待授权提交；见[任务评审](reviews/client-config-guard.md)。`installation-diagnostics` 已通过 Round 3 独立复评，候选身份、证据门禁和交付建议见[任务评审](reviews/installation-diagnostics.md)。任务 5 追加第 4–6 轮已全部签名提交推送，最终为 `fe938e0b`；最终常规 CI 整体通过，real-brew 失败，两个结论已全部回收，提交态门禁 FAILED。当时 Review 未勾选，任务保持开放，不自动追加第 7 轮 CI；当前复评状态见下方交接，历史结果、范围及授权见[任务评审](reviews/installer-receipts.md) CI cycle 1–6 和 Additional CI cycles；任务 7 已通过 Round 1 独立评审，已按 Apple 官方规则更正注册前提，完成门禁 VERIFIED；候选身份与验证边界见[任务评审](reviews/debug-app-identity.md)；任务 6 已通过 Round 2 独立复评（ISO-APP-R1-F1 closed），候选身份与证据门禁见[任务评审](reviews/app-state-location.md)，待授权提交；任务 8、9 尚未开发，各任务开工仍需对应开发指令。来源缺陷保持开放。
 
 ## Tasks
 
@@ -39,7 +39,7 @@ updated: 2026-11-14
 | 2. `state-root-guard` | [x] | [x] |
 | 3. `client-config-guard` | [x] | [x] |
 | 4. `installation-diagnostics` | [x] | [x] |
-| 5. `installer-receipts` | [ ] | [ ] |
+| 5. `installer-receipts` | [x] | [x] |
 | 6. `app-state-location` | [x] | [x] |
 | 7. `debug-app-identity` | [x] | [x] |
 | 8. `ownership-acceptance` | [ ] | [ ] |
@@ -541,7 +541,7 @@ Go 1.27.3 的定向回归、全量 Go 回归、scanruntime 包竞态、`go vet` 
 
 #### 评审交接（2026-11-10）
 
-任务 5 的早期评审、本地 validation 和推送 CI 结果保留各自的历史范围。第 5 轮已签名提交推送 `df4f821a1911d56c18b149fd02f735395e216428`，常规 CI `43023911537` 整体成功，real-brew `43023911550` 失败，提交态门禁 FAILED。当前为最后第 6 轮，交付态预留 ID 为 `installed-state-ownership:installer-receipts:ci-cycle6-20261111`，提交后绑定实际 SHA/树，再以该 SHA 的两个 CI 为准。Dev 完成、Review 未勾选，不伪造评审通过或 VERIFIED，不自动追加第 7 轮。当前身份、验证和授权边界见[任务评审记录](reviews/installer-receipts.md) Additional CI cycles 与 CI cycle 6。真实 brew 未在本机执行；Task、Topic 与来源缺陷保持开放。
+任务 5 的早期评审、本地 validation 和推送 CI 结果保留各自的历史范围。追加的第 4–6 轮已签名提交推送，最终提交 `fe938e0b6c1d43862391d03721055536f339694e` 及其树绑定交付态 `installed-state-ownership:installer-receipts:ci-cycle6-20261111`。最终常规 CI `43036542466` 整体成功，real-brew `43036542720` 失败，两个结论已全部回收；固定提交态门禁 FAILED，Dev 完成、Review 未勾选。本轮自动执行已停止，后续工作待用户新指令，不自动追加第 7 轮或 Git 交付。当前身份、验证和边界见[任务评审记录](reviews/installer-receipts.md) CI cycle 6 最终结果。真实 brew 未在本机执行；本次结果回填尚未提交，Task、Topic 与来源缺陷保持开放。
 
 #### 设计修订 — 2026-11-13
 
@@ -550,6 +550,37 @@ cask 简化是上述第 6 轮结果之后的新设计边界，不改写旧轮次
 #### 修复交接 — 2026-11-13
 
 架构 Round 13 的修复候选及对应任务同步已就绪，待独立复评；不改写上面的设计/第 6 轮历史。三项用户范围决定已确认，需求文字仍待它自己的设计/评审落地；真实包装步骤和升级拒绝后的恢复结果未验证，仍是后续任务 5 必测。任务分解修订未取得新评审结论，Dev/Review 不勾选，不启动实现或 Git 交付。
+
+#### 开发交接 — 2026-11-14（cask 简化）
+
+Implement: Claude Code / Claude Fable 5.2，未委派；工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`，HEAD `fe938e0b6c1d43862391d03721055536f339694e`，改动未提交。Beads 任务原归属 opencode，其最后交接写明自动循环已停止、后续工作待新的用户指令；本次凭用户的开发指令转给 claude-code。
+
+**撤除。** `internal/installation/attempt.go` 及其测试、`repair_test.go`；`RegisterRequest` 的 `RequireUnowned`、`AuthorizedRepair`、`ExpectedInstallation`；`UnregisterRequest` 的 `AuthorizedRepair`、`RequireIdentity`；`RepairIdentity`、`boundRepairCheck`、`OutcomeSkippedUnverified`；命令 `install repair-identity` 与 `install attempt` 整组；register 的 `--require-unowned`、`--authorized-repair`、`--expected-installation`，unregister 的 `--authorized-repair`、`--require-identity`；`InstallError.Detail` 及其两处输出，它唯一的写入方是已删除的 attempt 模块；验收构建里只为清理 helper 服务的 `AcceptanceHelperCommand`；交错测试 I5 与身份绑定清理测试，I4 收窄为本地 App；real-brew 夹具里不再使用的小组件登记函数及其四个测试。删除前核对过：`scripts/manage-install.sh` 与 `scripts/install-local-app.sh` 不使用上述任何一项；unregister 的 `--expected-installation`、`--cleanup-manifest`、`--remove` 与清理清单保留。
+
+**新增与改写。** cask 模板改为 `app "AgentDeck.app"`、架构所列 shell 包装的 `postflight_steps` 和三条判定的卸载脚本，243 行减到 138 行，不再有经典 flight 块。卸载脚本用命令替换读取查询输出，没有用临时文件，判定与架构一致。`scripts/cask-local-driver.rb` 改为只读出声明、不执行任何东西，并在遇到经典 flight 块时失败。`scripts/test-cask-migration.sh`、`scripts/test-cask-widget-registration.rb`、`scripts/test-cask-real-brew.sh` 按新模板重写；`scripts/test-macos-distribution.sh` 的声明断言随之更新，加载 cask 时允许的弃用警告从两条改为零条。新增 Go 测试覆盖无 `--source` 登记的无主、过期、同路径重登、其他拥有者、同路径不同方式、非自身程序、取不到锁各情形，文本拒绝中包装所依赖的整行 `  reason: <原因>`，以及已撤除命令和参数不再被接受。
+
+产品、测试与脚本合计新增 851 行、删除 3,946 行。任务 1–4、6、7 的代码未改；它们的测试没有因删除而失败。
+
+**本地验证（Go 1.27.3，均在临时目录与临时账户下）。**
+
+- `scripts/run-go-test.sh ./...` 通过；`make vet` 与验收标签下的 `go vet ./...` 通过。
+- 验收标签下 `./internal/installation/` 整包通过；`./cmd/agentdeck/` 的 `TestInstallInterleaving|TestOwnershipGuard|TestInstall` 通过，含 I1–I4 与最终叶子命令访问屏障矩阵。验收标签下 `./cmd/agentdeck/` 整包没有运行，上一次开发交接记录的 `watch` 时间相关失败未重新评估。
+- `make check-install`、`bash scripts/test-release-distribution.sh` 通过。
+- `bash scripts/test-cask-migration.sh --local-only` 通过。它用渲染后模板的原文运行登记包装和卸载脚本：真实验收 helper 的安装、同路径重登、卸载后过期回执被 make 接管、其他拥有者拒绝的三行迁移提示、会话占用期间以 `owner_running` 拒绝并在会话结束后成功；包装的六个替身用例；卸载脚本的八个桩用例。卸载脚本从不按原文运行，每次都把 `/usr/bin/pluginkit` 换成记录桩。对模板做四处变异（包装改为子串匹配、卸载忽略查询失败、卸载无条件注销、加回经典块），该脚本各自失败。
+- `python3 -B scripts/test-cask-real-brew-fixture.py` 10 项通过；`scripts/test-cask-real-brew.sh` 的 shell 与内嵌 Python 语法检查通过，本地入口以 exit 2 拒绝。
+
+**未运行。**
+
+- 任何调用真实 brew 的检查都没有在开发机运行：`test-cask-migration.sh` 不带 `--local-only` 时的 formula 冲突拒绝、`scripts/test-macos-distribution.sh`（含改写后的 `test-cask-widget-registration.rb` 与零警告断言）。后者只做过 `ruby -c` 与 `bash -n`；它依赖的 Homebrew 类名取自本机 Homebrew `7.0.13-97-g53c5856` 的源码，未执行。
+- CI 的 real-brew 五类回归需要推送后才能运行，全部未取得结果：shell 包装在真实步骤沙箱中的执行、升级中登记被拒后 Homebrew 的恢复末态、HOME 不一致时的拒绝。脚本里这几处失败以 `DESIGN:` 开头报告，按架构应返回设计。
+- 本地安装与卸载由桩代替 Homebrew 的文件处理，不证明 Homebrew 的发布、替换、回滚或恢复。
+- `-race` 没有重跑：并发相关的锁与会话代码未改，本次只删除分支。
+
+**证据与后续。** 本次没有向 CEv1 写入候选证据。WorkUnit `installed-state-ownership:installer-receipts` 现有的必需准则仍按旧设计表述：`bound-repair` 对应已撤除的身份绑定修复，`real-brew` 写的是“不带 app 标签的 cask”和小组件登记，`installer-integration` 写的是锁外不得删除最终 App。按这些准则无法为新设计取证，准则集需要先按已通过的架构修订，这是评审取得门禁之前的前提。任务保持开放，等待独立评审；提交、推送和真实 brew 均未执行。
+
+#### 评审交接 — 2026-11-14（cask 简化）
+
+当前实现 Round 6 独立复评 PASS，Dev 与 Review 均勾选；发现处置、精确内容身份与验证边界见[任务评审记录](reviews/installer-receipts.md) Round 6。CEv1 验收版本 `installed-state-ownership:installer-receipts:acceptance-v2` 的完成门禁 NOT_VERIFIED（7/8）：独立复评及六项本地准则均有当前候选精确态证据，只有 real-brew 五类回归仍待 CI。按本任务已批准的推送后取证例外，任务进入 `awaiting_commit`；用户已另行授权提交、推送及对应 CI 证据回填；按已核验的本地证据执行交付，real-brew 结果待最终提交的 CI。未进入下一任务、不关闭 Task/Topic；旧 WorkUnit、旧 FAIL/FAILED 和 CI 事实保留原范围。
 
 ### 6. `app-state-location`
 

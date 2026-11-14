@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The cask's installation protocol, formula-to-cask migration, mutual exclusion
-# and the uninstall boundary, all in a temporary HOME, a temporary account
-# directory, a temporary application directory, and a temporary prefix.
+# The cask's declarations, its registration step, formula-to-cask migration,
+# mutual exclusion and the uninstall boundary, all in a temporary HOME, a
+# temporary account directory, a temporary application directory, and a
+# temporary prefix.
 #
 # Boundary, stated rather than implied:
 #
-# - The publishing preflight block, the rollback block and the uninstall script
-#   are the rendered cask's own code, run by scripts/cask-local-driver.rb. The
-#   helper they call is an agentdeck_acceptance build placed in a temporary
-#   staged directory by this script; its receipt, ownership lock and cleanup
-#   materials live in the temporary account. PlugInKit is a recording stub.
+# - Homebrew owns the App's files. This script stands in for it with plain
+#   copies and removals, so nothing here proves what Homebrew does: how it
+#   publishes, replaces, rolls back or restores an App is proven only in CI, in
+#   scripts/test-cask-real-brew.sh.
+# - The registration step and the uninstall script are the rendered cask's own
+#   text, read out by scripts/cask-local-driver.rb. The helper the step calls is
+#   an agentdeck_acceptance build in the temporary application directory; its
+#   receipt and ownership lock live in the temporary account. The step runs
+#   here without Homebrew's sandbox, so its writable_paths declaration is
+#   checked as text only.
+# - The uninstall script names /usr/bin/pluginkit. It is never run as written:
+#   every run substitutes a recording stub, so this machine's real extension
+#   registrations are neither read nor changed.
 # - No program staged by Homebrew is ever executed here. On a developer
-#   machine that triggers Gatekeeper. The complete Homebrew dispatch runs only
-#   in CI, in scripts/test-cask-real-brew.sh.
+#   machine that triggers Gatekeeper.
 # - The one real `brew install --cask` below is the formula conflict refusal.
 #   It fails in a preflight step that only runs /bin/sh, before any helper.
 #   --local-only omits that refusal check and never invokes brew.
@@ -42,30 +50,46 @@ home="$temporary/home"
 account="$temporary/account"
 appdir="$temporary/Applications"
 prefix="$temporary/brew"
-caskroom="$temporary/Caskroom"
 formula_records="$temporary/formula-records"
+step_temporary="$temporary/step-tmp"
+pluginkit="$temporary/pluginkit"
 pluginkit_log="$temporary/pluginkit.log"
-mkdir -p "$home" "$account" "$appdir" "$prefix/bin" "$formula_records"
+pluginkit_mode="$temporary/pluginkit.mode"
+pluginkit_remove_status="$temporary/pluginkit.remove-status"
+mkdir -p "$home" "$account" "$appdir" "$prefix/bin" "$formula_records" "$step_temporary"
 : >"$pluginkit_log"
 
 # The account directory is deliberately not HOME: nothing may depend on HOME.
 export AGENTDECK_ACCEPTANCE_ACCOUNT_HOME="$account"
-export AGENTDECK_ACCEPTANCE_PLUGINKIT="$temporary/pluginkit"
-cat >"$AGENTDECK_ACCEPTANCE_PLUGINKIT" <<EOF
-#!/bin/sh
-printf '%s\n' "\$*" >>"$pluginkit_log"
-if [ "\$1" = -m ]; then
-  printf '    Path = %s\n (1 plug-in)\n' "$appdir/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex"
-fi
-EOF
-chmod 0755 "$AGENTDECK_ACCEPTANCE_PLUGINKIT"
-unset HOMEBREW_AGENTDECK_REPAIR HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
 
 support="$account/Library/Application Support/AgentDeck"
 receipt="$support/installation.json"
-attempts="$support/installers/homebrew_cask/attempts"
 app="$appdir/AgentDeck.app"
 final_helper="$app/Contents/Helpers/agentdeck"
+extension="$app/Contents/PlugIns/AgentDeckWidget.appex"
+
+# The stub answers a query from the mode file and records every call. Its
+# output shapes are the ones observed on a GitHub-hosted macOS 26.7 runner and
+# the ones the script must not depend on.
+cat >"$pluginkit" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$pluginkit_log"
+if [ "\$1" = -r ]; then
+  exit "\$(cat "$pluginkit_remove_status")"
+fi
+case "\$(cat "$pluginkit_mode")" in
+  registered) printf '     com.kitdine.agentdeck.widget(1.0)\n            Path = %s\n\n (1 plug-in)\n' "$extension" ;;
+  other-path) printf '     com.kitdine.agentdeck.widget(1.0)\n            Path = %s\n\n (1 plug-in)\n' "$temporary/elsewhere/AgentDeck.app/Contents/PlugIns/AgentDeckWidget.appex" ;;
+  prefix-path) printf '            Path = %s.old\n' "$extension" ;;
+  no-matches) printf '  (no matches)\n' ;;
+  zero) printf '(0 plug-ins)\n' ;;
+  empty) ;;
+  query-fail) echo 'pluginkit: lookup failed' >&2; exit 9 ;;
+esac
+EOF
+chmod 0755 "$pluginkit"
+printf 'no-matches\n' >"$pluginkit_mode"
+printf '0\n' >"$pluginkit_remove_status"
 
 helper_build="$temporary/helper/agentdeck"
 mkdir -p "$(dirname "$helper_build")"
@@ -141,71 +165,38 @@ expect_output() {
   }
 }
 
+reject_output() {
+  if grep -F -- "$1" "$temporary/failure.log" >/dev/null; then
+    cat "$temporary/failure.log" >&2
+    fail "unexpected output: $1"
+  fi
+}
+
 receipt_field() {
   sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p" "$receipt"
 }
 
-# tree_digest <path>: names, types, modes, sizes and content below a path.
-tree_digest() {
-  if [[ ! -e $1 && ! -L $1 ]]; then
+digest() {
+  if [[ ! -e $1 ]]; then
     printf 'absent\n'
     return
   fi
-  {
-    find "$1" -exec stat -f '%N %HT %Lp %z' {} + | LC_ALL=C sort
-    find "$1" -type f -exec shasum -a 256 {} + | LC_ALL=C sort
-  } | shasum -a 256 | awk '{ print $1 }'
+  shasum -a 256 "$1" | awk '{ print $1 }'
 }
 
-unchanged() {
-  [[ $(tree_digest "$app") == "$app_digest" && $(tree_digest "$receipt") == "$receipt_digest" ]] ||
-    fail "the App or the receipt changed: $1"
+# installed <helper>: what that program itself reports about its own identity.
+installed() {
+  "$1" --format json desktop state-location
 }
 
-attempt_count() {
-  if [[ -d $attempts ]]; then
-    find "$attempts" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '
-  else
-    printf '0\n'
-  fi
-}
-
-latest_attempt() {
-  sed -n 's/.*"attempt_id":"\([0-9a-f]*\)".*/\1/p' "$1/.agentdeck-attempt"
-}
-
-no_staged_copy() {
-  if [[ -n $(find "$appdir" -mindepth 1 -maxdepth 1 ! -name AgentDeck.app -print -quit) ]]; then
-    fail "a staged or replaced copy was left in the application directory: $1"
-  fi
-}
-
-# --- a local installer driven by the cask's own declarations -------------
+# --- the cask's own declarations ------------------------------------------
 
 cask_token() {
   awk -F'"' '/^cask "/ { print $2; exit }' "$1"
 }
 
-cask_version() {
-  awk -F'"' '/^  version "/ { print $2; exit }' "$1"
-}
-
-staged_path_of() {
-  printf '%s/%s/%s\n' "$caskroom" "$(cask_token "$1")" "$(cask_version "$1")"
-}
-
-# purge_staged <cask>: what Homebrew does to a staged directory after a failed
-# or finished operation. The path is always below this test's Caskroom.
-purge_staged() {
-  local staged
-  staged=$(staged_path_of "$1")
-  [[ $staged == "$caskroom"/*/* ]] || fail "refusing to purge $staged"
-  rm -rf "${staged:?}"
-}
-
 driver() {
-  local cask_file=$1 action=$2
-  ruby "$root/scripts/cask-local-driver.rb" "$cask_file" "$(staged_path_of "$cask_file")" "$appdir" "$prefix" "$action"
+  ruby "$root/scripts/cask-local-driver.rb" "$1" "$appdir" "$prefix" "$2"
 }
 
 cask_conflicting_formulae() {
@@ -219,13 +210,60 @@ cask_binaries() {
   driver "$1" binaries
 }
 
-# cask_install <cask> <source bundle> [action]: stage the bundle as Homebrew
-# would, then run the cask's formula check, publishing block and binary links.
+# read_argv <cask> <action>: the declared argv into the global `argv` array.
+read_argv() {
+  argv=()
+  local item
+  while IFS= read -r -d '' item; do
+    argv+=("$item")
+  done < <(driver "$1" "$2"; printf '\0')
+}
+
+# run_registration <cask> [helper]: the cask's registration step as declared,
+# against the installed helper or a stand-in. Its temporary file must be gone
+# when it returns, whatever the outcome.
+run_registration() {
+  read_argv "$1" postflight-argv
+  [[ ${argv[0]} == /bin/sh && ${argv[1]} == -c && ${argv[3]} == agentdeck-cask-register ]] ||
+    fail "the registration step is not the declared /bin/sh wrapper"
+  [[ ${argv[4]} == "$final_helper" && ${argv[5]} == "$(cask_token "$1")" && ${#argv[@]} == 6 ]] ||
+    fail "the registration step must receive the installed helper and the cask token"
+  if [[ -n ${2:-} ]]; then
+    argv[4]=$2
+  fi
+  local status=0
+  TMPDIR="$step_temporary" "${argv[@]}" || status=$?
+  if [[ -n $(find "$step_temporary" -mindepth 1 -print -quit) ]]; then
+    fail "the registration step left a temporary file behind"
+  fi
+  return "$status"
+}
+
+# run_uninstall_script <cask>: the cask's uninstall script as declared, with
+# the recording stub in place of the system tool.
+run_uninstall_script() {
+  read_argv "$1" uninstall-argv
+  [[ ${argv[0]} == /bin/sh && ${argv[1]} == -c && ${argv[3]} == agentdeck-widget-uninstall ]] ||
+    fail "the uninstall script is not the declared /bin/sh script"
+  [[ ${argv[4]} == "$extension" && ${argv[5]} == com.kitdine.agentdeck.widget && ${#argv[@]} == 6 ]] ||
+    fail "the uninstall script must receive this App's extension and the release widget identifier"
+  local script=${argv[2]}
+  [[ $(grep -c '/usr/bin/pluginkit' <<<"$script") == 2 ]] ||
+    fail "the uninstall script must query once and unregister once"
+  argv[2]=${script//\/usr\/bin\/pluginkit/$pluginkit}
+  "${argv[@]}"
+}
+
+# --- a stand-in for Homebrew's file handling ------------------------------
+
+# cask_install <cask> <source bundle>: the formula check, the collision check,
+# a copy in place of the app artifact, the registration step, then the links.
+# A failed registration removes the copy, as a failed install step makes
+# Homebrew remove the artifacts it had installed.
 cask_install() {
-  local cask_file=$1 source_bundle=$2 action=${3:-install}
-  local token staged record
+  local cask_file=$1 source_bundle=$2
+  local token record
   token=$(cask_token "$cask_file")
-  staged=$(staged_path_of "$cask_file")
   record="$temporary/installed-$token"
 
   local formula
@@ -246,16 +284,15 @@ cask_install() {
     fi
   done < <(cask_binaries "$cask_file")
 
-  # Homebrew stages the download. A staged directory that already exists is one
-  # it restored from backup, so its locator is kept.
-  if [[ ! -d $staged ]]; then
-    mkdir -p "$staged"
-    ditto "$source_bundle" "$staged/AgentDeck.app"
+  if [[ -e $app ]]; then
+    echo "an App already exists at $app" >&2
+    return 6
   fi
-  if ! driver "$cask_file" "$action"; then
+  ditto "$source_bundle" "$app"
+  if ! run_registration "$cask_file"; then
+    rm -rf "${app:?}"
     return 5
   fi
-  [[ $action == install ]] || return 0
   : >"$record"
   while IFS=$'\t' read -r source target; do
     mkdir -p "$(dirname "$target")"
@@ -265,14 +302,14 @@ cask_install() {
 }
 
 # cask_uninstall <cask>: the uninstall script first, as Homebrew orders it, then
-# the link removal and the purge of the staged directory. A failing script
-# aborts the uninstall with everything else in place.
+# the App and the links. A failing script aborts with everything in place.
 cask_uninstall() {
   local cask_file=$1
   local token record
   token=$(cask_token "$cask_file")
   record="$temporary/installed-$token"
-  driver "$cask_file" uninstall || return 5
+  run_uninstall_script "$cask_file" || return 5
+  rm -rf "${app:?}"
   if [[ -e $record ]]; then
     local target
     while IFS= read -r target; do
@@ -281,7 +318,6 @@ cask_uninstall() {
     done <"$record"
     unlink "$record"
   fi
-  purge_staged "$cask_file"
 }
 
 real_brew_install_refusal() {
@@ -338,8 +374,6 @@ real_brew_install_refusal() {
     exit 1
   fi
 
-  # The publishing blocks are classic flight blocks, which Homebrew refuses to
-  # load in developer mode; the regression runs as an ordinary user does.
   local brew_output="$temporary/real-brew-install.log"
   if env -u HOMEBREW_DEVELOPER \
     HOME="$home" \
@@ -377,10 +411,10 @@ real_brew_install_refusal() {
       exit 1
     fi
   done
-  # The refusal happens before the publishing block, so no helper ran and the
-  # account has no receipt and no attempt from it.
-  if [[ -e $receipt || $(attempt_count) != "$1" ]]; then
-    echo "real brew refusal reached the publishing block" >&2
+  # The refusal happens before the App is published, so the registration step
+  # never ran and the account has no receipt from it.
+  if [[ -e $receipt ]]; then
+    echo "real brew refusal reached the registration step" >&2
     exit 1
   fi
 }
@@ -393,51 +427,48 @@ upgrade_cask="$temporary/agentdeck-app-1.2.4.rb"
 render_cask v1.2.4 "$upgrade_cask"
 
 declaration=$(grep -v '^[[:space:]]*#' "$stable_cask")
-for forbidden in 'writable_paths' 'writable_base' 'Dir.home' 'ENV["HOME"]' 'ENV.fetch("HOME"' \
-  'expand_path' '--takeover' 'Application Support' 'delete:' 'rmdir:' 'pkgutil:' 'launchctl:'; do
+# The withdrawn cask protocol, and anything that would read or redirect HOME.
+for forbidden in 'attempt' 'repair' 'REPAIR' '--require-unowned' '--expected-installation' '--cleanup-manifest' \
+  '--source' '--takeover' 'unregister' 'staged_path' 'Dir.home' 'ENV[' 'ENV.fetch' 'expand_path' \
+  'delete:' 'rmdir:' 'pkgutil:' 'launchctl:' 'pluginkit -a' '--appdir'; do
   if grep -F -- "$forbidden" <<<"$declaration" >/dev/null; then
     fail "the rendered cask must not contain: $forbidden"
   fi
 done
-if grep -E '^[[:space:]]*app "' <<<"$declaration" >/dev/null; then
-  fail "the rendered cask must not publish the App with an app stanza"
+if grep -E '^[[:space:]]*(preflight|postflight|uninstall_preflight|uninstall_postflight) do' <<<"$declaration" >/dev/null; then
+  fail "the rendered cask must not use a classic flight block"
 fi
-# trash appears only in zap, and zap never names the App or AgentDeck state.
+[[ $(driver "$stable_cask" apps) == AgentDeck.app ]] || fail "Homebrew must publish exactly AgentDeck.app"
+[[ $(driver "$stable_cask" uninstall-quit) == com.kitdine.agentdeck ]] || fail "uninstall must quit the App first"
+# The step may write the installation records and nothing else.
+[[ $(driver "$stable_cask" postflight-options) == 'print_stdout=true
+writable_base=:home
+writable_paths=["Library/Application Support/AgentDeck"]' ]] || fail "the registration step's sandbox declarations changed"
+# trash appears only in zap, and zap never names the App, AgentDeck state or
+# the installation records: a stale receipt is how ownership is released.
 if [[ $(grep -c 'trash' <<<"$declaration") != 1 ]] || ! grep -F 'zap trash: [' <<<"$declaration" >/dev/null; then
   fail "trash may only appear in the zap stanza"
 fi
 if awk '/zap trash: \[/, /\]/' "$stable_cask" | grep -E 'AgentDeck\.app|/\.agentdeck"|Application Support' >/dev/null; then
   fail "zap must not remove the App, AgentDeck state or installation records"
 fi
-# The uninstall script leaves every removal to the helper.
-uninstall_shell=$(driver "$stable_cask" uninstall-argv | tr '\0' '\n' | sed -n '3,/^agentdeck-cask-uninstall$/p')
-if grep -E '(^|[[:space:];&|(])(rm|rmdir|trash|unlink|mv|pluginkit|sudo)[[:space:]]' <<<"$uninstall_shell" >/dev/null; then
-  fail "the uninstall script must leave every removal to the helper"
+# The uninstall script removes no file: Homebrew removes the App.
+read_argv "$stable_cask" uninstall-argv
+if grep -E '(^|[[:space:];&|(])(rm|rmdir|trash|unlink|mv|sudo)[[:space:]]' <<<"${argv[2]}" >/dev/null; then
+  fail "the uninstall script must not remove files"
 fi
-grep -F 'install attempt cleanup' <<<"$uninstall_shell" >/dev/null
-# --authorized-repair is produced in one place, by the user's variable.
-if [[ $(grep -c -- '<< "--authorized-repair"' <<<"$declaration") != 1 ]] ||
-  ! grep -F 'repair_arguments << "--authorized-repair" if ENV["HOMEBREW_AGENTDECK_REPAIR"] == "1"' <<<"$declaration" >/dev/null; then
-  fail "--authorized-repair must come only from HOMEBREW_AGENTDECK_REPAIR"
-fi
-# Both cleanup calls made by the cask's Ruby name one attempt and carry no
-# repair arguments. The only use of the repair arguments is register's and the
-# uninstall script's.
-if [[ $(grep -c '"install", "attempt", "cleanup", "--attempt"' <<<"$declaration") != 2 ]]; then
-  fail "the publishing block and the rollback block must each clean up one named attempt"
-fi
-if grep -A1 '"install", "attempt", "cleanup", "--attempt"' <<<"$declaration" | grep -F 'repair_arguments' >/dev/null; then
-  fail "a rollback cleanup must never carry repair arguments"
-fi
-if [[ $(grep -c '\*repair_arguments' <<<"$declaration") != 2 ]]; then
-  fail "repair arguments may only reach register and the uninstall script"
-fi
+# The registration step removes only its own temporary file.
+read_argv "$stable_cask" postflight-argv
+[[ $(grep -c '/bin/rm' <<<"${argv[2]}") == 1 ]] && grep -F "trap '/bin/rm -f \"\$errors\"' EXIT" <<<"${argv[2]}" >/dev/null ||
+  fail "the registration step may remove only its own temporary file"
 
 # --- 1. install, upgrade, uninstall --------------------------------------
 
 first=$(make_app "$temporary/source-1.2.3" 1.2.3)
 second=$(make_app "$temporary/source-1.2.4" 1.2.4)
-cask_install "$stable_cask" "$first"
+cask_install "$stable_cask" "$first" >"$temporary/install.log"
+# The helper's own stdout reaches the user unchanged.
+grep -Fx "registered $final_helper (homebrew_cask)" "$temporary/install.log" >/dev/null
 
 test -d "$app"
 test -L "$prefix/bin/agentdeck"
@@ -455,87 +486,220 @@ grep -F '# fish completion 1.2.3' "$prefix/share/fish/vendor_completions.d/agent
 [[ $(receipt_field channel) == homebrew_cask ]]
 [[ $(receipt_field executable) == "$final_helper" ]]
 [[ $(stat -f '%Lp' "$receipt") == 600 ]]
-first_attempt=$(latest_attempt "$(staged_path_of "$stable_cask")")
-[[ $first_attempt =~ ^[0-9a-f]{32}$ ]]
-first_materials="$attempts/$first_attempt"
-[[ $(stat -f '%Lp' "$first_materials") == 700 ]]
-[[ $(stat -f '%Lp' "$first_materials/manifest.json") == 600 ]]
-test -x "$first_materials/helper"
-test -f "$first_materials/attempt.json"
-test -f "$first_materials/published"
-grep -F "\"installation_id\":\"$(receipt_field installation_id)\"" "$first_materials/manifest.json" >/dev/null
-grep -F "\"remove_root\":\"$app\"" "$first_materials/manifest.json" >/dev/null
+first_id=$(receipt_field installation_id)
+[[ $first_id =~ ^[0-9a-f]{32}$ ]]
 if [[ -n $(find "$home" -mindepth 1 -print -quit) ]]; then
   find "$home" -mindepth 1 >&2; fail "the install wrote below HOME"
 fi
-no_staged_copy "first install"
+# The cask keeps no installer materials of its own: the lock and the receipt.
+[[ $(find "$support" -mindepth 1 | LC_ALL=C sort) == "$support/installation.json
+$support/ownership.lock" ]] || { find "$support" >&2; fail "the cask left installer materials in the account"; }
+installed "$final_helper" | grep -F '"installed":true,"channel":"homebrew_cask"' >/dev/null
 "$final_helper" --format json doctor | grep -F '"reason":"homebrew_cask"' >/dev/null
 
 # State the user owns, created between install and upgrade.
 mkdir -p "$home/.agentdeck" "$home/.codex" "$home/.claude"
-printf 'state\n' >"$home/.agentdeck/agentdeck.sqlite3"
 printf 'key\n' >"$home/.agentdeck/credential.key"
 printf 'codex config\n' >"$home/.codex/config.toml"
 printf 'claude settings\n' >"$home/.claude/settings.json"
 printf 'shell rc\n' >"$home/.zshrc"
 
-# An upgrade is the old version's uninstall followed by the new version's
-# install. A second install on top of a valid owner is refused instead, and
-# the refusal names the migration.
-expect_failure "a second cask install replaced a valid installation" cask_install "$upgrade_cask" "$second"
-expect_output 'reason: owned_by_other'
-expect_output 'brew uninstall agentdeck'
+# A second install on top of the installed App is Homebrew's own refusal; it
+# never reaches the registration step, so the receipt is untouched.
+receipt_digest=$(digest "$receipt")
+expect_failure "a second cask install replaced the installed App" cask_install "$upgrade_cask" "$second"
+expect_output 'an App already exists'
+[[ $(digest "$receipt") == "$receipt_digest" ]]
 grep -Fx 1.2.3 "$app/Contents/Resources/version" >/dev/null
-no_staged_copy "refused install"
-purge_staged "$upgrade_cask"
-first_materials_digest=$(tree_digest "$first_materials")
 
+# An upgrade is the old version's uninstall followed by the new version's
+# install. The extension was never registered here, which is not an error. The
+# App is gone between the two, and the receipt stays and names nothing.
 : >"$pluginkit_log"
 cask_uninstall "$stable_cask"
 test ! -e "$app"
-test ! -e "$receipt"
-# The widget is unregistered by the helper, for exactly this App's extension.
-[[ $(cat "$pluginkit_log") == "-m -A -D -vv"$'\n'"-r $app/Contents/PlugIns/AgentDeckWidget.appex" ]]
-test -f "$first_materials/cleaned"
-cask_install "$upgrade_cask" "$second"
+[[ $(cat "$pluginkit_log") == "-m -A -D -vv -i com.kitdine.agentdeck.widget" ]] || {
+  cat "$pluginkit_log" >&2; fail "an unregistered extension must be queried once and never unregistered"
+}
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "uninstalling the cask changed the receipt"
+cask_install "$upgrade_cask" "$second" >/dev/null
 grep -Fx 1.2.4 "$app/Contents/Resources/version" >/dev/null
 grep -F '# fish completion 1.2.4' "$prefix/share/fish/vendor_completions.d/agentdeck.fish" >/dev/null
-test -f "$home/.agentdeck/agentdeck.sqlite3"
-second_attempt=$(latest_attempt "$(staged_path_of "$upgrade_cask")")
-[[ $second_attempt != "$first_attempt" ]]
-# The earlier attempt's immutable materials are kept, apart from its marker.
-unlink "$first_materials/cleaned"
-[[ $(tree_digest "$first_materials") == "$first_materials_digest" ]]
+# The step ran again on the same path: a new ID, the same owner.
+second_id=$(receipt_field installation_id)
+[[ $second_id =~ ^[0-9a-f]{32}$ && $second_id != "$first_id" ]]
+[[ $(receipt_field executable) == "$final_helper" ]]
+installed "$final_helper" | grep -F '"installed":true' >/dev/null
+test -f "$home/.agentdeck/credential.key"
 
+# Re-registration needs the ownership lock even on the same path. A running
+# watch holds this installation's session, so the step is refused, the receipt
+# is untouched, and the same step succeeds once the session ends. What Homebrew
+# then does to an upgrade whose step failed is proven only in CI. The session
+# names the account's state directory explicitly, because HOME is deliberately
+# a different directory here and a session on HOME's state takes no lock.
+receipt_digest=$(digest "$receipt")
+"$final_helper" --state-dir "$account/.agentdeck" watch --domains usage >"$temporary/watch.log" 2>&1 &
+watcher=$!
+for _ in $(seq 1 100); do
+  [[ -s $temporary/watch.log ]] && break
+  kill -0 "$watcher" 2>/dev/null || break
+  sleep 0.1
+done
+[[ -s $temporary/watch.log ]] || { kill "$watcher" 2>/dev/null || true; fail "the watch session never started"; }
+held_status=0
+run_registration "$upgrade_cask" >"$temporary/failure.log" 2>&1 || held_status=$?
+kill -0 "$watcher" 2>/dev/null || { cat "$temporary/watch.log" "$temporary/failure.log" >&2; fail "the watch session ended before the registration step finished"; }
+kill "$watcher"
+wait "$watcher" 2>/dev/null || true
+[[ $held_status == 1 ]] || { cat "$temporary/failure.log" >&2; fail "registration during a session: exit $held_status, want 1"; }
+expect_output '  reason: owner_running'
+expect_output 'stop any agentdeck watch'
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "a refused re-registration changed the receipt"
+run_registration "$upgrade_cask" >/dev/null
+[[ $(receipt_field installation_id) != "$second_id" && $(receipt_field executable) == "$final_helper" ]]
+
+# Uninstall with the extension registered: it is unregistered by exact path
+# before the App goes.
+printf 'registered\n' >"$pluginkit_mode"
+: >"$pluginkit_log"
+receipt_digest=$(digest "$receipt")
 cask_uninstall "$upgrade_cask"
+[[ $(cat "$pluginkit_log") == "-m -A -D -vv -i com.kitdine.agentdeck.widget"$'\n'"-r $extension" ]] || {
+  cat "$pluginkit_log" >&2; fail "a registered extension must be unregistered by its exact path"
+}
+printf 'no-matches\n' >"$pluginkit_mode"
 test ! -e "$app"
-test ! -e "$receipt"
 test -d "$appdir"
 test ! -e "$prefix/bin/agentdeck"
 test ! -e "$prefix/etc/bash_completion.d/agentdeck"
 test ! -e "$prefix/share/zsh/site-functions/_agentdeck"
 test ! -e "$prefix/share/fish/vendor_completions.d/agentdeck.fish"
 # The uninstall boundary: app-owned artifacts only.
-test -f "$home/.agentdeck/agentdeck.sqlite3"
 test -f "$home/.agentdeck/credential.key"
 test -f "$home/.codex/config.toml"
 test -f "$home/.claude/settings.json"
 test -f "$home/.zshrc"
-# Uninstalled materials stay for delayed cleanup and recovery.
-test -d "$first_materials"
-test -d "$attempts/$second_attempt"
+# The receipt is left in place and names a program that is gone. Any program
+# reads that as "no owner", and another installation takes ownership without a
+# takeover.
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "uninstalling the cask changed the receipt"
+retained="$temporary/retained/agentdeck"
+mkdir -p "$(dirname "$retained")"
+cp "$helper_build" "$retained"
+installed "$retained" | grep -F '"installed":false,"reason":"receipt_missing"' >/dev/null
+successor="$temporary/successor/bin/agentdeck"
+mkdir -p "$(dirname "$successor")"
+cp "$helper_build" "$successor"
+"$successor" install register --channel make --executable "$successor" >/dev/null
+[[ $(receipt_field channel) == make && $(receipt_field executable) == "$successor" ]]
+installed "$successor" | grep -F '"installed":true,"channel":"make"' >/dev/null
+
+# --- 2. another valid owner refuses the cask ------------------------------
+
+# The successor above is a live owner at another path. The cask is refused, the
+# user is told how to migrate in words a cask user can follow, and the copy
+# Homebrew published is removed again.
+receipt_digest=$(digest "$receipt")
+expect_failure "the cask replaced another valid installation" cask_install "$stable_cask" "$first"
+expect_output 'install_claim_refused: Another AgentDeck installation owns AgentDeck state.'
+expect_output '  reason: owned_by_other'
+expect_output '  next: Keep the current installation, or uninstall it with its original installation method, then retry this Homebrew operation for agentdeck-app.'
+reject_output 'takeover'
+[[ $(wc -l <"$temporary/failure.log" | tr -d ' ') == 3 ]] || { cat "$temporary/failure.log" >&2; fail "the refusal must be exactly the three migration lines"; }
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "a refused cask changed the receipt"
+test ! -e "$app"
+test ! -e "$prefix/bin/agentdeck"
+# Same path, another installation method: still another owner.
+ditto "$first" "$app"
+"$final_helper" install register --channel local_app --executable "$final_helper" --takeover >/dev/null
+receipt_digest=$(digest "$receipt")
+if run_registration "$stable_cask" >"$temporary/failure.log" 2>&1; then
+  fail "the cask re-registered an App that another installation method owns"
+fi
+expect_output '  reason: owned_by_other'
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "a refused cask changed the receipt"
+rm -rf "${app:?}" "${temporary:?}/successor"
+
+# --- 3. the registration wrapper, against stand-in helpers ----------------
+
+# The wrapper changes one thing: the stderr of an owned_by_other refusal. These
+# stand-ins take the helper's place, so they prove the wrapper and nothing about
+# the helper or about Homebrew's step sandbox.
+standin="$temporary/stand in/agentdeck"
+mkdir -p "$(dirname "$standin")"
+wrapper_case() {
+  local name=$1 want_status=$2 body=$3
+  printf '#!/bin/sh\n%s\n' "$body" >"$standin"
+  chmod 0755 "$standin"
+  local status=0
+  run_registration "$stable_cask" "$standin" >"$temporary/wrapper.out" 2>"$temporary/wrapper.err" || status=$?
+  [[ $status == "$want_status" ]] || fail "wrapper $name: exit $status, want $want_status"
+}
+wrapper_case success 0 'printf "argv=%s|%s|%s|%s|%s|%s|%s|%s\n" "$@"; echo note >&2'
+[[ $(cat "$temporary/wrapper.out") == "argv=--format|text|install|register|--channel|homebrew_cask|--executable|$standin" ]] ||
+  fail "wrapper success: the helper must receive the declared arguments and a path with spaces intact"
+[[ $(cat "$temporary/wrapper.err") == note ]] || fail "wrapper success: stderr must pass through"
+wrapper_case owned_by_other 7 'echo before; printf "install_claim_refused: x\n  reason: owned_by_other\n  next: rerun with --takeover\n" >&2; exit 7'
+[[ $(cat "$temporary/wrapper.out") == before ]] || fail "wrapper owned_by_other: stdout must pass through"
+[[ $(cat "$temporary/wrapper.err") == "install_claim_refused: Another AgentDeck installation owns AgentDeck state.
+  reason: owned_by_other
+  next: Keep the current installation, or uninstall it with its original installation method, then retry this Homebrew operation for agentdeck-app." ]] ||
+  fail "wrapper owned_by_other: the migration text changed"
+wrapper_case owner_running 8 'printf "install_claim_refused: y\n  reason: owner_running\n  next: quit\n" >&2; exit 8'
+[[ $(cat "$temporary/wrapper.err") == "install_claim_refused: y
+  reason: owner_running
+  next: quit" ]] || fail "wrapper owner_running: stderr must pass through unchanged"
+wrapper_case other_error 19 'echo "chmod: operation not permitted" >&2; exit 19'
+[[ $(cat "$temporary/wrapper.err") == "chmod: operation not permitted" ]] || fail "wrapper other_error: stderr must pass through unchanged"
+# Only the whole line counts: a prefix, a suffix or other indentation does not.
+wrapper_case near_miss 23 'printf "reason: owned_by_other\n  reason: owned_by_other_path\n   reason: owned_by_other\n" >&2; exit 23'
+[[ $(cat "$temporary/wrapper.err") == "reason: owned_by_other
+  reason: owned_by_other_path
+   reason: owned_by_other" ]] || fail "wrapper near_miss: a partial match must not be rewritten"
+# The line on a successful run is the helper's business, not a refusal.
+wrapper_case success_with_reason_line 0 'printf "  reason: owned_by_other\n" >&2'
+[[ $(cat "$temporary/wrapper.err") == "  reason: owned_by_other" ]] || fail "wrapper success_with_reason_line: a successful run must not be rewritten"
+
+# --- 4. the uninstall script, against the recording stub ------------------
+
+uninstall_case() {
+  local name=$1 mode=$2 want_status=$3 want_log=$4
+  printf '%s\n' "$mode" >"$pluginkit_mode"
+  : >"$pluginkit_log"
+  local status=0
+  run_uninstall_script "$stable_cask" >/dev/null 2>"$temporary/uninstall.err" || status=$?
+  [[ $status == "$want_status" ]] || fail "uninstall $name: exit $status, want $want_status"
+  [[ $(cat "$pluginkit_log") == "$want_log" ]] || { cat "$pluginkit_log" >&2; fail "uninstall $name: unexpected pluginkit calls"; }
+}
+query="-m -A -D -vv -i com.kitdine.agentdeck.widget"
+uninstall_case no_matches no-matches 0 "$query"
+uninstall_case empty empty 0 "$query"
+uninstall_case zero zero 0 "$query"
+uninstall_case other_path other-path 0 "$query"
+uninstall_case prefix_path prefix-path 0 "$query"
+# A failed query is never read as "not registered".
+uninstall_case query_fail query-fail 9 "$query"
+grep -F 'lookup failed' "$temporary/uninstall.err" >/dev/null
+# The unregister status is the script's status.
+printf '7\n' >"$pluginkit_remove_status"
+uninstall_case registered_remove_fails registered 7 "$query"$'\n'"-r $extension"
+printf '0\n' >"$pluginkit_remove_status"
+uninstall_case registered registered 0 "$query"$'\n'"-r $extension"
+printf 'no-matches\n' >"$pluginkit_mode"
 
 # The real Homebrew path owns the preflight control-flow contract. In
 # particular, a refusal must unwind the Caskroom receipt as well as leave the
 # app and command absent; checking only stderr and the process status misses the
 # partial installation caused by an exit that bypasses Homebrew's rollback.
+unlink "$receipt"
 if [[ $local_only == 0 ]]; then
-  real_brew_install_refusal "$(attempt_count)"
+  real_brew_install_refusal
 else
   printf '%s\n' 'Local-only: real Homebrew conflict refusal not executed.'
 fi
 
-# --- 2. mutual exclusion with the CLI-only formula -----------------------
+# --- 5. mutual exclusion with the CLI-only formula -----------------------
 
 # The exclusion is read out of the cask, so the read itself must be asserted.
 # Planting one formula and watching the install refuse would stay green under a
@@ -559,49 +723,37 @@ for conflicting in agentdeck agentdeck-rc; do
   unlink "$formula_records/$conflicting"
 done
 
-# Left planted for section 3, which removes it as the first step of the
-# documented migration.
-: >"$formula_records/agentdeck"
-if cask_install "$stable_cask" "$first" 2>/dev/null; then
-  fail "cask installed alongside the conflicting formula"
-fi
-test ! -e "$app"
-test ! -e "$prefix/bin/agentdeck"
-
-# --- 3. the documented migration path --------------------------------------
+# --- 6. the documented migration path --------------------------------------
 
 migration=$(awk '/brew uninstall agentdeck/, /brew install --cask agentdeck-app/' "$stable_cask")
 grep -F 'brew uninstall agentdeck' <<<"$migration" >/dev/null
 grep -F 'brew install --cask agentdeck-app' <<<"$migration" >/dev/null
-unlink "$formula_records/agentdeck"
 
-# A claimed formula whose keg is still present owns state: the cask refuses and
-# names the migration, and the keg's receipt is untouched.
+# A claimed formula whose keg is still present owns state. With the formula
+# record gone the conflict step no longer catches it, so the registration step
+# is what refuses, and the keg's receipt is untouched.
 keg_root="$temporary/Cellar"
 keg="$keg_root/agentdeck/1.0.0/bin/agentdeck"
 mkdir -p "$(dirname "$keg")"
 cp "$helper_build" "$keg"
 "$keg" install register --channel homebrew_formula --executable "$keg" >/dev/null
 [[ $(receipt_field channel) == homebrew_formula ]]
-receipt_digest=$(tree_digest "$receipt")
+receipt_digest=$(digest "$receipt")
 expect_failure "the cask replaced a claimed formula that is still installed" cask_install "$stable_cask" "$first"
-expect_output 'reason: owned_by_other'
-expect_output 'brew uninstall agentdeck'
-[[ $(tree_digest "$receipt") == "$receipt_digest" ]]
+expect_output '  reason: owned_by_other'
+reject_output 'takeover'
+[[ $(digest "$receipt") == "$receipt_digest" ]]
 test ! -e "$app"
-no_staged_copy "formula refusal"
-purge_staged "$stable_cask"
 # Uninstalling the formula deletes the keg. Its receipt is then stale, which is
-# unowned: the cask installs with no takeover and no repair variable, and
-# replaces the receipt.
+# unowned: the cask installs with no takeover, and replaces the receipt.
 rm -rf "${keg_root:?}"
-cask_install "$stable_cask" "$first"
+cask_install "$stable_cask" "$first" >/dev/null
 [[ $(receipt_field channel) == homebrew_cask ]]
 grep -Fx 1.2.3 "$app/Contents/Resources/version" >/dev/null
-test -f "$home/.agentdeck/agentdeck.sqlite3"
+test -f "$home/.agentdeck/credential.key"
 cask_uninstall "$stable_cask"
 
-# --- 4. a foreign owner of the command is never taken over ----------------
+# --- 7. a foreign owner of the command is never taken over ----------------
 
 # The legacy script installer owns ~/.local/bin/agentdeck; a cask target that is
 # already someone else's file must refuse rather than relink it.
@@ -614,201 +766,6 @@ fi
 grep -F legacy "$prefix/bin/agentdeck" >/dev/null
 test ! -e "$app"
 unlink "$prefix/bin/agentdeck"
-
-# --- 5. conditional cleanup ------------------------------------------------
-
-# A failure in a later artifact rolls back exactly this attempt.
-before=$(attempt_count)
-cask_install "$stable_cask" "$first" install-rollback
-test ! -e "$app"
-test ! -e "$receipt"
-[[ $(attempt_count) == $((before + 1)) ]]
-rolled_back=$(latest_attempt "$(staged_path_of "$stable_cask")")
-test -f "$attempts/$rolled_back/cleaned"
-purge_staged "$stable_cask"
-
-# An older attempt's delayed cleanup never removes a newer installation of the
-# same token, path and version: only the installation ID differs.
-cask_install "$stable_cask" "$first"
-current_id=$(receipt_field installation_id)
-"$attempts/$rolled_back/helper" install attempt cleanup --attempt "$rolled_back" --token agentdeck-app \
-  --version 1.2.3 --executable "$final_helper" >"$temporary/delayed.log"
-grep -F 'skipped superseded' "$temporary/delayed.log" >/dev/null
-[[ $(receipt_field installation_id) == "$current_id" ]]
-test -d "$app"
-
-# A destroyed App helper does not stop the uninstall: the staged or retained
-# helper runs the same protocol.
-printf 'corrupt\n' >"$final_helper"
-chmod 0644 "$final_helper"
-cask_uninstall "$stable_cask"
-test ! -e "$app"
-test ! -e "$receipt"
-
-# --- 6. missing cleanup materials are never a reason to delete -------------
-
-for lost in manifest helper locator; do
-  cask_install "$stable_cask" "$first"
-  staged=$(staged_path_of "$stable_cask")
-  attempt=$(latest_attempt "$staged")
-  [[ $attempt =~ ^[0-9a-f]{32}$ ]]
-  original_id=$(receipt_field installation_id)
-  case $lost in
-    manifest) unlink "$attempts/$attempt/manifest.json" ;;
-    helper) unlink "$attempts/$attempt/helper" ;;
-    locator) unlink "$staged/.agentdeck-attempt" ;;
-  esac
-  app_digest=$(tree_digest "$app")
-  receipt_digest=$(tree_digest "$receipt")
-  remaining_digest=$(tree_digest "$attempts/$attempt")
-  locator_backup="$temporary/locator-backup"
-  restore_locator() {
-    # Homebrew restores the staged directory of the version it failed to replace.
-    if [[ $lost == locator ]]; then
-      [[ ! -e $staged/.agentdeck-attempt ]] || unlink "$staged/.agentdeck-attempt"
-    else
-      cp "$locator_backup" "$staged/.agentdeck-attempt"
-    fi
-  }
-  [[ $lost == locator ]] || cp "$staged/.agentdeck-attempt" "$locator_backup"
-
-  # Without authorization the uninstall fails, keeps everything, and prints
-  # the identity-bound repair command for this cask and this helper.
-  expect_failure "uninstall succeeded without the $lost" cask_uninstall "$stable_cask"
-  expect_output 'detail: cleanup_materials_unavailable'
-  expect_output "install repair-identity --channel homebrew_cask --executable '$final_helper'"
-  expect_output 'HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION="$agentdeck_repair_installation" brew reinstall --cask agentdeck-app'
-  unchanged "unauthorized uninstall ($lost)"
-  test -L "$prefix/bin/agentdeck"
-  expect_failure "an unauthorized install replaced a valid installation" driver "$stable_cask" install
-  expect_output 'reason: owned_by_other'
-  unchanged "unauthorized install ($lost)"
-  restore_locator
-
-  # Authorization alone tolerates the uninstall but cannot replace the owner.
-  HOMEBREW_AGENTDECK_REPAIR=1 driver "$stable_cask" uninstall >"$temporary/failure.log" 2>&1
-  expect_output 'skipped unverified'
-  expect_output 'still installed'
-  unchanged "authorized unbound uninstall ($lost)"
-  export HOMEBREW_AGENTDECK_REPAIR=1
-  expect_failure "authorization alone replaced a valid installation" driver "$stable_cask" install
-  unset HOMEBREW_AGENTDECK_REPAIR
-  expect_output 'reason: owned_by_other'
-  unchanged "authorized unbound install ($lost)"
-  restore_locator
-
-  # A value that is not a captured ID is refused, never read as "unbound";
-  # neither is an ID without the authorization, or another installation's ID.
-  for bad in '' 'not-an-id' "${original_id:0:31}" 0123456789abcdef0123456789abcdef; do
-    export HOMEBREW_AGENTDECK_REPAIR=1 HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION="$bad"
-    expect_failure "expected installation '$bad' was accepted by uninstall" driver "$stable_cask" uninstall
-    expect_failure "expected installation '$bad' was accepted by install" driver "$stable_cask" install
-    unset HOMEBREW_AGENTDECK_REPAIR HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
-    unchanged "expected installation '$bad' ($lost)"
-    restore_locator
-  done
-  export HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION="$original_id"
-  expect_failure "an expected installation without authorization was accepted" driver "$stable_cask" uninstall
-  expect_failure "an expected installation without authorization was accepted" driver "$stable_cask" install
-  unset HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
-  unchanged "expected installation without authorization ($lost)"
-  restore_locator
-  no_staged_copy "refused repairs ($lost)"
-
-  # The printed command's first half: the App helper captures its own ID and
-  # writes nothing.
-  captured=$("$final_helper" install repair-identity --channel homebrew_cask --executable "$final_helper")
-  [[ $captured == "$original_id" ]]
-  unchanged "identity capture ($lost)"
-  [[ $(tree_digest "$attempts/$attempt") == "$remaining_digest" ]]
-
-  # Its second half, as brew reinstall orders it: uninstall, then install.
-  export HOMEBREW_AGENTDECK_REPAIR=1 HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION="$captured"
-  driver "$stable_cask" uninstall >"$temporary/failure.log" 2>&1
-  expect_output 'skipped unverified'
-  unchanged "identity-bound uninstall ($lost)"
-  driver "$stable_cask" install
-  unset HOMEBREW_AGENTDECK_REPAIR HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
-  repaired=$(latest_attempt "$staged")
-  [[ $repaired != "$attempt" && $(receipt_field installation_id) != "$original_id" ]]
-  [[ $(tree_digest "$attempts/$attempt") == "$remaining_digest" ]]
-  test -f "$attempts/$repaired/manifest.json"
-  no_staged_copy "identity-bound repair ($lost)"
-  # The repaired installation uninstalls normally, with no authorization.
-  cask_uninstall "$stable_cask"
-  test ! -e "$app"
-  test ! -e "$receipt"
-done
-
-# --- 7. a damaged receipt needs explicit authorization ---------------------
-
-for damage in missing invalid; do
-  for materials in kept removed; do
-    cask_install "$stable_cask" "$first"
-    staged=$(staged_path_of "$stable_cask")
-    attempt=$(latest_attempt "$staged")
-    [[ $attempt =~ ^[0-9a-f]{32}$ ]]
-    original_id=$(receipt_field installation_id)
-    if [[ $damage == missing ]]; then unlink "$receipt"; else printf '{' >"$receipt"; fi
-    if [[ $materials == removed ]]; then
-      attempt_directory="$attempts/$attempt"
-      rm -rf "${attempt_directory:?}"
-    fi
-    app_digest=$(tree_digest "$app")
-    receipt_digest=$(tree_digest "$receipt")
-    remaining_digest=$(tree_digest "$attempts/$attempt")
-    cp "$staged/.agentdeck-attempt" "$temporary/locator-backup"
-
-    expect_failure "uninstall removed an App it could not verify ($damage, $materials)" cask_uninstall "$stable_cask"
-    expect_output "reason: receipt_$damage"
-    expect_output 'HOMEBREW_AGENTDECK_REPAIR=1 brew reinstall --cask agentdeck-app'
-    unchanged "unauthorized uninstall ($damage, $materials)"
-    expect_failure "an unauthorized install replaced an unverified App" driver "$stable_cask" install
-    expect_output "reason: receipt_$damage"
-    expect_output 'HOMEBREW_AGENTDECK_REPAIR=1 brew install --cask agentdeck-app'
-    unchanged "unauthorized install ($damage, $materials)"
-    no_staged_copy "refused repair ($damage, $materials)"
-    cp "$temporary/locator-backup" "$staged/.agentdeck-attempt"
-
-    export HOMEBREW_AGENTDECK_REPAIR=1
-    driver "$stable_cask" uninstall >"$temporary/failure.log" 2>&1
-    expect_output 'skipped unverified'
-    unchanged "authorized uninstall ($damage, $materials)"
-    driver "$stable_cask" install
-    unset HOMEBREW_AGENTDECK_REPAIR
-    [[ $(receipt_field installation_id) != "$original_id" && $(latest_attempt "$staged") != "$attempt" ]]
-    [[ $(tree_digest "$attempts/$attempt") == "$remaining_digest" ]]
-    no_staged_copy "authorized repair ($damage, $materials)"
-    cask_uninstall "$stable_cask"
-    test ! -e "$app"
-  done
-done
-
-# --- 8. authorization never reaches another valid owner --------------------
-
-make_target="$temporary/make-prefix/bin/agentdeck"
-mkdir -p "$(dirname "$make_target")" "$temporary/make-records"
-cp "$helper_build" "$make_target.staged"
-"$make_target.staged" install register --channel make --executable "$make_target" \
-  --source "$make_target.staged" --cleanup-manifest "$temporary/make-records/manifest.json" >/dev/null
-receipt_digest=$(tree_digest "$receipt")
-make_digest=$(tree_digest "$make_target")
-refuse_other_owner() {
-  expect_failure "the cask replaced a make installation ($1)" cask_install "$stable_cask" "$first"
-  expect_output 'reason: owned_by_other'
-  expect_output 'make uninstall'
-  [[ $(tree_digest "$receipt") == "$receipt_digest" && $(tree_digest "$make_target") == "$make_digest" ]] ||
-    fail "the make installation changed ($1)"
-  test ! -e "$app"
-  no_staged_copy "other owner ($1)"
-  purge_staged "$stable_cask"
-}
-refuse_other_owner "no authorization"
-export HOMEBREW_AGENTDECK_REPAIR=1
-refuse_other_owner "authorized"
-export HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION=0123456789abcdef0123456789abcdef
-refuse_other_owner "authorized with another ID"
-unset HOMEBREW_AGENTDECK_REPAIR HOMEBREW_AGENTDECK_REPAIR_EXPECTED_INSTALLATION
 
 # The CLI-only installer keeps its own coverage in scripts/test-install.sh and
 # scripts/test-completion-install.sh; it is not re-tested here, because what

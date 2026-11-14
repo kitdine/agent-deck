@@ -6,7 +6,6 @@ import plistlib
 import shutil
 import subprocess
 import tempfile
-import time
 
 
 def run_fixture_command(argv, *, env, success=True, timeout=180):
@@ -86,55 +85,3 @@ def sign_fixture_app(bundle, run):
             run(['/usr/bin/codesign', '--force', '--sign', '-', '--generate-entitlement-der',
                  '--entitlements', resolved[name], target])
     run(['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=2', bundle])
-
-
-def verify_fixture_widget_registration(bundle, check_script, run):
-    extension = bundle / 'Contents/PlugIns/AgentDeckWidget.appex'
-    added = ''
-    check_started = False
-    started = time.monotonic()
-    try:
-        added = run(['/usr/bin/pluginkit', '-v', '-a', extension])
-        check_started = True
-        run(['bash', check_script, bundle])
-    except Exception as failure:
-        # A successful add command does not prove discovery. Preserve the exact
-        # registration failure and collect only this fixture's read-only metadata.
-        details = ['PlugInKit add output:\n' + added]
-        for target in (bundle, extension):
-            for argv in (
-                    ['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=4', target],
-                    ['/usr/bin/codesign', '-d', '--verbose=4', '--entitlements', '-', '--xml', target],
-                    ['/usr/bin/plutil', '-p', target / 'Contents/Info.plist']):
-                try:
-                    output = run(argv)
-                except Exception as diagnostic_failure:
-                    output = str(diagnostic_failure)
-                details.append(f'{argv!r}\n{output}')
-        if check_started:
-            # Diagnose visibility lag separately from a missing host discovery
-            # prerequisite. Neither comparison can turn the original failure
-            # into a pass, and PlugInKit add is never retried.
-            try:
-                output = run(['bash', check_script, bundle])
-                details.append(f'Exact widget check without host registration: PASS '
-                               f'after {time.monotonic() - started:.3f}s\n{output}')
-            except Exception as baseline_failure:
-                details.append(f'Exact widget check without host registration: FAIL '
-                               f'after {time.monotonic() - started:.3f}s\n{baseline_failure}')
-                registrar = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-                try:
-                    output = run([registrar, '-f', '-v', bundle])
-                    details.append('Host registration probe:\n' + output)
-                    output = run(['bash', check_script, bundle])
-                    details.append(f'Exact widget check after host registration: PASS '
-                                   f'after {time.monotonic() - started:.3f}s\n{output}')
-                except Exception as probe_failure:
-                    details.append(f'Host registration/check probe: FAIL '
-                                   f'after {time.monotonic() - started:.3f}s\n{probe_failure}')
-                finally:
-                    try:
-                        details.append('Host registration probe cleanup:\n' + run([registrar, '-u', bundle]))
-                    except Exception as cleanup_failure:
-                        details.append('Host registration probe cleanup: FAIL\n' + str(cleanup_failure))
-        raise AssertionError(str(failure) + '\n' + '\n'.join(details)) from failure

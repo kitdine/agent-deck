@@ -33,9 +33,6 @@ const (
 	OutcomeUnregistered      = "unregistered"
 	OutcomeSkippedSuperseded = "skipped_superseded"
 	OutcomeAbsent            = "absent"
-	// OutcomeSkippedUnverified is the authorized-repair tolerance: ownership
-	// could not be proven, so nothing was removed and the receipt is unchanged.
-	OutcomeSkippedUnverified = "skipped_unverified"
 )
 
 const (
@@ -48,8 +45,6 @@ const (
 type InstallError struct {
 	Reason string
 	Err    error
-	// Detail is an optional path-free marker that installers key hints on.
-	Detail string
 }
 
 func (e *InstallError) Error() string {
@@ -269,23 +264,6 @@ type RegisterRequest struct {
 	Source          string
 	CleanupManifest string
 	Takeover        bool
-	// RequireUnowned, AuthorizedRepair and ExpectedInstallation are the cask
-	// protocol. RequireUnowned publishes only when no valid owner exists and
-	// the target is absent. AuthorizedRepair additionally replaces an unowned
-	// existing target; with ExpectedInstallation it instead replaces exactly
-	// the cask installation that still carries that ID, channel and path.
-	RequireUnowned       bool
-	AuthorizedRepair     bool
-	ExpectedInstallation string
-	// expectedSet records that --expected-installation was passed at all, so
-	// an empty value is refused rather than read as "no binding".
-	expectedSet bool
-}
-
-// BindExpectedInstallation marks the request as an identity-bound repair.
-// The value is validated by Register; an empty or malformed ID is refused.
-func (r *RegisterRequest) BindExpectedInstallation(id string) {
-	r.ExpectedInstallation, r.expectedSet = id, true
 }
 
 type RegisterResult struct {
@@ -396,15 +374,6 @@ func (r *Resolver) Register(ctx context.Context, request RegisterRequest) (Regis
 	if request.Source != "" && (!cleanAbsolute(request.Source) || !cleanAbsolute(request.CleanupManifest)) {
 		return RegisterResult{}, errors.New("--source and --cleanup-manifest must be absolute clean paths")
 	}
-	if request.RequireUnowned && (request.Source == "" || request.Takeover) {
-		return RegisterResult{}, errors.New("--require-unowned needs --source and cannot be combined with --takeover")
-	}
-	if request.AuthorizedRepair && !request.RequireUnowned {
-		return RegisterResult{}, errors.New("--authorized-repair is only valid with --require-unowned")
-	}
-	if request.expectedSet && (!request.AuthorizedRepair || !installationIDPattern.MatchString(request.ExpectedInstallation)) {
-		return RegisterResult{}, errors.New("--expected-installation needs --authorized-repair and a valid installation ID")
-	}
 	home, err := r.AccountHome()
 	if err != nil {
 		return RegisterResult{}, err
@@ -429,17 +398,7 @@ func (r *Resolver) Register(ctx context.Context, request RegisterRequest) (Regis
 			return err
 		}
 		takeover := false
-		owner, unownedReason := ownerOrReason(home)
-		owned := unownedReason == ""
-		// boundMatch is the one valid owner an identity-bound repair may
-		// replace: every recorded value equals the value captured beforehand.
-		boundMatch := owned && request.expectedSet && owner.InstallationID == request.ExpectedInstallation && owner.Channel == request.Channel && owner.Executable == request.Executable
-		switch {
-		case request.RequireUnowned:
-			if owned && !boundMatch {
-				return refused(ReasonOwnedByOther, nil)
-			}
-		case owned && !(owner.Executable == request.Executable && owner.Channel == request.Channel):
+		if owner, owned := currentOwner(home); owned && !(owner.Executable == request.Executable && owner.Channel == request.Channel) {
 			if !request.Takeover {
 				return refused(ReasonOwnedByOther, nil)
 			}
@@ -457,17 +416,6 @@ func (r *Resolver) Register(ctx context.Context, request RegisterRequest) (Regis
 		p, err := preparePublication(request)
 		if err != nil {
 			return err
-		}
-		if request.RequireUnowned && p.replaced && !boundMatch {
-			// Unowned but occupied. Only an unbound authorized repair may
-			// replace it; a bound repair that cannot prove its identity never
-			// falls back to this branch.
-			if !request.AuthorizedRepair || request.expectedSet {
-				return refused(unownedReason, nil)
-			}
-		}
-		if boundMatch && !p.replaced {
-			return refused(ReasonOwnedByOther, nil)
 		}
 		manifest := CleanupManifest{InstallationID: id, Channel: request.Channel, Executable: request.Executable, RemoveRoot: p.root}
 		if err := writeManifestExclusive(request.CleanupManifest, manifest); err != nil {
@@ -516,14 +464,6 @@ type UnregisterRequest struct {
 	ExpectedInstallation string
 	CleanupManifest      string
 	Remove               bool
-	// AuthorizedRepair tolerates unprovable ownership without removing
-	// anything. With an empty CleanupManifest it is the identity-bound check
-	// for missing cleanup materials: ExpectedInstallation is then the ID the
-	// user captured from the installed helper, and must still own the path.
-	AuthorizedRepair bool
-	// RequireIdentity carries the user's captured identity through cleanup with
-	// complete materials. It validates that identity under the removal lock.
-	RequireIdentity bool
 }
 
 type UnregisterResult struct {
@@ -541,12 +481,7 @@ func objectExists(path string) (bool, error) {
 // Unregister removes exactly the installation named by the cleanup manifest,
 // and only while the receipt still names that same installation.
 func (r *Resolver) Unregister(ctx context.Context, request UnregisterRequest) (UnregisterResult, error) {
-	if request.RequireIdentity && !request.AuthorizedRepair {
-		return UnregisterResult{}, errors.New("--require-identity needs --authorized-repair")
-	}
-	checkOnly := request.AuthorizedRepair && request.CleanupManifest == ""
-	bound := request.RequireIdentity || checkOnly
-	if !validChannel(request.Channel) || !cleanAbsolute(request.Executable) || !installationIDPattern.MatchString(request.ExpectedInstallation) || (!checkOnly && !cleanAbsolute(request.CleanupManifest)) {
+	if !validChannel(request.Channel) || !cleanAbsolute(request.Executable) || !installationIDPattern.MatchString(request.ExpectedInstallation) || !cleanAbsolute(request.CleanupManifest) {
 		return UnregisterResult{}, errors.New("unregister requires --channel, an absolute --executable, --expected-installation and an absolute --cleanup-manifest")
 	}
 	home, err := r.AccountHome()
@@ -563,18 +498,7 @@ func (r *Resolver) Unregister(ctx context.Context, request UnregisterRequest) (U
 		if err := runInstallHook("unregister_locked"); err != nil {
 			return err
 		}
-		if bound {
-			outcome, err := boundRepairCheck(home, request)
-			if err != nil || checkOnly || outcome == OutcomeAbsent {
-				result.Outcome = outcome
-				return err
-			}
-		}
 		manifest, err := readManifest(request.CleanupManifest)
-		if err != nil && request.AuthorizedRepair {
-			result.Outcome = OutcomeSkippedUnverified
-			return nil
-		}
 		if errors.Is(err, fs.ErrNotExist) {
 			return refused(ReasonReceiptMissing, errors.New("cleanup manifest is missing"))
 		}
@@ -592,10 +516,6 @@ func (r *Resolver) Unregister(ctx context.Context, request UnregisterRequest) (U
 			}
 			if !exists {
 				result.Outcome = OutcomeAbsent
-				return nil
-			}
-			if request.AuthorizedRepair {
-				result.Outcome = OutcomeSkippedUnverified
 				return nil
 			}
 			if errors.Is(receiptErr, fs.ErrNotExist) {
@@ -648,110 +568,6 @@ func (r *Resolver) Unregister(ctx context.Context, request UnregisterRequest) (U
 		return UnregisterResult{}, err
 	}
 	return result, nil
-}
-
-// boundRepairCheck runs under the exclusive lock when an identity-bound
-// repair has no usable cleanup materials. It never removes anything: the
-// original installation must still be the owner for the tolerance to apply,
-// and any successor or unprovable state is a refusal, not a skip.
-func boundRepairCheck(home string, request UnregisterRequest) (string, error) {
-	receipt, err := readReceipt(home)
-	if err != nil {
-		exists, statErr := objectExists(request.Executable)
-		if statErr != nil {
-			return "", statErr
-		}
-		if !exists {
-			if bundle := filepath.Dir(filepath.Dir(filepath.Dir(request.Executable))); removeRootFor(request.Executable, bundle) {
-				if exists, statErr = objectExists(bundle); statErr != nil {
-					return "", statErr
-				}
-			}
-		}
-		switch {
-		case !exists && errors.Is(err, fs.ErrNotExist):
-			return OutcomeAbsent, nil
-		case errors.Is(err, fs.ErrNotExist):
-			return "", refused(ReasonReceiptMissing, nil)
-		}
-		return "", refused(ReasonReceiptInvalid, err)
-	}
-	if receipt.InstallationID != request.ExpectedInstallation || receipt.Channel != request.Channel || receipt.Executable != request.Executable {
-		return "", refused(ReasonOwnedByOther, nil)
-	}
-	if err := verifyInstalledExecutable(receipt.Executable); err != nil {
-		return "", refused(ReasonReceiptMissing, err)
-	}
-	return OutcomeSkippedUnverified, nil
-}
-
-func verifyInstalledExecutable(executable string) error {
-	physical, err := filepath.EvalSymlinks(executable)
-	if err != nil {
-		return err
-	}
-	info, err := os.Lstat(executable)
-	if err != nil {
-		return err
-	}
-	if physical != executable || !info.Mode().IsRegular() {
-		return errors.New("recorded executable is not a physical regular file")
-	}
-	return nil
-}
-
-// RepairIdentityRequest is the hidden install repair-identity command's
-// input: the fixed App helper path of the cask the user selected.
-type RepairIdentityRequest struct {
-	Channel    string
-	Executable string
-}
-
-// RepairIdentity reports the installation ID of the running cask helper's own
-// valid installation. It holds the exclusive lock, writes nothing, and reads
-// neither cleanup manifests, retained helpers, locators nor attempt indexes.
-func (r *Resolver) RepairIdentity(ctx context.Context, request RepairIdentityRequest) (string, error) {
-	if request.Channel != "homebrew_cask" || !cleanAbsolute(request.Executable) {
-		return "", errors.New("repair-identity requires --channel homebrew_cask and an absolute clean --executable")
-	}
-	home, err := r.AccountHome()
-	if err != nil {
-		return "", err
-	}
-	self, err := r.self()
-	if err != nil {
-		return "", err
-	}
-	lock, err := r.exclusiveLock(ctx, home)
-	if err != nil {
-		return "", err
-	}
-	defer lock.Release()
-	var id string
-	err = lock.WithExclusive(home, func() error {
-		if err := runInstallHook("repair_identity_locked"); err != nil {
-			return err
-		}
-		receipt, err := readReceipt(home)
-		if errors.Is(err, fs.ErrNotExist) {
-			return refused(ReasonReceiptMissing, nil)
-		}
-		if err != nil {
-			return refused(ReasonReceiptInvalid, err)
-		}
-		if receipt.Channel != request.Channel || receipt.Executable != request.Executable || self != request.Executable {
-			return refused(ReasonOwnedByOther, nil)
-		}
-		if err := verifyInstalledExecutable(receipt.Executable); err != nil {
-			return refused(ReasonReceiptMissing, err)
-		}
-		id = receipt.InstallationID
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	return id, nil
 }
 
 type ClaimResult struct {

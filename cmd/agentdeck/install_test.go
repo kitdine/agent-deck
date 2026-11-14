@@ -33,20 +33,6 @@ func (f fakeInstallOperator) Unregister(context.Context, installation.Unregister
 	return installation.UnregisterResult{}, f.err
 }
 
-func (f fakeInstallOperator) RepairIdentity(context.Context, installation.RepairIdentityRequest) (string, error) {
-	return strings.Repeat("a", 32), f.err
-}
-
-func (f fakeInstallOperator) PrepareAttempt(installation.AttemptRequest) (installation.AttemptMaterials, error) {
-	return installation.AttemptMaterials{}, f.err
-}
-
-func (f fakeInstallOperator) CompleteAttempt(installation.AttemptRequest) error { return f.err }
-
-func (f fakeInstallOperator) CleanupAttempt(context.Context, installation.CleanupRequest) (string, error) {
-	return installation.OutcomeSkippedUnverified, f.err
-}
-
 func withInstallOperator(t *testing.T, operator installOperator) {
 	t.Helper()
 	old := currentInstallOperator
@@ -136,10 +122,6 @@ func TestInstallCommandsFailClosedWithoutProductionResolver(t *testing.T) {
 		{"install", "claim"},
 		{"install", "register", "--channel", "make", "--executable", "/tmp/agentdeck"},
 		{"install", "unregister", "--channel", "make", "--executable", "/tmp/agentdeck", "--expected-installation", strings.Repeat("a", 32), "--cleanup-manifest", "/tmp/m.json"},
-		{"install", "repair-identity", "--channel", "homebrew_cask", "--executable", "/tmp/agentdeck"},
-		{"install", "attempt", "prepare", "--attempt", strings.Repeat("a", 32)},
-		{"install", "attempt", "complete", "--attempt", strings.Repeat("a", 32)},
-		{"install", "attempt", "cleanup", "--attempt", strings.Repeat("a", 32)},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := execute(args, strings.NewReader(""), &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "installation operations are unavailable") {
@@ -159,23 +141,43 @@ func TestInstallRefusalReasonsForInstallers(t *testing.T) {
 	}
 }
 
-// Installers parse these hidden commands' text: an identity is one bare line,
-// a tolerated cleanup says on stderr that nothing was removed, and a refusal
-// for lost cleanup materials carries the marker that selects the bound repair.
-func TestInstallRepairCommandsRenderForInstallers(t *testing.T) {
+// The cask's postflight wrapper keys its migration hint on one whole stderr
+// line of the text rendering, and relies on the exit code and an empty stdout.
+func TestInstallRegisterRefusalTextForCaskWrapper(t *testing.T) {
+	args := []string{"--format", "text", "install", "register", "--channel", "homebrew_cask", "--executable", "/x/agentdeck"}
+	for _, reason := range []string{installation.ReasonOwnedByOther, installation.ReasonOwnerRunning} {
+		withInstallOperator(t, fakeInstallOperator{err: &installation.InstallError{Reason: reason}})
+		var stdout, stderr bytes.Buffer
+		code := execute(args, strings.NewReader(""), &stdout, &stderr)
+		lines := strings.Split(stderr.String(), "\n")
+		found := false
+		for _, line := range lines {
+			found = found || line == "  reason: "+reason
+		}
+		if code != 1 || stdout.Len() != 0 || !found || !strings.HasPrefix(stderr.String(), "install_claim_refused: ") || strings.Contains(stderr.String(), "/x/") {
+			t.Fatalf("%s: exit=%d stdout=%q stderr=%q", reason, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
+// The cask-only repair protocol is gone: its commands and flags must not be
+// accepted, so a stale cask definition fails instead of half-running.
+func TestInstallRemovedCaskRepairSurface(t *testing.T) {
 	withInstallOperator(t, fakeInstallOperator{})
-	var stdout, stderr bytes.Buffer
-	if code := execute([]string{"install", "repair-identity", "--channel", "homebrew_cask", "--executable", "/x/agentdeck"}, strings.NewReader(""), &stdout, &stderr); code != 0 || stdout.String() != strings.Repeat("a", 32)+"\n" || stderr.Len() != 0 {
-		t.Fatalf("repair-identity: exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	stdout.Reset()
-	if code := execute([]string{"install", "attempt", "cleanup", "--token", "agentdeck-app", "--version", "1.0.0", "--executable", "/x/agentdeck", "--locator", "/x/.agentdeck-attempt", "--authorized-repair"}, strings.NewReader(""), &stdout, &stderr); code != 0 || stdout.String() != "skipped unverified /x/agentdeck\n" || !strings.Contains(stderr.String(), "nothing was removed") {
-		t.Fatalf("cleanup: exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	withInstallOperator(t, fakeInstallOperator{err: &installation.InstallError{Reason: installation.ReasonReceiptInvalid, Detail: installation.MaterialsUnavailableMarker}})
-	stdout.Reset()
-	stderr.Reset()
-	if code := execute([]string{"install", "attempt", "cleanup", "--token", "agentdeck-app", "--version", "1.0.0", "--executable", "/x/agentdeck", "--locator", "/x/.agentdeck-attempt"}, strings.NewReader(""), &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "  reason: receipt_invalid\n  detail: cleanup_materials_unavailable\n") || strings.Contains(stderr.String(), "/x/") {
-		t.Fatalf("refusal: exit=%d stderr=%q", code, stderr.String())
+	id := strings.Repeat("a", 32)
+	for _, args := range [][]string{
+		{"install", "repair-identity", "--channel", "homebrew_cask", "--executable", "/x/agentdeck"},
+		{"install", "attempt", "prepare", "--attempt", id},
+		{"install", "attempt", "cleanup", "--attempt", id},
+		{"install", "register", "--channel", "homebrew_cask", "--executable", "/x/agentdeck", "--require-unowned"},
+		{"install", "register", "--channel", "homebrew_cask", "--executable", "/x/agentdeck", "--authorized-repair"},
+		{"install", "register", "--channel", "homebrew_cask", "--executable", "/x/agentdeck", "--expected-installation", id},
+		{"install", "unregister", "--channel", "make", "--executable", "/x/agentdeck", "--expected-installation", id, "--cleanup-manifest", "/x/m.json", "--authorized-repair"},
+		{"install", "unregister", "--channel", "make", "--executable", "/x/agentdeck", "--expected-installation", id, "--cleanup-manifest", "/x/m.json", "--require-identity"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := execute(args, strings.NewReader(""), &stdout, &stderr); code == 0 || stdout.Len() != 0 {
+			t.Fatalf("%v: exit=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+		}
 	}
 }

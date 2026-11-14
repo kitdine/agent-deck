@@ -308,7 +308,7 @@ func TestRegisterFailureBetweenPublishAndReceiptRestores(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: manifest.InstallationID, CleanupManifest: request.CleanupManifest, Remove: true, AuthorizedRepair: false})
+			result, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: manifest.InstallationID, CleanupManifest: request.CleanupManifest, Remove: true})
 			if existing {
 				if err != nil || result.Outcome != OutcomeSkippedSuperseded || readFile(t, request.Executable) != "old" {
 					t.Fatalf("orphan manifest cleanup = %+v %v", result, err)
@@ -392,11 +392,11 @@ func TestBundleRegisterSwapAndConditionalRemoval(t *testing.T) {
 		t.Fatalf("manifest = %+v %v", manifest, err)
 	}
 	// The older installation's delayed cleanup sees a different ID and skips.
-	result, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "local_app", Executable: first.Executable, ExpectedInstallation: firstResult.InstallationID, CleanupManifest: first.CleanupManifest, Remove: true, AuthorizedRepair: false})
+	result, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "local_app", Executable: first.Executable, ExpectedInstallation: firstResult.InstallationID, CleanupManifest: first.CleanupManifest, Remove: true})
 	if err != nil || result.Outcome != OutcomeSkippedSuperseded || len(deregistered) != 0 || readFile(t, second.Executable) != "v2" {
 		t.Fatalf("stale cleanup = %+v %v deregistered=%v", result, err, deregistered)
 	}
-	request := UnregisterRequest{Channel: "local_app", Executable: second.Executable, ExpectedInstallation: secondResult.InstallationID, CleanupManifest: second.CleanupManifest, Remove: true, AuthorizedRepair: false}
+	request := UnregisterRequest{Channel: "local_app", Executable: second.Executable, ExpectedInstallation: secondResult.InstallationID, CleanupManifest: second.CleanupManifest, Remove: true}
 	result, err = r.Unregister(context.Background(), request)
 	if err != nil || result.Outcome != OutcomeRemoved {
 		t.Fatalf("cleanup = %+v %v", result, err)
@@ -427,7 +427,7 @@ func TestUnregisterRefusesWithoutProvenOwnership(t *testing.T) {
 		return r, root, request, result
 	}
 	unregister := func(r *Resolver, request RegisterRequest, id string) (UnregisterResult, error) {
-		return r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: id, CleanupManifest: request.CleanupManifest, Remove: true, AuthorizedRepair: false})
+		return r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: id, CleanupManifest: request.CleanupManifest, Remove: true})
 	}
 	t.Run("receipt-missing-target-present", func(t *testing.T) {
 		r, _, request, result := setup(t)
@@ -504,7 +504,7 @@ func TestUnregisterRefusesWithoutProvenOwnership(t *testing.T) {
 	})
 	t.Run("receipt-only", func(t *testing.T) {
 		r, _, request, result := setup(t)
-		got, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: result.InstallationID, CleanupManifest: request.CleanupManifest, Remove: false, AuthorizedRepair: false})
+		got, err := r.Unregister(context.Background(), UnregisterRequest{Channel: "make", Executable: request.Executable, ExpectedInstallation: result.InstallationID, CleanupManifest: request.CleanupManifest, Remove: false})
 		if err != nil || got.Outcome != OutcomeUnregistered || receiptBytes(t, r) != nil || readFile(t, request.Executable) != "v1" {
 			t.Fatalf("receipt-only = %+v %v", got, err)
 		}
@@ -629,4 +629,86 @@ func TestClaimOwnerRunningKeepsReceipt(t *testing.T) {
 	if !bytes.Equal(before, receiptBytes(t, r)) {
 		t.Fatal("owner_running claim changed the receipt")
 	}
+}
+
+// A cask registers the helper Homebrew already published: no staged source,
+// no cleanup manifest, and never a takeover.
+func TestRegisterInstalledProgramWithoutSource(t *testing.T) {
+	request := func(self string) RegisterRequest {
+		return RegisterRequest{Channel: "homebrew_cask", Executable: self}
+	}
+	t.Run("unowned-then-reregistered", func(t *testing.T) {
+		r, _, self := fixture(t)
+		first, err := r.Register(context.Background(), request(self))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := currentReceipt(t, r); got.Executable != self || got.Channel != "homebrew_cask" || got.InstallationID != first.InstallationID {
+			t.Fatalf("receipt = %+v", got)
+		}
+		// An upgrade runs the same step again on the same path.
+		second, err := r.Register(context.Background(), request(self))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if second.InstallationID == first.InstallationID || second.Takeover || currentReceipt(t, r).InstallationID != second.InstallationID {
+			t.Fatalf("re-registration = %+v after %+v", second, first)
+		}
+	})
+	t.Run("stale-owner", func(t *testing.T) {
+		r, root, self := fixture(t)
+		other := filepath.Join(root, "other", "agentdeck")
+		putExecutable(t, other)
+		register(t, r, other, "make")
+		if err := os.Remove(other); err != nil {
+			t.Fatal(err)
+		}
+		result, err := r.Register(context.Background(), request(self))
+		if err != nil || result.Takeover || currentReceipt(t, r).Executable != self {
+			t.Fatalf("result = %+v, err = %v", result, err)
+		}
+	})
+	for _, tc := range []struct{ name, channel string }{
+		{name: "other-live-owner", channel: "make"},
+		{name: "same-path-other-channel", channel: "local_app"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, root, self := fixture(t)
+			owner := self
+			if tc.name == "other-live-owner" {
+				owner = filepath.Join(root, "other", "agentdeck")
+				putExecutable(t, owner)
+			}
+			register(t, r, owner, tc.channel)
+			before := receiptBytes(t, r)
+			_, err := r.Register(context.Background(), request(self))
+			wantRefused(t, err, ReasonOwnedByOther)
+			if !bytes.Equal(before, receiptBytes(t, r)) {
+				t.Fatal("refused register changed the receipt")
+			}
+		})
+	}
+	t.Run("not-the-running-program", func(t *testing.T) {
+		r, root, _ := fixture(t)
+		other := filepath.Join(root, "other", "agentdeck")
+		putExecutable(t, other)
+		if _, err := r.Register(context.Background(), request(other)); err == nil || receiptBytes(t, r) != nil {
+			t.Fatalf("err = %v, want a refusal that writes no receipt", err)
+		}
+	})
+	t.Run("owner-running", func(t *testing.T) {
+		r, _, self := fixture(t)
+		if _, err := r.Register(context.Background(), request(self)); err != nil {
+			t.Fatal(err)
+		}
+		before := receiptBytes(t, r)
+		r.acquireLock = func(context.Context, string, bool) (*platform.OwnershipLock, error) {
+			return nil, &platform.OwnershipLockError{}
+		}
+		_, err := r.Register(context.Background(), request(self))
+		wantRefused(t, err, ReasonOwnerRunning)
+		if !bytes.Equal(before, receiptBytes(t, r)) {
+			t.Fatal("refused re-registration changed the receipt")
+		}
+	})
 }

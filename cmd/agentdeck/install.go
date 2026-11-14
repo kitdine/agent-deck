@@ -22,10 +22,6 @@ type installOperator interface {
 	Claim(context.Context, bool) (installation.ClaimResult, error)
 	Register(context.Context, installation.RegisterRequest) (installation.RegisterResult, error)
 	Unregister(context.Context, installation.UnregisterRequest) (installation.UnregisterResult, error)
-	RepairIdentity(context.Context, installation.RepairIdentityRequest) (string, error)
-	PrepareAttempt(installation.AttemptRequest) (installation.AttemptMaterials, error)
-	CompleteAttempt(installation.AttemptRequest) error
-	CleanupAttempt(context.Context, installation.CleanupRequest) (string, error)
 }
 
 // currentInstallOperator uses the process's injected installation resolver.
@@ -54,17 +50,6 @@ type installUnregisterData struct {
 	Outcome string `json:"outcome"`
 }
 
-type installRepairIdentityData struct {
-	InstallationID string `json:"installation_id"`
-}
-
-type installAttemptData struct {
-	AttemptID string `json:"attempt_id"`
-	Directory string `json:"directory"`
-	Helper    string `json:"helper"`
-	Manifest  string `json:"manifest"`
-}
-
 var installRefusalText = map[string][2]string{
 	installation.ReasonOwnedByOther:         {"Another AgentDeck installation owns AgentDeck state.", "Keep the current installation, or rerun with --takeover after quitting it."},
 	installation.ReasonOwnerRunning:         {"The current owner is still using AgentDeck state.", "Quit AgentDeck.app, stop any agentdeck watch or telemetry listener, pause Codex and Claude sessions, then retry."},
@@ -82,9 +67,6 @@ func installRefusalMessage(reason string) string {
 
 func renderInstallRefusal(w io.Writer, refusal *installation.InstallError) {
 	fmt.Fprintf(w, "install_claim_refused: %s\n  reason: %s\n", installRefusalMessage(refusal.Reason), refusal.Reason)
-	if refusal.Detail != "" {
-		fmt.Fprintf(w, "  detail: %s\n", refusal.Detail)
-	}
 	if text, ok := installRefusalText[refusal.Reason]; ok {
 		fmt.Fprintf(w, "  next: %s\n", text[1])
 	}
@@ -96,7 +78,7 @@ func newInstallCommand(opts *commandOptions) *cobra.Command {
 		Short:       "Manage which AgentDeck installation owns AgentDeck state",
 		Annotations: map[string]string{installationLifecycleSurfaceOnlyAnnotation: "true"},
 	}
-	command.AddCommand(newInstallClaimCommand(opts), newInstallRegisterCommand(opts), newInstallUnregisterCommand(opts), newInstallRepairIdentityCommand(opts), newInstallAttemptCommand(opts))
+	command.AddCommand(newInstallClaimCommand(opts), newInstallRegisterCommand(opts), newInstallUnregisterCommand(opts))
 	return command
 }
 
@@ -131,10 +113,9 @@ func newInstallClaimCommand(opts *commandOptions) *cobra.Command {
 
 func newInstallRegisterCommand(opts *commandOptions) *cobra.Command {
 	var request installation.RegisterRequest
-	var expected string
 	command := &cobra.Command{
 		Use:         "register",
-		Short:       "Publish and record an installation (installer use only)",
+		Short:       "Record an installation, publishing it first when given a staged source (installer use only)",
 		Hidden:      true,
 		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
 		Args:        exactArgs(0),
@@ -142,9 +123,6 @@ func newInstallRegisterCommand(opts *commandOptions) *cobra.Command {
 			operator, err := currentInstallOperator()
 			if err != nil {
 				return err
-			}
-			if command.Flags().Changed("expected-installation") {
-				request.BindExpectedInstallation(expected)
 			}
 			result, err := operator.Register(command.Context(), request)
 			if err != nil {
@@ -166,9 +144,6 @@ func newInstallRegisterCommand(opts *commandOptions) *cobra.Command {
 	flags.StringVar(&request.Source, "source", "", "Staged file or App bundle beside the target to publish")
 	flags.StringVar(&request.CleanupManifest, "cleanup-manifest", "", "New private cleanup manifest for this installation")
 	flags.BoolVar(&request.Takeover, "takeover", false, "Replace another installation that is not running")
-	flags.BoolVar(&request.RequireUnowned, "require-unowned", false, "Publish only when no valid installation owns state and the target is absent")
-	flags.BoolVar(&request.AuthorizedRepair, "authorized-repair", false, "With --require-unowned, also replace an existing target that has no valid owner")
-	flags.StringVar(&expected, "expected-installation", "", "With --authorized-repair, replace only the installation that still has this ID")
 	_ = command.MarkFlagRequired("channel")
 	_ = command.MarkFlagRequired("executable")
 	return command
@@ -204,139 +179,8 @@ func newInstallUnregisterCommand(opts *commandOptions) *cobra.Command {
 	flags.StringVar(&request.ExpectedInstallation, "expected-installation", "", "Installation ID from this installation's cleanup manifest")
 	flags.StringVar(&request.CleanupManifest, "cleanup-manifest", "", "This installation's cleanup manifest")
 	flags.BoolVar(&request.Remove, "remove", false, "Also remove the installed program or App bundle")
-	flags.BoolVar(&request.AuthorizedRepair, "authorized-repair", false, "Report an unverifiable installation as skipped instead of failing; never removes it")
-	flags.BoolVar(&request.RequireIdentity, "require-identity", false, "Require the captured repair identity to match under the cleanup lock")
 	for _, name := range []string{"channel", "executable", "expected-installation"} {
 		_ = command.MarkFlagRequired(name)
 	}
-	return command
-}
-
-func newInstallRepairIdentityCommand(opts *commandOptions) *cobra.Command {
-	var request installation.RepairIdentityRequest
-	command := &cobra.Command{
-		Use:         "repair-identity",
-		Short:       "Print this cask installation's ID for an identity-bound repair (installer use only)",
-		Hidden:      true,
-		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
-		Args:        exactArgs(0),
-		RunE: func(command *cobra.Command, _ []string) error {
-			operator, err := currentInstallOperator()
-			if err != nil {
-				return err
-			}
-			id, err := operator.RepairIdentity(command.Context(), request)
-			if err != nil {
-				return err
-			}
-			if opts.format == "text" {
-				_, err = fmt.Fprintln(opts.stdout, id)
-				return err
-			}
-			return writeEnvelope(opts.stdout, opts.format, "install.repair-identity", installRepairIdentityData{InstallationID: id}, false, nil)
-		},
-	}
-	flags := command.Flags()
-	flags.StringVar(&request.Channel, "channel", "", "Installation method; only homebrew_cask is supported")
-	flags.StringVar(&request.Executable, "executable", "", "Fixed path of this App's agentdeck helper")
-	_ = command.MarkFlagRequired("channel")
-	_ = command.MarkFlagRequired("executable")
-	return command
-}
-
-// newInstallAttemptCommand groups the Homebrew cask's per-attempt materials.
-// The cask passes an attempt ID and uses the paths these commands report; it
-// derives no AgentDeck path itself.
-func newInstallAttemptCommand(opts *commandOptions) *cobra.Command {
-	command := &cobra.Command{
-		Use:         "attempt",
-		Short:       "Manage one Homebrew cask install attempt (installer use only)",
-		Hidden:      true,
-		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
-	}
-	attemptFlags := func(command *cobra.Command, request *installation.AttemptRequest, locator bool) {
-		flags := command.Flags()
-		flags.StringVar(&request.AttemptID, "attempt", "", "Attempt ID chosen by the cask for this install")
-		flags.StringVar(&request.Token, "token", "", "Cask token")
-		flags.StringVar(&request.Version, "version", "", "Cask version")
-		flags.StringVar(&request.Executable, "executable", "", "Final physical path of the App's agentdeck helper")
-		if locator {
-			flags.StringVar(&request.Locator, "locator", "", "Attempt locator file inside the cask's staged directory")
-		}
-	}
-	var prepare installation.AttemptRequest
-	prepareCommand := &cobra.Command{
-		Use:         "prepare",
-		Short:       "Create an attempt's private cleanup materials",
-		Hidden:      true,
-		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
-		Args:        exactArgs(0),
-		RunE: func(command *cobra.Command, _ []string) error {
-			operator, err := currentInstallOperator()
-			if err != nil {
-				return err
-			}
-			materials, err := operator.PrepareAttempt(prepare)
-			if err != nil {
-				return err
-			}
-			if opts.format == "text" {
-				_, err = fmt.Fprintf(opts.stdout, "attempt_id=%s\ndirectory=%s\nhelper=%s\nmanifest=%s\n", materials.AttemptID, materials.Directory, materials.Helper, materials.Manifest)
-				return err
-			}
-			return writeEnvelope(opts.stdout, opts.format, "install.attempt.prepare", installAttemptData{materials.AttemptID, materials.Directory, materials.Helper, materials.Manifest}, false, nil)
-		},
-	}
-	attemptFlags(prepareCommand, &prepare, true)
-	var complete installation.AttemptRequest
-	completeCommand := &cobra.Command{
-		Use:         "complete",
-		Short:       "Mark an attempt as published",
-		Hidden:      true,
-		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
-		Args:        exactArgs(0),
-		RunE: func(command *cobra.Command, _ []string) error {
-			operator, err := currentInstallOperator()
-			if err != nil {
-				return err
-			}
-			return operator.CompleteAttempt(complete)
-		},
-	}
-	completeCommand.Flags().StringVar(&complete.AttemptID, "attempt", "", "Attempt ID chosen by the cask for this install")
-	var cleanup installation.CleanupRequest
-	var expected string
-	cleanupCommand := &cobra.Command{
-		Use:         "cleanup",
-		Short:       "Conditionally remove the installation an attempt published",
-		Hidden:      true,
-		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
-		Args:        exactArgs(0),
-		RunE: func(command *cobra.Command, _ []string) error {
-			operator, err := currentInstallOperator()
-			if err != nil {
-				return err
-			}
-			if command.Flags().Changed("expected-installation") {
-				cleanup.BindExpectedInstallation(expected)
-			}
-			outcome, err := operator.CleanupAttempt(command.Context(), cleanup)
-			if err != nil {
-				return err
-			}
-			if outcome == installation.OutcomeSkippedUnverified {
-				fmt.Fprintln(opts.stderr, "warning: this installation could not be verified, so nothing was removed and the App is still installed.")
-			}
-			if opts.format == "text" {
-				_, err = fmt.Fprintf(opts.stdout, "%s %s\n", strings.ReplaceAll(outcome, "_", " "), cleanup.Executable)
-				return err
-			}
-			return writeEnvelope(opts.stdout, opts.format, "install.attempt.cleanup", installUnregisterData{Outcome: outcome}, false, nil)
-		},
-	}
-	attemptFlags(cleanupCommand, &cleanup.AttemptRequest, true)
-	cleanupCommand.Flags().BoolVar(&cleanup.AuthorizedRepair, "authorized-repair", false, "Report an unverifiable installation as skipped instead of failing; never removes it")
-	cleanupCommand.Flags().StringVar(&expected, "expected-installation", "", "With --authorized-repair, the installation ID captured for this repair")
-	command.AddCommand(prepareCommand, completeCommand, cleanupCommand)
 	return command
 }

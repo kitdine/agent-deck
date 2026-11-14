@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 import cask_real_brew_fixture as fixture_module
-from cask_real_brew_fixture import prepare_fixture_app, verify_fixture_widget_registration
+from cask_real_brew_fixture import prepare_fixture_app
 
 
 def write_fixture_metadata(bundle, group='TESTTEAM.group.com.kitdine.agentdeck.fixture'):
@@ -96,7 +96,7 @@ class FixtureScenarioTests(unittest.TestCase):
                 expected_base = dict(base_env)
 
                 def run(argv, **_kwargs):
-                    return str(workspace / 'metadata-mode/brew') if argv[-1] == '--prefix' else 'command output'
+                    return str(Path(argv[0]).parent.parent) if argv[-1] == '--prefix' else 'command output'
 
                 execute = mock.Mock(side_effect=run)
                 namespace = dict(Path=Path, shutil=shutil, workspace=workspace,
@@ -121,6 +121,19 @@ class FixtureScenarioTests(unittest.TestCase):
                     'agentdeck/test/agentdeck-app',
                 ])
                 self.assertNotIn('HOMEBREW_NO_INSTALL_FROM_API', execute.call_args.kwargs['env'])
+                # Homebrew reads the appdir back from its own install record on
+                # uninstall and rejects the option there.
+                fixture.command('uninstall')
+                self.assertEqual(execute.call_args.args[0], [fixture.brew, 'uninstall', '--cask',
+                                                             'agentdeck/test/agentdeck-app'])
+                # The step may write below brew's HOME only, so the account is
+                # HOME unless a case asks for the mismatch.
+                self.assertEqual(fixture.account, fixture.home)
+                with mock.patch.object(actual, 'render'):
+                    mismatch = actual('metadata-mode-mismatch', account='account')
+                self.assertEqual(mismatch.account, mismatch.directory / 'account')
+                self.assertNotEqual(mismatch.account, mismatch.home)
+                self.assertEqual(mismatch.env['HOMEBREW_AGENTDECK_ACCEPTANCE_ACCOUNT_HOME'], str(mismatch.account))
 
 
 class FixtureTests(unittest.TestCase):
@@ -224,108 +237,6 @@ class FixtureTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, 'nested signing failure'):
                 prepare_fixture_app(fixture, bundle, helper, '1.2.3', run)
             self.assertEqual(signatures, [bundle / 'Contents/Helpers/agentdeck', widget])
-
-    def test_widget_registration_success_still_requires_exact_checker(self):
-        bundle = Path('/fixture/AgentDeck.app')
-        checker = Path('/fixture/check-registration.sh')
-        calls = []
-
-        def run(argv):
-            calls.append(argv)
-            return ''
-
-        verify_fixture_widget_registration(bundle, checker, run)
-        self.assertEqual(calls, [
-            ['/usr/bin/pluginkit', '-v', '-a', bundle / 'Contents/PlugIns/AgentDeckWidget.appex'],
-            ['bash', checker, bundle],
-        ])
-
-    def test_widget_diagnostics_preserve_failure_without_retry_or_fallback(self):
-        bundle = Path('/fixture/AgentDeck.app')
-        for failed_step in ('add', 'check'):
-            with self.subTest(failed_step=failed_step):
-                calls = []
-
-                def run(argv):
-                    calls.append(argv)
-                    if argv[0] == '/usr/bin/pluginkit':
-                        if failed_step == 'add':
-                            raise AssertionError('add rejected')
-                        return 'add accepted'
-                    if argv[0] == 'bash':
-                        raise AssertionError('registration: no matches')
-                    if argv[1] == '--verify':
-                        raise AssertionError('signature diagnostic')
-                    return 'fixture metadata'
-
-                with self.assertRaises(AssertionError) as raised:
-                    verify_fixture_widget_registration(bundle, Path('/fixture/check.sh'), run)
-                self.assertIn('add rejected' if failed_step == 'add' else 'registration: no matches', str(raised.exception))
-                self.assertIn('signature diagnostic', str(raised.exception))
-                self.assertIn('fixture metadata', str(raised.exception))
-                self.assertEqual(sum(argv[0] == '/usr/bin/pluginkit' for argv in calls), 1)
-                self.assertEqual(sum(argv[0] in ('/usr/bin/codesign', '/usr/bin/plutil') for argv in calls), 6)
-
-    def test_widget_host_probe_never_replaces_original_failure(self):
-        bundle = Path('/fixture/AgentDeck.app')
-        checker = Path('/fixture/check.sh')
-        registrar = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-        for probe in ('baseline-pass', 'pass', 'check-fails', 'register-fails', 'cleanup-fails'):
-            with self.subTest(probe=probe):
-                calls = []
-                original = AssertionError('original registration: no matches')
-                checks = 0
-
-                def run(argv):
-                    nonlocal checks
-                    calls.append(argv)
-                    if argv[0] == 'bash':
-                        checks += 1
-                        if checks == 1:
-                            raise original
-                        if checks == 2 and probe != 'baseline-pass':
-                            raise AssertionError('no matches without host registration')
-                        if probe == 'check-fails':
-                            raise AssertionError('still no matches after host registration')
-                    if argv[0] == registrar:
-                        if '-f' in argv and probe == 'register-fails':
-                            raise AssertionError('host registration refused')
-                        if '-u' in argv and probe == 'cleanup-fails':
-                            raise AssertionError('host probe cleanup refused')
-                    return 'diagnostic output'
-
-                with self.assertRaises(AssertionError) as raised:
-                    verify_fixture_widget_registration(bundle, checker, run)
-                self.assertIs(raised.exception.__cause__, original)
-                self.assertIn('original registration: no matches', str(raised.exception))
-                expected = [] if probe == 'baseline-pass' else [
-                    [registrar, '-f', '-v', bundle], [registrar, '-u', bundle]]
-                self.assertEqual([argv for argv in calls if argv[0] == registrar], expected)
-                self.assertEqual(sum(argv[0] == '/usr/bin/pluginkit' for argv in calls), 1)
-                self.assertEqual(checks, 2 if probe in ('baseline-pass', 'register-fails') else 3)
-                if probe in ('pass', 'cleanup-fails'):
-                    self.assertIn('Exact widget check after host registration: PASS', str(raised.exception))
-                elif probe == 'check-fails':
-                    self.assertIn('still no matches after host registration', str(raised.exception))
-                elif probe == 'register-fails':
-                    self.assertIn('host registration refused', str(raised.exception))
-                else:
-                    self.assertIn('Exact widget check without host registration: PASS', str(raised.exception))
-                if probe == 'cleanup-fails':
-                    self.assertIn('host probe cleanup refused', str(raised.exception))
-
-    def test_widget_add_failure_does_not_probe_host_discovery(self):
-        calls = []
-
-        def run(argv):
-            calls.append(argv)
-            if argv[0] == '/usr/bin/pluginkit':
-                raise AssertionError('add rejected')
-            return 'fixture metadata'
-
-        with self.assertRaisesRegex(AssertionError, 'add rejected'):
-            verify_fixture_widget_registration(Path('/fixture/AgentDeck.app'), Path('/fixture/check.sh'), run)
-        self.assertFalse(any('lsregister' in str(argv[0]) for argv in calls))
 
     def test_completions_are_generated_from_replacement_helper_before_signing(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -455,6 +366,137 @@ class FixtureTests(unittest.TestCase):
             self.assertEqual(list(home.iterdir()), [])
             self.assertFalse((root / 'inherited-hook').exists())
             self.assertEqual((fixture / 'Contents/Helpers/agentdeck').read_text(), 'original helper')
+
+
+
+def home_mismatch_code():
+    """The CI script's own HOME-mismatch judgement, not a copy of it."""
+    source = Path(__file__).with_name('test-cask-real-brew.sh').read_text()
+    driver = source.split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+    wanted = {'control_cask', 'judge_sandbox_control', 'judge_home_mismatch'}
+    body = [node for node in ast.parse(driver).body
+            if (isinstance(node, ast.FunctionDef) and node.name in wanted) or
+            (isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == 'CONTROL_MARKER')]
+    assert {node.name for node in body if isinstance(node, ast.FunctionDef)} == wanted
+    import shlex
+    namespace = {'shlex': shlex}
+    exec(compile(ast.Module(body=body, type_ignores=[]), '<actual CI HOME-mismatch case>', 'exec'), namespace)
+    return namespace
+
+
+class HomeMismatchJudgementTests(unittest.TestCase):
+    support = Path('/fixture/account/Library/Application Support/AgentDeck')
+    denial = ('Error: chmod /fixture/account/Library/Application Support/AgentDeck: operation not permitted\n')
+
+    def judge(self, returncode, output, receipts=(), app=False, caskroom=False):
+        return home_mismatch_code()['judge_home_mismatch'](returncode, output, self.support, list(receipts), app, caskroom)
+
+    def test_helper_denied_at_the_account_is_the_expected_refusal(self):
+        self.judge(1, '==> Moving App\n' + self.denial + 'Error: step failed\n')
+
+    def test_failure_before_the_registration_step_is_not_the_refusal(self):
+        # ISO-IR-R5-F1: nothing reached the helper, yet the install failed,
+        # left nothing behind, and said "permission denied".
+        for output in ('curl: could not create download cache: permission denied\n',
+                       'Error: Operation not permitted @ dir_s_mkdir - /fixture/home/cache\n',
+                       'Error: chmod /fixture/other/Library/Application Support/AgentDeck: operation not permitted\n',
+                       'Error: download failed\n', ''):
+            with self.subTest(output=output):
+                with self.assertRaisesRegex(AssertionError, 'before the registration step'):
+                    self.judge(1, output)
+
+    def test_denial_text_and_account_path_must_be_on_one_line(self):
+        output = 'note: /fixture/account/Library/Application Support/AgentDeck\ncurl: permission denied\n'
+        with self.assertRaisesRegex(AssertionError, 'before the registration step'):
+            self.judge(1, output)
+
+    def test_success_or_leftovers_are_not_a_rollback(self):
+        for returncode, app, caskroom in ((0, False, False), (1, True, False), (1, False, True)):
+            with self.subTest(returncode=returncode, app=app, caskroom=caskroom):
+                with self.assertRaisesRegex(AssertionError, 'did not fail and roll back'):
+                    self.judge(returncode, self.denial, app=app, caskroom=caskroom)
+
+    def test_any_receipt_reports_the_design_assumption(self):
+        for returncode in (0, 1):
+            with self.assertRaisesRegex(AssertionError, '^DESIGN: '):
+                self.judge(returncode, self.denial, receipts=['/fixture/account/installation.json'])
+
+    def control(self, returncode, output, declared_written=True, account_written=False):
+        return home_mismatch_code()['judge_sandbox_control'](returncode, output, declared_written, account_written)
+
+    def test_control_requires_the_step_to_have_run(self):
+        self.control(0, '==> step\nSANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=denied\n')
+        for returncode, output in ((1, 'curl: could not create download cache: permission denied\n'),
+                                   (0, 'SANDBOX_CONTROL_account=denied\n'),
+                                   (1, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=denied\n')):
+            with self.subTest(returncode=returncode, output=output):
+                with self.assertRaisesRegex(AssertionError, 'proves nothing'):
+                    self.control(returncode, output)
+
+    def test_control_denial_counts_only_beside_an_allowed_declared_write(self):
+        output = 'SANDBOX_CONTROL_declared=denied\nSANDBOX_CONTROL_account=denied\n'
+        with self.assertRaisesRegex(AssertionError, 'not evidence'):
+            self.control(0, output)
+        with self.assertRaisesRegex(AssertionError, 'not evidence'):
+            self.control(0, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=denied\n', declared_written=False)
+
+    def test_control_reports_the_design_assumption_when_the_account_is_writable(self):
+        with self.assertRaisesRegex(AssertionError, '^DESIGN: '):
+            self.control(0, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=allowed\n')
+        # A step that says "denied" while its marker exists was not denied.
+        with self.assertRaisesRegex(AssertionError, '^DESIGN: '):
+            self.control(0, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=denied\n', account_written=True)
+
+    def test_control_cask_replaces_only_the_step_script_and_probes_both_directories(self):
+        code = home_mismatch_code()
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            checksums = base / 'checksums.txt'
+            checksums.write_text('c' * 64 + '  AgentDeck_v1.2.3_universal.dmg\n')
+            rendered = base / 'agentdeck-app.rb'
+            subprocess.run(['bash', root / 'scripts/render-homebrew-cask.sh',
+                            root / 'packaging/homebrew/agentdeck-app.rb.tmpl', 'v1.2.3', checksums, rendered], check=True)
+            declared, parent = base / 'home/declared dir', base / 'locked'
+            parent.mkdir()
+            account = parent / "account's dir"
+            production = rendered.read_text()
+            control = code['control_cask'](production, declared, account)
+            rendered.write_text(control)
+            subprocess.run(['ruby', '-c', rendered], check=True, stdout=subprocess.DEVNULL)
+
+            def outside_script(text):
+                lines = text.splitlines()
+                start = next(i for i, line in enumerate(lines) if '"agentdeck-cask-register"' in line)
+                end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == 'SH')
+                return lines[:start + 1] + lines[end:]
+
+            # The sandbox declarations, the arguments and every other stanza
+            # are the production cask's own.
+            self.assertEqual(outside_script(control), outside_script(production))
+            self.assertNotIn('install register', control.split('"agentdeck-cask-register"', 1)[1].split('\n        SH\n', 1)[0])
+
+            def step():
+                argv = subprocess.run(['ruby', root / 'scripts/cask-local-driver.rb', rendered, base / 'Applications',
+                                       base / 'prefix', 'postflight-argv'], check=True, stdout=subprocess.PIPE).stdout
+                return subprocess.run([item.decode() for item in argv.split(b'\0')], text=True,
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            parent.chmod(0o500)
+            try:
+                denied = step()
+            finally:
+                parent.chmod(0o700)
+            self.assertEqual((denied.returncode, denied.stdout),
+                             (0, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=denied\n'))
+            marker = code['CONTROL_MARKER']
+            self.assertTrue((declared / marker).is_file())
+            self.assertFalse(account.exists())
+            code['judge_sandbox_control'](denied.returncode, denied.stdout, True, False)
+            allowed = step()
+            self.assertEqual((allowed.returncode, allowed.stdout),
+                             (0, 'SANDBOX_CONTROL_declared=allowed\nSANDBOX_CONTROL_account=allowed\n'))
+            self.assertTrue((account / marker).is_file())
 
 
 if __name__ == '__main__':
