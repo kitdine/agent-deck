@@ -593,6 +593,36 @@ both assemble checkboxes stay unchecked and its required gate stays
 and signature verification, remaining selected members (`cost-transparency`),
 and final combined acceptance complete.
 
+### Auxiliary-session-classification batch merged — 2026-11-14
+
+Under explicit operator authorization (`merge`), [PR #64](https://github.com/kitdine/agent-deck/pull/64)
+merged into remote `main` at `e3ff72eb0db6f54c63ab031544a8a6259b417122` on
+2026-11-14 10:37:43 UTC using a merge commit without deleting
+`feature/auxiliary-session-classification`. Its parents are target
+`90535085723f013cb8b24d83f83015e7d60d53b0` and reviewed source
+`0feb0c6d8965b6037de4c7e04bee839b96039dd0`; actual merge tree
+`8bc3398976468058299173b93b363155f0ce6d8c` exactly matches the Round 3 reviewed
+candidate tree. The earlier pre-merge OPEN statements above remain historical.
+
+Post-merge reconciliation is recorded in
+[Assembly Round 3](reviews/assemble.md#round-3--2026-11-14). GitHub verifies the
+server-created merge commit's PGP signature as `verified: true, reason: valid`
+with non-empty Conventional Commit subject/body and `Claude`/`Codex`/`Antigravity`
+trailers, satisfying the established operator signature-scope disposition for
+GitHub PR merges. Batch integration WorkUnit
+`v0-7-0-contract:integration:auxiliary-session-classification` is recorded in
+CEv1 against `e3ff72eb0db6f54c63ab031544a8a6259b417122`: `ancestry`,
+`reviewed-result`, and `delivery-signature` are `pass`, while `postmerge-ci` was initially recorded as `not_verified` (`NOT_VERIFIED` 3/4) while
+post-merge CI run `43586186560` was `in_progress`, and was then superseded via
+`20261114-ci-success` (`outcome: pass`, `supersedes` -> `20261114-e3ff72eb:postmerge-ci`)
+after run `43586186560` completed with `conclusion: success` across all 4 jobs
+(`classify` 10:38:00Z, `documentation` 10:38:23Z, `desktop` 10:48:30Z,
+`verify` 11:30:11Z UTC). `gate-status.cypher` now returns `VERIFIED` (4/4;
+`missing_criteria: []`, `unresolved_candidate_impacts: []`). Pre-merge source/PR
+CI runs (`43572725411`, `43572728514`) remain distinct pre-merge evidence. Aggregate
+`assemble` checkboxes remain unchecked pending `cost-transparency` and final
+combined acceptance. No history was rewritten.
+
 ### 1. `assemble`
 
 **Prerequisites:** reviewed contract membership with VERIFIED document evidence,

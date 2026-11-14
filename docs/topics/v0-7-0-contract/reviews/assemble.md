@@ -305,3 +305,15 @@ Task checkpoint：`ad-v0-7-0-contract-assemble`；`v0-7-0-contract:assemble:revi
 提交建议：整体 Task 门禁 VERIFIED 后再提交完整 assemble 交付；前提为选定成员集成或明确处置、实际集成证据、联合验收与记录收口。若只交付当前批次记录，须单独明确增量提交边界。
 推送建议：整体 Task 门禁 VERIFIED 后，完成上述前提及授权提交/签名核验，再单独授权推送 `origin/feature/v0-7-0-contract`；不提前创建 contract-wide PR。
 下一前提：由用户明确授权合并 PR #64（`feature/auxiliary-session-classification` `0feb0c6d8965b6037de4c7e04bee839b96039dd0` → `main` `90535085723f013cb8b24d83f83015e7d60d53b0`，预期合并 tree `8bc3398976468058299173b93b363155f0ce6d8c`），合并后核验 `main` 实际合并提交、签名与 post-merge CI，并同步集成状态记录。
+
+### Post-merge reconciliation — 2026-11-14
+
+用户已明确授权 `merge`，并在提交 `5c4a640731498017d8a2cbea3c19ff3ee01ace53` 推送至 `origin/feature/v0-7-0-contract` 之后执行 PR #64 合并。合并使用 `--merge --match-head-commit 0feb0c6d8965b6037de4c7e04bee839b96039dd0`，未 squash、rebase 或删除 `feature/auxiliary-session-classification`。
+实际合并提交为 `e3ff72eb0db6f54c63ab031544a8a6259b417122`（合并时间 `2026-11-14T10:37:43Z`），远端 `main` 指向该提交；实际双亲依次为 `90535085723f013cb8b24d83f83015e7d60d53b0` 与 `0feb0c6d8965b6037de4c7e04bee839b96039dd0`，实际合并 tree `8bc3398976468058299173b93b363155f0ce6d8c` 与 Round 3 核验通过的候选树完全一致。Round 3 的批次兼容性 PASS 直接适用于实际合并结果，未对未改动产品代码按阶段重跑全套测试；源分支既有排除与限制按原边界保留。
+
+实际提交标题为 `feat: isolate auxiliary sessions from work views (#64)`，包含说明正文及 `Claude`、`Codex`、`Antigravity` 三条 `Co-Authored-By` trailer；GitHub 服务端 PGP 签名验证结果为 `verified: true, reason: valid`（`-----BEGIN PGP SIGNATURE-----`），符合已确立的 GitHub PR 合并签名范围处置，无需追加历史改写或签名豁免。
+实际合并触发的主干 `CI` 工作流 `43586186560`（`https://github.com/kitdine/agent-deck/actions/runs/43586186560`）已于 `2026-11-14T11:30:11Z` 全部完成且结论为 `success`：4 个作业 `classify`（`10:38:00Z`）、`documentation`（`10:38:23Z`）、`desktop`（`10:48:30Z`）、`verify`（`11:30:11Z`）均为 `success`。合并前源分支及 PR 的全量 8 作业绿灯（`43572725411`、`43572728514`）保留为合并前证据，不改写或冒充实际 post-merge CI。
+
+已在 Neo4j（`github.com/kitdine/agent-deck`）建立批次集成 WorkUnit `v0-7-0-contract:integration:auxiliary-session-classification`（由 `v0-7-0-contract:assemble` 通过 `contains` 关联）及目标 ContentState `v0-7-0-contract:integration:auxiliary-session-classification:merge:e3ff72eb0db6f54c63ab031544a8a6259b417122`。初始写入将 `ancestry`、`reviewed-result`、`delivery-signature` 记为 `pass`、`postmerge-ci`（`20261114-e3ff72eb:postmerge-ci`）记为 `not_verified`；在 `43586186560` 全部完成后，新增 `v0-7-0-contract:integration:auxiliary-session-classification:evidence:20261114-ci-success`（`outcome: pass`）并通过 `supersedes` 取代 `20261114-e3ff72eb:postmerge-ci`（保留历史节点）。最新 `gate-status.cypher` 实测返回 `VERIFIED`（4/4 通过，`missing_criteria` 与 `unresolved_candidate_impacts` 均为空，`invalidated_evidence` 仅含被取代的 `20261114-e3ff72eb:postmerge-ci`）。
+
+契约工作区 `tasks.md` 与本评审记录已更新为最终核验状态并准备提交推送；`main` 状态页 `docs/status.md` 同步经独立状态 PR 交付。整体 `assemble` 门禁仍为 `NOT_VERIFIED`，任务矩阵复选框保持未勾选，待剩余选定成员（`cost-transparency`）及版本联合验收完成。
