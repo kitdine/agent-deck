@@ -1052,3 +1052,148 @@ Repair: OpenCode / GPT-6 Astra，未委派；session `ses_e3c1308d4ffexIfhH72pTh
 Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py --base HEAD`（两份记录）均 exit 0；`python3 scripts/check-docs.py` exit 1，根因如上。CEv1：目标状态写入 review=pass 与 l0=blocked（附根因），门禁读回 BLOCKED。门禁 VERIFIED 的前提：先处理工作区根目录的未跟踪文件 `agentdeck`（移出工作区或加入忽略规则，需用户决定，因为它不是复评创建的），再对同一内容状态重跑 `python3 scripts/check-docs.py` 并登记 l0=pass。
 
 **门禁同步 — 2026-11-10。** 用户决定直接删除工作区根目录的未跟踪构建产物 `agentdeck`（删除前确认未被 Git 跟踪、为 Mach-O 可执行文件）。随后 `python3 scripts/check-docs.py` exit 0，`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check` 均 exit 0。architecture.md blob 未变，同一目标状态 `installed-state-ownership:arch:r12-20261110-690d7cf1` 登记 l0=pass（`:l0-rerun`，以 supersedes 关系取代原 l0=blocked），门禁读回 VERIFIED。tasks.md 因第 29 行状态摘要同步产生最终状态，见任务分解 Round 15。
+
+## Round 13 — 2026-11-13
+
+### 📋 cask 简化设计修订评审
+
+📊 总体评分：6/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: Claude Code / Claude Fable 5.2，未委派。**不是冷上下文独立评审**：本次修订的方向（撤回文件生命周期规则对 cask 的适用）、四轮探测的指令以及交给设计阶段的指令，都由同一评审者在本会话和此前一次会话中提出；文档由 OpenCode 起草，评审者未写过稿中任何文字。下列发现各自给出可复核的出处，不依赖评审者身份；但本轮不能当作对该设计方向的独立确认，后续 PASS 需要由未参与该方向的评审者给出，或由用户明确接受这一限制。
+- Method: 通读修订后的全文及相对 `fe938e0b` 的差异；把稿中对现有代码、脚本、模板的声明逐项对照专题 HEAD 的源码；走查 cask 的首次安装、被拒、升级、重装、卸载和迁移场景；只读查看本机 Homebrew 源码中 cask 升级的失败处理。只读，未运行 brew、产品程序或测试。
+- Scope: architecture.md 的 2026-11-13 修订。tasks.md 的同步修订是依赖，未在本轮评审，由任务分解记录另行评审。
+- HEAD: `fe938e0b6c1d43862391d03721055536f339694e`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `76ea5c159deb535adaa112b209a1d10e26485246`（未提交）；fingerprint `9ad3b371ed3cfb3c20616681ecf465fb0b104293ff5281ececa08c164c703f97`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:r13-20261113-9ad3b371`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+**ISO-ARCH-R13-F1（P1）** [architecture.md:363-378] cask 登记被 `owned_by_other` 拒绝时，没有规定迁移提示由谁输出，现有 helper 文案对 cask 用户是错的。
+
+- 行为风险：已用 `make install` 或本地 App 安装的用户执行 `brew install --cask`，安装被回滚，看到的下一步是 `rerun with --takeover after quitting it`。cask 不传 `--takeover`，用户没有办法按提示操作。需求 A6 要求拒绝时给出迁移提示。
+- 证据：`cmd/agentdeck/install.go` 的 `installRefusalText` 对 `owned_by_other` 输出 `Keep the current installation, or rerun with --takeover after quitting it.`。现模板 `packaging/homebrew/agentdeck-app.rb.tmpl:76-83` 的 `owned_by_other_hint`（先用原安装方式卸载、再安装 cask）由经典块外的 Ruby 变量经 shell 包装输出；新设计的 `postflight_steps` 直接 `run` helper，这段提示没有去处。稿中第 378 行只写“迁移仍遵守原 formula 冲突提示及各安装方式的显式接管入口”，第 604 行只约束手册。
+- 💡 修复范围：写明 cask 被拒时用户看到的文字及其来源，并保证不出现 cask 用不了的 `--takeover` 指引。可选做法由设计决定并说明取舍，例如登记步骤改由 `/bin/sh -c` 包装、失败时输出模板内的迁移提示。所选做法若改变了步骤的可执行体或声明，要列入未验证清单或缩减回归，不能沿用 F2/F8 的结论。
+
+**ISO-ARCH-R13-F4（P1）** [architecture.md:635-646] G7、G9、A6、A9 四条需求文字与新设计冲突，稿中列为“待用户决定”，尚无决定。
+
+- 行为风险：设计与已通过的需求相互矛盾时，开发和验收没有可依据的一方；任务 8 的验收条目同样悬置。
+- 证据：`requirements.md:56` 写 cask“卸载时清理”回执，稿中第 382 行规定 cask 卸载不清理；`requirements.md:59`、`:110` 的接管条件没有同路径例外，稿中第 66、212、620 行撤回了同路径替换时的保证；`requirements.md:109` 的“只有一个安装”未限定为按路径。稿中核对表对四条的结论与原文一致，核对本身无误。
+- 💡 修复范围：这一项只能由用户决定关闭。评审者的建议是三条都按稿中候选限定接受：G7 改为 cask 卸载后回执过期即无主，make 与本地 App 保持卸载清理；G9 与 A9 限定为回执接管，即登记路径或安装方式发生变化的交接，cask 同路径升级不属于接管；A6 按登记路径定义“一个安装”。决定后由需求文档自己的设计与评审落到 `requirements.md`，本稿把“待用户决定”改为引用该决定。A2、A7 稿中结论为保留，无需决定。
+
+#### 🟡 建议改进 — 推荐
+
+**ISO-ARCH-R13-F2（P2）** [architecture.md:378, 447-453, 518-522] 升级过程中登记失败的场景没有回答。
+
+- 行为风险：`brew upgrade` 时 postflight 会再次登记并需要排他锁。`agentdeck watch` 或 telemetry 监听在运行、或 Hook 调用频繁时，登记以 `owner_running` 失败，升级随之失败。此时文件已由 Homebrew 在锁外替换，这次拒绝不再保护任何文件动作。稿中没有说明这种情况下用户最终处于什么状态，也没有把它列入回归或未验证清单；如果 Homebrew 未能恢复旧版本，用户会失去 App。
+- 证据：第 205、323 行规定取不到排他锁即 `owner_running`；第 221 行承认 Hook 频繁时可能 5 秒内取不到；F4 记录升级会再次执行登记；F8 只覆盖首次安装被拒后的回滚；缩减回归五类和未验证清单都没有“升级中被拒”。只读查看本机 Homebrew `7.0.13-97-g53c5856` 的 `Library/Homebrew/cask/upgrade.rb`，升级出错时先卸载新版本的产物，再对旧版本执行 `revert_upgrade`；这不是探测所用的 7.0.11，也没有实测，`postflight_steps` 是否落在这段恢复逻辑之内未核实。
+- 💡 修复范围：写明该场景的预期结果，即 brew 非零退出、旧版本恢复、旧回执不变且仍与原路径匹配，并写明用户的恢复办法是停止占用后重试。再二选一并写明：纳入缩减回归，或列入未验证清单并在风险表加一行。评审者建议纳入回归，因为恢复失败的后果是 App 消失。不为此新增豁免分支；是否让同路径重登在取不到锁时仍算成功属于新机制，按任务 5 的评审边界交用户决定。
+
+**ISO-ARCH-R13-F3（P2）** [architecture.md:390, 516-522] 新模板修不了“从已发布版本升级到新版本”这一次升级的卸载失败，稿中的表述会让人以为能修。
+
+- 行为风险：小组件未登记的用户从已发布的 cask 升级时，执行的是已安装版本的卸载脚本，`pluginkit -r` 退出 1，升级在新版本安装之前失败。新模板交付后这类用户仍然升不上来，第 390 行的关闭条件和第 522 行“升级无需额外所有权操作”都没有提到这一点。
+- 证据：本机 Homebrew `upgrade.rb:206-210` 在 cask 已安装时从已安装的 caskfile 加载旧定义，`:459` 由旧定义的安装器执行 `start_upgrade`；版本同上，非探测所用版本。首轮探测中升级失败点正是卸载回调，与此一致。该失败在真实 `/Applications` 下是否出现仍未证实，见 Beads `ad-bug-cask-uninstall-unregistered-widget`。
+- 💡 修复范围：在第 390 行和“升级和迁移”中写明这一限制及其未证实范围，并把用户侧的处理办法列入手册同步清单。既有缺陷本身不属于本次修订，载体仍是 `ad-bug-cask-uninstall-unregistered-widget`，本轮已在该记录追加这一事实；它不单独阻塞本稿，本稿要改的只是上述表述。
+
+#### 🟢 做得好的方面
+
+- 对现有代码的声明经核对属实：`scripts/manage-install.sh` 与 `scripts/install-local-app.sh` 不使用 attempt、`repair-identity`、`--require-unowned`、`--authorized-repair`、`--require-identity` 和两个 `HOMEBREW_AGENTDECK_REPAIR*` 变量，这些只出现在 cask 模板、`cmd/agentdeck/install.go` 和 `internal/installation`；两个脚本确实使用 `--source`、`--cleanup-manifest`、`--expected-installation`，稿中把它们保留是对的。
+- 生产小组件标识 `com.kitdine.agentdeck.widget` 与 `apps/macos/AgentDeck.xcodeproj/project.pbxproj:954` 一致，没有沿用探测的 Debug 标识。
+- 现模板的 `zap` 不含 `~/Library/Application Support/AgentDeck`，与“不增 zap 删除回执”一致；formula 冲突检查在 `main` 和专题分支上都已是 `preflight_steps`，保留它不依赖经典块。
+- 无 `--source` 的登记在 `internal/installation/install.go:412-414` 要求运行者就是被登记的程序，与稿中第 332 行一致。
+- 两项撤回的保证、PlugInKit 输出风险和 HOME 不一致的拒绝都如实标为“不再保证”或“仅推出、未实测”，没有声称与原设计等价；F10 与 HOME 不一致拒绝之间的张力在回归第 5 类中有明确的失败出口。
+
+#### 📝 总结
+
+评审对象为 architecture.md 未提交的 2026-11-13 修订（HEAD `fe938e0b`，blob `76ea5c15`）。四项发现全部开放：F1 是设计遗漏，F4 等待用户决定，F2、F3 是场景与表述缺口。结论 FAIL，架构 Review 保持未勾选。设计方向本身未发现不可行之处，探测事实与稿中表述一致。
+
+剩余不确定性：Homebrew 升级失败恢复的两处依据来自本机 7.0.13 源码，不是 runner 上的 7.0.11，且未实测；真实 `/Applications`、公证版 DMG、扩展已登记时的注销仍未验证，稿中已列出。评审者不独立，见 Reviewer。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 在写入本轮记录前对被评审内容均 exit 0。项目没有针对架构文档语义的专用检查器，上述为结构检查。CEv1：目标状态登记 review=fail 与 l0=pass，门禁读回 FAILED。
+
+#### 修复交接 — 2026-11-13
+
+- 阶段与来源：真实用户明确授权修复 ISO-ARCH-R13-F1/F2/F3/F4，并在同一指令确认 F4 的三项范围决定、要求 F2 纳入缩减 real-brew。本段追加在原报告之后，不改写 Round 13 的发现、FAIL、被评审身份或旧证据结论。
+- 范围：`architecture.md` 及对应 `tasks.md` 同步；本记录只追加修复映射。`requirements.md`、产品代码、测试文件、其他历史评审与第 6 轮 installer-receipts 结果不改；没有执行真实安装、PlugInKit、Homebrew、提交或推送。
+- 方法：主会话按记录核对源码与设计缺口并修订，未委派；这是作者修复，不是独立复评。Round 13 的评审独立性限制仍保留，后续 PASS 须由未参与设计方向的独立评审者给出，或由用户明确接受该限制；本次用户范围决定不等于接受评审独立性限制。
+
+**发现到改动映射**
+
+- **ISO-ARCH-R13-F1 → repaired in candidate，待独立复评。** [cask 安装链](../architecture.md#cask-的完整安装与卸载链) 选择模板内 `/bin/sh -c` 薄包装：以固定 text 格式调用已安装 helper；仅在非零退出且 stderr 有完整 `  reason: owned_by_other` 行时，替换为模板的 code/reason/迁移 next，提示保留当前安装，或用原方式卸载后重试本次带实际 token 的 brew 操作。不再转发通用 `--takeover` 指引；stdout、其他错误与 helper 原退出码保留。临时 stderr 缓冲退出删除，不是 attempt/身份/恢复材料。已说明不改 helper 通用提示的取舍；新包装仍属未验证的真实 steps 变体，F2 原始直调声明另行保留，F2/F8 不为新包装认证。任务 5 的本地桩与真实 brew 安装/有效拥有者场景同步覆盖该边界。
+- **ISO-ARCH-R13-F2 → repaired in candidate，待独立复评。** 按用户指令，缩减 real-brew 的第 2 类增加“升级新文件已发布、postflight 实际登记以 owner_running 拒绝”的完整分支。预期 brew 非零、Homebrew 恢复旧 App 内容/版本及安装记录、旧回执逐字节不变且仍匹配原路径，停止占用后重试成功；不以首次安装的无 App 末态替代，不提前释放占用或只检查首次拒绝。只读确认本机 Homebrew `53c5856230b72e866ee4da77cfb9d39880291a99` 的 installer install_artifacts 包含 PostflightSteps，异常回滚后由 upgrade 的异常路径调用旧 revert_upgrade；后者会重跑旧 artifacts，可能再次取锁失败或改写回执。因此当前只定义并要求验证该预期，不声称源码推演或 F4/F8 已证明它，更不冒充 runner 7.0.11 实测。风险/未验证清单、升级说明和任务 5 均同步；任何恢复条件失败即返回设计，不新增同路径重登豁免或自定义恢复协议。
+- **ISO-ARCH-R13-F3 → repaired in candidate，待独立复评。** [既有缺陷及升级说明](../architecture.md#cask-的完整安装与卸载链) 明确已发布旧 cask 升级先执行安装记录中的旧卸载，新模板不能追溯修复这一回调；“新模板交付”不等于存量首次升级已恢复。该顺序在同一 Homebrew 提交的 upgrade.rb 中经只读核对，与原探测旧卸载失败相符，但不是对真实 /Applications/公证包的验证。手册同步列出保留旧安装、识别旧卸载错误、可信旧 Release App 正常启动/退出后重试的未验证建议，以及失败后沿原缺陷获取经验证处置的边界；不自动编辑 Caskroom、删 App/回执、执行注册或把 reinstall/force 说成保证。载体仍为 ad-bug-cask-uninstall-unregistered-widget，本轮未改其状态，也不把该既有缺陷单独变成本稿阻塞。
+- **ISO-ARCH-R13-F4 — CLOSED by explicit user decision。** 来源是 2026-11-13 的真实用户修复指令：① G7 为 cask 卸载后过期即无主，make/本地 App 卸载清理；② G9/A9 接管限定为登记路径或安装方式变化的回执交接，cask 同路径升级不属于接管，不保证替换瞬间无旧会话；③ A6 按登记路径定义一个安装，同路径前后版本不是两个安装。[需求核对](../architecture.md#保证变化与需求核对) 已改为引用该决定，并逐字列出 requirements.md 的 G7/G9/A6/A9 原文及连带安装概述供其独立设计/评审落地；requirements.md 本身未改。不再索要同一决定，不把它记为需求文本已改或运行验收已通过。任务 5/8 的适用范围、旧条目对照和状态同步；A2/A7 正常路径保留。
+
+**验证与限制**
+
+- 从架构中直接提取当前目标 Ruby stanza 运行 `ruby -c`，从其 heredoc 提取完整 shell 运行 `/bin/sh -n`，均 exit 0。随后只用临时 helper 桩执行该原文，不运行真实 helper、brew 或 PlugInKit：成功 exit 0；owned_by_other exit 7 且替换为准确迁移提示、无 takeover；owner_running exit 8 原样；其他错误 exit 19 原样；相似但非完整 reason 行 exit 23 不误匹配；成功时的 stderr 也原样保留。六例均通过，stdout/退出码不变，含空格 helper 路径与完整 argv 保留、临时诊断缓冲删除。
+- 首次桩运行的提取器用了跨行贪婪表达式，只取到 `exit "$status"`，导致夹具失败；收窄 heredoc 首行匹配并校验提取体首尾后六例全部通过。该失败属于验证提取器，不是产品或设计脚本已复现失败；没有据此改产品代码。复现时从“安装后登记与迁移提示”的 ruby fence 提取，以 `args: ... <<~'SH'` 的单行结束为起点、独立 `SH` 行为终点，避免跨行贪婪匹配。
+- `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership` 对下述修复文档候选均 exit 0；追加修复记录后的 `python3 scripts/check-review-records.py --base HEAD docs/topics/installed-state-ownership/reviews/architecture.md`、`make check-whitespace`、`git diff --check` 也均 exit 0。范围核对确认 requirements.md、其他评审记录、第 6 轮结果不变，原架构评审完整前缀保持原样。这些是结构/范围检查，不签发语义 PASS。
+- 真实包装步骤、升级登记拒绝后的恢复末态和存量旧包的处理有效性仍未实测；F1/F2 属任务 5 后续必须补的 real-brew 证明，不在本轮文档修复中伪造。requirements.md 的独立修改/评审仍是它自己的后续工作。
+
+**修复候选身份**
+
+- Workspace：`agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；HEAD `fe938e0b6c1d43862391d03721055536f339694e`。
+- architecture.md blob：`d66131575230f84bf704e294d7836e4513ef812b`；fingerprint `9e36ca9931e19a24cb85eac3e139a967f71ada40f6507693ab69fcfabbffe882`。
+- tasks.md blob：`b948ac9570335594724c36969896bda215a80007`；fingerprint `9ddfb6022f8dda9d12bb338e98111621ede5a6bfe6ab9e73299437d65165d66a`。
+- 配方均为 SHA-256 of `head=<HEAD>;document=<blob>`。这些是修复候选身份，不冒充原 Round 13 的 ContentState；原 FAIL/FAILED 只适用于原被评审状态。本次没有自签新 PASS、查询或声称新候选证据门禁已通过；由独立复评处理新内容态，任务分解本身仍未取得新评审结论。
+
+## Round 14 — 2026-11-14
+
+### 📋 cask 简化设计修订复评
+
+📊 总体评分：8/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Claude Code / Claude Fable 5.2，未委派；未参与本次修复，修复者为 OpenCode。**仍不是冷上下文独立复评**：与 Round 13 同一评审者，且该评审者提出了本次修订的方向。Round 13 已向用户说明这一限制并写明后续 PASS 应由独立评审者给出或由用户接受限制；用户随后把复评指令直接交给了同一评审者，但没有就接受限制作出明确表态。因此本轮 PASS 只表示 Round 13 的四项发现在当前内容中已关闭，不是对设计方向的独立确认。
+- Method: 逐项对照 Round 13 的四项发现与当前内容；核对修复新增的 shell 包装所依赖的 helper 行为；通读 cask 安装与卸载链、探测事实、缩减回归、契约同步、风险和需求核对各节。只读，未运行 brew、产品程序、测试或修复者的桩。上一轮被评审的 blob 未写入对象库，无法做逐行差异，改动范围按章节通读确定。
+- Scope: architecture.md 的修复候选。tasks.md 的同步修订是依赖，本轮未评审。
+- HEAD: `fe938e0b6c1d43862391d03721055536f339694e`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: architecture.md blob `d66131575230f84bf704e294d7836e4513ef812b`（未提交）；fingerprint `9e36ca9931e19a24cb85eac3e139a967f71ada40f6507693ab69fcfabbffe882`，配方 SHA-256 of `head=<HEAD>;document=<blob>`，与修复交接登记的候选身份一致。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:arch:r14-20261114-9e36ca99`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-ARCH-R13-F1 — CLOSED。** 第 365-398 行规定登记步骤由 `/bin/sh -c` 包装调用 helper，仅在非零退出且 stderr 有整行 `  reason: owned_by_other` 时改为输出模板内的三行提示，其余输出和退出码原样保留；提示不再出现 cask 用不了的 `--takeover`。包装依赖的 helper 行为经核对属实：`--format` 是 `cmd/agentdeck/main.go:861` 的全局参数，默认即 text；文本错误经 `main.go:471` 写到 stderr；`cmd/agentdeck/install.go` 的 `renderInstallRefusal` 输出的正是 `  reason: <原因>` 这一行；`@CASK_TOKEN@` 是现模板已有的占位符。包装改变了步骤的可执行体，稿中已把它列入未验证清单（第 457 行）、风险表（第 669 行）和回归第 1、4 类，并写明 F2、F8 不为它作证。
+- **ISO-ARCH-R13-F2 — CLOSED。** 第 400-402 行写明预期末态、用户恢复办法和不设豁免；回归第 2 类（第 492 行）要求持锁直到 brew 失败与恢复结束，并断言旧版本内容、安装记录和回执；未验证清单（第 458 行）和风险表（第 670 行）同步。修复者还查出恢复过程可能再次执行旧的 postflight，稿中据此明确源码走查不构成证明，这比 Round 13 的要求更严。
+- **ISO-ARCH-R13-F3 — CLOSED。** 第 414-416 行和第 564 行写明新模板不能追溯修复已安装旧定义的卸载回调，缺陷关闭还需其载体处置这一限制；手册同步清单（第 648 行）给出处理办法并标明其有效性未验证；未验证清单（第 459 行）和风险表（第 671 行）同步。既有缺陷仍由 `ad-bug-cask-uninstall-unregistered-widget` 承载。
+- **ISO-ARCH-R13-F4 — CLOSED by explicit user decision。** 决定来源是 2026-11-13 用户修复指令中的三条范围决定；第 682-697 行引用了决定，不再列为待定，第 699-733 行逐字列出 `requirements.md` 需要改动的原文，经核对与该文件第 56、59、109、110 行一致。需求文本本身尚未修改，这是 `requirements.md` 的工作，不属于本稿的开放发现，-> open，载体 Beads `ad-installed-state-ownership-doc-req-cask-scope-revision`。
+
+#### 📝 总结
+
+Round 13 的四项发现全部关闭，未发现新问题，结论 PASS，架构 Review 勾选。评审对象为 architecture.md 未提交的修复候选（HEAD `fe938e0b`，blob `d6613157`）。
+
+剩余不确定性不变，稿中均已列为未验证并指定了取证位置：shell 包装在真实 Homebrew 步骤沙箱中的执行、升级中登记被拒后的恢复末态、HOME 不一致时的拒绝，由任务 5 的缩减 real-brew 回归取证；扩展已登记时的注销由发布工作流取证；真实 `/Applications` 与公证版 DMG 未测。任一项不成立，稿中规定返回设计而不是新增机制。评审者不独立，见 Reviewer。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 对被评审内容均 exit 0。项目没有针对架构文档语义的专用检查器。修复者报告的 `ruby -c`、`/bin/sh -n` 和六例桩运行未由本轮重跑，不作为本轮证据。CEv1：目标状态登记 review=pass 与 l0=pass，门禁读回 VERIFIED。
+
+**历史编号对账 — 2026-11-14。** 一致性 Hook 的同一项检查在本记录上也列出没有处置的编号，它们同样先于本次修订存在。逐个核对后，它们是其他记录所属发现在本记录中的引用，或本记录中完整编号的简写。下列处置依据各所属记录的现行内容，不改变任何一轮的结论。
+
+- ISO-UX-R1-F1 — closed：CLI 界面发现，在 [CLI 评审](ux-cli.md)中关闭。
+- ISO-TASKS-R1-F1 — closed：任务分解发现，在[任务分解评审](tasks.md)中关闭。
+- ISO-TASKS-R1-F2 — closed：任务分解发现，在任务分解评审中关闭。
+- R1-F2 — closed：ISO-ARCH-R1-F2 的简写，在本记录中关闭。
+- R2-F1 — closed：ISO-ARCH-R2-F1 的简写，在本记录中关闭。
+- R3-F1 — closed：ISO-ARCH-R3-F1 的简写，在本记录中关闭。
+- R8-F1 — closed：ISO-ARCH-R8-F1 的简写，在本记录中关闭。
+- R9-F1 — closed：ISO-ARCH-R9-F1 的简写，在本记录中关闭。
+- R10-F1 — closed：ISO-ARCH-R10-F1 的简写，在本记录中关闭。
+- R11-F1 — closed：ISO-ARCH-R11-F1 的简写，在本记录中关闭。
+
+核对方法同任务分解评审记录的对账：用 `scripts/hooks/beads-consistency.py` 的 `closed_finding_ids` 读取各所属记录，上述每个完整编号都在已关闭集合中。
