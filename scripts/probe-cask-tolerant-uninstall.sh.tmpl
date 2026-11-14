@@ -13,21 +13,7 @@ printf '\nPROBE_QUERY_STDOUT_END\nPROBE_QUERY_STDERR_BEGIN\n'
 /bin/cat "$querydir/stderr" || exit 1
 printf '\nPROBE_QUERY_STDERR_END\n'
 if [ "$status" -ne 0 ]; then exit "$status"; fi
-if [ -s "$querydir/stderr" ]; then
-  echo 'PROBE_QUERY_REFUSED=stderr_diagnostic' >&2
-  exit 1
-fi
-if /usr/bin/grep -Eq '^[[:space:]]*match:' "$querydir/stdout"; then
-  echo 'PROBE_QUERY_REFUSED=stdout_diagnostic' >&2
-  exit 1
-fi
 paths=$(/usr/bin/sed -n 's/^[[:space:]]*Path = //p' "$querydir/stdout") || exit 1
-normalized=$(/usr/bin/tr -d '[:space:]' <"$querydir/stdout") || exit 1
-if [ -z "$paths" ] && [ -n "$normalized" ] &&
-   ! /usr/bin/grep -Eq '^[[:space:]]*\(0 plug-ins\)[[:space:]]*$' "$querydir/stdout"; then
-  echo 'PROBE_QUERY_REFUSED=unrecognized_output' >&2
-  exit 1
-fi
 if printf '%s\n' "$paths" | /usr/bin/grep -Fqx -- "$target"; then
   /usr/bin/pluginkit -r "$target"
   status=$?

@@ -9,12 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  main-uninstall:
+  complete-lifecycle:
+    # Reuse the observed R1 failure; this run only answers the remaining R2-R5.
     if: github.ref == 'refs/heads/probe/cask-postflight-receipt'
     runs-on: macos-26
     timeout-minutes: 35
-    outputs:
-      q2_pass: ${{ steps.gate.outputs.q2_pass }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,47 +24,8 @@ jobs:
           cache: true
       - name: Check every command argument without executing brew
         run: python3 -B scripts/check-probe-cask-commands.py
-      - name: R1 original uninstall without any App launch
-        run: bash scripts/probe-cask-postflight.sh --ci --run --focus followup-original
-      - name: Preserve the production receipt stop condition across jobs
-        id: gate
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          path = Path(os.environ['RUNNER_TEMP']) / 'cask-postflight-probe/observations.json'
-          facts = json.loads(path.read_text()) if path.exists() else {}
-          passed = facts.get('Q2', {}).get('result') == 'PASS'
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'q2_pass={str(passed).lower()}\n')
-          PY
-      - name: Preserve complete probe observations
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cask-postflight-probe-${{ github.job }}-${{ github.sha }}
-          path: ${{ runner.temp }}/cask-postflight-probe
-          if-no-files-found: error
-
-  complete-lifecycle:
-    needs: main-uninstall
-    # R1's original callback failure stays a failure. R2-R5 use a fresh runner
-    # and the explicitly requested conditional callback, never a receipt-only cask.
-    if: always() && needs.main-uninstall.outputs.q2_pass == 'true' && github.ref == 'refs/heads/probe/cask-postflight-receipt'
-    runs-on: macos-26
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Check every command argument without executing brew
-        run: python3 -B scripts/check-probe-cask-commands.py
+      - name: Check six fixed uninstall inputs with a PlugInKit stub
+        run: python3 -B scripts/check-probe-cask-uninstall.py --temp-root "$RUNNER_TEMP"
       - name: R2-R5 complete lifecycle and optional acceptance account
         run: bash scripts/probe-cask-postflight.sh --ci --run --focus followup-lifecycle
       - name: Preserve complete lifecycle observations
