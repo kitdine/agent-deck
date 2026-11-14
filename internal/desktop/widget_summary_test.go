@@ -279,8 +279,27 @@ func TestSessionScopeBatchNeverSplicesGenerations(t *testing.T) {
 			continue
 		}
 		if view.Available || view.Counts != nil || view.GenerationID != nil || view.Reason == nil ||
-			*view.Reason != sessionorigin.PublicationReasonGenerationUnavailable {
+			*view.Reason != sessionorigin.PublicationReasonGenerationUnavailable ||
+			view.Default.Value == nil || *view.Default.Value != "all" {
 			t.Fatalf("view %d after the move = %+v", index, view)
+		}
+	}
+	// A default change before the first selection is captured updates the
+	// batch's reported default to match its verified generation.
+	sessionScopeBatchObserver = func(index int) {
+		if index == 0 {
+			setWidgetDefault(t, root, "auxiliary")
+		}
+	}
+	movedBeforeFirst, err := s.SessionScopeBatch(context.Background(), SessionScopeRequest{Scope: "work", RecentLimit: 1, AsOf: fixtureNow})
+	if err != nil || len(movedBeforeFirst.Views) != 9 {
+		t.Fatalf("moved before first batch: %d views, %v", len(movedBeforeFirst.Views), err)
+	}
+	firstGen := movedBeforeFirst.Views[0].GenerationID
+	for index, view := range movedBeforeFirst.Views {
+		if !view.Available || firstGen == nil || view.GenerationID == nil || *view.GenerationID != *firstGen ||
+			view.Default.Value == nil || *view.Default.Value != "auxiliary" {
+			t.Fatalf("view %d after pre-first move = %+v", index, view)
 		}
 	}
 	sessionScopeBatchObserver = nil

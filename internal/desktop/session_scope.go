@@ -178,7 +178,6 @@ func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequ
 	if coreErr == nil {
 		defer core.Close()
 	}
-	defaults := readSessionScopeDefault(ctx, core, coreErr)
 	batch := SessionScopeBatch{Views: make([]SessionScopeView, 0, len(SessionScopeBatchClients)*len(SessionScopeBatchPeriods))}
 	for _, client := range SessionScopeBatchClients {
 		for _, period := range SessionScopeBatchPeriods {
@@ -186,7 +185,7 @@ func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequ
 				sessionScopeBatchObserver(len(batch.Views))
 			}
 			request.Client, request.Period = client, period
-			view := s.sessionScopeView(ctx, core, coreErr, defaults, request, now)
+			view := s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now)
 			if request.GenerationID == "" && view.Available && view.GenerationID != nil {
 				request.GenerationID = *view.GenerationID
 			}
@@ -217,14 +216,40 @@ func (s Service) SessionScopeDefaultBatch(ctx context.Context, recentLimit int) 
 		core.Close()
 	}
 	result := SessionScopeDefaultBatch{AsOf: now.Format(time.RFC3339), Default: defaults, Views: []SessionScopeView{}}
-	if !defaults.Confirmed || defaults.Value == nil {
+	for attempt := 0; attempt <= sessionorigin.MaxSelectionRetries; attempt++ {
+		if !defaults.Confirmed || defaults.Value == nil {
+			result.Default, result.Views = defaults, []SessionScopeView{}
+			return result
+		}
+		batch, err := s.SessionScopeBatch(ctx, SessionScopeRequest{Scope: *defaults.Value, RecentLimit: recentLimit, AsOf: now})
+		if err != nil {
+			return result
+		}
+		if len(batch.Views) > 0 && !sameDefaultScope(batch.Views[0].Default, defaults) {
+			defaults = batch.Views[0].Default
+			result.Default = defaults
+			continue
+		}
+		result.Views = batch.Views
 		return result
 	}
-	batch, err := s.SessionScopeBatch(ctx, SessionScopeRequest{Scope: *defaults.Value, RecentLimit: recentLimit, AsOf: now})
-	if err == nil {
-		result.Views = batch.Views
-	}
 	return result
+}
+
+func sameDefaultScope(a, b sessionorigin.DefaultScope) bool {
+	if a.Confirmed != b.Confirmed || (a.Value == nil) != (b.Value == nil) || (a.Revision == nil) != (b.Revision == nil) || (a.Reason == nil) != (b.Reason == nil) {
+		return false
+	}
+	if a.Value != nil && *a.Value != *b.Value {
+		return false
+	}
+	if a.Revision != nil && *a.Revision != *b.Revision {
+		return false
+	}
+	if a.Reason != nil && *a.Reason != *b.Reason {
+		return false
+	}
+	return true
 }
 
 func isGenerationID(value string) bool {
@@ -268,12 +293,21 @@ func (s Service) loadSessionScopeView(ctx context.Context, limit int, now time.T
 		defer core.Close()
 	}
 	defaults := readSessionScopeDefault(ctx, core, coreErr)
-	request, ok := defaultSessionScopeRequest(defaults, limit)
 	var view SessionScopeView
-	if !ok {
-		view = unavailableSessionScopeView(defaults, nil, SessionScopeReasonDefaultUnconfirmed)
-	} else {
+	for attempt := 0; attempt <= sessionorigin.MaxSelectionRetries; attempt++ {
+		request, ok := defaultSessionScopeRequest(defaults, limit)
+		if !ok {
+			view = unavailableSessionScopeView(defaults, nil, SessionScopeReasonDefaultUnconfirmed)
+			break
+		}
 		view = s.sessionScopeView(ctx, core, coreErr, defaults, request, now)
+		if !view.Available || sameDefaultScope(view.Default, defaults) {
+			break
+		}
+		defaults = view.Default
+		if attempt == sessionorigin.MaxSelectionRetries {
+			view = unavailableSessionScopeView(defaults, nil, sessionorigin.PublicationReasonGenerationUnavailable)
+		}
 	}
 	result.Snapshot.SessionScopeView = &view
 }
@@ -320,9 +354,13 @@ func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreEr
 	switch {
 	case coreErr == nil:
 		snapshot, err = reader.Select(ctx, originSelection, func(ctx context.Context, selected *sessionorigin.Snapshot) error {
-			// Signals are read before the vector is verified, so they share the
-			// selection's generation. A signal failure degrades only the
-			// signal families, never the selection itself.
+			// Default and signals are read before the vector is verified, so
+			// they share the selection's generation. A signal failure degrades
+			// only the signal families, never the selection itself.
+			defaults = readSessionScopeDefault(ctx, core, coreErr)
+			if !defaults.Confirmed {
+				return fmt.Errorf("%w: default scope unavailable", sessionorigin.ErrClassificationUnavailable)
+			}
 			signals = s.scopedWorkSignals(ctx, core, now, window, request.Client, selected.SessionFilter())
 			return nil
 		})
@@ -335,6 +373,9 @@ func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreEr
 		err = fmt.Errorf("%w: %v", sessionorigin.ErrClassificationUnavailable, coreErr)
 	}
 	if err != nil {
+		if coreErr == nil {
+			defaults = readSessionScopeDefault(ctx, core, coreErr)
+		}
 		view, _ := sessionorigin.Publish(originSelection, nil, nil, err, nil)
 		return unavailableSessionScopeView(defaults, selection, view.Reason)
 	}

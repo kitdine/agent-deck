@@ -3065,6 +3065,9 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				if err := telemetry.ProjectSessionIndex(ctx, core, sessions); err != nil {
 					return err
 				}
+				if _, err := sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home}); err != nil {
+					return err
+				}
 				return core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
 			})
 			if err != nil {

@@ -279,3 +279,26 @@ func TestUsageTextDisclosesAnIncompleteScan(t *testing.T) {
 		t.Fatalf("stored-only stats = %#v", stored)
 	}
 }
+
+func TestSessionRebuildReconcilesOriginsAndRestoredOverrides(t *testing.T) {
+	c := newCohort(t)
+	c.ready(t)
+	c.run(t, "--format", "json", "session", "classify", cohortCodex, "--client", "codex", "--set", "auxiliary")
+
+	archive := filepath.Join(t.TempDir(), "cohort.agentdeck-backup")
+	if result := runOriginCLIInput(t, c.state, "passphrase\n", "--format", "json", "backup", "create", archive); result.exit != 0 {
+		t.Fatalf("backup create = %#v", result)
+	}
+	restored := cohort{home: c.home, state: filepath.Join(t.TempDir(), "restored"), claudeMem: c.claudeMem}
+	waitForDetachedScanCleanup(t, restored.state)
+	if result := runOriginCLIInput(t, restored.state, "passphrase\n", "--format", "json", "backup", "restore", archive); result.exit != 0 {
+		t.Fatalf("backup restore = %#v", result)
+	}
+	waiting := restored.run(t, "--format", "json", "session", "classify", "list")["data"].(map[string]any)
+	if waiting["total"] != float64(1) || waiting["items"].([]any)[0].(map[string]any)["binding_status"] != "unmatched" {
+		t.Fatalf("restored overrides must wait unmatched: %#v", waiting)
+	}
+	restored.run(t, "--format", "json", "session", "origin-source", "set", "claude-mem", "--data-dir", c.claudeMem.Dir)
+	restored.run(t, "--format", "json", "session", "rebuild")
+	restored.assertSurfaces(t, "after restore and session rebuild", baseOracle().with("codex/"+cohortCodex, "auxiliary"))
+}
