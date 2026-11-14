@@ -1104,3 +1104,123 @@ Evidence: 同批检查与架构 Round 11 相同：主题集合、空白、diff �
 Evidence: 主题集合、空白、diff 与两份记录的结构检查 exit 0；`python3 scripts/check-docs.py` exit 1，仅因上述未跟踪文件的子串误判，去掉该路径后的只读探针 exit 0。CEv1：最终状态写入 review=pass 与 l0=blocked，门禁读回 BLOCKED。
 
 **门禁同步 — 2026-11-10。** 按用户决定删除未跟踪构建产物 `agentdeck` 后，L0 全部 exit 0（含 `python3 scripts/check-docs.py`）。第 29 行状态摘要随之同步，最终 tasks.md blob `7795dfb26bd620b28e3e0d6f77b1ea099fcc5bbb`，fingerprint `cfeedc55d1a1010b7fb0c4b12519a6a445580da46d3534a79fa477d6f30d38ed`；相对 `ba22e45a` 只改该行，任务定义不变，本轮 PASS 结论适用。最终 ContentState `installed-state-ownership:tasks:r15-final-20261110-cfeedc55` 绑定 review=pass（注明来源于本轮对 `ba22e45a` 的结论）与 l0=pass，门禁读回 VERIFIED；`ba22e45a` 上原有的 blocked 记录保留为历史。
+
+## Round 16 — 2026-11-14
+
+### 📋 cask 简化任务分解修订评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: Claude Code / Claude Fable 5.2，未委派。**不是冷上下文独立评审**：与架构 Round 13、Round 14 同一评审者，且该评审者提出了本次修订的方向；文档由 OpenCode 起草和修复，评审者未写过任务定义。用户在该限制已说明的情况下把评审指令交给了同一评审者，但没有明确表示接受限制。
+- Method: 通读相对 HEAD 的全部差异及任务 5、任务 8、任务 9、覆盖与交接核对各节的现行文字；按“验收断言 → 实际被测入口 → 实现任务 → 依赖闭包”逐条核对任务 5 的五类 real-brew 与任务 8 的同步条目；对照架构 Round 14 通过的内容核对一致性。只读，未运行 brew、产品程序或测试。
+- Scope: tasks.md 的 2026-11-13 cask 修订及其修复同步。差异中还包含更早回填的任务 5 第 6 轮结果状态文字，属于任务 5 的记录，不在本轮评审范围。架构 Round 14 为本轮依赖。
+- HEAD: `fe938e0b6c1d43862391d03721055536f339694e`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `de393408f762533399325be59b57c8e0a30cf0fb`（fingerprint `b29fb661bc06479a52579e2b822cc274eb38736806eb0769ff5878b2718d31ef`）；本轮只同步第 28 行状态摘要，任务定义不变。最终 blob `46c2fcfc60743943a0b5e5ebb287769f0793e3bd`，fingerprint `6ad9fdba927b5eba9192fa8c9ad5923666b0e49b1bcf2e296bc79599f7df5eaf`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。依赖 architecture.md blob `d66131575230f84bf704e294d7836e4513ef812b`。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:tasks:r16-20261114-6ad9fdba`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+**ISO-TASKS-R16-F1（P2）** [tasks.md:468, 484] 任务 5 的开工条件自相矛盾：需求文本修订是否阻塞任务 5 开发，两处说法不同。
+
+- 行为风险：第 484 行把“需求文本对应流程完成”写成移除 cask 协议之前的前提，照此任务 5 要等 `requirements.md` 的设计与评审全部结束才能开工；第 468 行的依赖只列任务 2 和本次设计评审，需求文字的落地写的是“按其自身设计/评审协调”。收到开发指令的人无法判断自己是否被阻塞。
+- 证据：第 468 行“**依赖**：任务 2（传递包含任务 1）及本次设计独立评审；需求文字的后续落地按其自身设计/评审协调，用户范围决定已取得。”第 484 行“**实施顺序**：设计评审及需求文本对应流程完成后，凭新的开发指令移除 cask 专用协议……”。第 520 行和任务 8 第 654 行都把需求文本落地描述为另行处理、不再等待，与第 468 行一致，第 484 行是唯一的例外。Beads 中 `ad-installed-state-ownership-doc-req-cask-scope-revision` 与任务 5 之间也没有依赖关系。
+- 💡 修复范围：在两处写成同一个结论，并写明需求文本修订阻塞的是哪一个边界。评审者建议：不阻塞任务 5 开发，因为范围决定已由用户作出且架构已引用；阻塞任务 8 的验收结论，因为任务 8 要逐条对照 G7、G9、A6、A9 的文字。这是排期决定，由用户确认或改写。
+
+#### 🟢 做得好的方面
+
+- 任务 5 的验收条目与架构 Round 14 通过的内容一致：shell 包装的登记步骤、三条注销判定、HOME 不一致的拒绝、五类 real-brew 及第 2 类的升级被拒分支，都没有比架构多出或少掉内容。
+- 五类 real-brew 所需的被测入口都在任务 5 的依赖闭包内：持共享锁的真实 CLI 会话来自任务 2，无 `--source` 登记和不同路径的 make 登记由任务 5 自己交付。升级被拒后的恢复验证明确留在任务 5，没有转交任务 8。
+- 删除前的消费者审计点出了同名参数的陷阱：`--expected-installation` 在 register 上撤除、在 unregister 上保留。
+- 任务 8 的旧条目原文保留，逐条标出 cask 下不再适用的子句，没有直接删除；交错表把 I4 的 brew 链和 I5 整项退出写明，并注明历史通过结果不能认证新设计。
+- Tasks 矩阵把任务 5 的 Dev 重新置为未勾选，历史交接和第 6 轮结论保持原样。
+
+#### 📝 总结
+
+评审对象为 tasks.md 未提交的 cask 修订（HEAD `fe938e0b`，最终 blob `46c2fcfc`）。一项发现开放，结论 FAIL，任务分解 Review 保持未勾选。除这一处开工条件的矛盾外，分解与架构一致，没有发现藏进“后续验收”的不可验证条件。
+
+剩余不确定性：真实 brew 上的结果都尚未取得，按文中约定由任务 5 的 CI 回归取证。评审者不独立，见 Reviewer。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py --base HEAD`（本记录）在写入本轮记录与状态同步后均 exit 0。项目没有针对任务分解语义的专用检查器。CEv1：目标状态登记 review=fail 与 l0=pass，门禁读回 FAILED。
+
+#### 修复交接 — 2026-11-14（ISO-TASKS-R16-F1，待独立复评）
+
+- Repair: OpenCode / GPT-6.1 Sol，未委派；调度载体沿用 `ad-installed-state-ownership-doc-installer-receipts-revision`。工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`；会话关联 `ses_e27379886ffe6XhW7yQ3l3Jvmp`。
+- 确认发现：输入 tasks.md blob `46c2fcfc60743943a0b5e5ebb287769f0793e3bd` 与本轮评审一致；任务 5 的依赖允许需求文本另行处理，实施顺序却要求先完成需求文本流程，矛盾仍存在。
+- **用户排期决定（2026-11-14）**：本次修复中向用户明确询问阻塞边界，用户选择“仅阻塞任务 8 验收”，选项已明确指最终验收结论。requirements.md 的文本修订及其评审不阻塞任务 5 开发；任务 8 在该流程完成前可以于能力依赖满足后开展验收，但不得形成最终验收结论。任务 5 仍须设计独立评审通过及新的开发指令；本次修复指令不授权开发。
+- **ISO-TASKS-R16-F1 → repaired in candidate，待独立复评。** 任务 5 的“依赖”和“实施顺序”统一为不等待需求文本修订及其评审；任务 8 的“依赖”明确该流程是最终验收结论的前提、不是新增开工阻塞。同步 tasks.md 日期与当前状态摘要，不改实现任务依赖、不新增 Beads 开工依赖。需求文本工作仍由 `ad-installed-state-ownership-doc-req-cask-scope-revision` 及其自身设计/评审承载。
+- 内容身份：HEAD `fe938e0b6c1d43862391d03721055536f339694e`；候选 tasks.md blob `c789c59570932bc699d088612cebb126113740fd`，fingerprint `b3d39f6b02d5cd8927b71a0a692c73e7c6bb1fde3e0dd578f6774692c0329252`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。架构依赖 blob 仍为 `d66131575230f84bf704e294d7836e4513ef812b`。
+- 验证：`bash scripts/check-topic-docs.sh installed-state-ownership`、`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均 exit 0。额外只读断言确认两处任务 5 条件、任务 8 最终结论边界与前置能力条件一致；Documents 的 tasks.md Review、任务 5/8 Dev/Review 均未勾选。与修复入口逐字节比较：任务 5 的验收条目和历史交接、任务 8 的验收正文、其余已改文件、requirements.md 及 docs/status.md 均未改变。没有新增持久化语义检查器；上述定向断言及 L0 检查不构成独立语义 PASS。
+- 交接边界：仅修改 tasks.md 与本记录的追加交接，原 Round 16 报告逐字节保留，其 FAIL/FAILED 只描述原目标内容；不把旧门禁重标为本候选通过。任务分解 Review 保持未勾选，新候选等待独立复评及相应精确态证据；本次未跨 Document/Task/Topic 完成边界，未运行产品、真实 brew 或 Go/Swift 测试，未修改需求、架构、产品或测试文件，未提交或推送。原评审者不独立的限制仍保留，不推定用户接受。
+
+## Round 17 — 2026-11-14
+
+### 📋 cask 简化任务分解修订复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Claude Code / Claude Fable 5.2，未委派；未参与本次修复，修复者为 OpenCode。**仍不是冷上下文独立复评**：与 Round 16 及架构 Round 13、Round 14 同一评审者，且该评审者提出了本次修订的方向。用户在该限制已说明的情况下继续把复评交给同一评审者，但没有明确表示接受限制。本轮 PASS 只表示 Round 16 的发现在当前内容中已关闭。
+- Method: 对照 Round 16 的唯一发现核对任务 5 的依赖与实施顺序、任务 8 的依赖及状态摘要；检索全文中所有涉及需求文本修订的表述，确认没有残留的相反说法。只读，未运行 brew、产品程序或测试。Round 16 被评审的 blob 未写入对象库，无法逐行比对；修复者报告其余内容逐字节未变，本轮未独立复现这一比较。
+- Scope: tasks.md 的修复候选；架构 Round 14 为依赖，其内容态未变。
+- HEAD: `fe938e0b6c1d43862391d03721055536f339694e`。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- Reviewed state: 输入 tasks.md blob `c789c59570932bc699d088612cebb126113740fd`（fingerprint `b3d39f6b02d5cd8927b71a0a692c73e7c6bb1fde3e0dd578f6774692c0329252`，与修复交接登记的候选一致）；本轮只勾选 Documents 的 tasks.md Review 并同步第 29 行状态摘要，任务定义不变。最终 blob `628750efa5165aba25c24373a37006e719ca2043`，fingerprint `a4576085bd8b3cab96f030c5c02488ab891c5193e9079374a101e7c8add5beab`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。依赖 architecture.md blob `d66131575230f84bf704e294d7836e4513ef812b`。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-installer-receipts-revision`。
+- Target ContentState: `installed-state-ownership:tasks:r17-20261114-a4576085`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- **ISO-TASKS-R16-F1 — CLOSED。** 第 468 行的依赖和第 484 行的实施顺序现在是同一个结论：`requirements.md` 的文本修订及其评审不阻塞任务 5 开发。第 650 行把它写成任务 8 形成最终验收结论的前提，并说明不新增开工阻塞。依据是修复交接记录的 2026-11-14 用户排期决定。全文其余涉及需求文本的表述（第 29、520、654、685、687、700、705、710、735 行）与此一致，没有残留的相反说法。
+- 任务 5 仍然要求设计评审通过和新的开发指令，修复没有借排期决定放宽开工授权。
+
+#### 📝 总结
+
+Round 16 的唯一发现已关闭，未发现新问题，结论 PASS，任务分解 Review 勾选。评审对象为 tasks.md 未提交的修复候选（HEAD `fe938e0b`，最终 blob `628750ef`）。至此本次 cask 设计修订的两份文档都通过了评审，对应的需求文本修订由 Beads `ad-installed-state-ownership-doc-req-cask-scope-revision` 承载，尚未开始。
+
+剩余不确定性：真实 brew 上的结果都尚未取得，由任务 5 的 CI 回归取证；本次修订的三轮评审都不是冷上下文独立评审，见 Reviewer。
+
+Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check`、`python3 scripts/check-review-records.py --base HEAD`（本记录）在写入本轮记录与状态同步后均 exit 0。项目没有针对任务分解语义的专用检查器。CEv1：目标状态登记 review=pass 与 l0=pass，门禁读回 VERIFIED。
+
+**历史编号对账 — 2026-11-14。** 一致性 Hook 报告本记录以 PASS 结尾而下列编号没有处置。它们都不是本次修订产生的：同一份清单在已提交的 HEAD 版本上原样存在。逐个核对后，它们分两类，一类是其他记录所属发现在本记录中的引用，一类是本记录或架构记录中完整编号的简写。下列处置依据各所属记录的现行内容，不改变任何一轮的结论。
+
+- ISO-ARCH-R1-F2 — closed：架构发现，在[架构评审](architecture.md)中关闭。
+- ISO-ARCH-R2-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R3-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R4-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R4-F2 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R8-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R9-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-ARCH-R10-F1 — closed：架构发现，在架构评审中关闭。
+- ISO-UX-R3-F1 — closed：CLI 界面发现，在 [CLI 评审](ux-cli.md)中关闭。
+- R2-F1 — closed：Round 2 总结中对架构发现 ISO-ARCH-R2-F1 的简写，在架构评审中关闭。
+- R4-F1 — closed：Round 4 修复交接中对架构发现 ISO-ARCH-R4-F1 的简写，在架构评审中关闭。
+- R4-F2 — closed：同一处对架构发现 ISO-ARCH-R4-F2 的简写，在架构评审中关闭。
+- R10-F1 — closed：Round 13 中对架构发现 ISO-ARCH-R10-F1 的简写，在架构评审中关闭。
+- R7-F1 — closed：ISO-TASKS-R7-F1 的简写，在本记录中关闭。
+- R9-F1 — closed：ISO-TASKS-R9-F1 的简写，在本记录中关闭。
+- R9-F2 — closed：ISO-TASKS-R9-F2 的简写，在本记录中关闭。
+- R9-F4 — closed：ISO-TASKS-R9-F4 的简写，在本记录中关闭。
+- R11-F1 — closed：ISO-TASKS-R11-F1 的简写，在本记录中关闭。
+- R12-F1 — closed：ISO-TASKS-R12-F1 的简写，在本记录中关闭。
+- R13-F1 — closed：ISO-TASKS-R13-F1 的简写，在本记录中关闭。
+
+核对方法：用 `scripts/hooks/beads-consistency.py` 的 `closed_finding_ids` 分别读取三份记录，上述每个完整编号都在其所属记录的已关闭集合中，三份记录的最新结论均为 PASS。
