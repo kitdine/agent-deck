@@ -1197,3 +1197,114 @@ Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python
 - R11-F1 — closed：ISO-ARCH-R11-F1 的简写，在本记录中关闭。
 
 核对方法同任务分解评审记录的对账：用 `scripts/hooks/beads-consistency.py` 的 `closed_finding_ids` 读取各所属记录，上述每个完整编号都在已关闭集合中。
+
+## Round 15 — 2026-11-15
+
+### 📋 cask 占用期间升级设计评审
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: Codex，独立冷上下文评审角色，未参与本次设计或修复，未委派。
+- Method: 对照本次文档差异、登记契约、回执格式、升级验收及手册同步清单，核对设计交接与当前 Register 源码。确认文档内的确定性反例后停止扩大语义核查。
+- Scope: architecture.md 的 2026-11-15 修订及其文档内消费者。tasks.md 仅同步本轮状态。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `8787c467a5a2322b6e4fab173415b6f90ad95134`。
+- Reviewed state: architecture.md blob `0262c3a051896f4e483ca82b4f8c2a4d45e4d9f3`，fingerprint `d22d33ee1fa5618ae3d986a82c2e88e1a5d27bdf876328aa58d0fc06d61557f5`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-arch`，2026-11-15 设计交接评论 `f36d1170-b798-5031-923d-06b1fe628c95`。
+- Target ContentState: `installed-state-ownership:arch:r15-20261115-d22d33ee`。
+- 完成门禁：FAILED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+**ISO-ARCH-R15-F1（P2，OPEN，修复后方可通过）** [architecture.md:91](../architecture.md#回执格式)、[登记共同流程](../architecture.md#安装回执)、[缩减回归](../architecture.md#验证位置与缩减回归)、[契约同步](../architecture.md#兼容性与契约同步)仍保留与新规则相反的要求。
+
+- 行为风险 — 实现者、验收脚本和手册作者会依据同一架构得到相反的退出码、ID 更新要求和恢复承诺，可能重新引入已被本次设计撤回的升级失败路径。
+- 证据 — 第 406–419 行定义四条件全部满足时 exit 0、回执不改、返回旧 ID，第 515 行据此要求升级成功且回执逐字节不变。第 91 行仍要求每次登记（明确含 cask 升级 postflight）生成新 ID，同路径同 channel 重装也必须换值。第 207、323–325 行仍把取锁失败必定 owner_running 拒绝作为通用步骤，未在该步骤分流到四条件例外。第 512 行仍要求第 2 类包含登记被拒后的完整 Homebrew 恢复验证，第 670 行仍要求手册说明升级恢复旧版的预期，而第 402、423、694 行已说明失败可能移除 App。
+- 决定性场景 — 现有有效回执登记 cask 同一路径，真实会话持共享锁，新 helper 不带 source 登记。第 406–419、515 行要求成功并保留旧 ID；第 91、325 行分别要求新 ID及失败；第 512、670 行仍要求旧版恢复。这个反例仅需逐项对照文档即可复核。
+- 当前代码核对 — `internal/installation/install.go:381–414` 在取锁前校验无 source 请求来自自身，取锁错误直接返回，成功后才生成 ID 和写回执。CodeGraph 对该工作树返回的现行源代码支持该前提。新分支是待实现设计，本轮发现依据为文档自身的相反要求。
+- 💡 修复范围 — 在回执字段规则和通用登记步骤中明确引用同一四条件例外及其 ID/时间/退出码语义；同步第 2 类回归总述和手册交付清单，移除已被否定的旧版恢复承诺。保留用户已确定的四条件范围，避免扩大放行条件。tasks.md 的任务分解修订沿既有独立流程处理。
+
+#### 🟢 做得好的方面
+
+- 新分支明确限制 channel、自身路径、无 source 和有效匹配回执，并要求真实持锁会话持续到 brew 完成。
+- 修订记录了旧恢复预期被实测否定的结果，并明确列出其他登记失败仍可能丢失 App 的残余风险。
+
+#### 📝 总结
+
+本轮发现 ISO-ARCH-R15-F1 待修复，结论 FAIL，architecture Review 保持未勾选。历史 Round 14 的结论属于旧内容态。本文不改写历史发现处置；新发现限定在本次修订造成的文档内契约冲突。
+
+本轮未执行真实 Homebrew、产品测试或本机安装操作；未重新认证事故 run 或 Homebrew 实现细节。新规则的真实运行结果仍由后续实现验收取得。项目现有文档检查器负责结构、链接和文档集合，语义冲突由本轮直接对照证明。
+
+Evidence: 初始 CEv1 精确态查询返回 NOT_VERIFIED，review/l0 两项均缺少本内容态证据。`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均 exit 0；check-docs 包含受影响主题的文档集合、链接及评审记录结构检查。CEv1 写入本内容态 review=fail、l0=pass，关系预检四项均 ok，读回确认三个节点和四条关系，最终精确态门禁 FAILED。review 失败证据适用于本目标，l0 通过，无未决候选影响；返回的历史 R12 l0 失效记录属于其他目标，不影响本轮结论。最终门禁字段同步后单独复查评审记录解析。
+
+### 修复交接 — 2026-11-15（ISO-ARCH-R15-F1，待独立复评）
+
+修复者 Claude Code，未自行给出评审结论。只改 architecture.md；用户确定的四条件范围未变，未扩大放行条件。HEAD `8787c467a5a2322b6e4fab173415b6f90ad95134`，修复后 architecture.md blob `d53f3ed2e34af54e72269ae9d60d1b8938a91b28`，fingerprint `2019d407c64b9419de377a2f1b276f88b7dc92f77c8c7eaf6b5cf94aaa771980`（配方同本轮）。
+
+ISO-ARCH-R15-F1 -> repaired in candidate。评审列出的五处与新规则相反的要求逐项处理如下，另有两处同类表述一并对齐：
+
+| 位置 | 原要求 | 修改 |
+| --- | --- | --- |
+| [回执格式](../architecture.md#回执格式)的 `installation_id` | 每次登记都换新 ID，含 cask 升级 postflight | 限定为每次**写入回执**的登记换值；四条件放行不写回执，ID 与时间保持原值并返回现有 ID |
+| [所有权锁与交接](../architecture.md#所有权锁与交接)接管第 1 步 | 取不到锁即 owner_running | 保留拒绝，并说明接管不适用四条件放行及原因（放行要求回执已登记同一路径和 channel，接管按定义是路径或方式变化） |
+| [安装回执](../architecture.md#安装回执)登记共同流程第 1 步 | 取不到锁就以 owner_running 失败 | 在该步骤分流：四条件全部满足则不写回执、退出码 0、返回现有 ID、不执行后续步骤；其余以 owner_running 非零失败 |
+| [缩减回归](../architecture.md#验证位置与缩减回归)总述 | 第 2 类必须含登记被拒后的完整 Homebrew 恢复验证 | 改为必须含会话占用期间升级的四条件放行验证，不再验证恢复旧版本 |
+| [契约同步](../architecture.md#兼容性与契约同步)手册清单 | 区分首次安装回滚与升级恢复旧版的预期 | 改为：owner_running 出现在回执尚未登记本 cask 而锁被占用时；回执已登记本 cask 时占用期间的升级成功且回执不变；升级时登记因 owned_by_other 或 HOME 不一致失败则 App 被移除、需重新安装 |
+| 升级字段核对第 1 项 | 每次登记生成新 ID/时间 | 限定为每次写入回执的登记，并注明放行时不变且不产生依赖 |
+| 兼容性一节的同路径升级条目 | 实际 postflight 会再次登记并生成新 ID/时间 | 限定为取得排他锁时；补充取锁被拒而四条件放行时回执不变 |
+
+验证：`python3 scripts/check-docs.py` exit 0；`git diff --check` 无输出。以「恢复旧」「必须换值」「每次登记」「新 ID」检索全文，剩余命中为原决定的历史叙述、make/本地 App 的清理规则，或已加限定的表述。未运行真实 Homebrew 或产品测试；本次未向 CEv1 写入，门禁由复评按新内容态查询。tasks.md 任务 5 条款的同步仍由任务分解自己的流程处理。
+
+## Round 16 — 2026-11-15
+
+### 📋 cask 占用期间升级设计复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Codex，沿用 Round 15 独立评审角色，未参与设计与修复，未委派。
+- Method: 逐项核对 ISO-ARCH-R15-F1 的五处冲突及两处同类表述，检索相关 ID、登记和恢复条款，复核四条件分支及正负场景。
+- Scope: architecture.md 修复候选及受影响的契约。任务分解按自己的流程继续修订。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `8787c467a5a2322b6e4fab173415b6f90ad95134`。
+- Reviewed state: architecture.md blob `d53f3ed2e34af54e72269ae9d60d1b8938a91b28`，fingerprint `2019d407c64b9419de377a2f1b276f88b7dc92f77c8c7eaf6b5cf94aaa771980`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:architecture.md`；调度载体 `ad-installed-state-ownership-doc-arch`；修复交接评论 `9bb292e1-bbb5-5ce6-83a3-a3fde5bab58a`。
+- Target ContentState: `installed-state-ownership:arch:r16-20261115-2019d407`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+**ISO-ARCH-R15-F1 — CLOSED。** 第 91 行将 ID 更新限定为实际写回执，四条件放行保留 ID 与时间；第 207 行明确跨路径或 channel 的接管不适用例外；第 325–327 行在取锁失败处明确分流，并让成功放行提前结束，避免进入生成新 ID 的步骤。第 514、517 行统一要求持锁期间升级成功、回执逐字节不变；第 672 行手册清单区分成功放行、首次安装拒绝和其他升级失败的安装丢失风险。第 507、585 行的两处 ID/时间说明也已限定到对应分支。
+
+四条件仍为 owner_running、homebrew_cask、无 source、有效且匹配自身路径及 channel 的回执。相同登记路径的正向场景得到 exit 0 和原 ID；不同路径、不同 channel、带 source 或无有效匹配回执均不能走该例外。跨安装的接管约束仍有明确归属。
+
+#### 📝 总结
+
+Round 15 唯一开放发现已关闭，受影响范围未发现新增或回归问题。历史发现处置沿用其所属轮次，requirements.md 的既有待同步内容继续由 `ad-installed-state-ownership-doc-req-cask-scope-revision` 承载。架构 Review 勾选。
+
+本轮证明修复后的设计契约一致性。四条件放行的产品实现和真实 Homebrew 回归仍待任务 5 验收，其他持续登记失败可能移除 App 的风险继续按文档披露。tasks.md 的旧验收条款需要下一次设计修订，主题任务 8、9 也仍未完成。
+
+Evidence: 初始精确态 CEv1 查询返回 NOT_VERIFIED，review/l0 缺少本目标证据，无未决候选影响。`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 各自 exit 0。三个新节点和四条关系已核实，关系预检全部 ok；精确态门禁返回 VERIFIED，review/l0 两项通过，无缺失准则或未决候选影响。返回的历史 R12 l0 失效记录属于其他目标。最终门禁字段同步后单独复查评审记录解析。
+
+Task checkpoint：`ad-installed-state-ownership-doc-arch`，content_state `2019d407c64b9419de377a2f1b276f88b7dc92f77c8c7eaf6b5cf94aaa771980`，gate VERIFIED。
+
+提交建议：经用户授权后，单独提交 architecture.md、本记录及 tasks.md 中本次架构状态同步的对应段落；按任务边界选择已有设计、修复和评审改动。
+
+推送建议：经用户另行授权后推送至 `origin/feature/installed-state-ownership`；提交前后检查实际范围、完整提交说明、贡献 trailer 与 SSH 签名，并按交付规则检查相关 CI。
+
+任务分解的下一项工作为同步本次架构修订；该工作需自己的设计指令。主题仍有后续任务，本轮到达架构文档 Task checkpoint。
