@@ -1224,3 +1224,53 @@ Evidence: `bash scripts/check-topic-docs.sh installed-state-ownership`、`python
 - R13-F1 — closed：ISO-TASKS-R13-F1 的简写，在本记录中关闭。
 
 核对方法：用 `scripts/hooks/beads-consistency.py` 的 `closed_finding_ids` 分别读取三份记录，上述每个完整编号都在其所属记录的已关闭集合中，三份记录的最新结论均为 PASS。
+
+## Round 18 — 2026-11-15
+
+### 📋 占用期间升级的任务分解评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+- Reviewer: Codex，独立评审角色，未参与本次任务分解设计，未委派；本会话此前评审了架构依赖。
+- Method: 对照本次任务分解差异与架构 Round 16，沿验收断言核对实际入口、实现任务、依赖闭包与证据归属；通过本工作树 CodeGraph 核对锁错误分类和 CLI 渲染，定向查看现有迁移/real-brew 脚本。
+- Scope: tasks.md 的 2026-11-15 修订，重点为任务 5 的四条件分支、输出、本地/真实回归及任务 8 和覆盖表的对应引用。既有历史交接按其原内容态保留。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `8787c467a5a2322b6e4fab173415b6f90ad95134`。
+- Reviewed state: 输入 tasks.md blob `8e851923700e1fcad3c24a79a93177970b20bb70`，fingerprint `7effa9938a640919afcdd574bce380d59436e5d166f1bc86044c854c19e6df8a`。本轮只更新 Documents 的当前状态摘要与 tasks.md Review 勾选，任务条款不变。最终 blob `c927aa71ddba6f2026d3fa83e98fef59b6ff24be`，fingerprint `dc67f4b2f617042ceff860a1fb84350e3fef1e4e47a9fb283ed2cb016ca0a54f`，配方 SHA-256 of `head=<HEAD>;document=<blob>`。
+- Dependency: architecture.md blob `d53f3ed2e34af54e72269ae9d60d1b8938a91b28`，与本会话 Round 16 PASS / VERIFIED 的依赖完全一致。
+- WorkUnit: `installed-state-ownership:tasks.md`；调度载体 `ad-installed-state-ownership-doc-tasks`；设计交接评论 `5c83f768-71bc-50a8-9a06-5b4caa267217`。
+- Target ContentState: `installed-state-ownership:tasks:r18-20261115-dc67f4b2`。
+- 完成门禁：VERIFIED
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的方面
+
+- 四条件及错误分流落在任务 5 的 `Register`，结果字段与 text/JSON 落在同任务的 CLI 渲染，测试覆盖各条件的拒绝、回执不改、source 不发布、非占用错误和正常取锁路径，并要求针对条件做变异验证。`internal/installation/install.go:221–241` 已提供占用错误分类与有效拥有者读取；`cmd/agentdeck/install.go:43–47,114–149` 是现有结果与输出入口，文件归属可实施。
+- 固定输出与架构要求的可区分成功结果一致。`ux/cli.md:151` 明确隐藏 register 没有单独标本，设计细化可由任务 5 的 text/JSON 测试约束。其余 channel、source 发布和跨安装接管继续保持拒绝边界。
+- `scripts/test-cask-migration.sh:535–560` 现有会话重登拒绝断言、`:649–652` 的包装诊断直通断言，以及 `scripts/test-cask-real-brew.sh:250–275` 的升级失败/恢复断言均有明确去向。任务 5 改前者和真实升级断言，保留包装的拒绝输出契约；升级验收要求真实会话持续到 brew 完成、新 App/Caskroom、回执字节不变及停止会话后重新登记换 ID，观察点完整。
+- 任务 8 与需求覆盖表将该回归留在具备安装器与真实会话的任务 5。需求文本修订仅阻塞任务 8 最终结论的既有排期决定保留；ISO-TASKS-R16-F1 的关闭结论继续适用。本轮无新的开放发现，其余历史编号沿所属轮次处置。
+
+#### 📝 总结
+
+任务分解与已通过的架构一致，结论 PASS。任务 5 的 Dev/Review 均保持未完成，来源是新规则尚待实现；任务 8、9 也仍待完成。先前待同步段落已由后续“设计修订 — 2026-11-15”明确承接，作为历史交接保留。
+
+本轮仅证明任务分解的可实施性和验收归属。四条件分支的实际效果、各变异是否被测试捕获，以及真实 Homebrew 升级结果须在实现后取证。任务 5 的 CEv1 准则与新验收文字的对账已明确列为开发入口步骤。requirements.md 的文本修订继续由 `ad-installed-state-ownership-doc-req-cask-scope-revision` 承载。
+
+Evidence: 本目标的初始 CEv1 查询返回 NOT_VERIFIED / missing_target_state；review/l0 为两个必需准则。`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 各自 exit 0。按固定模板写入一个 ContentState 与两项通过证据，并对既有 WorkUnit 执行本次修订的生命周期重开，历史交付字段保留；读回四个节点，四条证据关系预检全部 ok 且写入数为四。精确态门禁返回 VERIFIED 2/2，无缺失准则、失效证据或未决候选影响。最终门禁字段同步后复查评审记录解析。项目现有文档检查器覆盖结构、链接和文档集合，语义结论依据上述文档与源代码核对。
+
+Task checkpoint：`ad-installed-state-ownership-doc-tasks`，content_state `dc67f4b2f617042ceff860a1fb84350e3fef1e4e47a9fb283ed2cb016ca0a54f`，gate VERIFIED。
+
+提交建议：经用户授权后单独提交 tasks.md 本次任务分解和状态同步，以及 reviews/tasks.md 的本轮评审；与架构文档任务分别交付，暂存时核对共享 tasks.md 中各任务所属段落。
+
+推送建议：经用户另行授权，并核对提交范围、完整说明、贡献 trailer、SSH 签名与相关 CI 后，推送至 `origin/feature/installed-state-ownership`。
+
+下一项实现任务为 `installer-receipts`，按其开发入口先核对 CEv1 准则与新验收条款。主题仍有未完成实现和验收任务，本轮到达任务分解文档 Task checkpoint。
