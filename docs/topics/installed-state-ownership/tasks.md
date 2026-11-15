@@ -582,7 +582,9 @@ Implement: Claude Code / Claude Fable 5.2，未委派；工作区 `agent-deck.in
 
 当前实现 Round 6 独立复评 PASS 保持，Dev 与 Review 均勾选。前置架构 `ec1fac0`、任务分解 `3d43d9b` 与 Task 5 `70c54bf` 已分别签名提交并推送至 `origin feature/installed-state-ownership`。CEv1 验收版本 `installed-state-ownership:installer-receipts:acceptance-v2` 的精确提交态门禁 FAILED：当前六项准则通过，validation 与 real-brew 失败；real-brew run `43602379588` 在正常首次安装的 postflight 登记处失败，后四类回归未执行。详细错误、已观察回滚动作及限制见[任务评审记录](reviews/installer-receipts.md)的 CI 结果回填。按既有例外，任务返回 `in_progress`；Task/Topic/来源缺陷保持开放，不自动修复、重试或追加交付。常规 CI `43602379585` 的 desktop 分发检查已有三项警告用例失败，verify 尚未结束，本次不声明其通过；结果回填随修复一并提交，不改写已推送提交。
 
-2026-11-15 按修复指令处理上述两项失败：real-brew 夹具为 HOME 与账户目录预建 `Library/Application Support`（步骤沙箱只放行声明目录本身，不放行其父目录）；分发检查的三项警告用例改为断言被拒，并把 artifact 断言改读 `brew info --json=v2`。只改三份测试脚本，产品代码与 cask 模板未动；本地分发与迁移检查通过，real-brew 待推送后的 CI。根因、判断依据与限制见[任务评审记录](reviews/installer-receipts.md)的 2026-11-15 修复交接。Round 6 PASS 不覆盖本次改动，任务交回 `in_review` 待独立复评。
+2026-11-15 按修复指令处理上述两项失败：real-brew 夹具为 HOME 与账户目录预建 `Library/Application Support`（步骤沙箱只放行声明目录本身，不放行其父目录）；分发检查的三项警告用例改为断言被拒，并把 artifact 断言改读 `brew info --json=v2`。只改三份测试脚本，产品代码与 cask 模板未动；本地分发与迁移检查通过，real-brew 待推送后的 CI。根因、判断依据与限制见[任务评审记录](reviews/installer-receipts.md)的 2026-11-15 修复交接。Round 6 PASS 不覆盖本次改动。
+
+修复提交 `29e3718` 的 CI：常规 CI 的 desktop 分发检查通过；real-brew run `43689954288` 的第 1 类通过，第 2 类升级被拒分支失败于 `DESIGN: a refused upgrade left no App`——Homebrew 恢复旧版本时再次执行旧 postflight 登记，再次被 owner_running 拒绝，回滚失败后 App 与 Caskroom 记录均被移除，回执未变。这是架构标为未实测并规定「不成立即返回设计」的恢复预期，不在修复范围内处理；任务 5 保持 `in_progress`，待新的设计指令。详见[任务评审记录](reviews/installer-receipts.md)的 2026-11-15 CI 结果回填。
 
 ### 6. `app-state-location`
 

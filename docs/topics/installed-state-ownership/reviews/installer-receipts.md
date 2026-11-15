@@ -786,3 +786,21 @@ Task 5 待交付范围为 19 个实现/测试/安装器路径及本任务评审�
 - `git diff --check -- scripts`：无输出。
 
 **未验证与限制。** real-brew 五类回归只在 CI 运行，本地无结果；沙箱是否还拒绝 helper 或包装脚本的其他写入未知。新的 JSON artifact 断言没有做变异验证。未改 Go 代码，未重跑 Go 测试。本次未向 CEv1 写入证据；提交态门禁由复评按新内容态查询。
+
+### CI 结果回填 — 2026-11-15（提交 29e3718）
+
+修复提交 `29e371882c5b169cca53f96f344ad709e90bb9ea`（SSH 签名已核验，父提交 `70c54bf`，五路径）已推送，远端 `origin feature/installed-state-ownership` 读回等于该提交。
+
+**常规 CI：上一节记录的 validation 失败已消除。** [run 43689954296](https://github.com/kitdine/agent-deck/actions/runs/43689954296) 的 classify、documentation 通过；desktop job `132738465814`（`2026-11-15T07:27:15Z` 至 `07:32:58Z`）通过，其中包含 `make check-macos-distribution`。写入本节时 verify job `132738465819` 仍在运行，不声称其通过。
+
+**真实 Homebrew：FAIL，失败点前移到第 2 类，且是设计预期不成立。** [run 43689954288](https://github.com/kitdine/agent-deck/actions/runs/43689954288)，job `132738311099`，`2026-11-15T07:26:31Z` 至 `07:30:49Z`，exit 1。
+
+- 第 1 类 `lifecycle` 运行完毕未报错，脚本进入下一场景。上一节的 `mkdir <fixture>/lifecycle/home/Library` 拒写不再出现；夹具前提的判断与该观察一致。该场景内的正常升级、卸载后过期接管断言位于同一段脚本，均已通过。
+- 第 2 类被拒分支 `upgrade-refused` 失败于 `DESIGN: a refused upgrade left no App`。脚本自身的摘要行为：`owner_running reported 4 time(s); old registration step ran again during restore: True; receipt changed: False; restored version: no App; Caskroom: []`。
+- 日志顺序：Homebrew 运行卸载脚本、备份并移除 1.2.3 的 App、把 1.2.4 的 App 移入；postflight 登记以 `install_claim_refused` / `reason: owner_running` 拒绝；Homebrew 移除 1.2.4 的 App 并清除 1.2.4 的 cask 文件，提示 `Reverting upgrade for Cask agentdeck-app`；把 1.2.3 的 App 移回后**再次执行旧版本的 postflight 登记，同样以 owner_running 拒绝**；Homebrew 随即移除 1.2.3 的 App、清除 1.2.3 的 cask 文件，并报告 `Rolling back the failed upgrade of agentdeck-app also failed`。
+- 末态：没有 App，Caskroom 为空，回执逐字节未变（仍指向已不存在的 helper 路径），占用会话存活到 brew 结束。即会话占用期间执行 `brew upgrade` 的用户会失去已安装的 App。
+- 第 2 类后续的「停止占用后重试成功」、第 4 类其他拥有者拒绝、第 5 类 HOME 不一致及沙箱对照均未到达，不记为通过。
+
+这正是[架构](../architecture.md)「升级中登记被拒」一节标为未实测的风险：恢复时旧 postflight 会再次执行并再次遇到持锁拒绝。架构与本任务的验收条款都规定此断言失败即返回设计，不新增同路径重登豁免、不放宽取锁、不加 AgentDeck 侧恢复协议。因此本次修复到此停止：没有修改断言、没有让恢复路径的登记改为成功、没有重跑 CI。该结果不属于可在 Repair 范围内关闭的发现。
+
+Task 5 保持 `in_progress`，不交回 `in_review`；Task/Topic/来源缺陷保持开放。本次未向 CEv1 写入这两次运行的观察，提交态门禁未重新查询；上一节记录的 FAILED（6/8）是 `70c54bf` 内容态的结论，不改写。CI 运行所用的 Homebrew 版本未从日志取得。
