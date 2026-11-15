@@ -732,3 +732,57 @@ Task 5 待交付范围为 19 个实现/测试/安装器路径及本任务评审�
 贡献归属：Claude Code 实现/修复（Beads `27dadf7e-d27b-5f37-ad9f-8af2f0ade816`、`7e2e0005-d9dc-5776-93bf-853aa033e3df`）；OpenCode 的历史 CI 回填及 Round 5 报告被纳入本次记录（`6b58897a-259a-56ad-b91e-f8cabf051eb9`、`b25ee8b2-76f0-5b6e-b32f-c70222aa678a`）；Codex 的 Round 6/证据/交付记录。保留三者署名，无未决归属。
 
 下一步只对最终实际提交绑定证据、正常推送并收集 real-brew 及常规 CI 的真实结果；失败不自动扩展为修复/重试循环，不运行开发机真实 brew。
+
+### CI 结果回填 — 2026-11-14（提交 70c54bf）
+
+三个已授权独立提交均已通过实际提交对象的 SSH 签名、父链、树、完整消息/署名与范围核验，并一次正常推送：
+
+| 提交 | 范围 | 树 |
+| --- | --- | --- |
+| `ec1fac0c6508adb6209363dfa577e4d92bd9aee4` | 架构正文与架构评审记录，两路径 | `791da137dfd760f3b2393240015475e74cc49ba0` |
+| `3d43d9b0eac0bfd6b653d0dbf177d91dc2a13510` | 设计专用 tasks.md 快照及任务分解评审记录，两路径 | `8c3673f5a27316755e974005578f1d362ddcb72f` |
+| `70c54bfa0f8b5a6fa226197cca483007f5c33bff` | Task 5 实现/测试/必要记录，21 路径 | `bb0a73575748bc42b97f68e827490ed1ad1a8cc7` |
+
+远端 `origin feature/installed-state-ownership` 已读回等于 `70c54bfa0f8b5a6fa226197cca483007f5c33bff`，推送后工作区干净。前置文档的交付态门禁均 VERIFIED，Beads 文档任务已 closed，原评审独立性限制仍保留。Task 5 提交态为 `installed-state-ownership:installer-receipts:delivery-20261114-70c54bfa`；本地七项证据通过明确目标态 roll-up 复用，只有 tasks.md 交付投影与 HEAD 变化，产品等 48 项输入和三个删除项未变。
+
+**真实 Homebrew 结果：FAIL。** [run 43602379588](https://github.com/kitdine/agent-deck/actions/runs/43602379588)，job `132469713331`，精确 SHA 如上。Job 从 `2026-11-14T13:58:02Z` 至 `14:03:39Z`；真实安装步骤 `14:02:17Z` 至 `14:03:28Z`，exit 1。GitHub 托管 macos-26/arm64，Go 1.26.0（来自 go.mod 的 CI 配置，与本地 Go 1.27.3 分开记录）。
+
+- 夹具 19 项通过，39.646 秒；App/widget 构建通过。
+- 第 1 类正常 `lifecycle` 安装中 HOME 与注入账户一致。Homebrew 已移动 App 并建立 helper/补全链接；实际 shell postflight 调用已安装 helper 的 register 返回 1，错误为 `mkdir <fixture>/lifecycle/home/Library: operation not permitted`。此处路径用 `<fixture>` 归一化，仅保留错误事实，不引用 runner 临时文件作为证据载体。
+- 随后日志显示卸载四个命令/补全链接、移除 App、清除版本 1.2.3 的 cask 文件。脚本在 install 返回非零时中止，尚未执行独立末态断言，因此只记录这些动作，不把日志当作完整回滚末态证明。
+- 第 2 类升级/共享会话拒绝及恢复、第 3 类卸载后过期接管、第 4 类其他拥有者拒绝、第 5 类 HOME 不一致及沙箱对照均未到达，不记为通过。该错误发生于正常安装，不是第 5 类预期拒绝。
+- 现有首次安装假设在本次夹具/runner 上未通过；需要下一次有界诊断区分夹具目录前提、声明范围和实际安装契约。没有擅自扩大 writable_paths、预创建目录以掩盖前提、加回退、重跑 CI 或修改产品。批准设计要求可行性不成立时返回设计，不可用本地替身绿灯覆盖此结果。
+
+首次 CI 回填的固定 CEv1 查询返回 **FAILED（七项通过，real-brew 失败）**，reason=null，invalidated_evidence=[]，unresolved_candidate_impacts=[]。新增精确提交的 real-brew fail 观察及其 satisfies/observed_at 关系，预检与数量/载荷核验通过；本轮 Round 6 PASS 及其局部门禁事实保留原内容态，不改写成新的复评结论。Task 按推送后取证例外返回 in_progress，不关闭 Task/Topic/来源缺陷。
+
+常规 [CI 43602379585](https://github.com/kitdine/agent-deck/actions/runs/43602379585) 的 classify/documentation 已通过；desktop job `132469908295` 已失败，verify 尚在运行。这里不声称常规 CI 成功，也不以其结果替代 real-brew。当前授权的三个提交与推送已完成，本节及 tasks.md 是本地结果回填，不另作第四个提交/推送。必要事实已自包含写入本记录、Beads 和 CEv1；CI 页面是定位辅助，不依赖过期日志保存来理解失败。
+
+**常规 CI 的额外失败。** desktop 的 Swift 测试、App 构建、小组件边界和刷新契约检查均通过；分发隔离检查于 `2026-11-14T14:05:45Z` 执行 `python3 -B scripts/test-macos-distribution-cleanup.py`，13 项中 3 项失败（1.417 秒），make exit 2。失败项为 `test_colored_classic_flight_warning_is_allowed`、`test_github_annotations_with_homebrew_context_are_allowed`、`test_plain_classic_flight_warnings_are_allowed`；分别在文件第 41、37、31 行仍期望旧 classic flight 弃用警告被接受（exit 0），实际当前分发脚本返回 1，并输出 `Homebrew warned while loading the fixture cask`。这是新候选的真实 CI 验证失败，不由先前本地局部验证覆盖；没有在本轮修改测试或放宽警告策略。
+
+已追加同一提交态的 validation=fail，supersedes 本次交付的 validation 汇总 pass（原本地检查事实和原状态不改写）。最新固定门禁为 **FAILED，6/8：validation、real-brew 失败**，unresolved_candidate_impacts=[]；invalidated_evidence 列出被新 CI 失败 supersede 的提交态 validation 汇总，原局部证据仍保留。其余六项保持有效。Round 6 复评 PASS 是原范围结论，不能覆盖新的运行证据失败。两个失败都回到同一 Task 5 载体，待新的诊断/修复或设计指令。
+
+### 修复交接 — 2026-11-15（CI 结果回填的两项失败，待独立复评）
+
+本节修复上一节记录的两项提交态失败，基于 HEAD `70c54bfa0f8b5a6fa226197cca483007f5c33bff`。只改三份测试脚本；产品 Go 代码、cask 模板和 CI 工作流未动。Round 6 PASS 的范围不含本次改动，由复评判定。
+
+| 失败 | 根因 | 修改 |
+| --- | --- | --- |
+| real-brew：正常首次安装登记 `mkdir <fixture>/lifecycle/home/Library: operation not permitted` | Homebrew 步骤沙箱把 `writable_paths` 解析为 `<HOME>/Library/Application Support/AgentDeck` 并只放行该路径，不放行其父目录（本机 Homebrew `Library/Homebrew/install_steps.rb` 的 `sandbox_write_paths` 对 `run` 步骤只返回解析后的声明路径）。夹具的 HOME 是新建空目录，helper 的逐级建目录在 `Library` 处即被拒。 | `scripts/test-cask-real-brew.sh`：`Scenario` 为 HOME 与账户目录预建 `Library/Application Support`。 |
+| validation：`scripts/test-macos-distribution-cleanup.py` 三项仍期望经典 flight 弃用警告被接受 | `70c54bf` 已把分发脚本的允许集合清空（cask 只用步骤式声明，任何警告都失败），这三项测试未随契约更新。 | 三项改为断言被拒并改名为 `..._are_rejected` / `..._is_rejected`；新增 `test_load_without_warnings_is_accepted` 作为正向对照；原 `test_other_warnings_are_not_hidden_by_allowed_annotation` 改名为 `test_warnings_are_not_hidden_inside_an_annotation`，用例不变。 |
+
+**关于预建目录的判断。** 上一节把「预创建目录以掩盖前提」列为未采取的动作，并要求区分夹具前提、声明范围和实际安装契约。本次的判断是夹具前提：macOS 账户的 `~/Library/Application Support` 由系统创建并始终存在，用户不会在缺少它的账户里安装 cask；因此没有扩大 `writable_paths`、没有给 helper 加回退、没有改设计。这一判断的依据是 Homebrew 源码阅读和上述失败行，不是真实沙箱下的观察；它成立与否由推送后的 real-brew 结果检验，不成立则仍按架构返回设计。账户目录同样预建，是因为第 5 类 HOME 不一致场景的判定要求 helper 的拒写行包含 `<account>/Library/Application Support/AgentDeck`；不预建时拒写会停在 `<account>/Library`，该场景会以与本次相同的方式失败而不是证明拒绝。
+
+**同一分发脚本中一并修复的两处。** 两者都在上一节记录的 validation 失败之后才会执行到，属于同一准则的同一检查：
+
+- `scripts/test-macos-distribution.sh` 在加载检查中仍以 `brew info` 输出含 `(App)` 为失败，与 `70c54bf` 起声明 `app "AgentDeck.app"` 的模板、以及同一脚本前文对该声明的要求相反。
+- 本机 Homebrew `7.0.13-132-gcbd3ae6` 的 `brew info --cask` 文本输出里，App 列在 `==> Apps` 下且不带 `(App)` 后缀，binary 不再列出；原有四条 `(Binary)` 文本断言在本机全部不成立。artifact 断言改为读取 `brew info --json=v2 --cask`：恰好一个 `AgentDeck.app` App，恰好四个 binary（helper 与 bash、zsh、fish 补全）且各自链接到预期目标。`Required: macOS >= 26` 与 caveats 两条文本断言保留。CI runner 的 Homebrew 版本与文本格式未观察，JSON 形式不依赖它。
+
+**本地验证（修改后的工作区，2026-11-15）。**
+
+- `python3 -B scripts/test-macos-distribution-cleanup.py`：14 项通过。
+- `python3 -B scripts/test-cask-real-brew-fixture.py`：19 项通过。
+- `bash scripts/test-macos-distribution.sh`：`macOS distribution packaging: PASS`；修改前在本机于 `(Binary)` 断言处 exit 1。
+- `bash scripts/test-cask-migration.sh`：PASS。
+- `git diff --check -- scripts`：无输出。
+
+**未验证与限制。** real-brew 五类回归只在 CI 运行，本地无结果；沙箱是否还拒绝 helper 或包装脚本的其他写入未知。新的 JSON artifact 断言没有做变异验证。未改 Go 代码，未重跑 Go 测试。本次未向 CEv1 写入证据；提交态门禁由复评按新内容态查询。

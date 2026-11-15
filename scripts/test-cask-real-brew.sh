@@ -97,7 +97,13 @@ class Scenario:
         # says otherwise.
         self.account = self.directory / account if account else self.home
         self.appdir = self.directory / 'Applications'
-        for path in (self.prefix / 'bin', self.home, self.account, self.appdir,
+        # A real account always has ~/Library/Application Support. The step
+        # sandbox allows writes below the AgentDeck directory inside it and not
+        # to its parents, so a bare home would fail on creating Library, which
+        # is a fixture defect rather than anything a user can meet. The same
+        # holds for the account: its denial must name the AgentDeck directory.
+        for path in (self.prefix / 'bin', self.home / 'Library/Application Support',
+                     self.account / 'Library/Application Support', self.appdir,
                      self.prefix / 'Library/Taps/agentdeck/homebrew-test/Casks'):
             path.mkdir(parents=True, exist_ok=True)
         shutil.copy2(brew_repository / 'bin/brew', self.prefix / 'bin/brew')

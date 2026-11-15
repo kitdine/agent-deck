@@ -262,16 +262,38 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   fi
   # Every artifact class the cask declares must survive the load, because the
   # rejection this section exists to catch takes all of them down together.
+  # The artifacts are read from the JSON form: the human-readable listing has
+  # changed layout between Homebrew versions ("AgentDeck.app (App)" under
+  # Artifacts became a bare name under Apps, and binaries left it entirely).
   grep -F 'Required: macOS >= 26' "$load_log" >/dev/null
-  if grep -F '(App)' "$load_log" >/dev/null; then
-    echo "the $token cask still declares an app artifact" >&2
-    exit 1
-  fi
-  grep -F 'AgentDeck.app/Contents/Helpers/agentdeck (Binary)' "$load_log" >/dev/null
-  grep -F 'share/fish/vendor_completions.d/agentdeck.fish (Binary)' "$load_log" >/dev/null
-  grep -F 'etc/bash_completion.d/agentdeck (Binary)' "$load_log" >/dev/null
-  grep -F 'share/zsh/site-functions/_agentdeck (Binary)' "$load_log" >/dev/null
   grep -F 'brew install --cask ' "$load_log" >/dev/null
+  load_json="$temporary/brew-info-$token.json"
+  fixture_brew info --json=v2 --cask "$qualified_cask" >"$load_json" 2>/dev/null
+  python3 - "$load_json" <<'PY'
+import json
+import sys
+
+artifacts = json.load(open(sys.argv[1]))['casks'][0]['artifacts']
+apps = [entry['app'] for entry in artifacts if 'app' in entry]
+assert apps == [['AgentDeck.app']], f'the cask must declare exactly the AgentDeck app artifact: {apps}'
+binaries = {}
+for entry in artifacts:
+    if 'binary' in entry:
+        source = entry['binary'][0]
+        options = next((item for item in entry['binary'][1:] if isinstance(item, dict)), {})
+        binaries[source] = options.get('target', '')
+expected = {
+    'AgentDeck.app/Contents/Helpers/agentdeck': '',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.fish': 'share/fish/vendor_completions.d/agentdeck.fish',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.bash': 'etc/bash_completion.d/agentdeck',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.zsh': 'share/zsh/site-functions/_agentdeck',
+}
+for source, target in expected.items():
+    found = [declared for declared in binaries if declared.endswith('/' + source)]
+    assert len(found) == 1, f'missing binary artifact {source}: {sorted(binaries)}'
+    assert binaries[found[0]].endswith(target), f'{source} links to {binaries[found[0]]!r}, not {target}'
+assert len(binaries) == len(expected), f'unexpected binary artifacts: {sorted(binaries)}'
+PY
 done
 rm -rf "$fixture_root"
 fixture_root=

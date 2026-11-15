@@ -25,22 +25,28 @@ class CaskWarningsTests(unittest.TestCase):
                                    '\nload_log=$1\ntoken=fixture\n' + check,
                                    'cask-warning-check', str(log)], capture_output=True, text=True)
 
-    def test_plain_classic_flight_warnings_are_allowed(self):
+    # The cask declares only step stanzas, so a classic-flight deprecation is no
+    # longer an accepted warning: in every form Homebrew prints it, it must fail.
+    def test_plain_classic_flight_warnings_are_rejected(self):
         result = self.verdict('Warning: Calling `preflight` is deprecated! Use `preflight_steps` instead.\n'
                               'Warning: Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.\n')
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(result.returncode, 0, result.stderr)
 
-    def test_github_annotations_with_homebrew_context_are_allowed(self):
+    def test_github_annotations_with_homebrew_context_are_rejected(self):
         result = self.verdict('::warning::Calling `preflight` is deprecated! Use `preflight_steps` instead.'
                               '%0APlease report this issue to the fixture tap:%0A  /fixture/Casks/app.rb:90%0A%0A\n'
                               '::warning::Calling `uninstall_preflight` is deprecated! Use `uninstall_preflight_steps` instead.\n')
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(result.returncode, 0, result.stderr)
 
-    def test_colored_classic_flight_warning_is_allowed(self):
+    def test_colored_classic_flight_warning_is_rejected(self):
         result = self.verdict('\x1b[33mWarning:\x1b[0m Calling `preflight` is deprecated! Use `preflight_steps` instead.\n')
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+
+    def test_load_without_warnings_is_accepted(self):
+        result = self.verdict('==> agentdeck-app: 1.2.3\nRequired: macOS >= 26\n==> Artifacts\nAgentDeck.app (App)\n')
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_other_warnings_are_not_hidden_by_allowed_annotation(self):
+    def test_warnings_are_not_hidden_inside_an_annotation(self):
         allowed = '::warning::Calling `preflight` is deprecated! Use `preflight_steps` instead.'
         for text in ('Warning: unexpected artifact\n', '::warning::unexpected artifact\n',
                      allowed + '%0AWarning: unexpected artifact\n',
