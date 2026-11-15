@@ -270,6 +270,10 @@ type RegisterResult struct {
 	Channel        string
 	InstallationID string
 	Takeover       bool
+	// Unchanged reports that nothing was written: the owner was still running
+	// and the receipt already named this cask installation. InstallationID is
+	// then the existing receipt's.
+	Unchanged bool
 	// Residual names a replaced copy that publication could not delete. The
 	// installation is complete; the copy is the installer's staging residue.
 	Residual string
@@ -389,6 +393,9 @@ func (r *Resolver) Register(ctx context.Context, request RegisterRequest) (Regis
 	}
 	lock, err := r.exclusiveLock(ctx, home)
 	if err != nil {
+		if result, ok := alreadyRegisteredCask(home, request, err); ok {
+			return result, nil
+		}
 		return RegisterResult{}, err
 	}
 	defer lock.Release()
@@ -454,6 +461,33 @@ func (r *Resolver) Register(ctx context.Context, request RegisterRequest) (Regis
 		return RegisterResult{}, err
 	}
 	return result, nil
+}
+
+// alreadyRegisteredCask decides the one case in which a registration that
+// could not take the exclusive lock still succeeds, and it writes nothing.
+//
+// Homebrew restores a failed cask upgrade by running the old version's
+// registration step again. While the owner's session is still running that
+// step is refused a second time, and Homebrew then removes the App. Refusing
+// protects nothing here: the receipt already names this path and channel, so
+// a successful registration would only have replaced its ID and time, which
+// nothing depends on. All four conditions must hold; any other busy lock stays
+// owner_running.
+func alreadyRegisteredCask(home string, request RegisterRequest, lockErr error) (RegisterResult, bool) {
+	var refusal *InstallError
+	if !errors.As(lockErr, &refusal) || refusal.Reason != ReasonOwnerRunning {
+		return RegisterResult{}, false
+	}
+	// make and the local App publish files under the lock, and a formula is
+	// claimed by the user; none of them may proceed without it.
+	if request.Channel != "homebrew_cask" || request.Source != "" {
+		return RegisterResult{}, false
+	}
+	owner, owned := currentOwner(home)
+	if !owned || owner.Executable != request.Executable || owner.Channel != request.Channel {
+		return RegisterResult{}, false
+	}
+	return RegisterResult{Channel: owner.Channel, InstallationID: owner.InstallationID, Unchanged: true}, true
 }
 
 // UnregisterRequest is the hidden install unregister command's input. Every

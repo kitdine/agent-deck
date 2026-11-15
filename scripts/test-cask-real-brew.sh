@@ -36,7 +36,7 @@ import time
 root, fixture_app = map(Path, sys.argv[1:])
 root, fixture_app = root.resolve(), fixture_app.resolve()
 sys.path.insert(0, str(root / 'scripts'))
-from cask_real_brew_fixture import prepare_fixture_app, run_fixture_command
+from cask_real_brew_fixture import capture_fixture_command, prepare_fixture_app, run_fixture_command
 
 os.chdir(root)
 workspace = Path(tempfile.mkdtemp(prefix='agentdeck-real-brew-', dir=os.environ['RUNNER_TEMP'])).resolve()
@@ -70,21 +70,6 @@ for version in ('1.2.3', '1.2.4'):
     archive = workspace / f'AgentDeck-{version}.zip'
     run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', bundle, archive])
     archives[version] = archive
-
-
-def digest(path):
-    path = Path(path)
-    if not path.exists() and not path.is_symlink():
-        return 'absent'
-    checksum = hashlib.sha256()
-    for item in [path, *sorted(path.rglob('*'))] if path.is_dir() else [path]:
-        checksum.update(str(item.relative_to(path.parent)).encode())
-        checksum.update(str(item.lstat().st_mode).encode())
-        if item.is_symlink():
-            checksum.update(os.readlink(item).encode())
-        elif item.is_file():
-            checksum.update(item.read_bytes())
-    return checksum.hexdigest()
 
 
 class Scenario:
@@ -236,16 +221,19 @@ assert (taken['channel'], taken['executable']) == ('make', str(successor)), take
 assert s.identity(successor) == (True, 'make')
 
 
-# 2, refused. A real session of the installed program is open while Homebrew
-#    upgrades. Homebrew has already replaced the files when the registration
-#    step asks for the lock, so the step fails and Homebrew must put the old
-#    version back. The session stays open until brew has finished: releasing it
-#    earlier would only prove the first refusal, not the restored state.
-s = Scenario('upgrade-refused')
+# 2, during a session. A real session of the installed program is open while
+#    Homebrew upgrades. Homebrew has already replaced the files when the
+#    registration step asks for the lock, and the lock is refused. The receipt
+#    already names this path and channel, so the step writes nothing and
+#    succeeds, and the upgrade completes. Were the step to fail, Homebrew would
+#    restore the old version by running the old step, which is refused for the
+#    same session, and would then remove the App: that is what the first run of
+#    this case observed. The session stays open until brew has finished;
+#    releasing it earlier would prove nothing about the step under a busy lock.
+s = Scenario('upgrade-during-session')
 s.command('install')
 run([s.installed_helper, 'provider', 'list'], env=s.direct_env)
 before_receipt = s.receipt.read_bytes()
-before_app = digest(s.app)
 log = (s.directory / 'session.log').open('w+')
 session = subprocess.Popen([str(s.installed_helper), 'watch', '--domains', 'usage'], env=s.direct_env,
                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -255,32 +243,39 @@ while (s.directory / 'session.log').stat().st_size == 0:
     assert session.poll() is None and time.monotonic() < deadline, 'the session never started'
     time.sleep(0.1)
 s.render('1.2.4')
-output = s.command('upgrade', success=False, timeout=600)
+# Through the shared executor: if brew hangs here, the failure must carry what
+# Homebrew and the registration step printed before the timeout.
+upgrade_exit, output = capture_fixture_command(s.argv('upgrade'), env=s.env, timeout=600)
 session_survived = session.poll() is None
-refusals = output.count('reason: owner_running')
-print(f'upgrade-refused: owner_running reported {refusals} time(s); '
-      f'old registration step ran again during restore: {refusals > 1}; '
+unchanged_line = f'already registered {s.installed_helper} (homebrew_cask); receipt unchanged while the owner is running'
+print(f'upgrade-during-session: brew exit {upgrade_exit}; unchanged line present: {unchanged_line in output}; '
+      f'owner_running reported {output.count("reason: owner_running")} time(s); '
       f'receipt changed: {s.receipt.read_bytes() != before_receipt}; '
-      f'restored version: {s.version() if s.app.exists() else "no App"}; Caskroom: {s.versions()}', flush=True)
-assert session_survived, 'the session ended before brew finished, so the refusal was not held to the end'
-assert refusals >= 1, output
-assert 'stop any agentdeck watch' in output, output
-# Any failure below means Homebrew's own restore does not give the state the
-# design expects. That goes back to design; it is not a reason to exempt the
-# step from the lock or to add a recovery protocol here.
-assert s.app.exists(), 'DESIGN: a refused upgrade left no App\n' + output
-assert s.version() == '1.2.3' and digest(s.app) == before_app, 'DESIGN: the old App was not restored intact\n' + output
-assert s.versions() == ['1.2.3'], f'DESIGN: Caskroom after a refused upgrade is {s.versions()}\n' + output
-assert s.receipt.read_bytes() == before_receipt, 'DESIGN: a refused upgrade changed the receipt\n' + output
+      f'version: {s.version() if s.app.exists() else "no App"}; Caskroom: {s.versions()}', flush=True)
+assert session_survived, 'the session ended before brew finished, so the step never ran under a busy lock\n' + output
+no_extension_was_registered(output)
+assert 'deprecat' not in output.lower(), output
+# Any failure below means the release does not hold under real Homebrew. That
+# goes back to design; it is not a reason to relax an assertion here.
+assert upgrade_exit == 0, 'DESIGN: an upgrade during a session failed\n' + output
+assert unchanged_line in output.splitlines(), 'DESIGN: the step did not report the unchanged receipt\n' + output
+assert 'reason: owner_running' not in output, 'DESIGN: the step was refused during the session\n' + output
+assert s.app.exists() and s.version() == '1.2.4', 'DESIGN: the new App is not in place after the upgrade\n' + output
+assert s.versions() == ['1.2.4'], f'DESIGN: Caskroom after the upgrade is {s.versions()}\n' + output
+assert s.receipt.read_bytes() == before_receipt, 'DESIGN: an upgrade during a session changed the receipt\n' + output
 assert s.record()['executable'] == str(s.installed_helper)
+assert session.poll() is None
+assert s.identity() == (True, 'homebrew_cask')
 os.killpg(session.pid, signal.SIGTERM)
 session.wait(timeout=30)
 log.close()
 assert s.identity() == (True, 'homebrew_cask')
-# With the session gone, the same command succeeds.
-s.command('upgrade')
-assert s.version() == '1.2.4' and s.versions() == ['1.2.4'] and s.identity() == (True, 'homebrew_cask')
+# With the session gone, the same step takes the lock and registers anew.
+again = run([s.installed_helper, '--format', 'text', 'install', 'register', '--channel', 'homebrew_cask',
+             '--executable', s.installed_helper], env=s.direct_env)
+assert f'registered {s.installed_helper} (homebrew_cask)' in again.splitlines(), again
 assert s.record()['installation_id'] != json.loads(before_receipt)['installation_id']
+assert s.identity() == (True, 'homebrew_cask')
 s.command('uninstall')
 
 

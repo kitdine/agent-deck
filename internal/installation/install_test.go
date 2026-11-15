@@ -696,19 +696,162 @@ func TestRegisterInstalledProgramWithoutSource(t *testing.T) {
 			t.Fatalf("err = %v, want a refusal that writes no receipt", err)
 		}
 	})
-	t.Run("owner-running", func(t *testing.T) {
+}
+
+// A cask re-registration that cannot take the exclusive lock succeeds without
+// writing only when the receipt already names this path and channel. Every
+// other busy lock is still refused, and no refusal may touch the receipt.
+func TestRegisterWhileOwnerRunning(t *testing.T) {
+	busy := func(r *Resolver) {
+		r.acquireLock = func(context.Context, string, bool) (*platform.OwnershipLock, error) {
+			return nil, &platform.OwnershipLockError{Reason: "owner_running"}
+		}
+	}
+	cask := func(self string) RegisterRequest {
+		return RegisterRequest{Channel: "homebrew_cask", Executable: self}
+	}
+	refusedUnchanged := func(t *testing.T, r *Resolver, request RegisterRequest) {
+		t.Helper()
+		before := receiptBytes(t, r)
+		busy(r)
+		result, err := r.Register(context.Background(), request)
+		wantRefused(t, err, ReasonOwnerRunning)
+		if result != (RegisterResult{}) {
+			t.Fatalf("refused register returned %+v", result)
+		}
+		if !bytes.Equal(before, receiptBytes(t, r)) {
+			t.Fatal("refused register changed the receipt")
+		}
+	}
+
+	t.Run("matching-cask-receipt-is-kept", func(t *testing.T) {
+		for _, takeover := range []bool{false, true} {
+			r, _, self := fixture(t)
+			first, err := r.Register(context.Background(), cask(self))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := receiptBytes(t, r)
+			busy(r)
+			request := cask(self)
+			request.Takeover = takeover
+			got, err := r.Register(context.Background(), request)
+			want := RegisterResult{Channel: "homebrew_cask", InstallationID: first.InstallationID, Unchanged: true}
+			if err != nil || got != want {
+				t.Fatalf("takeover=%v: result = %+v, err = %v, want %+v", takeover, got, err, want)
+			}
+			if !bytes.Equal(before, receiptBytes(t, r)) {
+				t.Fatalf("takeover=%v: an unchanged registration rewrote the receipt", takeover)
+			}
+		}
+	})
+	t.Run("real-session-holds-the-lock", func(t *testing.T) {
 		r, _, self := fixture(t)
-		if _, err := r.Register(context.Background(), request(self)); err != nil {
+		first, err := r.Register(context.Background(), cask(self))
+		if err != nil {
 			t.Fatal(err)
 		}
 		before := receiptBytes(t, r)
-		r.acquireLock = func(context.Context, string, bool) (*platform.OwnershipLock, error) {
-			return nil, &platform.OwnershipLockError{}
+		home, _ := r.AccountHome()
+		session, err := platform.AcquireOwnershipLock(context.Background(), home, false)
+		if err != nil {
+			t.Fatal(err)
 		}
-		_, err := r.Register(context.Background(), request(self))
-		wantRefused(t, err, ReasonOwnerRunning)
+		got, err := r.Register(context.Background(), cask(self))
+		if err != nil || !got.Unchanged || got.InstallationID != first.InstallationID || !bytes.Equal(before, receiptBytes(t, r)) {
+			t.Fatalf("during the session: result = %+v, err = %v", got, err)
+		}
+		session.Release()
+		// With the session gone the same step takes the lock and registers.
+		after, err := r.Register(context.Background(), cask(self))
+		if err != nil || after.Unchanged || after.InstallationID == first.InstallationID || currentReceipt(t, r).InstallationID != after.InstallationID {
+			t.Fatalf("after the session: result = %+v, err = %v", after, err)
+		}
+	})
+	t.Run("no-receipt", func(t *testing.T) {
+		r, _, self := fixture(t)
+		refusedUnchanged(t, r, cask(self))
+	})
+	t.Run("invalid-receipt", func(t *testing.T) {
+		r, _, self := fixture(t)
+		if _, err := r.Register(context.Background(), cask(self)); err != nil {
+			t.Fatal(err)
+		}
+		home, _ := r.AccountHome()
+		if err := os.WriteFile(receiptPath(home), []byte("{not a receipt"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		refusedUnchanged(t, r, cask(self))
+	})
+	t.Run("receipt-names-another-path", func(t *testing.T) {
+		r, root, self := fixture(t)
+		other := filepath.Join(root, "other", "agentdeck")
+		putExecutable(t, other)
+		register(t, r, other, "homebrew_cask")
+		refusedUnchanged(t, r, cask(self))
+	})
+	t.Run("receipt-path-is-gone", func(t *testing.T) {
+		// Without --source the requested path is the running program, so a
+		// stale receipt can only be one that names a different, deleted path.
+		r, root, self := fixture(t)
+		other := filepath.Join(root, "other", "agentdeck")
+		putExecutable(t, other)
+		register(t, r, other, "homebrew_cask")
+		if err := os.Remove(other); err != nil {
+			t.Fatal(err)
+		}
+		refusedUnchanged(t, r, cask(self))
+	})
+	t.Run("same-path-other-channel", func(t *testing.T) {
+		r, _, self := fixture(t)
+		register(t, r, self, "local_app")
+		refusedUnchanged(t, r, cask(self))
+	})
+	for _, channel := range []string{"make", "local_app", "homebrew_formula"} {
+		t.Run("channel-"+channel, func(t *testing.T) {
+			// Everything else holds: the receipt names this path and channel.
+			r, _, self := fixture(t)
+			register(t, r, self, channel)
+			refusedUnchanged(t, r, RegisterRequest{Channel: channel, Executable: self})
+		})
+	}
+	t.Run("with-source", func(t *testing.T) {
+		r, root := installFixture(t)
+		request := fileRequest(root, "homebrew_cask", "v1", t)
+		putExecutable(t, request.Executable)
+		register(t, r, request.Executable, "homebrew_cask")
+		target := readFile(t, request.Executable)
+		refusedUnchanged(t, r, request)
+		if readFile(t, request.Executable) != target {
+			t.Fatal("a refused publication changed the target")
+		}
+		if _, err := os.Lstat(request.CleanupManifest); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("a refused publication created the cleanup manifest")
+		}
+		if _, err := os.Lstat(request.Source); err != nil {
+			t.Fatal("a refused publication consumed the staged source")
+		}
+	})
+	t.Run("lock-error-that-is-not-busy", func(t *testing.T) {
+		r, _, self := fixture(t)
+		if _, err := r.Register(context.Background(), cask(self)); err != nil {
+			t.Fatal(err)
+		}
+		before := receiptBytes(t, r)
+		broken := errors.New("lock file unavailable")
+		r.acquireLock = func(context.Context, string, bool) (*platform.OwnershipLock, error) {
+			return nil, broken
+		}
+		result, err := r.Register(context.Background(), cask(self))
+		if !errors.Is(err, broken) || result != (RegisterResult{}) {
+			t.Fatalf("result = %+v, err = %v, want the lock error itself", result, err)
+		}
+		var refusal *InstallError
+		if errors.As(err, &refusal) {
+			t.Fatalf("a lock failure was reported as the refusal %q", refusal.Reason)
+		}
 		if !bytes.Equal(before, receiptBytes(t, r)) {
-			t.Fatal("refused re-registration changed the receipt")
+			t.Fatal("a failed lock changed the receipt")
 		}
 	})
 }

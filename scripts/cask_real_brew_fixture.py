@@ -8,7 +8,8 @@ import subprocess
 import tempfile
 
 
-def run_fixture_command(argv, *, env, success=True, timeout=180):
+def capture_fixture_command(argv, *, env, timeout=180):
+    """Return (exit code, combined output); a timeout fails with the output captured so far."""
     command = list(map(str, argv))
     try:
         result = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
@@ -21,9 +22,14 @@ def run_fixture_command(argv, *, env, success=True, timeout=180):
         output = '\n'.join(captured) or '(no captured subprocess output)'
         raise AssertionError(f'Command timed out after {failure.timeout} seconds: {command}\n'
                              f'Captured subprocess output:\n{output}') from failure
-    if (result.returncode == 0) != success:
-        raise AssertionError(f'Unexpected exit {result.returncode}: {command}\n{result.stdout}')
-    return result.stdout
+    return result.returncode, result.stdout
+
+
+def run_fixture_command(argv, *, env, success=True, timeout=180):
+    returncode, output = capture_fixture_command(argv, env=env, timeout=timeout)
+    if (returncode == 0) != success:
+        raise AssertionError(f'Unexpected exit {returncode}: {list(map(str, argv))}\n{output}')
+    return output
 
 
 def prepare_fixture_app(fixture_app, bundle, helper, version, run, *, env=None):

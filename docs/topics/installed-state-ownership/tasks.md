@@ -10,7 +10,7 @@ updated: 2026-11-15
 
 ## Documents
 
-2026-11-15 架构最新修订在[架构评审](reviews/architecture.md) Round 16 独立复评 PASS，Review 已勾选，精确内容态及证据门禁见该轮记录。下文 Round 14 及其提交为历史内容态。任务分解已按该修订同步任务 5 的条款，并在[任务分解评审](reviews/tasks.md) Round 18 独立评审 PASS；精确内容态及证据门禁见该轮记录。Round 17 的 PASS 属于历史内容态。任务 5 的新实现与验收仍待开发指令。
+2026-11-15 架构最新修订在[架构评审](reviews/architecture.md) Round 16 独立复评 PASS，Review 已勾选，精确内容态及证据门禁见该轮记录。下文 Round 14 及其提交为历史内容态。任务分解已按该修订同步任务 5 的条款，并在[任务分解评审](reviews/tasks.md) Round 18 独立评审 PASS；精确内容态及证据门禁见该轮记录。Round 17 的 PASS 属于历史内容态。任务 5 的四条件放行已在[任务评审](reviews/installer-receipts.md) Round 8 复评 PASS，Dev 与 Review 已勾选；本地七项准则通过，门禁仅缺推送后的 real-brew。用户已授权架构、任务分解与任务 5 分别提交后推送，并回填对应 CI。
 
 | Document | Draft | Review |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ updated: 2026-11-15
 | 2. `state-root-guard` | [x] | [x] |
 | 3. `client-config-guard` | [x] | [x] |
 | 4. `installation-diagnostics` | [x] | [x] |
-| 5. `installer-receipts` | [ ] | [ ] |
+| 5. `installer-receipts` | [x] | [x] |
 | 6. `app-state-location` | [x] | [x] |
 | 7. `debug-app-identity` | [x] | [x] |
 | 8. `ownership-acceptance` | [ ] | [ ] |
@@ -623,6 +623,54 @@ Implement: Claude Code / Claude Fable 5.2，未委派；工作区 `agent-deck.in
 **开发前须核对的证据准则。** CEv1 WorkUnit `installed-state-ownership:installer-receipts` 的 `real-brew` 等准则的文字是否仍与本稿第 2 类一致，本次没有查询；开发入口须先核对，准则与本稿不一致时按[证据规则](../../../.agent-instructions/evidence.md)处理，不在实现完成后补造。
 
 **未验证。** 四条件放行没有任何运行证据，本地与真实 Homebrew 下均未实现、未运行。升级时因 owned_by_other 或 HOME 不一致失败的末态未实测，列为残余风险，本任务不测试。
+
+#### 开发交接 — 2026-11-15（四条件放行）
+
+按上面的设计修订实现，Dev 勾选、Review 待独立评审。基于 HEAD `8787c467a5a2322b6e4fab173415b6f90ad95134` 的未提交候选；cask 模板、CI 工作流和其他安装方式的代码未动。
+
+2026-11-15 当前候选在[任务评审](reviews/installer-receipts.md) Round 8 复评 PASS，Dev 与 Review 已勾选；精确内容态、证据门禁和推送后真实 Homebrew 验收边界见该轮记录。Round 7 的 FAIL 保留为原候选历史结论；三份 real-brew 测试脚本的修复交接见同一记录的 Repair 7。
+
+**实现。**
+
+- `internal/installation/install.go`（blob `4e5cf522055d93c799507b15ae752f67c6e092cb`）：`Register` 取排他锁失败时调用新增的 `alreadyRegisteredCask`。四项全部成立才返回成功且不写任何东西：错误是 owner_running 拒绝、channel 为 `homebrew_cask`、请求无 source、`currentOwner` 读到的有效回执的 executable 与 channel 同请求相等。`RegisterResult` 新增 `Unchanged`，放行时 `InstallationID` 为现有回执的 ID、`Takeover` 为 false。取锁成功的路径没有改动。
+- `cmd/agentdeck/install.go`（blob `b3b3e353ee05389d077e84a2a179021e90059940`）：text 在放行时输出 `already registered <executable> (<channel>); receipt unchanged while the owner is running`，否则仍为 `registered` 行；JSON 的 `install.register` 数据新增布尔字段 `unchanged`。
+- `scripts/test-cask-migration.sh`（blob `586aaa9d7702ff1958857c22bcdfd2a3eb28a76e`）：会话占用期间按渲染模板原文运行登记步骤，改为断言退出码 0、stdout 与 stderr 合起来只有上面那一行、回执逐字节不变且 ID 未变；同一会话期间用另一路径的 helper 副本运行同一步骤，断言以 `owner_running` 拒绝并给出停止提示；会话结束后重登生成新 ID。
+- `scripts/test-cask-real-brew.sh`（blob `95e516bf819afaae8ea9ae54f879f90883726a78`）：第 2 类被拒分支改为 `upgrade-during-session`，断言见上面验收要求第 2 类；失败仍以 `DESIGN:` 开头报告。移除了不再有调用方的 `digest` 函数。
+
+**测试。**
+
+- `internal/installation/install_test.go`（blob `8f8cf228a55e6bbdb088634499cd5bc5af0492cb`）新增 `TestRegisterWhileOwnerRunning`，取代原「占用时重登被拒」的子用例。放行：注入的占用错误（带与不带 `--takeover`）和真实共享锁会话各一组，后者在会话释放后断言重登换新 ID。拒绝且回执逐字节不变：无回执、回执无效、回执登记另一路径、回执登记的路径已删除、同路径不同 channel、channel 为 make/local_app/homebrew_formula 而回执已匹配、带 source 的 cask 请求（另断言目标、清单、暂存源未动）。取锁返回非占用类错误时原样返回该错误，不放行也不映射为拒绝。
+- `cmd/agentdeck/install_test.go`（blob `bd2734913ba1281c9187f7927e2060f3fc543d4a`）新增 `TestInstallRegisterOutput`，逐字断言两种结果的 text 行与 JSON 数据的四个字段。
+
+**变异。** 对 `alreadyRegisteredCask` 逐项变异后运行上述两个测试函数，随后恢复源码并确认与原文件逐字节相同：
+
+| 变异 | 结果 |
+| --- | --- |
+| 任何取锁错误都进入放行判断 | `lock-error-that-is-not-busy` 失败 |
+| 去掉 channel 判断 | `channel-make`、`channel-local_app`、`channel-homebrew_formula` 失败 |
+| 去掉 source 判断 | `with-source` 失败 |
+| 去掉 executable 比较 | `receipt-names-another-path` 失败 |
+| 去掉回执 channel 比较 | `same-path-other-channel` 失败 |
+| 回执已匹配就不取锁直接放行 | `unowned-then-reregistered`、`real-session-holds-the-lock`、`lock-error-that-is-not-busy` 失败 |
+| 去掉「回执有效」判断（`!owned`） | **存活**。回执缺失、无效或过期时 `currentOwner` 返回零值回执，executable 比较必然不等，结果仍是拒绝；该判断在现有实现下不可观察，是等价变异。保留它是为了不依赖零值这一实现细节，`no-receipt`、`invalid-receipt`、`receipt-path-is-gone` 三个用例覆盖了对应行为 |
+
+验收要求写的是「去掉四项中的一项判断，对应的拒绝用例必须失败」。前三项各自成立；第四项由三个子判断组成，其中两个被抓住、一个是上述等价变异。这一点请评审判断是否满足该条款。
+
+**本地验证（修改后的工作区，Go 1.27.3 darwin/amd64）。**
+
+- `make vet`：exit 0。
+- `make test`（Go 全量）：通过。
+- `scripts/run-go-test.sh -tags agentdeck_acceptance ./internal/installation/ ./cmd/agentdeck/ -count=1`：通过。
+- `scripts/run-go-test.sh -race ./internal/installation/ -count=1`：通过。
+- `make check-install`：exit 0。
+- `bash scripts/test-cask-migration.sh`：PASS。
+- `bash scripts/test-release-distribution.sh`：exit 0。
+- `python3 -B scripts/test-cask-real-brew-fixture.py`：19 项通过；real-brew 脚本的 shell 与内嵌 Python 语法检查通过，本地入口仍拒绝运行。
+- `git diff --check`：无输出。
+
+**未运行与限制。** real-brew 五类回归只在 CI 运行，四条件放行在真实 Homebrew 下没有结果，按证据时序例外须提交并推送后取得。`scripts/test-macos-distribution.sh` 未重跑：cask 模板与该脚本自上次通过后未改。`cmd/agentdeck` 全包的 `-race` 未单独运行。迁移脚本的新断言没有做变异验证。
+
+**证据。** 因 `acceptance-v2` 的 `helper-protocol` 与 `real-brew` 两项准则仍按旧设计表述，开发入口在 CEv1 新建了验收版本 `installed-state-ownership:installer-receipts:acceptance-v3`（八项必需准则，前一版本为 `acceptance-v2`）：这两项按本稿重述，其余六项含义不变；`acceptance-v2` 的准则与全部历史证据未改。本次没有写入候选的 ContentState 或证据观察，门禁未查询，由评审按候选内容态处理。
 
 ### 6. `app-state-location`
 

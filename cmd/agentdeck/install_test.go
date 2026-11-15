@@ -14,6 +14,7 @@ import (
 
 type fakeInstallOperator struct {
 	claim    installation.ClaimResult
+	register installation.RegisterResult
 	err      error
 	takeover *bool
 }
@@ -26,7 +27,7 @@ func (f fakeInstallOperator) Claim(_ context.Context, takeover bool) (installati
 }
 
 func (f fakeInstallOperator) Register(context.Context, installation.RegisterRequest) (installation.RegisterResult, error) {
-	return installation.RegisterResult{}, f.err
+	return f.register, f.err
 }
 
 func (f fakeInstallOperator) Unregister(context.Context, installation.UnregisterRequest) (installation.UnregisterResult, error) {
@@ -157,6 +158,43 @@ func TestInstallRegisterRefusalTextForCaskWrapper(t *testing.T) {
 		if code != 1 || stdout.Len() != 0 || !found || !strings.HasPrefix(stderr.String(), "install_claim_refused: ") || strings.Contains(stderr.String(), "/x/") {
 			t.Fatalf("%s: exit=%d stdout=%q stderr=%q", reason, code, stdout.String(), stderr.String())
 		}
+	}
+}
+
+// A registration that found the owner still running, with the receipt already
+// naming this cask, is told apart from an ordinary one in both formats.
+func TestInstallRegisterOutput(t *testing.T) {
+	id := strings.Repeat("a", 32)
+	for _, tc := range []struct {
+		name      string
+		unchanged bool
+		text      string
+	}{
+		{name: "registered", text: "registered /x/agentdeck (homebrew_cask)\n"},
+		{name: "unchanged", unchanged: true, text: "already registered /x/agentdeck (homebrew_cask); receipt unchanged while the owner is running\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withInstallOperator(t, fakeInstallOperator{register: installation.RegisterResult{Channel: "homebrew_cask", InstallationID: id, Unchanged: tc.unchanged}})
+			args := []string{"install", "register", "--channel", "homebrew_cask", "--executable", "/x/agentdeck"}
+			var stdout, stderr bytes.Buffer
+			if code := execute(append([]string{"--format", "text"}, args...), strings.NewReader(""), &stdout, &stderr); code != 0 || stdout.String() != tc.text || stderr.Len() != 0 {
+				t.Fatalf("text: exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			stdout.Reset()
+			if code := execute(append([]string{"--format", "json"}, args...), strings.NewReader(""), &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+				t.Fatalf("json: exit=%d stderr=%q", code, stderr.String())
+			}
+			var envelope struct {
+				Data map[string]any `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{"channel": "homebrew_cask", "installation_id": id, "takeover": false, "unchanged": tc.unchanged}
+			if !reflect.DeepEqual(envelope.Data, want) {
+				t.Fatalf("json data = %v, want %v", envelope.Data, want)
+			}
+		})
 	}
 }
 

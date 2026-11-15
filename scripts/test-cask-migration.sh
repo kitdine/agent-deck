@@ -532,10 +532,13 @@ second_id=$(receipt_field installation_id)
 installed "$final_helper" | grep -F '"installed":true' >/dev/null
 test -f "$home/.agentdeck/credential.key"
 
-# Re-registration needs the ownership lock even on the same path. A running
-# watch holds this installation's session, so the step is refused, the receipt
-# is untouched, and the same step succeeds once the session ends. What Homebrew
-# then does to an upgrade whose step failed is proven only in CI. The session
+# Re-registration asks for the ownership lock even on the same path. A running
+# watch holds this installation's session, so the lock is refused. Because the
+# receipt already names this path and channel, the step writes nothing and
+# succeeds: failing it would make Homebrew restore the old version by running
+# the old step, which is refused again, and the App would be removed. The same
+# session still refuses a registration the receipt does not already name. What
+# Homebrew does with the step's result is proven only in CI. The session
 # names the account's state directory explicitly, because HOME is deliberately
 # a different directory here and a session on HOME's state takes no lock.
 receipt_digest=$(digest "$receipt")
@@ -549,13 +552,26 @@ done
 [[ -s $temporary/watch.log ]] || { kill "$watcher" 2>/dev/null || true; fail "the watch session never started"; }
 held_status=0
 run_registration "$upgrade_cask" >"$temporary/failure.log" 2>&1 || held_status=$?
-kill -0 "$watcher" 2>/dev/null || { cat "$temporary/watch.log" "$temporary/failure.log" >&2; fail "the watch session ended before the registration step finished"; }
+# Another copy of the program at a different path is not what the receipt
+# names, so the same busy lock refuses it.
+elsewhere="$temporary/elsewhere/agentdeck"
+mkdir -p "$(dirname "$elsewhere")"
+cp "$helper_build" "$elsewhere"
+elsewhere_status=0
+run_registration "$upgrade_cask" "$elsewhere" >"$temporary/elsewhere.log" 2>&1 || elsewhere_status=$?
+kill -0 "$watcher" 2>/dev/null || { cat "$temporary/watch.log" "$temporary/failure.log" >&2; fail "the watch session ended before the registration steps finished"; }
 kill "$watcher"
 wait "$watcher" 2>/dev/null || true
-[[ $held_status == 1 ]] || { cat "$temporary/failure.log" >&2; fail "registration during a session: exit $held_status, want 1"; }
-expect_output '  reason: owner_running'
-expect_output 'stop any agentdeck watch'
-[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "a refused re-registration changed the receipt"
+rm -rf "${temporary:?}/elsewhere"
+[[ $held_status == 0 ]] || { cat "$temporary/failure.log" >&2; fail "re-registration during a session: exit $held_status, want 0"; }
+[[ $(cat "$temporary/failure.log") == "already registered $final_helper (homebrew_cask); receipt unchanged while the owner is running" ]] || {
+  cat "$temporary/failure.log" >&2; fail "re-registration during a session must report only the unchanged receipt"
+}
+[[ $elsewhere_status == 1 ]] || { cat "$temporary/elsewhere.log" >&2; fail "registration of another path during a session: exit $elsewhere_status, want 1"; }
+grep -Fx -- '  reason: owner_running' "$temporary/elsewhere.log" >/dev/null || { cat "$temporary/elsewhere.log" >&2; fail "another path during a session must be refused as owner_running"; }
+grep -F -- 'stop any agentdeck watch' "$temporary/elsewhere.log" >/dev/null || { cat "$temporary/elsewhere.log" >&2; fail "the refusal must say what to stop"; }
+[[ $(digest "$receipt") == "$receipt_digest" ]] || fail "registration during a session changed the receipt"
+[[ $(receipt_field installation_id) == "$second_id" ]]
 run_registration "$upgrade_cask" >/dev/null
 [[ $(receipt_field installation_id) != "$second_id" && $(receipt_field executable) == "$final_helper" ]]
 

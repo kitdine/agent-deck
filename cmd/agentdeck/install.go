@@ -44,6 +44,9 @@ type installRegisterData struct {
 	Channel        string `json:"channel"`
 	InstallationID string `json:"installation_id"`
 	Takeover       bool   `json:"takeover"`
+	// Unchanged is true when the owner was still running and the receipt
+	// already named this cask installation, so nothing was written.
+	Unchanged bool `json:"unchanged"`
 }
 
 type installUnregisterData struct {
@@ -132,10 +135,14 @@ func newInstallRegisterCommand(opts *commandOptions) *cobra.Command {
 				fmt.Fprintf(opts.stderr, "warning: could not remove the replaced copy at %s\n", result.Residual)
 			}
 			if opts.format == "text" {
-				_, err = fmt.Fprintf(opts.stdout, "registered %s (%s)\n", request.Executable, result.Channel)
+				line := "registered %s (%s)\n"
+				if result.Unchanged {
+					line = "already registered %s (%s); receipt unchanged while the owner is running\n"
+				}
+				_, err = fmt.Fprintf(opts.stdout, line, request.Executable, result.Channel)
 				return err
 			}
-			return writeEnvelope(opts.stdout, opts.format, "install.register", installRegisterData{Channel: result.Channel, InstallationID: result.InstallationID, Takeover: result.Takeover}, false, nil)
+			return writeEnvelope(opts.stdout, opts.format, "install.register", installRegisterData{Channel: result.Channel, InstallationID: result.InstallationID, Takeover: result.Takeover, Unchanged: result.Unchanged}, false, nil)
 		},
 	}
 	flags := command.Flags()

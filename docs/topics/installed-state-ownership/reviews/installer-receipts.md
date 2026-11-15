@@ -804,3 +804,149 @@ Task 5 待交付范围为 19 个实现/测试/安装器路径及本任务评审�
 这正是[架构](../architecture.md)「升级中登记被拒」一节标为未实测的风险：恢复时旧 postflight 会再次执行并再次遇到持锁拒绝。架构与本任务的验收条款都规定此断言失败即返回设计，不新增同路径重登豁免、不放宽取锁、不加 AgentDeck 侧恢复协议。因此本次修复到此停止：没有修改断言、没有让恢复路径的登记改为成功、没有重跑 CI。该结果不属于可在 Repair 范围内关闭的发现。
 
 Task 5 保持 `in_progress`，不交回 `in_review`；Task/Topic/来源缺陷保持开放。本次未向 CEv1 写入这两次运行的观察，提交态门禁未重新查询；上一节记录的 FAILED（6/8）是 `70c54bf` 内容态的结论，不改写。CI 运行所用的 Homebrew 版本未从日志取得。
+
+## Round 7 — 2026-11-15
+
+### 📋 四条件放行实现评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+- Reviewer: Codex，未参与本次产品代码或测试实现，未委派；本会话此前评审了架构与任务分解，说明该上下文边界。本轮失败无需以独立 PASS 认证候选。
+- Method: 核对六个实现/测试文件的变化与任务 5 契约，以当前工作树 CodeGraph 追踪 Register、回执读取及既有子进程执行器，运行新 Go 分支定向测试及真实脚本 AST 的隔离超时反例。反例确认后停止扩大验证。
+- Scope: 四条件放行的 helper、CLI 输出、本地迁移与 real-brew 升级驱动；历史已撤回 cask 恢复协议按其所属轮次保留。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `8787c467a5a2322b6e4fab173415b6f90ad95134`。
+- Reviewed state: 入场指纹 `eb7f87c121ee634fdd16a54ba28e28f7526212fab588c138d9853f80a6492fc8` 与开发交接一致。最终指纹 `491612e316f3cfe0d19bad3483cd691630bb70da370a48748966cdd549e1fcb3`，tasks.md blob `2e132897037dc9c9ec5bbbb4c5c7fb088203c826`。沿用历史 52 路径范围，49 项存在，`internal/installation/attempt.go`、`attempt_test.go`、`repair_test.go` 三项删除单列；配方为 SHA-256 of `head=<HEAD>\n` 后接按路径排序的 `<path>=<git-blob>\n`。本记录不入集合。入场至最终仅 tasks.md 增加本轮状态，产品候选未变。
+- Logical WorkUnit: `installed-state-ownership:installer-receipts`；验收版本 `installed-state-ownership:installer-receipts:acceptance-v3`；Beads `ad-installed-state-ownership-installer-receipts`。
+- Target ContentState: `installed-state-ownership:installer-receipts:review-r7-20261115-491612e3`。
+- 完成门禁：FAILED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+**ISO-IR-R7-F1 · P2 · OPEN，修复后方可通过 — 占用期间升级绕过既有执行器，丢失超时诊断输出。**
+
+[scripts/test-cask-real-brew.sh:246](../../../../scripts/test-cask-real-brew.sh#L246)
+
+- 行为风险 — 真实 brew 升级超过 600 秒时，CI 只显示 `TimeoutExpired` 及命令，无法看到超时之前的 Homebrew/postflight 输出。该场景此前通过 `s.command` 和 `run_fixture_command` 保留这些输出；本次改动使最需要诊断的共享会话升级场景失去已有诊断能力。
+- 证据 — 新代码第 246–247 行直接调用 `subprocess.run(..., stdout=PIPE, stderr=STDOUT, timeout=600)`；其后的 `output = attempt.stdout` 与诊断打印只在命令返回时执行。既有 `scripts/cask_real_brew_fixture.py:11–26` 捕获 `TimeoutExpired`，解码 output/stderr，并把输出写入抛出的 AssertionError。新版调用绕过该处理。
+- 决定性反例 — 从真实脚本的内嵌 Python AST 提取该 `attempt = subprocess.run(...)` 节点原样执行，只替换子进程边界。替身抛出 `subprocess.TimeoutExpired(['brew','upgrade'], 600, output=b'POSTFLIGHT_TIMEOUT_DIAGNOSTIC_SENTINEL\n')`。`traceback.format_exception` 渲染候选异常后不含 sentinel；对同一异常运行既有 `run_fixture_command`，AssertionError 包含 sentinel。探针结果为 `candidate_exception=TimeoutExpired`、`candidate_traceback_contains_output=False`、`existing_wrapper_contains_output=True`。没有运行 Homebrew，也没有等待实际超时。
+- 💡 修复范围 — 让该升级调用继续使用现有超时诊断逻辑，或复用提取后的公共处理，保留捕获输出、原超时值及成功/失败判断。增加针对实际场景调用的超时负对照，确认预先捕获的输出出现在最终失败诊断中；仅测试未被该场景调用的旧 helper 不能覆盖本回归。
+
+### 🟢 做得好的方面
+
+- `alreadyRegisteredCask` 仅在 owner_running、cask channel、无 source、有效且路径/channel 匹配时返回已有 ID 和 Unchanged，Register 的自身校验仍先执行，成功取锁路径保持生成新 ID。正常/放行的 text 和 JSON 分支与任务条款一致。
+- `TestRegisterWhileOwnerRunning` 覆盖真实共享锁、各拒绝条件及非占用错误，`TestInstallRegisterOutput` 逐字核对输出。独立运行两组测试通过，installation 包 6.633 秒、cmd 包 1.137 秒，真实共享锁子组包含在内。
+- 开发交接中的 `!owned` 存活变异有源码依据。`ownerOrReason` 对缺失、无效和过期回执返回零值 Receipt，现有路径比较仍拒绝，故单独删除该防御判断是等价变异。第四项中的路径与 channel 匹配分别有拒绝用例，不能把这个等价变异当作行为漏洞。本轮确认了等价性，未重新认证交接所报各次变异执行。
+
+### 📝 总结
+
+一项由新调用路径引入的诊断回归已复现，本轮 FAIL，Dev 保持完成、Review 未勾选，交回同一任务修复。历史 ISO-IR-R1-F1、ISO-IR-CI-F1/F2、ISO-IR-R3-F1、ISO-IR-R5-F1 的原处置保留，当前新发现为 ISO-IR-R7-F1。
+
+定向命令为 `scripts/run-go-test.sh ./internal/installation ./cmd/agentdeck -run 'Test(RegisterWhileOwnerRunning|InstallRegisterOutput)$'`，Go 1.27.3，单次进程 PATH 与已有 GOROOT 对齐，GOCACHE 使用 `/private/tmp/agent-deck-go-build`，exit 0。源码 AST 超时探针结果见发现正文。开发交接中的全量、race、验收 tag 与安装检查仍按其报告范围保留；本轮发现成立后未继续认证其余本地准则，也未运行真实 Homebrew。real-brew 仍须授权推送后的 CI，历史失败不冒充本候选运行结果。
+
+Evidence: 初始精确态查询返回 NOT_VERIFIED / missing_target_state，acceptance-v3 八项必需准则齐全。`python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均 exit 0。本轮写入 ContentState 与 validation=fail 两个节点，两条关系预检均 ok，写入数与读回端点一致。最终精确态门禁 FAILED，失败证据 target_matches/applicable 为 true，malformed 为 false，无失效或未决候选影响。其余七项本轮未认证，不能将开发交接的通过报告直接写为本轮全部通过。门禁字段同步后复查记录解析。失败结论不关闭 Task、Topic 或来源缺陷。
+
+## Repair 7 — 2026-11-15
+
+修复 Round 7 的 ISO-IR-R7-F1。修复者 Claude Code，未委派；基于 HEAD `8787c467a5a2322b6e4fab173415b6f90ad95134` 的未提交候选。本节是修复交接，不是评审结论；发现的关闭由复评判定。
+
+### 确认
+
+修复前复核了发现所指位置：`scripts/test-cask-real-brew.sh` 的 `upgrade-during-session` 场景直接调用 `subprocess.run(..., timeout=600)`，超时抛出的 `TimeoutExpired` 不经过 `scripts/cask_real_brew_fixture.py` 的超时处理，已捕获输出不进入失败诊断。发现成立，范围与记录一致。
+
+### 修复映射
+
+| 发现 | 改动 |
+| --- | --- |
+| ISO-IR-R7-F1 | `scripts/cask_real_brew_fixture.py`：把执行与超时诊断提取为 `capture_fixture_command`，返回退出码与合并输出，超时时抛出带已捕获输出的 AssertionError；`run_fixture_command` 改为在其上判断成功/失败，对外行为不变。`scripts/test-cask-real-brew.sh`：该升级调用改为 `capture_fixture_command(s.argv('upgrade'), env=s.env, timeout=600)`，超时值、环境、摘要行与其后的全部断言不变，退出码改由 `upgrade_exit` 承载。该场景需要在判断退出码之前先打印摘要并检查会话存活，所以没有改用会直接断言退出码的 `s.command`。 |
+
+回归保护在 `scripts/test-cask-real-brew-fixture.py` 的 `FixtureCommandTests`，两项都从真实脚本的内嵌 Python AST 取出含 `s.argv('upgrade')` 的顶层语句原样执行（并断言这样的语句恰好一条），只替换子进程边界：
+
+- `test_session_upgrade_timeout_reports_what_brew_printed`：替身抛出带输出的 `TimeoutExpired`（600 秒），断言最终 AssertionError 含该输出与 600、`__cause__` 为原异常，且实际传入的超时为 600、环境为场景环境、参数为场景参数。
+- `test_session_upgrade_returns_exit_and_output_without_judging_them`：退出码 0 与 1 都原样返回，不在执行器内判定。
+
+### 验证与剩余边界
+
+- `python3 -B scripts/test-cask-real-brew-fixture.py`：21 项通过（原 19 项加上述 2 项）。
+- 负对照：在临时副本中把该调用还原为 Round 7 所评审的直接 `subprocess.run` 形式，`FixtureCommandTests` 的超时用例以未处理的 `TimeoutExpired` 失败（5 项中 3 项出错）；副本已删除，工作区未受影响。
+- `bash -n scripts/test-cask-real-brew.sh` 与内嵌 Python 的 `ast.parse` 通过；`git diff --check -- scripts` 无输出。
+
+未验证：没有运行真实 Homebrew，也没有等待真实超时；real-brew 仍只在推送后的 CI 运行。没有改 Go 代码，未重跑 Go 测试。同一脚本第 5 类场景的两处 `subprocess.run(..., timeout=300)` 早于本候选存在，不在 ISO-IR-R7-F1 范围内，未改动。Round 7 未认证的其余七项准则仍待复评。本次未向 CEv1 写入证据；Round 7 的 FAILED 是其内容态的结论，不改写，门禁由复评按新内容态查询。
+
+## Round 8 — 2026-11-15
+
+### 📋 超时诊断修复复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Codex，沿用 Round 7 的独立产品评审角色，未参与产品或测试实现及 Repair 7，未委派；本会话已有架构和任务分解评审背景。
+- Method: 对照 ISO-IR-R7-F1 检查公共执行器、实际升级调用及其 AST 回归；验证当前候选指纹与未变化输入，补充此前缺少直接证据的本地检查，按范围复用已有通过证据。
+- Scope: Repair 7 的三份 real-brew 脚本及其调用者；四条件 Go 实现沿用 Round 7 已核查范围。本轮完成本地验收证据核对。
+- Workspace: `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+- HEAD: `8787c467a5a2322b6e4fab173415b6f90ad95134`。
+- Reviewed state: 入场指纹 `93b90054d312341caf1c8d44eaf0ce041997c07a9a04a779a73ab5854ee81541`；最终指纹 `ef305bf121bc36cb3e977903931e257e9271c4eecfa895f2fb1639948e6b1fba`，tasks.md blob `61d30c6e30d7769d242d27e98895cd80ba40c0f5`。沿用 Round 7 的 49 个存在路径和 3 个删除路径、相同 SHA-256 配方；本记录不入集合。入场至最终只更新 tasks.md 的 Review 状态及摘要。
+- Logical WorkUnit: `installed-state-ownership:installer-receipts`；验收版本 `installed-state-ownership:installer-receipts:acceptance-v3`；Beads `ad-installed-state-ownership-installer-receipts`。
+- Target ContentState: `installed-state-ownership:installer-receipts:rereview-r8-final-20261115-ef305bf1`。
+- 完成门禁：NOT_VERIFIED
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 做得好的方面
+
+**ISO-IR-R7-F1 — CLOSED。** 新 `capture_fixture_command` 提取了原执行与超时异常处理，返回退出码和合并输出；`run_fixture_command` 继续判定原成功/失败契约。实际升级节点调用公共执行器并保留 timeout=600、场景环境及参数，之后仍检查会话存活、退出码、新版本、Caskroom、回执字节和身份。
+
+新增两项回归直接从真实脚本取出升级调用 AST，覆盖超时输出/异常链/600 秒预算及退出码 0、1 的返回。独立负对照仅在内存中把该调用换回旧 `subprocess.run`，新的超时测试出现预期的未处理 TimeoutExpired 错误，证明测试覆盖实际回归点；工作区未修改。
+
+Round 7 确认的四条件行为和 `!owned` 等价变异判断继续适用，相关 Go 源码及测试 blob 未变。历史 ISO-IR-R1-F1、ISO-IR-CI-F1/F2、ISO-IR-R3-F1、ISO-IR-R5-F1 的原处置保留。本轮未发现新问题或回归。
+
+### 📝 总结
+
+唯一开放发现已关闭，复评 PASS。任务 5 Dev/Review 均勾选，Task/Topic/来源缺陷保持开放，真实 Homebrew 的新五类结果须在授权推送后取得。
+
+**本轮直接证据。** Go 使用已安装的 1.27.3，PATH 与 GOROOT 对齐，Go 缓存位于 `/private/tmp/agent-deck-go-build`、`/private/tmp/agent-deck-go-mod`。
+
+| 检查 | 结果 |
+| --- | --- |
+| `python3 -B scripts/test-cask-real-brew-fixture.py` | 21 项通过，4.812 秒，含实际升级调用的两项新测试 |
+| 实际升级调用的旧写法负对照 | 新超时测试出现一项预期 TimeoutExpired 错误，捕获回归；未运行真实 brew |
+| `scripts/run-go-test.sh ./...` | 28 包全部通过；cmd 207.287 秒，installation 62.402 秒，doctor 20.849 秒 |
+| `scripts/run-go-test.sh -tags agentdeck_acceptance -race ./internal/installation` | 全包通过，36.188 秒；含真实共享锁与新四条件用例 |
+| `make vet` 与 `go vet -mod=vendor -tags agentdeck_acceptance ./...` | 均 exit 0 |
+| `bash scripts/test-cask-migration.sh --local-only` | PASS；真实验收 helper、渲染后的包装、占用期间放行/其他路径拒绝、停止占用后换 ID；PlugInKit 使用替身，跳过真实 brew |
+| `bash -n scripts/test-cask-real-brew.sh` | exit 0 |
+
+首轮夹具测试因 Go 1.27.1/GOROOT 1.27.3 混用及用户模块缓存写权限失败；对齐本次环境并使用临时缓存后上述整组通过。race 后串联的 vet 初次未启动，原因是显式 PATH 漏掉 rtk；保留原 PATH 并前置 Go 1.27.3 后两种 vet 均通过。内存负对照首次导入缺 scripts 路径而未执行，补充 PYTHONPATH 后完成。这些环境/探针失败未记为产品通过或产品缺陷。
+
+**证据复用判断。** 以 CEv1 `installed-state-ownership:installer-receipts:local-evidence-20261114-45217eaf` 的观察为来源，固定门禁确认其本地七项仍适用，无未决影响。当前历史 49 路径逐 blob 核对后，以下范围可复用，并为新目标单独建立 roll-up，原观察保留原状态。
+
+- `claim-specimens` — Claim、认领文案、原型数据、formula 判定与布局输入未变。新增字段属于 register；本轮 Go 全量也执行对应 CLI 和安装测试。
+- `interleavings` — I1–I4 测试、source 发布、unregister、安装 hook、平台会话和脚本未变；检查真实参数均为 make/local_app 且发布携 source，新 cask-only 分支不能放行这些路径。复用既有真实 helper 交错结果。
+- `cask-contract` — 模板及已撤除接口集合未变，新的实现没有恢复旧协议；本轮 Go 全量及迁移模板断言再次通过。
+- `installer-integration` — 仅复用既有 make/local App、补全、shell 和 release-distribution 的未变化范围。新的 cask 占用分支由本轮迁移检查取证；旧的 cask 占用拒绝结论不用于本候选。
+- `validation` — 仅复用原叶子清单/159 分支屏障、未变化本地安装和分发检查；命令入口、守卫、平台会话及其测试均未变，新增成功结果不会绕过已有状态访问入口。Go 全量、installation 验收/race、vet、cask 迁移、Python 夹具均使用本轮结果。旧完整 validation 不能单独认证新分支。
+
+开发者记录的六个非等价变异与一个等价变异保持其生产者归属；本轮直接核对对应源码与测试、运行当前全量/race，并独立复现 Repair 7 的超时负对照。真实 Homebrew、真实已登记扩展注销和本机安装均未在本轮认证。
+
+Evidence: `python3 scripts/check-docs.py`、`make check-whitespace`、`git diff --check` 均 exit 0。CEv1 新建最终 ContentState 与七项目标态通过证据，共八节点；十九条关系含五条有明确范围判断的 roll-up，预检全部 ok，创建数及读回节点一致。最终固定门禁返回 NOT_VERIFIED，7/8，仅缺 `real-brew`，reason=null、invalidated_evidence=[]、unresolved_candidate_impacts=[]。其余七项均 target_matches/applicable=true，无 malformed。最终记录解析单独检查。
+
+Task checkpoint：`ad-installed-state-ownership-installer-receipts`，content_state `ef305bf121bc36cb3e977903931e257e9271c4eecfa895f2fb1639948e6b1fba`，gate NOT_VERIFIED（7/8，仅 real-brew）。
+
+提交建议：通常门禁 VERIFIED 后提交，当前缺项为推送后的 real-brew；已满足任务 5 的明确取证时序例外，可另行授权提交本次 Task 5 实现、测试、评审和必要状态段落。前置架构与任务分解文档按各自 Task checkpoint 分别提交，暂存时区分共享 tasks.md 的段落归属。
+
+推送建议：通常门禁 VERIFIED 后推送，当前缺项为推送后的 real-brew；按任务 5 例外，可另行授权将已核验的提交正常推送到 `origin/feature/installed-state-ownership` 并回填同一提交的 CI 结果，门禁 VERIFIED 前不关闭任务。
+
+按上述例外，Beads 转 awaiting_commit；复评 PASS 保留，Task、Topic 与来源缺陷均保持开放。下一项前提是授权本候选的提交、推送和 real-brew CI 回填。后续复用本轮仍适用的本地证据，阶段或交付身份变化本身不触发重复验证。

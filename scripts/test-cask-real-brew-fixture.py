@@ -77,6 +77,38 @@ class FixtureCommandTests(unittest.TestCase):
                 self.assertEqual(execute.call_args.kwargs['timeout'], 17)
                 self.assertEqual(execute.call_args.kwargs['env'], {'FIXTURE_ENV': 'explicit'})
 
+    def session_upgrade(self):
+        source = Path(__file__).with_name('test-cask-real-brew.sh').read_text()
+        driver = source.split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        calls = [node for node in ast.parse(driver).body if "s.argv('upgrade')" in ast.unparse(node)]
+        self.assertEqual(len(calls), 1, 'the upgrade during a session is one top-level statement')
+        scenario = mock.Mock(env={'FIXTURE_ENV': 'scenario'})
+        scenario.argv.return_value = [Path('/fixture/brew'), 'upgrade']
+        namespace = dict(vars(fixture_module), subprocess=subprocess, s=scenario)
+        code = compile(ast.Module(body=calls, type_ignores=[]), '<actual CI session upgrade>', 'exec')
+        return lambda: exec(code, namespace) or namespace
+
+    def test_session_upgrade_timeout_reports_what_brew_printed(self):
+        failure = subprocess.TimeoutExpired(['/fixture/brew', 'upgrade'], 600,
+                                            output=b'==> Running postflight\nwaiting at registration marker\n')
+        with mock.patch('subprocess.run', side_effect=failure) as execute:
+            with self.assertRaises(AssertionError) as raised:
+                self.session_upgrade()()
+        self.assertIn('waiting at registration marker', str(raised.exception))
+        self.assertIn('600', str(raised.exception))
+        self.assertIs(raised.exception.__cause__, failure)
+        self.assertEqual(execute.call_args.kwargs['timeout'], 600)
+        self.assertEqual(execute.call_args.kwargs['env'], {'FIXTURE_ENV': 'scenario'})
+        self.assertEqual(execute.call_args.args[0], ['/fixture/brew', 'upgrade'])
+
+    def test_session_upgrade_returns_exit_and_output_without_judging_them(self):
+        for code in (0, 1):
+            with self.subTest(code=code):
+                result = subprocess.CompletedProcess(['/fixture/brew'], code, stdout='brew detail\n')
+                with mock.patch('subprocess.run', return_value=result):
+                    namespace = self.session_upgrade()()
+                self.assertEqual((namespace['upgrade_exit'], namespace['output']), (code, 'brew detail\n'))
+
 
 class FixtureScenarioTests(unittest.TestCase):
     def test_local_cask_keeps_default_core_metadata_mode(self):
