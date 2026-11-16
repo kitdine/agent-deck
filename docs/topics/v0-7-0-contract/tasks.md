@@ -372,7 +372,7 @@ authority. Record partial assembly without ticking the aggregate Task complete.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `assemble` | [ ] | [ ] |
+| 1. `assemble` | [x] | [x] |
 | 2. `v0-7-0-contract` | [ ] | [ ] |
 
 These are contract-topic tasks for review. Create their implementation dispatch
@@ -953,3 +953,27 @@ candidate and its GitHub signature is verified. All five selected members now
 have main ancestry. Installed-state integration evidence is 3/4 pending actual
 main CI and real Homebrew results; version-wide combined acceptance and
 contract closure remain open.
+
+### Aggregate development handoff — 2026-11-16
+
+All five selected member integrations are verified at their actual main merges.
+Current release-candidate correctness checks cover representative frozen JSONL,
+controlled nonempty auxiliary and OTel overlays, full/incremental identity,
+no-op/append bounds, queue/cancel/restart behavior and installed-state guards.
+Two reviewed release-validation corrections are committed on the contract
+branch. The project status projection now identifies both delivered members
+and candidate corrections. Detailed scope, provenance and measurement limits
+are in the assembly record.
+
+Task 1 development is ready for aggregate independent review. Its Review cell
+and completion gate remain open until that review and the final target-bound
+evidence roll-up complete. Task 2 follows the committed Task 1 checkpoint.
+
+### Aggregate review checkpoint — 2026-11-16
+
+Independent aggregate review accepted Task 1 at staged tree
+a353fa5c3929de39cbc5409005a23be2d2b504e7. Membership, actual member integrations,
+current combined correctness and the project records are covered with the
+limitations recorded in assembly Round 12. The Review cell is checked.
+Final evidence and signed delivery are owned by that round and the Beads
+checkpoint. Task 2 proceeds after the committed Task 1 checkpoint.

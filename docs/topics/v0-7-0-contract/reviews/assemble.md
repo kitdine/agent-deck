@@ -753,3 +753,167 @@ GitHub确认PR67于2026-11-16T12:00:12Z合并为 `b53f26b6f626ea9d587ae11822ee24
 父控制器依据本文件当前任务契约和2026-11-15已批准成员决定，完成CEv1当前准则选择的行政处置：旧 `v0-7-0-contract:assemble:combined-acceptance` 保留原description/owner及历史观察，required改为false，并记录original_required=true、决定日期/依据和替代ID。新增 `v0-7-0-contract:assemble:combined-acceptance-v2` required=true及requires关系，内容覆盖现选五成员组合。两个节点回读一致，关系预检通过并写入，当前4项required与1项历史optional均确认。没有把旧pricing措辞套用新范围通过证据，aggregate尚未签发完成结论。
 
 Beads整理已直接核对并关闭已交付的辅助会话专题载体和长扫描超时来源缺陷，两项实际合并门禁重新查询均VERIFIED。另按现行OTel requirements第102行/tasks第18行明确替代epoch5跨仓库分解的决定，关闭producer-identity-v1、identity-ownership-readmission、cross-producer-acceptance三个旧协调任务，清除其中陈旧assignee。原控制器确认completed且无运行或待办操作，旧设计/证据保持历史。活跃P3测试等待隐患保留，尚未删除工作树、分支或用户数据。
+
+### Current-tree combined verification — 2026-11-16
+
+Claude/Opus5.5 medium验证任务已结束，无待运行进程。main b53f26b6的冻结语料身份1d9ee56f…匹配2232文件/501391380字节，平移副本以2026-11-16为锚。环境检查因安装版AgentDeck进程仍运行而拒绝所有perf条件，故本轮没有P01–P11合同样本。Worker先前被限定不操作安装版，父控制器将在后续原生批次前按当前发布/本地升级授权安排临时正常退出，不把这项自身限定转成额外授权缺口。
+
+隔离CLI诊断完成全量、no-op、append、再全量对比及并发/前台中断。全量读取501391380字节，append120条/65064字节，增量读取65064字节小于声明的1040696字节上界，两次no-op均0字节。全量/增量最终9901事件、各token列、事件身份、2801条work signals及分类结果一致。真实冻结语料全部为work/default_work，所以非空auxiliary与OTel交互尚缺受控覆盖。此处允许明确标注的合成overlay检验组合不变量，不能将其称为真实捕获OTel；不额外要求合同未声明的真实生产OTel语料。
+
+新候选恢复问题重复出现两次：强杀隔离scan-worker后，第一次重新scan返回exit1、两域failed/scan_failed且0ms，再次scan成功，最终身份一致。第二次在kill后等待3秒仍复现。父控制器读取失败stdout并核对源码：恢复复用round ID，executeProduction以r.id调用库存接受，stageInventory直接INSERT同ID。SQLite主键冲突目前为有源码支持的假设，原始错误尚未直接取得。下一步用真实数据库最小回归确认并有界修复，不能把fake-run恢复测试视为此路径通过。原性能样本缺口和此失败阻塞aggregate关闭。
+
+原1.3GB隔离批次和包含私有路径的中间清单已由Worker清理，剩余诊断汇总只作临时输入。没有操作真实数据库或安装版App。已完成成员台账作为独立增量记录提交 `948d2a1812751578d542486d97240dbafba0b219`，随后合同工作树无冲突合入main，签名提交 `055b9533c47cb96f24202cb5c24e2b4e8fdf4088`，双亲948d2a1/b53f26b6，tree b8ab0c00。相对main仅三份合同topic记录不同，产品/测试相同，两个提交的正文、Codex trailer、SSH签名已核验。合同工作树现可承接发布前修复与收尾，Task1/Task2均保持未完成，尚未推送合同范围。
+
+### Crash recovery repair handoff — 2026-11-16
+
+Claude/Opus5.5 medium完成当前发布验收发现的恢复修复。其真实store复现报告core/session原始错误均为 `constraint failed: UNIQUE constraint failed: inventory_runs.inventory_id (1555)`。父控制器已核对直接INSERT、恢复沿用r.id的生产链，以及两个旧失败CLI输出。Worker另在原HEAD导出副本复现“接受后崩溃”“完成后receipt未终态即崩溃”和转serving路径三类失败，绿色用例走真实store/生产执行路径。
+
+候选基于055b953，五个产品/测试文件的blob由主控制器逐项匹配后暂存，完整暂存树 `eff82bb379901f788f92833c90f412d686e6b7e8`。记录文件为父控制器独立未暂存修改，不属于代码候选。store新增AbandonRoundInventories，事务内只将本round及其带点尝试前缀的pending改为paused，必要时推进serving revision，报告是否存在旧接受；新执行据此生成尝试inventoryID供core/session共同使用，receipt RoundID不变。旧完成记录和其他round保持，旧paused尝试走既有回收。正常和serving执行均切换覆盖登记/写入/收尾使用的内部inventoryID。
+
+新增真实恢复测试覆盖接受后、完成后、连续重放崩溃，以及serving重放；检查首次恢复completed、仅追加一条、原事实不变、两库head一致、无遗留pending、与全量oracle逐行身份相同、后续no-op及回收。store测试覆盖前缀边界、revision及幂等。Worker通过run-go-test.sh执行四个相关包、store/scanruntime race以及一次完整Go套件；主控制器直接检查全量日志30包通过且无FAIL，相关包/race的运行记录也已取得。vet通过。真实隔离worker单次及连续两次SIGKILL后首次恢复均completed，最终9781事件、session5932文档以及事件/信号/分类身份与全量oracle一致，报告中事实保持隔离诊断范围。
+
+所有Worker进程已结束，暂存及平移语料已清理，未修改真实状态。每域新增一次小事务的性能影响留待后续正式测量。独立审查请求 `v070-release-e6-recovery-review-hydrogen-20261116` 采用Gemini4Hydrogen high，理由为跨core/session部分失败和重复恢复的一致性。当前修复尚未独立通过，aggregate准则与版本发布继续开放。
+
+## Round 10 — 2026-11-16
+
+## 📋 发布验收中的扫描恢复修复评审
+
+- Verdict: PASS
+- Completion gate: NOT_VERIFIED
+- Reviewer: 新冷上下文Antigravity/Gemini4Hydrogen，配置thought_level high。父控制器核对候选和检查结果并记录正式结论。
+- Method: 五文件暂存blob、生产/serving消费者、事务/回收边界及已存在真实执行测试日志检查。本轮没有重新运行广泛套件。
+- Scope: 崩溃重放库存ID冲突的有界正确性修复。完整组合性能验收仍未完成。
+- Reviewed state: 基线055b953，完整暂存tree `eff82bb379901f788f92833c90f412d686e6b7e8`。主控制器用只读diff再次确认完整index等于该树，五个代码/测试路径working/index一致。父方未暂存记录独立于代码身份。
+
+### 🔴 严重问题 — 必须修复
+
+无。V070-REC-R1无新增发现，当前崩溃重放失败由修复和真实store回归关闭。
+
+### 🟡 改进建议 — 推荐
+
+无本变更内待处理建议。现有roundID均为生成的ASCII标识，前缀长度语义与其一致。原先打开/规划失败可能留下pending的行为保持原范围，当前改动在重放时处理自己的旧尝试，不以此声称所有失败情形均新增覆盖。
+
+### 🟢 优点
+
+首次执行保持库存ID等于roundID，重放只改变内部尝试ID，receipt及Result.RoundID不变。core/session在启动消费者前确定同一个尝试ID，所有覆盖登记、更新和收尾路径一致使用它。每round执行前的scan锁保证旧尝试已无同轮并发执行者。
+
+暂停事务精确匹配本round及点分尝试前缀，仅pending转paused，有变化时才推进serving revision。完成记录、其他round及head指针保留，幂等检查和现有回收负责后续清理。core已接受/session未接受的恢复也会选择新尝试，保留部分失败边界和正常可见性。
+
+### 📝 总结
+
+接受有界正确性修复，未发现阻塞或非阻塞缺陷。Reviewer直接检查全Go30包、四个受影响包及scanruntime/store race日志均通过，相关新恢复/store测试通过。父控制器直接核对相同日志和源码差异。真实SIGKILL场景的9781事件/5932文档及身份哈希沿用开发者运行报告，临时数据库已删除，本轮未声称重新检查原库。vet来自开发执行记录。原P01–P11性能和代表性组合测量继续等待，A5豁免保留。
+
+CEv1已建立 `v0-7-0-contract:assemble:recovery-review:eff82bb379901f788f92833c90f412d686e6b7e8`，以not_verified观察如实记录当前正确性验证和剩余组合检查。节点回读/关系预检通过，aggregate固定查询NOT_VERIFIED，四项required仍未完成对应roll-up/记录边界，无unresolved impacts。此PASS只允许固定已审修复提交以继续测量，不是Task1或版本完成。
+
+Reviewer completed且无待运行操作。五文件内容贡献者Claude，父控制器持有正式记录和Git操作，强制Codex trailer保留。准备增量提交后恢复隔离测量。
+
+### Frozen repair and resumed measurements — 2026-11-16
+
+恢复修复签名提交为0041ac0f74dc6171407ffabab54edfae15e064b5，tree与已审eff82bb3一致，正文、Claude/Codex trailers及SSH签名已核验。父控制器正常退出精确绑定的安装版PID2796后，Opus在固定代码上继续隔离验证。
+
+P01-first和P02各20个pilot样本，父控制器直接读取原始stats，均零失败。P01-first中位67.133335ms、p95 73.867453ms，P02中位312.071608ms、p95 340.603572ms。样本使用临时HOME内.agentdeck-dev指向.agentdeck的夹具替代，按该限制保留为pilot观察。helper实际返回非安装态.agentdeck-dev，工具却在run.go的模板准备、worker等待和条件函数中硬编码.agentdeck，父控制器源码定位确认。P10重建HOME会丢失该临时链接，需要修复工具的状态根集成。
+
+P07全量加20次增量及P08 no-op/append计数通过，全量/增量身份一致。真实JSONL叠加三条合成claude-mem映射，得到work2226/auxiliary3/all2229而消耗身份不变。模拟producer经telemetry import输入四条受支持形态，JSONL已有来源不重复记账，两模拟会话结算增加3条usage及9000 input/90 output；迟到的合成JSONL撤销对应2条OTel后改记1条JSONL，最终9783事件，全量/增量身份和work2228/auxiliary3/all2231一致。历史重新接纳沿用已有针对性测试，receiver监听路径未在此叠加检查中启用。
+
+P04、P11-first/full各两批在首样本driver.invalid终止，日志记录status item visible=1、screen=0、occlusion_visible=0、frame_y=1120。菜单栏空间不足为Worker解释，父控制器继续核对实际拒绝条件与可用隔离控制。失败按工具/环境无效保留，未当作产品计时样本。后续条件选择依照aggregate实际准则及测量契约，维持无数值门的用户决定。
+
+Worker及其Perf/helper/测试进程均终止，含私有语料/状态的1.5GB批次已清理。父控制器恢复原/Applications/AgentDeck.app，PID16648及路径已确认。原系统托管Widget未作操作。下一步有界修复perf工具的状态根恢复、重置和等待，并补隔离校验与回归。请求v070-release-e6-perf-root-repair-opus-20261116复用原Opus上下文，父控制器持有正式记录和交付。aggregate完整评审及发布仍开放。
+
+### User-authorized menu adjustment and P04 diagnostic — 2026-11-16
+
+用户明确要求执行桌面调整，authority_epoch7。父控制器通过原生CUA确认iStat Menus的CPU单独项目原为关闭，Combined项目原为开启并显示六个组件，临时只将Combined关闭。随后通过Activity Monitor正常Quit精确PID16648的安装版AgentDeck，UI确认该行消失，进程查询亦为空。
+
+perf工具六文件候选已逐blob匹配并暂存为tree adcea654a4dc9386360e17ac57cbc6e7bb4a2049，产品仍为0041。Opus仅执行一个P04环境诊断，使用helper返回的隔离.agentdeck-dev根，App/CLI一致，无手工链接。第一个单元open_action成功路由，未出现driver.invalid，frame.vsync终点完成，数据帧hero与oracle一致，coverage complete 2232/2232。父控制器直接读取stats及stdout，确认P04 1/20 done、summary n=1/failures=0、1192.913104ms。
+
+工具固定pilot计划为20个单元，Worker在首个完成后按单元诊断范围终止harness，exit143。第二单元只留下空目录，stats因此有两项tool_invalid，分别为计划数量不足和第二单元缺trace。完整批次未完成，此结果仅证明本次调整后的环境可完成首个P04单元，不作为正式分布或gate通过。该观察支持菜单栏空间不足的原因判断。成功路径没有记录原始screen/occlusion数值，其有效性依据为未弱化的open_action守卫和后续frame序列。
+
+Worker completed、无待运行进程，私有批次已清理。父控制器通过CUA把iStat Combined恢复开启，AX确认Value1，并启动原/Applications/AgentDeck.app，实际弹出窗口和正常刷新界面已观察到。临时桌面调整已恢复。独立工具审查v070-release-e7-perf-root-review-hydrogen-20261116继续进行，aggregate仍待正式收口。
+
+## Round 11 — 2026-11-16
+
+## 📋 perf 工具状态根集成修复评审
+
+- Verdict: PASS
+- Completion gate: NOT_VERIFIED
+- Reviewer: 独立Antigravity/Gemini4Hydrogen，配置medium。父控制器核对源码、当前暂存身份及补充测试后记录。
+- Method: 六文件静态审查、产品state-location接口核对、重点输入/重置回归及单个原生环境诊断。
+- Scope: perf工具的状态根查询、隔离恢复/重置、App/CLI一致性、worker等待和身份记录。
+- Reviewed state: HEAD0041ac0，暂存tree adcea654a4dc9386360e17ac57cbc6e7bb4a2049。父控制器完整index对比exit0，六路径working/index一致，未暂存评审记录独立。
+
+### 🔴 严重问题 — 必须修复
+
+无，V070-PERF-R1无发现。
+
+### 🟡 改进建议 — 推荐
+
+无本变更内待处理项。
+
+### 🟢 优点
+
+状态根来自被测helper，App条件要求内嵌helper与CLI一致。每单元在删除/恢复前重新解析并限制于物理HOME直接子目录，排除源数据/偏好/容器目录、链接、非目录及真实账户受保护根。未绑定或根中途变化会拒绝执行。旧命令缺失只在exit0且明确Cobra desktop帮助形态下使用仍经约束的旧目录，拒绝/错误及畸形响应保持错误。
+
+P08/P10重建HOME后重新绑定同一物理根，CLI、no-op、App退出等待及worker检测使用一致根。/tmp与/private/tmp等别名纳入检测，environment/arm/unit身份记录所用根及来源。
+
+### 📝 总结
+
+接受有界工具修复。开发者报告整包62个顶层测试、race、vet和gofmt通过，独立Reviewer只作静态检查。父控制器另执行 scripts/run-go-test.sh ./cmd/agentdeck-perf -run 'Test(StateRoot|BoundStateRoot|RunUnitRestores|WorkerWait)'，五个顶层重点测试均通过，包含真实CLI还原根、错误/隔离输入、受保护根、重建HOME/根变化/AppCLI不一致及worker别名。已有单P04诊断证明实际helper报告的.agentdeck-dev被正确还原，数据帧与oracle一致，保留故意截断整批的限制。
+
+CEv1目标 v0-7-0-contract:assemble:perf-root-review:adcea654a4dc9386360e17ac57cbc6e7bb4a2049 已回读一致，aggregate固定查询NOT_VERIFIED，四项required尚待最终汇总与记录边界。当前PASS是工具正确性裁决。性能契约没有数值门，额外P01–P11完整计时不作为新增发布硬门。下一步以当前正确性、生命周期、隔离及已有证据完成aggregate审查，并保留测量覆盖限制。
+
+Reviewer completed且无待运行操作。六文件内容贡献者Claude，父方持有Git与正式记录，Codex trailer按项目要求保留。
+
+### Aggregate completion candidate — 2026-11-16
+
+perf工具修复已签名提交3a1a9d5b4751df9eb4e88a08887e2c2ce2b2a9a2，实际tree为已审adcea654，签名、正文和Claude/Codex trailers已核验。当前产品源提交包含已审恢复修复0041和工具修复3a1，五个成员的main合并历史保持。三个合同/状态文档承接本次aggregate交接，Task1 Dev已完成，Review待独立判断，Task2尚未开始。
+
+| 准则 | 当前内容与证据 | 适用范围 |
+| --- | --- | --- |
+| membership | b450704b、6fff208a、e3ff72eb、c270d473、b53f26b6五个实际main合并，分别对应Codex信号、扫描性能、辅助会话、OTel、安装态所有权；2026-11-15决定排除pricing与OpenCode产品支持 | 当前已批准选择，完整成员交付 |
+| integration | 五个实际合并ContentState的有效Evidence已直接查询，信号fix5项和四个integration各4项；来源及父子/树/CI/签名在各轮保留。当前分支额外修复经Round10/11独立审查 | 原批次观察证明其实际交付，当前修复证明新候选受影响部分 |
+| combined-acceptance-v2 | 冻结代表性JSONL2232文件/501391380字节，信号重放、全量/增量事件及token身份一致、no-op零读取、append65064字节在1040696上界内；排队/前台取消和已修复真实worker崩溃恢复；三条合成辅助映射及模拟OTel叠加后的归属/迟到JSONL撤销和全量oracle一致；当前Go及目标回归通过 | 冻结真实语料、明确标注的合成overlay和真实进程场景。历史readmission及所有权拒绝/安装路径按未变源码和当前完整Go/已交付CI证据复用 |
+| records | tasks.md、assembly记录与docs/status.md已明确五成员main交付、候选分支修复、剩余版本发布边界及当前限制，清除过期的“成员选择未批准”投影 | 待独立aggregate审查后按最终内容写入roll-up并提交Task1记录 |
+
+历史readmission的针对性回归在0041实际完整Go测试中执行，OTel归约/读入逻辑相对其已交付来源未变。恢复修复改变库存尝试身份，新增真实store/serving重放与全量oracle验证覆盖该影响。perf工具修复仅改变夹具根选择，真实P04诊断确认新根实际被消费。没有用旧数值样本证明新时延，也没有把所有权拒绝的临时账户检查扩大为真实用户状态访问。
+
+P01/P02的20单元为带夹具替代说明的pilot，P04单单元只作环境诊断，P10/P11完整时延未取得。当前性能契约无数值门，aggregate准则的规模、数据不变量、读取界限及生命周期由上述实际检查支撑。A5真实双App豁免、历史native限制、Cask生命周期边界及独立P3载体继续列明。release-preflight的同SHA L4、制品、发布与本地升级仍须后续执行。
+
+以上为正式aggregate审查输入，不预置最终Verdict或完整gate。需独立核对覆盖映射、源证据兼容性及项目状态一致性，再完成四项准则的目标绑定与Task1交付。
+
+## Round 12 — 2026-11-16
+
+## 📋 v0.7.0 aggregate assemble 最终评审
+
+- Verdict: PASS
+- Completion gate: VERIFIED
+- Reviewer: 独立Antigravity/Gemini4Hydrogen，配置medium，父控制器核对终态和精确内容后记录。
+- Method: 冻结树、实际main祖先、规范CE关系、四准则覆盖矩阵及三个状态文档的一致性审查，复用适用的实际检查。
+- Scope: Task1 assemble整体完成边界，包含五个成员实际交付及当前分支的两项已审纠正。
+- Reviewed state: HEAD3a1a9d5，冻结tree a353fa5c3929de39cbc5409005a23be2d2b504e7。Reviewer和父控制器只读diff确认完整index匹配且working/index一致，三份文档为全部本轮暂存变更。
+
+### 🔴 严重问题 — 必须修复
+
+无，V070-AGG-R1无阻塞发现。
+
+### 🟡 改进建议 — 推荐
+
+无本边界新增未处理发现。已存在P3测试就绪观察继续由ad-bug-native-ownership-query-test-readiness承接。
+
+### 🟢 优点
+
+membership由五个实际main合并和已批准的pricing/OpenCode排除决定支撑。integration由信号fix5/5、四个member integration各4/4的实际合并证据与Round10/11当前纠正审查支撑，明确候选纠正随最终合同PR交付。
+
+combined-acceptance-v2覆盖代表性冻结语料、信号重放、全量/增量身份、零读取no-op、append读取上界、并发队列/前台取消/修复后真实worker恢复，以及标明来源的非空auxiliary和模拟OTel归属/迟到JSONL撤销组合。历史readmission沿用当前Go针对性测试及源码兼容性评估，安装/守卫沿用未变范围的实际证据。记录清楚区分真实语料、模拟输入和测试层级。
+
+records中的main交付、候选分支纠正、Task1完成检查点及未来Task2/L4发布边界一致。当前状态投影和成员选择已批准事实一致，旧历史通过Git与各自记录保留。
+
+### 📝 总结
+
+接受Task1整体完成范围。P01/P02带临时夹具替代的20单元pilot、P04刻意截断的单单元诊断、未取得的P10/P11完整时延均保留边界。无数值门的测量契约继续适用，未新增完整计时发布硬门。overlay未启用真实receiver监听，历史readmission依赖针对性测试；A5豁免、cask限制、TUI推断、exec Memories Work及未确认watch身份的限制保持明确。
+
+Review完成后仅同步Review复选框和状态投影，并在最终内容上进行CE目标绑定。Task2、同SHA release-preflight、制品发布与本地升级继续执行。当前主规范的用户行为与schema35保持既有已审契约，版本合同收尾将做一致性和归档。
+
+Reviewer completed，无待运行操作或写入。父控制器已核对所有member祖先及实际证据ID，四项最终roll-up与记录签名提交由父控制器完成。
+
+最终证据检查点v0-7-0-contract:assemble:checkpoint-20261116绑定tree bf644c2e1121867a5c1deef111555b7f0cc2a431。5节点回读一致，30关系预检通过并写入，固定门禁VERIFIED4/4，missing/invalidated/unresolved为空。integration明确复用21项实际member证据，combined-v2记录当前纠正与组合检查以及适用的来源证据。
+
+随后仅同步本轮完成门禁及这段输出记录，最终交付目标为v0-7-0-contract:assemble:closure-final-20261116。四项证据以该最终内容为目标显式roll-up检查点，保留所有原观察和限制。签名提交的实际tree与最终ContentState一致时，Task1按其合同分支交付边界关闭，Task2开始。代码纠正仍随最终合同PR合入main，版本发布与安装继续单独核验。

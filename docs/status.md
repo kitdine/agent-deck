@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # AgentDeck Project Status
@@ -14,85 +14,37 @@ column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
 
-- OTel member behavior in this tree: version-tolerant admission, automatic
-  historical readmission, JSONL/OTel numerical ownership and built-in session
-  classification are delivered by source commit `3f66611bfe4530fe9b724d968c0040ea81492efd`.
-  The [topic tasks](topics/otel-version-tolerant-metering/tasks.md) and
-  [final review](topics/otel-version-tolerant-metering/reviews/builtin-rule-set.md)
-  preserve source acceptance and known limits: TUI purpose is inferred, exec
-  Memories remain Work, and unresolved session-only watch identity remains pending.
-  Local implementation reviews and topic evidence passed; actual merge identity,
-  GitHub review, CI and integration evidence belong to the `v0-7-0-contract`
-  workspace's assembly record. Source completion is not release acceptance.
-- The 2026-11-15 contract decision excludes pricing/subscription estimates and
-  OpenCode product support from v0.7.0; installed-state ownership and OTel
-  metering are selected. With this OTel member, installed-state ownership and
-  final combined acceptance remain open. Older batch bullets below retain their
-  original evidence; their pricing/auxiliary remaining-member statements are
-  historical. The version contract remains the membership authority; roadmap
-  direction reconciliation is reserved for its closure task.
+The five selected v0.7.0 members are integrated into main. The
+[version contract](topics/v0-7-0-contract/tasks.md) owns the selection and final
+acceptance. Pricing/subscription estimates and OpenCode product support were
+excluded by the 2026-11-15 membership decision.
 
-- Partial v0.7.0 assembly: [PR #64](https://github.com/kitdine/agent-deck/pull/64)
-  integrated `auxiliary-session-classification` into remote main at
-  `e3ff72eb0db6f54c63ab031544a8a6259b417122` on 2026-11-14. Its merge tree
-  `8bc3398976468058299173b93b363155f0ce6d8c` equals the Round 3 independently
-  reviewed integration candidate; target `90535085723f013cb8b24d83f83015e7d60d53b0`
-  and source `0feb0c6d8965b6037de4c7e04bee839b96039dd0` remain its parents.
-  Pre-merge product CI runs `43572725411` and `43572728514` passed all 8 jobs
-  and Round 2 `@codex review` completed with zero findings; GitHub verifies the
-  server-created merge commit's PGP signature as valid (`verified: true,
-  reason: valid`). The exact-merge integration WorkUnit
-  `v0-7-0-contract:integration:auxiliary-session-classification` is recorded as
-  `VERIFIED` (4/4 pass: `ancestry`, `reviewed-result`, `delivery-signature`, and
-  `postmerge-ci`, with `20261114-ci-success` superseding `20261114-e3ff72eb:postmerge-ci`
-  after post-merge CI run `43586186560` passed all 4 jobs: `classify`,
-  `documentation`, `desktop`, `verify`). `cost-transparency` and final combined
-  acceptance remain required. This records batch integration, not v0.7.0 completion
-  or release.
+| Member | Main delivery | Evidence |
+| --- | --- | --- |
+| Codex work-signal compatibility and recovery | [PR #58](https://github.com/kitdine/agent-deck/pull/58), b450704b | Fix gate VERIFIED 5/5 |
+| Scan performance and waiting behavior | [PR #61](https://github.com/kitdine/agent-deck/pull/61), 6fff208a | Integration gate VERIFIED 4/4 |
+| Auxiliary-session classification | [PR #64](https://github.com/kitdine/agent-deck/pull/64), e3ff72eb | Integration gate VERIFIED 4/4 |
+| Version-tolerant OTel metering | [PR #66](https://github.com/kitdine/agent-deck/pull/66), c270d473 | Integration gate VERIFIED 4/4 |
+| Installed-state ownership | [PR #67](https://github.com/kitdine/agent-deck/pull/67), b53f26b6 | Integration gate VERIFIED 4/4, including main CI and real Homebrew acceptance |
 
-- Partial v0.7.0 assembly: [PR #61](https://github.com/kitdine/agent-deck/pull/61)
-  integrated scan-performance into remote main at
-  `6fff208ac852b191c0a62df1f5be34c937601cfe`. Its tree
-  `b4211bf442304e85c2dfbd4bdc480bff1ca77150` equals the independently reviewed
-  integration candidate; source `d0bd36ea` and target `d78c3458` remain its
-  parents. Further PR review iterations were stopped by explicit operator
-  decision. Post-merge CI `41321169520` completed successfully in all four jobs,
-  verified on 2026-11-03. GitHub verified the server-created merge's PGP signature.
-  The agent's SSH-only blocking interpretation was explicitly rejected by the
-  operator and corrected; no signature exception or history rewrite is needed.
-  The exact-merge batch integration gate is VERIFIED 4/4.
-  Pricing, auxiliary isolation and combined acceptance
-  remain required. This records integration, not v0.7.0 completion or release.
+The contract branch also contains independently reviewed release-validation
+corrections for crash-recovery inventory attempts (0041ac0) and performance
+fixture state-root binding (3a1a9d5). Their main delivery will accompany the
+final contract PR. Aggregate acceptance review has passed with its recorded
+coverage limits, and contract reconciliation is next. The published stable
+release remains v0.6.5 while v0.7.0 proceeds
+through contract closure, exact-SHA preflight and publication.
 
-- Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](archive/topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
+Acceptance retains the explicit A5 real dual-App waiver, documented Homebrew
+cask lifecycle limits, inferred TUI purpose and pending unresolved session-only
+watch identity. The separate native test-readiness observation remains tracked
+in Beads as ad-bug-native-ownership-query-test-readiness. Current measurements
+and their pilot/environment limits are recorded in the
+[assembly record](topics/v0-7-0-contract/reviews/assemble.md).
 
-- The [v0.6.5 version contract](archive/topics/v0-6-5-contract/tasks.md) was delivered through [PR #47](https://github.com/kitdine/agent-deck/pull/47) at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Its nineteen-member accounting, final contract/document independent reviews and exact-merge required gates passed; the completed topic and reviews are retired together. The quota Widget centering repair was delivered through [PR #51](https://github.com/kitdine/agent-deck/pull/51) and propagated to main by [PR #52](https://github.com/kitdine/agent-deck/pull/52), retaining main's Cask and CI fixes. Stable `v0.6.5` is published and normally installed from the accepted RC2 source `819bd4365aef59242a6a38034c379931548d4671`; reviewed stable tap updates are delivered. The operator's RC2 Widget centering and normal-refresh acceptance is retained within its unchanged-source scope. Historical performance/native limits and missing-original assessments remain.
-
-- Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
-  was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
-  `release/v0.6.x` at `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b` and its
-  topic is retired after exact-merge evidence finalization. Native menu-bar
-  visual acceptance remains user-deferred and unverified. This is a patch-line
-  integration record, not a new release or aggregate v0.6.5 completion.
-
-- Patch-line integration: [LaunchServices diagnosis](archive/topics/launchservices-recovery/tasks.md)
-  was delivered through [PR #42](https://github.com/kitdine/agent-deck/pull/42)
-  to `release/v0.6.x` at `f84e58a9`, from signed source `4f1283ad`.
-  Its stable Doctor contract is reconciled and the topic is retired as a whole.
-  Exact-source and merged-line CI passed. Original complete-refresh performance
-  targets remain failed; the user accepted this bounded delivery on 2026-10-04
-  and deferred repair to [issue #43](https://github.com/kitdine/agent-deck/issues/43).
-  Added snapshot cost and first-cache variation
-  remain recorded in the [acceptance history](archive/topics/launchservices-recovery/reviews/registration-acceptance.md).
-  WidgetTimeline, collision causality and actual recovery remain unverified.
-  Footer P3 has a bounded original-sample/measured-environment administrative
-  not-a-defect disposition in the [P3 carrier](fixes/footer-routes-narrow-truncation.md);
-  its carrier is present in main through PR46, without a product fix or full native PASS. This records the feature's patch-line closeout and completed main propagation; aggregate v0.6.5 completion and publication remain separate.
-
-- Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
-  was delivered in signed commit `2d53d8e` after independent re-review and real-client
-  observer acceptance. Its immutable Task gate is VERIFIED; the record is archived.
-  Beads coordination was closed after the local store recovered.
+Earlier integration narratives and their original scope statements remain in
+the owning review records and the
+[previous status revision](https://github.com/kitdine/agent-deck/blob/b53f26b6f626ea9d587ae11822ee24ade89248ab/docs/status.md).
 
 ### Release
 
@@ -436,10 +388,10 @@ and retained version-planning records remain separate. The [roadmap](roadmap.md#
 owns membership/priorities. Aggregate review, final contract and release readiness
 remain separate; no historical technical failure is converted into acceptance PASS.
 
-Next proposed iteration: [v0.7.0](roadmap.md#v070--scan-performance-pricing-redesign-and-work-sessions-proposed),
-tracked by `ad-v070-iteration`. The operator's four-theme planning intake and
-open-ended pricing redesign live in the roadmap; implementation decomposition
-and active version-contract membership are not yet approved.
+The current [v0.7.0 contract](topics/v0-7-0-contract/tasks.md), tracked by
+`ad-v070-iteration`, contains five approved and integrated members. Aggregate
+acceptance review has passed, and contract closure is next. The 2026-11-15 membership
+decision excludes pricing/subscription estimates and OpenCode product support.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
