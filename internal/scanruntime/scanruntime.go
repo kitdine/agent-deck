@@ -530,15 +530,7 @@ func Serve(ctx context.Context, stateRoot string) error {
 	defer func() {
 		cancel()
 		_ = listener.Close()
-		worker.mu.Lock()
-		pending := make([]*round, 0, len(worker.rounds))
-		for _, round := range worker.rounds {
-			pending = append(pending, round)
-		}
-		worker.mu.Unlock()
-		for _, round := range pending {
-			<-round.done
-		}
+		worker.waitForLaunchedRounds()
 	}()
 	if err = worker.recoverReceipts(); err != nil {
 		return err
@@ -585,6 +577,23 @@ type server struct {
 	nextObservation uint64
 	startedAt       time.Time
 	lastActivity    time.Time
+}
+
+// Recovery registers candidates before it can launch them. An error in a
+// later receipt leaves those candidates without a goroutine to close done.
+// Only launched work must finish before Serve releases its resources.
+func (s *server) waitForLaunchedRounds() {
+	s.mu.Lock()
+	pending := make([]*round, 0, len(s.rounds))
+	for _, round := range s.rounds {
+		if round.launched {
+			pending = append(pending, round)
+		}
+	}
+	s.mu.Unlock()
+	for _, round := range pending {
+		<-round.done
+	}
 }
 
 func (s *server) handle(conn *net.UnixConn) {
@@ -807,6 +816,7 @@ func (s *server) rollbackSelectedRoundLocked(round *round, started bool) {
 }
 
 func (s *server) launchRoundLocked(round *round) {
+	round.launched = true
 	round.onTerminal = func(result Result) error { return s.completeRound(round, result) }
 	workCtx, cancel := context.WithCancel(s.ctx)
 	round.mu.Lock()
@@ -930,6 +940,7 @@ type round struct {
 	observation uint64
 	predecessor *round
 	onTerminal  func(Result) error
+	launched    bool // protected by server.mu; registration alone is not launch
 
 	done               chan struct{}
 	usageDone          chan struct{}

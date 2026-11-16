@@ -79,9 +79,12 @@ func GuardClientWrite(path string) (string, error) {
 			return "", clientRefused(identity.Reason)
 		}
 	}
-	parent, err := statePaths.walk(filepath.Dir(path), nil, nil)
+	// Split without cleaning: link/../file traverses '..' from the symlink's
+	// physical target, not from the lexical directory containing the link.
+	parentPath, name := filepath.Split(path)
+	parent, err := statePaths.walk(parentPath, nil, nil)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(parent, filepath.Base(path)), nil
+	return filepath.Join(parent, name), nil
 }

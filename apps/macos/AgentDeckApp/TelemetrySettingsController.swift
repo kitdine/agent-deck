@@ -215,15 +215,25 @@ final class TelemetryListenerSupervisor: TelemetryListenerSupervising {
 /// unchanged managed block and never the user's own configuration. Stored
 /// observations and the journal are always kept.
 @MainActor
+protocol TelemetryReceiverMonitoring: AnyObject {
+	@discardableResult func start() -> Bool
+	func stop()
+}
+
+extension DesktopSourceChangeMonitor: TelemetryReceiverMonitoring {}
+
+@MainActor
 @Observable
 final class TelemetrySettingsController {
 	private let transport: any TelemetryTransport
 	private let supervisor: any TelemetryListenerSupervising
 	private let settleDelay: Duration
 	private let stateRoot: (@Sendable () async throws -> URL)?
-	@ObservationIgnored private var receiverMonitor: DesktopSourceChangeMonitor?
+	@ObservationIgnored private var receiverMonitor: (any TelemetryReceiverMonitoring)?
+	private let makeReceiverMonitor: (URL, @escaping @MainActor @Sendable () -> Void) -> any TelemetryReceiverMonitoring
 	private(set) var receiverURL: URL?
 	private var stopped = false
+	private var refreshGeneration: UInt64 = 0
 	@ObservationIgnored private var configurationMonitors: [DesktopSourceChangeMonitor] = []
 
 	private(set) var status: DesktopTelemetryStatusV1?
@@ -233,11 +243,12 @@ final class TelemetrySettingsController {
 	private(set) var isApplying = false
 	var showsPreview = false
 
-	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURLs: [URL] = [], stateRoot: (@Sendable () async throws -> URL)? = nil) {
+	init(transport: any TelemetryTransport, supervisor: any TelemetryListenerSupervising, settleDelay: Duration = .milliseconds(800), configurationURLs: [URL] = [], stateRoot: (@Sendable () async throws -> URL)? = nil, receiverMonitorFactory: @escaping (URL, @escaping @MainActor @Sendable () -> Void) -> any TelemetryReceiverMonitoring = { url, request in DesktopSourceChangeMonitor(configurationURL: url, request: request) }) {
 		self.transport = transport
 		self.supervisor = supervisor
 		self.settleDelay = settleDelay
 		self.stateRoot = stateRoot
+		self.makeReceiverMonitor = receiverMonitorFactory
 		configurationMonitors = configurationURLs.map { configurationURL in
 			DesktopSourceChangeMonitor(configurationURL: configurationURL) { [weak self] in
 				Task { @MainActor [weak self] in
@@ -297,8 +308,7 @@ final class TelemetrySettingsController {
 	func load() async {
         guard !stopped else { return }
 		configurationMonitors.forEach { $0.start() }
-		await refresh()
-		startListenerIfNeeded()
+		if await refresh() { startListenerIfNeeded() }
 	}
 
 	func toggle(_ on: Bool) async {
@@ -344,7 +354,10 @@ final class TelemetrySettingsController {
 
 	func stop() {
 		stopped = true
+		refreshGeneration &+= 1
 		receiverMonitor?.stop()
+		receiverMonitor = nil
+		receiverURL = nil
 		configurationMonitors.forEach { $0.stop() }
 		supervisor.stop()
 	}
@@ -359,10 +372,9 @@ final class TelemetrySettingsController {
 			return
 		}
 		result = outcome
-		await refresh()
-		startListenerIfNeeded()
+		if await refresh() { startListenerIfNeeded() }
 		try? await Task.sleep(for: settleDelay)
-		await refresh()
+		guard await refresh() else { return }
 		if status?.listener == "failed" {
 			// The listener could not bind: keep the failure visible, and
 			// return the preference to the real (off) state.
@@ -403,29 +415,40 @@ final class TelemetrySettingsController {
 		supervisor.start()
 	}
 
-	private func refresh() async {
+	@discardableResult
+	private func refresh() async -> Bool {
+        guard !stopped else { return false }
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         if let stateRoot {
             // Drop the old monitor before resolving; a failed query must never
             // leave a direct-file reader attached to a previous owner's state.
             receiverMonitor?.stop()
             receiverMonitor = nil
             receiverURL = nil
-            guard let root = try? await stateRoot(), !stopped else {
+            let resolved = try? await stateRoot()
+            // MainActor methods may interleave at either await. Only the latest
+            // refresh can install a monitor, clear status or start the listener.
+            guard !stopped, generation == refreshGeneration else { return false }
+            guard let root = resolved else {
                 status = nil
                 supervisor.stop()
-                return
+                return false
             }
             let url = root.appendingPathComponent("telemetry/receiver.json")
             receiverURL = url
-            let monitor = DesktopSourceChangeMonitor(configurationURL: url) { [weak self] in
+            let monitor = makeReceiverMonitor(url) { [weak self] in
                 Task { @MainActor [weak self] in await self?.load() }
             }
             receiverMonitor = monitor
             _ = monitor.start()
         }
 
-		if case let .decoded(current) = await transport.loadTelemetryStatus(), !stopped {
+		let loaded = await transport.loadTelemetryStatus()
+		guard !stopped, generation == refreshGeneration else { return false }
+		if case let .decoded(current) = loaded {
 			status = current
 		}
+		return true
 	}
 }

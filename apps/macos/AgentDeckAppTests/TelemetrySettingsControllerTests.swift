@@ -267,3 +267,199 @@ extension TelemetrySettingsControllerTests {
         XCTAssertNil(controller.receiverURL)
     }
 }
+
+private actor ControlledTelemetryRoots {
+    private var requests: [CheckedContinuation<URL, Error>?] = []
+    private var arrivals: [(Int, CheckedContinuation<Void, Never>)] = []
+    func next() async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            requests.append(continuation)
+            let ready = arrivals.filter { $0.0 <= requests.count }
+            arrivals.removeAll { $0.0 <= requests.count }
+            ready.forEach { $0.1.resume() }
+        }
+    }
+    func waitForRequests(_ count: Int) async {
+        if requests.count >= count { return }
+        await withCheckedContinuation { arrivals.append((count, $0)) }
+    }
+    func resolve(_ index: Int, _ result: Result<URL, Error>) {
+        let continuation = requests[index]
+        requests[index] = nil
+        continuation?.resume(with: result)
+    }
+}
+
+@MainActor
+private final class TrackingReceiverMonitor: TelemetryReceiverMonitoring {
+    let url: URL
+    var starts = 0
+    var stops = 0
+    init(_ url: URL) { self.url = url }
+    func start() -> Bool { starts += 1; return true }
+    func stop() { stops += 1 }
+}
+
+extension TelemetrySettingsControllerTests {
+    func testEnableDoesNotRollbackAfterItsStatusRefreshIsSuperseded() async {
+        let transport = ControlledTelemetryStatuses()
+        let supervisor = StubTelemetryListenerSupervisor()
+        let controller = TelemetrySettingsController(
+            transport: transport, supervisor: supervisor, settleDelay: .zero)
+        defer { controller.stop() }
+
+        let enabling = Task { await controller.writeAndEnable() }
+        await transport.waitForRequests(1)
+        await transport.resolve(0, status(listener: "failed", memories: "on"))
+        await transport.waitForRequests(2)
+        let latest = Task { await controller.load() }
+        await transport.waitForRequests(3)
+        await transport.resolve(1, status(listener: "running", memories: "on"))
+        await enabling.value
+
+        let prematureDisables = await transport.disableCalls
+        XCTAssertEqual(prematureDisables, 0, "a superseded refresh cannot authorize disabling the receiver")
+        await transport.resolve(2, status(listener: "running", memories: "on"))
+        await latest.value
+        XCTAssertTrue(controller.isOn)
+        let finalDisables = await transport.disableCalls
+        XCTAssertEqual(finalDisables, 0)
+    }
+
+    func testStopDuringEnableStatusRefreshPreventsFailureRollback() async {
+        let transport = ControlledTelemetryStatuses()
+        let supervisor = StubTelemetryListenerSupervisor()
+        let controller = TelemetrySettingsController(
+            transport: transport, supervisor: supervisor, settleDelay: .zero)
+
+        let enabling = Task { await controller.writeAndEnable() }
+        await transport.waitForRequests(1)
+        await transport.resolve(0, status(listener: "failed", memories: "on"))
+        await transport.waitForRequests(2)
+        controller.stop()
+        await transport.resolve(1, status(listener: "failed", memories: "on"))
+        await enabling.value
+
+        let disables = await transport.disableCalls
+        XCTAssertEqual(disables, 0, "stopped refreshes cannot mutate receiver preferences or managed configuration")
+        XCTAssertFalse(supervisor.isRunning)
+        XCTAssertFalse(controller.isApplying)
+    }
+
+    func testOverlappingReceiverResolutionsKeepOnlyTheLatestMonitor() async {
+        let roots = ControlledTelemetryRoots()
+        let supervisor = StubTelemetryListenerSupervisor()
+        var monitors: [TrackingReceiverMonitor] = []
+        let controller = TelemetrySettingsController(
+            transport: StubTelemetryTransport(statuses: [status(listener: "stopped", memories: "on")]),
+            supervisor: supervisor, stateRoot: { try await roots.next() },
+            receiverMonitorFactory: { url, _ in let monitor = TrackingReceiverMonitor(url); monitors.append(monitor); return monitor })
+        defer { controller.stop() }
+        let first = Task { await controller.load() }
+        await roots.waitForRequests(1)
+        let second = Task { await controller.load() }
+        await roots.waitForRequests(2)
+        let a = URL(fileURLWithPath: "/private/tmp/receiver-first"), b = URL(fileURLWithPath: "/private/tmp/receiver-second")
+        await roots.resolve(1, .success(b))
+        await second.value
+        XCTAssertTrue(supervisor.isRunning)
+        await roots.resolve(0, .success(a))
+        await first.value
+        XCTAssertEqual(controller.receiverURL, b.appendingPathComponent("telemetry/receiver.json"))
+        XCTAssertEqual(monitors.count, 1, "stale completion must not allocate or orphan an FSEvent stream")
+        XCTAssertEqual(monitors.filter { $0.starts > 0 && $0.stops == 0 }.count, 1)
+        controller.stop()
+        XCTAssertTrue(monitors.allSatisfy { $0.stops == 1 })
+        XCTAssertFalse(supervisor.isRunning)
+    }
+
+    func testLatestReceiverFailureStopsOldMonitorAndRejectsOlderSuccess() async {
+        let roots = ControlledTelemetryRoots()
+        let supervisor = StubTelemetryListenerSupervisor()
+        var monitors: [TrackingReceiverMonitor] = []
+        let controller = TelemetrySettingsController(
+            transport: StubTelemetryTransport(statuses: [status(listener: "stopped", memories: "on")]),
+            supervisor: supervisor, stateRoot: { try await roots.next() },
+            receiverMonitorFactory: { url, _ in let monitor = TrackingReceiverMonitor(url); monitors.append(monitor); return monitor })
+        defer { controller.stop() }
+        let initial = Task { await controller.load() }
+        await roots.waitForRequests(1)
+        await roots.resolve(0, .success(URL(fileURLWithPath: "/private/tmp/receiver-initial")))
+        await initial.value
+        let older = Task { await controller.load() }
+        await roots.waitForRequests(2)
+        let latest = Task { await controller.load() }
+        await roots.waitForRequests(3)
+        XCTAssertEqual(monitors.first?.stops, 1)
+        await roots.resolve(2, .failure(HelperExecutionError.launchFailed))
+        await latest.value
+        XCTAssertNil(controller.status)
+        XCTAssertFalse(supervisor.isRunning)
+        await roots.resolve(1, .success(URL(fileURLWithPath: "/private/tmp/receiver-stale")))
+        await older.value
+        XCTAssertNil(controller.receiverURL)
+        XCTAssertNil(controller.status)
+        XCTAssertEqual(monitors.count, 1)
+        XCTAssertFalse(supervisor.isRunning, "stale resolution must not restart the listener after current failure")
+    }
+
+    func testStopDuringReceiverResolutionPreventsMonitorAndListenerRestart() async {
+        let roots = ControlledTelemetryRoots()
+        let supervisor = StubTelemetryListenerSupervisor()
+        var monitors: [TrackingReceiverMonitor] = []
+        let controller = TelemetrySettingsController(
+            transport: StubTelemetryTransport(statuses: [status(listener: "stopped", memories: "on")]),
+            supervisor: supervisor, stateRoot: { try await roots.next() },
+            receiverMonitorFactory: { url, _ in let monitor = TrackingReceiverMonitor(url); monitors.append(monitor); return monitor })
+        let pending = Task { await controller.load() }
+        await roots.waitForRequests(1)
+        controller.stop()
+        await roots.resolve(0, .success(URL(fileURLWithPath: "/private/tmp/receiver-after-stop")))
+        await pending.value
+        XCTAssertTrue(monitors.isEmpty)
+        XCTAssertNil(controller.receiverURL)
+        XCTAssertNil(controller.status)
+        XCTAssertFalse(supervisor.isRunning)
+        await controller.load()
+        XCTAssertTrue(monitors.isEmpty)
+    }
+}
+
+private actor ControlledTelemetryStatuses: TelemetryTransport {
+    private var requests: [CheckedContinuation<DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1>, Never>?] = []
+    private var arrivals: [(Int, CheckedContinuation<Void, Never>)] = []
+    private(set) var disableCalls = 0
+
+    func loadTelemetryStatus() async -> DesktopQuotaTransportOutcome<DesktopTelemetryStatusV1> {
+        await withCheckedContinuation { continuation in
+            requests.append(continuation)
+            let ready = arrivals.filter { $0.0 <= requests.count }
+            arrivals.removeAll { $0.0 <= requests.count }
+            ready.forEach { $0.1.resume() }
+        }
+    }
+
+    func waitForRequests(_ count: Int) async {
+        if requests.count >= count { return }
+        await withCheckedContinuation { arrivals.append((count, $0)) }
+    }
+
+    func resolve(_ index: Int, _ status: DesktopTelemetryStatusV1) {
+        let continuation = requests[index]
+        requests[index] = nil
+        continuation?.resume(returning: .decoded(status))
+    }
+
+    func enableTelemetryReceiver(writeCodexConfig: Bool) async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+        .decoded(DesktopTelemetryReceiverResultV1(receiver: "enabled"))
+    }
+
+    func disableTelemetryReceiver() async -> DesktopQuotaTransportOutcome<DesktopTelemetryReceiverResultV1> {
+        disableCalls += 1
+        return .decoded(DesktopTelemetryReceiverResultV1(receiver: "disabled"))
+    }
+
+    func loadTelemetryPreview() async -> DesktopQuotaTransportOutcome<DesktopTelemetryPreviewV1> {
+        .undecodable
+    }
+}
