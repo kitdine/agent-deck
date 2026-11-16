@@ -22,6 +22,8 @@ updated: 2026-11-15
 | ux/widget.md | n/a | n/a |
 | ux/settings.md | n/a | n/a |
 
+2026-11-15 需求 cask 范围修订完成（`ad-installed-state-ownership-doc-req-cask-scope-revision`），独立评审 Round 7 PASS：仅落实 2026-11-13 已确认的 G7/G9/A6/A9 与两处安装范围概述，A2/A7 不变。当前文档态门禁 VERIFIED，精确身份与独立评审依据见[需求评审记录](reviews/requirements.md)；历史 PASS 保留各自原内容态。本次文档尚未提交。
+
 三个 n/a 的理由：
 
 - **菜单栏**：只在 Health 详情里增加一行 `installation` 检查。这一行沿用现有检查行的样式，没有新布局，也没有新状态；新增的检查名和恢复文案在 [architecture.md](architecture.md#app-与小组件) 中给出。

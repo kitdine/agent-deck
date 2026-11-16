@@ -290,3 +290,43 @@ Evidence: 实测 blob 与 Round 2 相同。当前精确态查询复用 Round 2 �
 Task checkpoint：ad-installed-state-ownership-doc-req；content_state `23677235a0c5ae2f354d8a73140f84315e976eaad4569bce55e0dd955a755656`；gate VERIFIED。
 提交建议：经明确授权交付需求、评审记录及必要状态片段，或待其他设计完成后成批交付。
 推送建议：目标 origin/feature/installed-state-ownership；需显式授权及对应提交对象、签名和范围检查。本轮未提交或推送。
+
+
+## Round 7 — 2026-11-15
+
+### 📋 cask 范围修订独立评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+- Author: Codex 主会话；Reviewer: 用户明确授权的独立冷上下文代理 `cask_requirements_review`，默认模型层级，只读审查，未参与修订。主会话核验来源、身份与报告后记录裁决；代理未修改正式记录或证据。
+- Scope / Method: 需求全文与六处改动对照架构 400–425、705–769 行及 Beads 修订任务。只审文档边界，不代替产品验收。
+- HEAD: `d3b965ffc9a06a239544f65154ebed5d6fe22703`；requirements blob `050e50cfea5b8cc5af4cea79596b5b60555162f6`；architecture blob `d53f3ed2e34af54e72269ae9d60d1b8938a91b28`。
+- Reviewed state: SHA-256 `3515a41c135c97ed6146413715e84add0963af5c131aa77a2c50519343b4c45b`，配方 `head=<HEAD>;document=<blob>`。
+- WorkUnit: `installed-state-ownership:requirements.md`；当前修订由 Beads `ad-installed-state-ownership-doc-req-cask-scope-revision` 承载，原 doc-req 交付历史不改。
+- ContentState: `installed-state-ownership:req:cask-scope-review-r7-20261115-3515a41c`。
+
+#### 🔴 严重问题 — 必须修复
+
+无。历史 ISO-REQ-R1-F1 保持关闭，无新增发现。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 做得好的部分
+
+G7 与安装概述区分 cask 的过期无主和本地方式清理匹配回执；G9/A9 明确回执接管范围与同路径替换边界，仍保留身份复核和访问守卫；A6 按登记路径定义安装，保留原多安装场景。A2/A7 未修改。
+
+#### 📝 总结
+
+独立评审未发现可执行缺陷。主会话对照架构确认：2026-11-15 的 cask 四条件免写重登记只保持同路径、同 channel 的既有身份，不是跨路径/方式接管，与本次需求边界一致。没有扩大已确认决定或恢复撤回的文件生命周期保证。
+
+Evidence: 需求六处差异与内容指纹核对；独立评审的定向 diff --check 通过；主会话 `python3 scripts/check-docs.py` 和 `bash scripts/check-topic-docs.sh installed-state-ownership` 通过，前者包含 whitespace/diff 检查。正式记录更新后另做记录和文档结构检查。无新产品运行证明，A5 豁免属于任务验收记录，未删除需求的 A5 目标。
+
+完成门禁：VERIFIED
+
+Task checkpoint：ad-installed-state-ownership-doc-req-cask-scope-revision；content_state=3515a41c135c97ed6146413715e84add0963af5c131aa77a2c50519343b4c45b；gate=VERIFIED。
+提交建议：经用户授权，单独交付本需求修订、需求评审 Round 7 及对应状态片段，不混为 Task 8 一个提交。
+推送建议：origin/feature/installed-state-ownership，须另获授权并验证实际提交范围、消息及签名。本轮未提交或推送。
