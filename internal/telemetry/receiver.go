@@ -185,7 +185,17 @@ type ServeOptions struct {
 	Inventory func(context.Context) error
 	// SettleEvery is the interval between settle passes; zero uses one minute.
 	SettleEvery time.Duration
+	// PrepareSources is the usage layer's source identity preparation, run
+	// before every settle pass.
+	PrepareSources func(context.Context) (bool, error)
+	// ClassifySessions runs after a successful session index projection.
+	ClassifySessions func(context.Context, *store.Store) error
 }
+
+// ListenerErrorSourceIdentityPending is the listener diagnostic while settle
+// passes cannot promote because source identities are incomplete. The
+// listener keeps receiving and retries on every settle interval.
+const ListenerErrorSourceIdentityPending = "source_identity_pending"
 
 var (
 	// ErrDisabled reports that the receiver is not enabled.
@@ -289,17 +299,35 @@ func Serve(ctx context.Context, options ServeOptions) error {
 	if options.Ready != nil {
 		options.Ready(listener.Addr().String())
 	}
-	reconciler := &Reconciler{Store: options.Store, Journal: journal, Now: now, Batch: 500,
+	reconciler := &Reconciler{Store: options.Store, Journal: journal, Now: now, Batch: 500, RefreshSessions: options.ClassifySessions != nil, PrepareSources: options.PrepareSources,
 		SessionsChanged: func(ctx context.Context) error {
 			index, err := store.OpenSessions(ctx, options.StateRoot)
 			if err != nil {
 				return err
 			}
 			defer index.Close()
-			return ProjectSessionIndex(ctx, options.Store, index)
+			if err := ProjectSessionIndex(ctx, options.Store, index); err != nil {
+				return err
+			}
+			if options.ClassifySessions != nil {
+				return options.ClassifySessions(ctx, index)
+			}
+			return nil
 		}}
 	settle := func() bool {
-		if result, err := reconciler.Settle(context.Background()); err == nil && result.Changed {
+		result, err := reconciler.Settle(ctx)
+		// An unsettled pass is recorded in the listener's diagnostic slot and
+		// cleared by the first pass that settles. A bind failure keeps the slot.
+		switch {
+		case errors.Is(err, store.ErrTelemetrySourceIdentityPending) && state.Error == "":
+			state.Error = ListenerErrorSourceIdentityPending
+			_ = writeListenerState(options.StateRoot, state)
+		case err == nil && state.Error == ListenerErrorSourceIdentityPending:
+			state.Error = ""
+			_ = writeListenerState(options.StateRoot, state)
+		}
+		// Retractions of an unsettled pass changed counted usage too.
+		if (err == nil || errors.Is(err, store.ErrTelemetrySourceIdentityPending)) && result.Changed {
 			if options.Published != nil {
 				options.Published()
 			}

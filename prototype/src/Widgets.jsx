@@ -1,4 +1,5 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
+import { AUX_WIDGET_STATES, auxiliaryWidgetProjection } from "./auxiliaryWidget.js";
 import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
 import { meta, quota, quotaMeta, rhythm, scope } from "./data.js";
 import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens } from "./i18n.js";
@@ -21,6 +22,16 @@ const KINDS = [
 ];
 
 const WidgetRefreshContext = createContext("fresh");
+const AuxiliaryWidgetContext = createContext(null);
+
+function ScopedSessionCount({period,lang}) {
+  const mode=useContext(AuxiliaryWidgetContext);
+  if(!mode)return null;
+  const zh=lang==='zh';const p=auxiliaryWidgetProjection(period,mode.scope,mode.state);
+  const label={work:zh?'工作':'Work',auxiliary:zh?'辅助':'Aux',all:zh?'全部':'All'}[p.scope];
+  const copy=!p.available?(zh?'会话范围不可用':'Session scope unavailable'):`${label} ${p.count} ${zh?'会话':'sessions'} · ${zh?'未知':'Unknown'} ${p.unknown===null?'—':p.unknown}`;
+  return <span role="group" data-aw-count data-aw-scope={p.scope??'unavailable'} data-aw-period={period} aria-label={!p.available?copy:`${copy.replace('Aux ','Auxiliary ')} · ${period==='today'?(zh?'今天':'Today'):(zh?'近30天':'30 days')}`} style={{display:'block',fontSize:'9px',lineHeight:'12px',whiteSpace:'normal'}}><span aria-hidden="true">{copy}</span></span>;
+}
 
 function refreshPresentation(scenario, dict) {
   switch (scenario) {
@@ -66,10 +77,10 @@ function Frame({ kind, size, lang, scopeText, children, Icon, footText }) {
   );
 }
 
-function MiniBars({ values, tone = "info" }) {
+function MiniBars({ values, tone = "info", style }) {
   const max = Math.max(...values, 0.0001);
   return (
-    <div className="mini-bars">
+    <div className="mini-bars" style={style}>
       {values.map((value, index) => (
         <i key={index} className={`tone-${tone}`} style={{ height: `${Math.max(3, (value / max) * 100)}%` }} />
       ))}
@@ -168,6 +179,7 @@ function WLegend({ lang }) {
 /* ------------------------------------------------------------------ 四个族 */
 
 function Magnitude({ size, lang }) {
+  const auxiliary=useContext(AuxiliaryWidgetContext);
   const dict = catalogs[lang];
   const today = scope("all", "today");
   const week = scope("all", "7d");
@@ -183,9 +195,10 @@ function Magnitude({ size, lang }) {
           {formatCost(today.totals.cost, lang)}
         </strong>
         <small className="w-support">
-          {formatTokens(today.totals.tokens)} · {today.totals.sessions} {dict.hero.sessions}
+          {formatTokens(today.totals.tokens)} · {auxiliary?(lang==='zh'?'全部消耗':'All usage'):`${today.totals.sessions} ${dict.hero.sessions}`}
+          {auxiliary&&<ScopedSessionCount period="today" lang={lang} />}
         </small>
-        <MiniBars values={month.daily.slice(-SMALL_BUCKETS).map((item) => item.value)} />
+        <MiniBars values={month.daily.slice(-SMALL_BUCKETS).map((item) => item.value)} style={auxiliary?{minHeight:14,marginTop:4}:undefined} />
       </Frame>
     );
   }
@@ -229,7 +242,8 @@ function Magnitude({ size, lang }) {
         {incomplete && <em className="w-flag">{dict.status.costIncomplete(month.pricing.unpricedEvents)}</em>}
       </div>
       <small className="w-support">
-        {formatTokens(month.totals.tokens)} · {month.totals.sessions} {dict.hero.sessions}
+        {formatTokens(month.totals.tokens)} · {auxiliary?(lang==='zh'?'全部消耗':'All usage'):`${month.totals.sessions} ${dict.hero.sessions}`}
+        {auxiliary&&<ScopedSessionCount period="30d" lang={lang} />}
       </small>
       <div className="w-periods tight">
         {[
@@ -758,19 +772,32 @@ export function WidgetGallery() {
   const prefs = useStagePrefs();
   const { lang, theme } = prefs;
   const dict = catalogs[lang];
+  const params=new URLSearchParams(window.location.search);
+  const enabled=params.has('auxWidget');
+  const [awState,setAwState]=useState(params.get('auxWidget')||'normal');
+  const [awScope,setAwScope]=useState(params.get('awScope')||'work');
+  const [awDefault,setAwDefault]=useState(params.get('awDefault')||'work');
   return (
     <main className="board" data-theme={theme}>
       <StageControls prefs={prefs} showState={false} showWidgetRefresh showWidgetClient />
+      {enabled&&<div style={{padding:'12px',display:'flex',gap:'12px',flexWrap:'wrap'}} aria-label="Auxiliary Widget specimen controls">
+        <label>State (stage) <select data-aw-state value={awState} onChange={e=>setAwState(e.target.value)}>{AUX_WIDGET_STATES.map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Published scope (stage) <select data-aw-scope-select value={awScope} onChange={e=>setAwScope(e.target.value)}>{['work','auxiliary','all'].map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Saved default (stage) <select data-aw-default value={awDefault} onChange={e=>setAwDefault(e.target.value)}>{['work','auxiliary','all'].map(s=><option key={s}>{s}</option>)}</select></label>
+        <span>{lang==='zh'?'仅展示受影响的 Magnitude；保存默认不会改写已发布快照。':'Affected Magnitude specimens only; saving a default does not relabel published data.'}</span>
+      </div>}
       <header className="board-head">
         <h1>{dict.widgets.boardTitle}</h1>
         <p>{dict.widgets.boardSubtitle}</p>
       </header>
-      <WidgetRefreshContext.Provider value={prefs.widgetRefresh}>
+      <WidgetRefreshContext.Provider value={enabled&&['pending','stale'].includes(awState)&&!['missing','containerUnavailable','readFailed','unsupported'].includes(prefs.widgetRefresh)?'old':prefs.widgetRefresh}>
+        <AuxiliaryWidgetContext.Provider value={enabled?{state:awState,scope:awScope}:null}>
         <div className="board-grid">
-          {KINDS.map(({ key, Icon }) => (
+          {(enabled?KINDS.filter(x=>x.key==='magnitude'):KINDS).map(({ key, Icon }) => (
             <Group key={key} kind={key} Icon={Icon} lang={lang} quotaVariant={prefs.quota} widgetClient={prefs.widgetClient} />
           ))}
         </div>
+        </AuxiliaryWidgetContext.Provider>
       </WidgetRefreshContext.Provider>
     </main>
   );

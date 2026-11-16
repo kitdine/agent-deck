@@ -151,6 +151,23 @@ class LinksV3Test(unittest.TestCase):
         self.assertFalse(targets)
         self.assertTrue(unsupported)
 
+    def test_incoming_indented_links_match_local_destinations_not_basenames(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'review.md'
+            changed = root / 'internal' / 'extension.go'
+            for target in ('file:///old/worktree/internal/extension.go',
+                           'https://example.org/internal/extension.go',
+                           'other/extension.go'):
+                with self.subTest(target=target):
+                    source.write_text('- parent\n    [source](' + target + ')\n')
+                    self.assertEqual(DOCS.link_errors(source, root, {changed}), [])
+                    self.assertTrue(DOCS.link_errors(source, root),
+                                    'full inspection still reports unsupported syntax')
+            source.write_text('- parent\n    [source](internal/extension.go)\n')
+            self.assertTrue(DOCS.link_errors(source, root, {changed}),
+                            'an affected local destination must still fail closed')
+
 
 class DocumentChangesV3Test(GitFixture):
     def materialize(self, head):

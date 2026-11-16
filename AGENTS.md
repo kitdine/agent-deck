@@ -71,7 +71,7 @@ Each system owns a distinct kind of state:
 | --- | --- |
 | Repository plans, contracts, review records, and status documents | Requirements, phase state, and review verdicts |
 | CEv1 | Evidence status of a named WorkUnit for one exact target_content_state |
-| Beads | Dispatch, dependency readiness, assignment, and cross-agent handoff; supported ownership mechanisms are defined in its authority |
+| Beads | Issue intake, deferral, dispatch, dependency readiness, assignment, and cross-agent handoff; supported ownership mechanisms are defined in its authority |
 
 Before the first Beads operation, load its current routed authority or reuse a
 complete, still-valid copy already provided in this session. This includes

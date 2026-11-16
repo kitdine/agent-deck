@@ -7,6 +7,7 @@ import { catalogs } from "./i18n.js";
 import { CLI_HEALTH_RECOVERY } from "./healthRecovery.js";
 import { LAUNCHSERVICES } from "./launchservices.js";
 import { OWNERSHIP, OWNERSHIP_STATES } from "./ownership.js";
+import { AuxiliaryCli } from "./AuxiliaryCli.jsx";
 
 // CLI 原型。终端里没有布局可调，能被设计的只有三件事：分节、对齐列、以及
 // 一个数字读不出来时写什么。所以这里渲染的是逐字符的真实输出，不是示意图。
@@ -206,7 +207,7 @@ export function CliSurface() {
   const stage = useStagePrefs();
   const { lang, theme } = stage;
   const dict = catalogs[lang];
-  const initialActive = new URLSearchParams(window.location.search).has("ownership") ? "ownership" : new URLSearchParams(window.location.search).has("engine") ? "engine" : new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
+  const initialActive = new URLSearchParams(window.location.search).has("auxiliary") ? "auxiliary" : new URLSearchParams(window.location.search).has("ownership") ? "ownership" : new URLSearchParams(window.location.search).has("engine") ? "engine" : new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
     ? "scan"
     : new URLSearchParams(window.location.search).has("health") ? "recovery" : SAMPLES[0].id;
   const [active, setActive] = useState(initialActive);
@@ -224,6 +225,7 @@ export function CliSurface() {
       <StageControls prefs={stage} showState={false} showQuota={false} showHealth />
       <div className="stage-body cli-body">
         <nav className="cli-tabs">
+          <button type="button" className={active === "auxiliary" ? "active" : ""} onClick={() => setActive("auxiliary")}>auxiliary</button>
           <button type="button" className={active === "engine" ? "active" : ""} onClick={() => setActive("engine")}>engine</button>
           <button type="button" className={active === "launchservices" ? "active" : ""} onClick={() => setActive("launchservices")}>launchservices</button>
           <button type="button" data-cli-ownership-tab className={active === "ownership" ? "active" : ""} onClick={() => setActive("ownership")}>ownership</button>
@@ -235,7 +237,7 @@ export function CliSurface() {
             </button>
           ))}
         </nav>
-        {active === "ownership" ? <>
+        {active === "auxiliary" ? <AuxiliaryCli /> : active === "ownership" ? <>
           <label>Ownership state <select value={ownershipState} onChange={(event) => setOwnershipState(event.target.value)}>{OWNERSHIP_STATES.map((state) => <option key={state}>{state}</option>)}</select></label>
           <p className="cli-note">installed-state-ownership candidate character specimens. {ownership.proves} Exit {ownership.exit}. No runtime behavior is proven.</p>
           <div className="terminal" data-cli-ownership={ownershipState} data-cli-ownership-exit={ownership.exit}><div className="terminal-bar"><i /><i /><i /><span>text · stderr then stdout</span></div><pre tabIndex={0}><code><b>$ {ownership.command}</b>{"\n"}{ownership.stderr ? <em>{ownership.stderr}</em> : null}{ownership.stdout}</code></pre></div>

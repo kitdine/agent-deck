@@ -32,6 +32,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/watch"
@@ -48,6 +49,8 @@ var ownershipPackageCases = []string{
 	"scanruntime.Client.Request", "scanruntime.Client.RequestWithProgress", "scanruntime.Serve", "scanruntime.WithMaintenance", "scanruntime.AcquireMaintenance",
 	"doctor.Service.Check", "session.CheckHealth", "extension.DoctorFromStateRoot", "extension.DoctorFromStateRootWithDiscoverer",
 	"backup.Service.Create", "backup.Restore",
+	"sessionorigin.LoadSourceConfig", "sessionorigin.SaveSourceConfig",
+	"desktop.Service.SessionScopeView", "desktop.Service.SessionScopeBatch", "desktop.Service.SessionScopeDefaultBatch",
 	"desktop.Service.Build", "desktop.Service.BuildToday", "desktop.Service.PublishDerivedSnapshotCache", "desktop.Service.PublishServingSnapshot", "desktop.Service.ReadServingSnapshot", "desktop.Service.ReadOrBootstrapServingSnapshot",
 	"provider.Service.Use", "provider.Service.UseCredential", "provider.Service.ProjectAttributionGateStatus", "provider.Service.RefreshProjectAttributionGate", "watch.Service.Poll",
 }
@@ -66,6 +69,20 @@ func ownershipPackageProbe(name, root string) int {
 	service := desktop.Service{StateRoot: root, Home: home, Workdir: home}
 	request := desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: 5}
 	switch name {
+	case "sessionorigin.LoadSourceConfig":
+		_, err = sessionorigin.LoadSourceConfig(root)
+	case "sessionorigin.SaveSourceConfig":
+		err = sessionorigin.SaveSourceConfig(root, sessionorigin.SourceConfig{})
+	case "desktop.Service.SessionScopeView":
+		_, err = service.SessionScopeView(ctx, desktop.SessionScopeRequest{Scope: "all", Client: "all", Period: "today", RecentLimit: 5})
+	case "desktop.Service.SessionScopeBatch":
+		_, err = service.SessionScopeBatch(ctx, desktop.SessionScopeRequest{Scope: "all", RecentLimit: 5})
+	case "desktop.Service.SessionScopeDefaultBatch":
+		batch := service.SessionScopeDefaultBatch(ctx, 5)
+		if batch.Default.Confirmed || len(batch.Views) != 0 || batch.Default.Reason == nil {
+			return 9
+		}
+		return 0
 	case "platform.GuardStateRoot":
 		_, err = platform.GuardStateRoot(root)
 	case "platform.RevalidateOwnership":
@@ -260,6 +277,15 @@ func TestOwnershipPackageEntrypointsBehindBarrier(t *testing.T) {
 	for _, name := range ownershipPackageCases {
 		t.Run(name, func(t *testing.T) {
 			f := ownershiptest.New(t)
+			if strings.HasPrefix(name, "sessionorigin.") {
+				dir := filepath.Join(f.Real, "session-origin")
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "sources.json"), []byte(`{"claude_mem":{}}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if name == "backup.Restore" {
 				seedOwnershipCommand(t, f, filepath.Join(f.Base, "unused"), ownershipCommandCase{name: "backup.restore"})
 			}
@@ -268,7 +294,7 @@ func TestOwnershipPackageEntrypointsBehindBarrier(t *testing.T) {
 			f.Sandbox(command)
 			out, err := command.CombinedOutput()
 			want := 1
-			if name == "hookrefusal.Read" || name == "hookrefusal.Live" || name == "store.InspectScanLockContention" || name == "doctor.Service.Check" {
+			if name == "hookrefusal.Read" || name == "hookrefusal.Live" || name == "store.InspectScanLockContention" || name == "doctor.Service.Check" || name == "desktop.Service.SessionScopeDefaultBatch" {
 				want = 0
 			}
 			if command.ProcessState == nil || command.ProcessState.ExitCode() != want {
@@ -293,6 +319,8 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 		"provider.ProjectAttributionGatePath": "pure path constructor",
 		"telemetry.Dir":                       "pure path constructor",
 		"telemetry.JournalDir":                "pure path constructor",
+		"sessionorigin.SourceConfigDir":       "pure path constructor; config I/O is guarded",
+		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.ReadServingGeneration",
 		"desktop.Service.RefreshQuota":        "AcquireQuotaRefreshLock guards before quota work; supplied Store owns its handle",
 		"desktop.Service.BuildSubscription":   "supplied guarded Store; quota APIs own their lock",
 	}
@@ -304,7 +332,7 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 		covered[name] = true
 	}
 	var missing []string
-	for _, pkg := range []string{"platform", "installation", "store", "credentialvault", "scanruntime", "hookrefusal", "telemetry", "doctor", "desktop", "backup", "session", "extension", "provider", "watch"} {
+	for _, pkg := range []string{"platform", "installation", "store", "credentialvault", "scanruntime", "hookrefusal", "telemetry", "doctor", "desktop", "backup", "session", "sessionorigin", "extension", "provider", "watch"} {
 		files, err := filepath.Glob(filepath.Join("..", "..", "internal", pkg, "*.go"))
 		if err != nil {
 			t.Fatal(err)

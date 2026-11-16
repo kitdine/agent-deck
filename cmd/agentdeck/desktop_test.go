@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
@@ -241,5 +242,108 @@ func TestDesktopSnapshotRejectsTextOutput(t *testing.T) {
 	exit := execute([]string{"--state-dir", t.TempDir(), "desktop", "snapshot"}, bytes.NewReader(nil), &stdout, &stderr)
 	if exit != 2 || stderr.String() != "desktop snapshot requires --format json\n" {
 		t.Fatalf("text invocation = exit %d, stdout %q, stderr %q", exit, stdout.String(), stderr.String())
+	}
+}
+
+// desktop session-scope reads one explicit selection: a valid request always
+// exits 0 with a typed view, an unavailable view is a partial envelope naming
+// its reason, and an invalid selection is an input error that reads nothing.
+func TestDesktopSessionScopeCommand(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	run := func(format string, args ...string) (int, []byte, []byte) {
+		var stdout, stderr bytes.Buffer
+		prefix := []string{"--state-dir", state}
+		if format != "" {
+			prefix = append(prefix, "--format", format)
+		}
+		exit := execute(append(append(prefix, "desktop", "session-scope"), args...), bytes.NewReader(nil), &stdout, &stderr)
+		return exit, stdout.Bytes(), stderr.Bytes()
+	}
+	exit, stdout, stderr := run("json", "--scope", "auxiliary", "--client", "codex", "--period", "7d", "--recent-limit", "3")
+	if exit != 0 || len(stderr) != 0 {
+		t.Fatalf("exit %d stderr %s", exit, stderr)
+	}
+	var envelope struct {
+		Command  string                   `json:"command"`
+		Data     desktop.SessionScopeView `json:"data"`
+		Warnings []string                 `json:"warnings"`
+		Partial  bool                     `json:"partial"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout)
+	}
+	view := envelope.Data
+	if envelope.Command != "desktop.session-scope" || !envelope.Partial || view.Available || view.Counts != nil ||
+		!reflect.DeepEqual(*view.Selection, desktop.SessionScopeSelection{Scope: "auxiliary", Client: "codex", Period: "7d"}) ||
+		!reflect.DeepEqual(envelope.Warnings, []string{"sessions_unavailable"}) || view.Default.Confirmed {
+		t.Fatalf("unavailable envelope %+v", envelope)
+	}
+	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
+		if _, err := os.Stat(filepath.Join(state, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("session-scope created %s: %v", name, err)
+		}
+	}
+	for _, args := range [][]string{
+		{},
+		{"--scope", "maintenance"},
+		{"--scope", "work", "--client", "gemini"},
+		{"--scope", "work", "--period", "1y"},
+		{"--scope", "work", "--recent-limit", "21"},
+		{"--scope", "work", "--generation-id", "not-a-generation"},
+		{"--scope", "work", "--as-of", "yesterday"},
+	} {
+		if exit, _, stderr := run("json", args...); exit != 2 || !bytes.Contains(stderr, []byte(`"command":"desktop.session-scope"`)) {
+			t.Fatalf("%v: exit %d stderr %s", args, exit, stderr)
+		}
+	}
+	// A well-formed pin and instant pass validation and still read nothing
+	// into existence: an absent state is unavailable, never created.
+	exit, stdout, _ = run("json", "--scope", "work", "--generation-id", strings.Repeat("a", 64), "--as-of", "2026-08-13T10:00:00Z")
+	if exit != 0 || !bytes.Contains(stdout, []byte(`"generation_id":null`)) {
+		t.Fatalf("pinned read of absent state: exit %d %s", exit, stdout)
+	}
+	if exit, _, _ := run("", "--scope", "work"); exit != 2 {
+		t.Fatalf("text output must be rejected, exit %d", exit)
+	}
+	// --batch answers the scope for every client and period in one envelope,
+	// in the fixed all/codex/claude × today/7d/30d order, and reads nothing
+	// into existence either.
+	exit, stdout, stderr = run("json", "--scope", "auxiliary", "--batch", "--as-of", "2026-08-13T10:00:00Z")
+	if exit != 0 || len(stderr) != 0 {
+		t.Fatalf("batch exit %d stderr %s", exit, stderr)
+	}
+	var batch struct {
+		Command  string                    `json:"command"`
+		Data     desktop.SessionScopeBatch `json:"data"`
+		Warnings []string                  `json:"warnings"`
+		Partial  bool                      `json:"partial"`
+	}
+	if err := json.Unmarshal(stdout, &batch); err != nil {
+		t.Fatalf("decode batch: %v\n%s", err, stdout)
+	}
+	if batch.Command != "desktop.session-scope-batch" || !batch.Partial || len(batch.Data.Views) != 9 ||
+		!reflect.DeepEqual(batch.Warnings, []string{"sessions_unavailable"}) {
+		t.Fatalf("batch envelope %+v", batch)
+	}
+	for index, view := range batch.Data.Views {
+		want := desktop.SessionScopeSelection{Scope: "auxiliary", Client: desktop.SessionScopeBatchClients[index/3], Period: desktop.SessionScopeBatchPeriods[index%3]}
+		if view.Available || view.Selection == nil || *view.Selection != want {
+			t.Fatalf("batch view %d = %+v, want unavailable %+v", index, view, want)
+		}
+	}
+	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
+		if _, err := os.Stat(filepath.Join(state, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("session-scope --batch created %s: %v", name, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"--batch"},
+		{"--scope", "work", "--batch", "--client", "codex"},
+		{"--scope", "work", "--batch", "--period", "7d"},
+	} {
+		if exit, _, stderr := run("json", args...); exit != 2 || !bytes.Contains(stderr, []byte(`"command":"desktop.session-scope"`)) {
+			t.Fatalf("%v: exit %d stderr %s", args, exit, stderr)
+		}
 	}
 }

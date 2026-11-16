@@ -13,6 +13,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -45,7 +46,9 @@ func finishDomainInventory(db *store.Store, id string, cause error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	state := "failed"
-	if errors.Is(cause, context.Canceled) {
+	if errors.Is(cause, store.ErrTelemetrySourceIdentityPending) {
+		state = "partial"
+	} else if errors.Is(cause, context.Canceled) {
 		state = "paused"
 	}
 	_ = db.FinishInventory(ctx, id, state)
@@ -59,6 +62,30 @@ func finishAcceptedInventory(ctx context.Context, db *store.Store, id string) er
 		return db.FinishInventory(ctx, id, "partial")
 	}
 	return err
+}
+
+// finishUsageInventory finishes the core inventory of a completed usage scan.
+// It first prepares the thread identity of sources stored before identities
+// were recorded. While a Codex source with JSONL facts still has none, the
+// inventory finishes partial: coverage is not reported complete, and OTel
+// settlement, which the store defers for the same reason, cannot take this
+// inventory as proof that a conversation has no JSONL. The next round retries.
+func finishUsageInventory(ctx context.Context, core *store.Store, service *usage.Service, id string) error {
+	if _, err := service.PrepareSourceIdentities(ctx); err != nil {
+		_ = core.FinishInventory(ctx, id, "partial")
+		return err
+	}
+	ready, err := core.TelemetrySourceIdentityReady(ctx)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		if err := core.FinishInventory(ctx, id, "partial"); err != nil {
+			return err
+		}
+		return store.ErrTelemetrySourceIdentityPending
+	}
+	return finishAcceptedInventory(ctx, core, id)
 }
 
 // servingSettled reports whether today's full publication is already readable.
@@ -242,7 +269,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		scan.Documents += batchScan.Documents
 		scan.Skipped += batchScan.Skipped
 		if metadataOnly {
-			if err = finishAcceptedInventory(ctx, core, r.id); err == nil {
+			if err = finishUsageInventory(ctx, core, service, r.id); err == nil {
 				err = finishAcceptedInventory(ctx, sessions, r.id)
 			}
 			if err != nil {
@@ -272,13 +299,15 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		finishSession()
 	}
 	if err == nil && !metadataOnly {
-		err = finishAcceptedInventory(ctx, core, r.id)
+		err = finishUsageInventory(ctx, core, service, r.id)
 	}
 	if err == nil && !metadataOnly {
 		err = finishAcceptedInventory(ctx, sessions, r.id)
 	}
-	if err == nil && !metadataOnly {
-		_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
+	if err == nil || errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+		// Source identities were prepared when the usage inventory finished;
+		// an unsettled pass left that inventory partial and retries next round.
+		err = errors.Join(err, r.settleAndClassify(ctx, stateRoot, core, sessions, service))
 	}
 	if err != nil {
 		finishDomainInventory(core, r.id, err)
@@ -293,6 +322,17 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	r.publishFinalServing(ctx, stateRoot)
 	finishDerive()
 	perftrace.Mark(perftrace.ProjectionDone)
+}
+
+// settleAndClassify is shared by regular and bootstrap scan completion.
+// Unfinished numerical ownership must not prevent classifying readable sessions.
+func (r *round) settleAndClassify(ctx context.Context, stateRoot string, core, sessions *store.Store, service *usage.Service) error {
+	_, settleErr := telemetry.SettleAndProject(ctx, core, sessions, time.Now(), service.PrepareSourceIdentities)
+	if settleErr != nil && !errors.Is(settleErr, store.ErrTelemetrySourceIdentityPending) {
+		return settleErr
+	}
+	_, classifyErr := sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: r.home})
+	return errors.Join(settleErr, classifyErr)
 }
 
 // publishFinalServing retries a publication raced by an unrelated commit, such

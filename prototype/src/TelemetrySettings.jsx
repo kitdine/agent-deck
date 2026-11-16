@@ -95,7 +95,7 @@ export function TelemetryStageControls({ lang, scenario, onScenario }) {
 
 // result: null | {kind, tone} where tone is info | bad | warn. The live
 // region exists before any result so a failure is announced, not inserted.
-export function TelemetrySettings({ lang, enabled, onEnabled, scenario = "unknown" }) {
+export function TelemetrySettings({ lang, enabled, onEnabled, scenario = "unknown", hidden = false }) {
   const t = text[lang];
   const stage = useSyncExternalStore(subscribe, snapshot);
   const [preview, setPreview] = useState(false);
@@ -139,7 +139,7 @@ export function TelemetrySettings({ lang, enabled, onEnabled, scenario = "unknow
   const receiverOnly = () => { setConsent(false); setPreview(true); setResult(null); onEnabled(true); };
   const rowResult = result && result.tone !== "info";
 
-  return <div className="settings-group telemetry-settings" data-group="telemetry" data-codex-memories={stage.memories}>
+  return <div className="settings-group telemetry-settings" data-group="telemetry" data-codex-memories={stage.memories} hidden={hidden}>
     <span className="settings-group-title">{t.group}</span>
     <div className={`settings-field${rowResult ? " settings-error" : ""}`}>
       <div className="settings-label"><span>{t.label}</span><small id="settings-otel-hint">{t.hint}</small>

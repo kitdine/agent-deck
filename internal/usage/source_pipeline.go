@@ -177,7 +177,18 @@ func (w *usageWriter) publishPrefix(p *preparedSource) error {
 		if err := w.begin(); err != nil {
 			return err
 		}
-		if err := publishFacts(w.ctx, w.tx, p.entry.Path, true, events, tools, p.r); err != nil {
+		if current, err := w.s.checkpointCurrent(w.ctx, w.tx, p); err != nil || !current {
+			w.abort()
+			if err != nil {
+				return err
+			}
+			return errUsageSourceChanged
+		}
+		if err := w.validatePrefix(p); err != nil {
+			w.abort()
+			return err
+		}
+		if err := publishFacts(w.ctx, w.tx, p.entry.Path, p.sourceThreads(), true, events, tools, p.r); err != nil {
 			w.abort()
 			return err
 		}
@@ -190,7 +201,33 @@ func (w *usageWriter) publishPrefix(p *preparedSource) error {
 	if err := w.begin(); err != nil {
 		return err
 	}
+	if current, err := w.s.checkpointCurrent(w.ctx, w.tx, p); err != nil || !current {
+		w.abort()
+		if err != nil {
+			return err
+		}
+		return errUsageSourceChanged
+	}
+	if err := w.validatePrefix(p); err != nil {
+		w.abort()
+		return err
+	}
 	return w.savepoint("SAVEPOINT usage_source")
+}
+
+// validatePrefix avoids rereading the entire captured source for every block
+// while its stable filesystem generation is unchanged. A changed generation
+// still requires the original byte-range proof (including append-only growth).
+func (w *usageWriter) validatePrefix(p *preparedSource) error {
+	info, err := w.s.stat(p.entry.Path)
+	if err != nil {
+		return err
+	}
+	identity, changed, stable := ingest.FileGeneration(info)
+	if p.entry.Stable && stable && identity == p.entry.Identity && changed == p.entry.ChangedAt && info.Size() == p.entry.Size && info.ModTime().UnixNano() == p.entry.ModifiedAt {
+		return nil
+	}
+	return p.validate()
 }
 
 // scanSources reduces entries in parallel and publishes them in order. stats

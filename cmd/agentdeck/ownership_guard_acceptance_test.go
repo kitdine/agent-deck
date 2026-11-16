@@ -118,6 +118,7 @@ func ownershipCommandCases() []ownershipCommandCase {
 		{name: "desktop.quota-statusline.enable", arguments: "desktop quota-statusline enable"},
 		{name: "desktop.refresh-indexes", arguments: "desktop refresh-indexes"},
 		{name: "desktop.snapshot", arguments: "desktop snapshot"},
+		{name: "desktop.session-scope", arguments: "desktop session-scope --scope all --as-of 2026-07-14T12:00:00Z"},
 		{name: "doctor", arguments: "doctor"},
 		{name: "extension.adopt", arguments: "extension adopt $EXT"},
 		{name: "install.claim", arguments: "install claim", expectedError: "not_current_formula_keg"},
@@ -154,6 +155,13 @@ func ownershipCommandCases() []ownershipCommandCase {
 		{name: "session.purge-index", arguments: "session purge-index"},
 		{name: "session.rebuild", arguments: "session rebuild"},
 		{name: "session.scan", arguments: "session scan"},
+		{name: "session.classify", arguments: "session classify ownership-session --client codex --set auxiliary"},
+		{name: "session.classify.list", arguments: "session classify list"},
+		{name: "session.scope.get", arguments: "session scope get"},
+		{name: "session.scope.set", arguments: "session scope set auxiliary"},
+		{name: "session.origin_source.set", arguments: "session origin-source set claude-mem --data-dir $BASE/origin-metadata"},
+		{name: "session.origin_source.disable", arguments: "session origin-source disable claude-mem"},
+		{name: "session.origin_source.status", arguments: "session origin-source status"},
 		{name: "session.search", arguments: "session search ownership"},
 		{name: "session.show", arguments: "session show ownership-session"},
 		{name: "state.migrate", arguments: "state migrate"},
@@ -199,7 +207,7 @@ func allOwnershipCommands(root *cobra.Command) map[string]*cobra.Command {
 	var visit func(*cobra.Command)
 	visit = func(c *cobra.Command) {
 		if c != root && (c.Run != nil || c.RunE != nil) {
-			commands[strings.ReplaceAll(strings.TrimPrefix(c.CommandPath(), "agentdeck "), " ", ".")] = c
+			commands[commandOutputName(c)] = c
 		}
 		for _, child := range c.Commands() {
 			visit(child)
@@ -297,6 +305,20 @@ func seedOwnershipCommand(t *testing.T, f ownershiptest.Fixture, state string, r
 		// nothing in this process still reads the fixture state while the
 		// child runs or the fixture directory is removed.
 		invoke("", "scan")
+	}
+	if row.name == "session.classify.list" {
+		invoke("", "session", "classify", "ownership-session", "--client", "codex", "--set", "auxiliary")
+	}
+	if row.name == "session.scope.get" {
+		invoke("", "session", "scope", "set", "all")
+	}
+	if strings.HasPrefix(row.name, "session.origin_source.") {
+		if err := os.MkdirAll(filepath.Join(f.Base, "origin-metadata"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if row.name != "session.origin_source.set" {
+			invoke("", "session", "origin-source", "set", "claude-mem", "--data-dir", filepath.Join(f.Base, "origin-metadata"))
+		}
 	}
 	ext := ""
 	if strings.HasPrefix(row.name, "extension.") {
@@ -493,6 +515,7 @@ func TestOwnershipAllCommandSurfacesBehindBarrier(t *testing.T) {
 					if string(env.Data) == "null" && row.name != "credential.remove" && row.name != "extension.release" && row.name != "provider.remove" && row.name != "provider.use" {
 						t.Fatalf("unexpected null data: %s", stdout.String())
 					}
+					assertOwnershipOriginResult(t, row.name, env.Command, env.Data)
 					if branch == "explicit-real" && row.name == "desktop.state-location" && (bytes.Contains(env.Data, []byte(f.Account)) || !bytes.Contains(env.Data, []byte(`"installed":false`))) {
 						t.Fatalf("state-location disclosed the real root: %s", stdout.String())
 					}
@@ -503,5 +526,41 @@ func TestOwnershipAllCommandSurfacesBehindBarrier(t *testing.T) {
 				t.Logf("%s %s: exit %d; output contract %s; positive and negative access controls passed", row.name, branch, code, row.format)
 			})
 		}
+	}
+}
+
+// These commands must reach their real isolated read/write behavior. A generic
+// non-null envelope would also accept an unavailable selection or a no-op write.
+func assertOwnershipOriginResult(t *testing.T, name, command string, data json.RawMessage) {
+	t.Helper()
+	want := map[string]map[string]any{
+		"desktop.session-scope":         {"available": true},
+		"session.classify":              {"outcome": "saved", "value": "auxiliary"},
+		"session.scope.get":             {"confirmed": true, "value": "all"},
+		"session.scope.set":             {"outcome": "saved", "value": "auxiliary"},
+		"session.origin_source.set":     {"source": "claude-mem", "configured": true, "enabled": true},
+		"session.origin_source.disable": {"source": "claude-mem", "configured": true, "enabled": false, "evidence_invalidated": true},
+	}
+	fields, selected := want[name]
+	if !selected && name != "session.classify.list" && name != "session.origin_source.status" {
+		return
+	}
+	if command != name {
+		t.Fatalf("command=%q want=%q", command, name)
+	}
+	var actual map[string]any
+	if err := json.Unmarshal(data, &actual); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range fields {
+		if actual[key] != value {
+			t.Fatalf("%s: %s=%v want=%v; data=%s", name, key, actual[key], value, data)
+		}
+	}
+	if name == "session.classify.list" && (!bytes.Contains(data, []byte(`"ownership-session"`)) || !bytes.Contains(data, []byte(`"auxiliary"`))) {
+		t.Fatalf("override list lost the seeded override: %s", data)
+	}
+	if name == "session.origin_source.status" && (!bytes.Contains(data, []byte(`"claude-mem"`)) || !bytes.Contains(data, []byte(`"configured":true`))) {
+		t.Fatalf("source status lost the configured adapter: %s", data)
 	}
 }

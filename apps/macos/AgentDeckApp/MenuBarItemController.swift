@@ -36,7 +36,7 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 	private let openSettings: () -> Void
 	private var preparedHeight = MenuBarGeometry.maximumHeight
 	private var hasPresentedPopover = false
-	private var presentationPreparationWindow: NSWindow?
+    private(set) var presentationPreparationWindow: NSWindow?
 	private var presentationPreparationDisplayLink: CADisplayLink?
 	private(set) var isInitialPresentationPrepared = false
 	private(set) var presentationPreparationCount = 0
@@ -222,6 +222,9 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			closePopover()
 		} else {
 			hasPresentedPopover = true
+			// Each open starts the session area from the confirmed default; the
+			// previous open's temporary scope and pending answers do not carry over.
+			model.beginSessionScopePresentation()
 			PerfTrace.mark(.popoverShowBegin)
 			if PerfTrace.isEnabled { PerfFrameProbe.shared.rearm() }
 			configurePopoverGeometry(for: sender)
@@ -448,58 +451,250 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 /// Escape closes the settings window from anywhere in it, and focus opens on
 /// the window rather than on its close control.
 final class SettingsWindow: NSWindow {
+	/// Runs after the window closes by any route (Escape, the close button or
+	/// a programmatic close), so window-scoped drafts are discarded once.
+	var onClose: (@MainActor () -> Void)?
+
 	override func cancelOperation(_ sender: Any?) {
 		performClose(sender)
 	}
-}
 
-@MainActor
-final class FittingSizeHostingController<Content: View>: NSHostingController<Content> {
-	var fittingSizeDidChange: ((NSSize) -> Void)?
-
-	override func viewDidLayout() {
-		super.viewDidLayout()
-		fittingSizeDidChange?(view.fittingSize)
+	override func close() {
+		super.close()
+		onClose?()
 	}
 }
 
+/// The Settings window's toolbar pages. It reports each selection before and
+/// after it happens, and refuses one while a page says it cannot be left (the
+/// manual-classification sheet is open) (ux/settings.md 窗口分页).
+@MainActor
+final class SettingsTabViewController: NSTabViewController {
+	var canChangePane: (() -> Bool)?
+	var paneWillChange: ((SettingsPane) -> Void)?
+	var paneDidChange: ((SettingsPane) -> Void)?
+
+	override func tabView(_ tabView: NSTabView, shouldSelect tabViewItem: NSTabViewItem?) -> Bool {
+		guard canChangePane?() ?? true else {
+			// Keep the toolbar showing the page that stays.
+			let current = tabView.selectedTabViewItem?.identifier as? String
+			RunLoop.main.perform(inModes: [.common]) { [weak self] in
+				MainActor.assumeIsolated {
+					if let current { self?.view.window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(current) }
+				}
+			}
+			return false
+		}
+		return super.tabView(tabView, shouldSelect: tabViewItem)
+	}
+
+	override func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) {
+		if let raw = tabViewItem?.identifier as? String, let pane = SettingsPane(rawValue: raw) {
+			paneWillChange?(pane)
+		}
+		super.tabView(tabView, willSelect: tabViewItem)
+	}
+
+	override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+		super.tabView(tabView, didSelect: tabViewItem)
+		if let raw = tabViewItem?.identifier as? String, let pane = SettingsPane(rawValue: raw) {
+			paneDidChange?(pane)
+		}
+	}
+}
+
+/// Owns the Settings window: toolbar pages, each one hosting controller kept
+/// for the window's lifetime. Switching pages only changes which one shows,
+/// so nothing a page still needs acted on is rebuilt or reset; the states that
+/// matter live in the App-level controllers anyway (ux/settings.md 窗口分页).
 @MainActor
 final class SettingsWindowController {
 	private(set) var window: SettingsWindow?
+	/// The page shown last in this App run; a reopened window comes back to
+	/// it, and the first open shows General.
+	private(set) var selectedPane: SettingsPane = .general
+	private(set) var tabs: SettingsTabViewController?
+	private var paneControllers: [SettingsPane: NSHostingController<SettingsPaneView>] = [:]
+	private var isResizing = false
+	private var refitAfterResize = false
+	/// Applies a resize. The system decides whether a requested transition is
+	/// drawn: with Reduce Motion on it lands in one step. A test reads the
+	/// request here, where it does not depend on that setting.
+	var resizeWindow: (NSWindow, NSRect, Bool) -> Void = { window, frame, animate in
+		window.setFrame(frame, display: true, animate: animate)
+	}
 	private let preferences: DesktopPreferences
 	private let quotaSettings: QuotaSettingsController
 	private let telemetrySettings: TelemetrySettingsController
+	private let sessionOrigin: SessionOriginSettingsController?
 
-	init(preferences: DesktopPreferences, quotaSettings: QuotaSettingsController, telemetrySettings: TelemetrySettingsController) {
+	init(
+		preferences: DesktopPreferences, quotaSettings: QuotaSettingsController, telemetrySettings: TelemetrySettingsController,
+		sessionOrigin: SessionOriginSettingsController? = nil
+	) {
 		self.preferences = preferences
 		self.quotaSettings = quotaSettings
 		self.telemetrySettings = telemetrySettings
+		self.sessionOrigin = sessionOrigin
 	}
 
-	func show() {
+	/// Sessions exists only with its controller.
+	var panes: [SettingsPane] {
+		SettingsPane.allCases.filter { $0 != .sessions || sessionOrigin != nil }
+	}
+
+	/// The hosting controller of one page; the same instance for as long as
+	/// the window exists.
+	func paneController(_ pane: SettingsPane) -> NSViewController? {
+		paneControllers[pane]
+	}
+
+	/// A page's natural size: its SwiftUI ideal size at the window's width.
+	func naturalSize(of pane: SettingsPane) -> NSSize? {
+		paneControllers[pane]?.sizeThatFits(in: NSSize(width: 460, height: CGFloat.greatestFiniteMagnitude))
+	}
+
+	/// The size the tab controller resizes the window to when it shows a page.
+	private func measure(_ pane: SettingsPane) {
+		// A view that stretches reports an unbounded height; never size a
+		// window from it.
+		guard let hosting = paneControllers[pane], let size = naturalSize(of: pane), size.height > 0, size.height.isFinite else { return }
+		hosting.preferredContentSize = NSSize(width: 460, height: size.height.rounded(.up))
+	}
+
+	/// Shows the window on the remembered page, or on `pane` when another
+	/// surface needs to open one page directly.
+	func show(pane: SettingsPane? = nil) {
+		let wasVisible = window?.isVisible == true
 		if window == nil {
-			let hosting = FittingSizeHostingController(
-				rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: telemetrySettings)
-			)
-			let created = SettingsWindow(contentViewController: hosting)
-			created.title = t(DesktopCopy.settingsTitle)
-			created.styleMask = [.titled, .closable]
-			created.isReleasedWhenClosed = false
-			created.setContentSize(hosting.view.fittingSize)
-			hosting.fittingSizeDidChange = { [weak created] size in
-				guard let created,
-					abs(created.contentLayoutRect.width - size.width) > 0.5
-						|| abs(created.contentLayoutRect.height - size.height) > 0.5
-				else { return }
-				created.setContentSize(size)
-			}
-			created.center()
-			window = created
+			makeWindow()
+		}
+		if let pane {
+			select(pane)
 		}
 		NSApp.activate(ignoringOtherApps: true)
 		window?.makeKeyAndOrderFront(nil)
 		window?.makeFirstResponder(nil)
 		let quotaSettings = quotaSettings
+		if !wasVisible {
+			let telemetrySettings = telemetrySettings
+			Task { await quotaSettings.load() }
+			Task { await telemetrySettings.load() }
+		}
 		Task { await quotaSettings.refreshNotificationPermission() }
+		if let sessionOrigin {
+			Task { await sessionOrigin.open() }
+		}
+	}
+
+	/// Selects a page the way a toolbar click does: refused while the sheet
+	/// is open.
+	func select(_ pane: SettingsPane) {
+		guard let tabs, let index = panes.firstIndex(of: pane) else { return }
+		tabs.selectedTabViewItemIndex = index
+	}
+
+	private func makeWindow() {
+		let tabs = SettingsTabViewController()
+		tabs.tabStyle = .toolbar
+		// The tab controller's own transitions resize the window to a size
+		// measured before the incoming page is laid out; the window
+		// controller animates the resize to the measured page instead.
+		tabs.transitionOptions = []
+		for pane in panes {
+			let hosting = NSHostingController(
+				rootView: SettingsPaneView(
+					pane: pane, preferences: preferences, quotaSettings: quotaSettings,
+					telemetrySettings: telemetrySettings, sessionOrigin: sessionOrigin,
+					onNaturalHeight: { [weak self] _ in self?.paneContentChanged(pane) }
+				)
+			)
+			// No constraints or SwiftUI-managed preferred size: the controller
+			// measures each page and sets its preferred size, so resizing the
+			// window never feeds back into another constraint pass and the tab
+			// controller's transition already targets the incoming page.
+			hosting.sizingOptions = []
+			hosting.title = pane.title
+			let item = NSTabViewItem(viewController: hosting)
+			item.identifier = pane.rawValue
+			item.label = pane.title
+			item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: nil)
+			tabs.addTabViewItem(item)
+			paneControllers[pane] = hosting
+		}
+		if !panes.contains(selectedPane) { selectedPane = .general }
+		tabs.selectedTabViewItemIndex = panes.firstIndex(of: selectedPane) ?? 0
+		tabs.canChangePane = { [weak sessionOrigin] in !(sessionOrigin?.isManaging ?? false) }
+		tabs.paneWillChange = { [weak self] pane in self?.measure(pane) }
+		tabs.paneDidChange = { [weak self] pane in self?.paneDidChange(pane) }
+
+		let created = SettingsWindow(contentViewController: tabs)
+		created.styleMask = [.titled, .closable]
+		created.toolbarStyle = .preference
+		created.title = selectedPane.title
+		created.isReleasedWhenClosed = false
+		// The window outlives its close; the App-level controller keeps the
+		// operation and discards only the window's drafts.
+		created.onClose = { [weak sessionOrigin] in sessionOrigin?.windowClosed() }
+		window = created
+		self.tabs = tabs
+		fitSelectedPane(animate: false)
+		created.center()
+	}
+
+	private func paneDidChange(_ pane: SettingsPane) {
+		selectedPane = pane
+		guard let window else { return }
+		window.title = pane.title
+		fitSelectedPane(animate: window.isVisible)
+	}
+
+	/// A page that grows or shrinks while shown (a warning row appearing)
+	/// resizes the window after the SwiftUI update that changed it.
+	private func paneContentChanged(_ pane: SettingsPane) {
+		guard pane == selectedPane else { return }
+		// A run-loop turn, not the main queue: it also runs inside a nested
+		// run loop such as a modal sheet's.
+		RunLoop.main.perform(inModes: [.common]) { [weak self] in
+			MainActor.assumeIsolated {
+				guard let self, pane == self.selectedPane else { return }
+				self.fitSelectedPane(animate: false)
+			}
+		}
+	}
+
+	private func fitSelectedPane(animate: Bool) {
+		measure(selectedPane)
+		guard let size = paneControllers[selectedPane]?.preferredContentSize else { return }
+		fit(size, animate: animate)
+	}
+
+	/// Sizes the content to the page's natural height, keeping the top edge
+	/// in place; a page taller than the screen scrolls inside instead.
+	private func fit(_ size: NSSize, animate: Bool) {
+		guard let window, let contentView = window.contentView, size.height > 0 else { return }
+		// An animated resize runs the run loop; a size report arriving during
+		// it waits until that resize ends.
+		guard !isResizing else {
+			refitAfterResize = true
+			return
+		}
+		let chrome = window.frame.height - contentView.frame.height
+		let available = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+		let height = min(size.height, available - chrome)
+		let width: CGFloat = 460
+		guard abs(contentView.frame.height - height) > 0.5 || abs(contentView.frame.width - width) > 0.5 else { return }
+		let frameHeight = height + chrome
+		let frame = NSRect(
+			x: window.frame.minX, y: window.frame.maxY - frameHeight,
+			width: width + (window.frame.width - contentView.frame.width), height: frameHeight
+		)
+		isResizing = true
+		resizeWindow(window, frame, animate)
+		isResizing = false
+		if refitAfterResize {
+			refitAfterResize = false
+			fitSelectedPane(animate: false)
+		}
 	}
 }

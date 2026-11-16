@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,8 @@ type SignalOptions struct {
 	Kinds      []string
 	Activity   string
 	IncludeSub bool
+	// Sessions, when set, restricts every family to the selected sessions.
+	Sessions *SessionFilter
 }
 
 type SignalReport struct {
@@ -112,7 +115,7 @@ func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, pr
 		client = "all"
 	}
 	report := SignalReport{Period: options.Period, Client: client}
-	scope := SignalScope{From: options.From, To: options.To, Client: options.Client, Activity: options.Activity}
+	scope := SignalScope{From: options.From, To: options.To, Client: options.Client, Activity: options.Activity, Sessions: options.Sessions}
 	if selected["activity"] {
 		var cost ActivityCost
 		if precomputed != nil {
@@ -267,7 +270,14 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 		query += ` AND (w.activity_kind=? OR w.activity_sub=?)`
 		args = append(args, scope.Activity, scope.Activity)
 	}
-	query += ` GROUP BY c.tool_kind,c.mcp_server`
+	// A session filter needs the session of each group; the unfiltered
+	// aggregate keeps its original grouping.
+	if scope.Sessions != nil {
+		query = strings.Replace(query, "SELECT c.tool_kind,c.mcp_server,COUNT(*)", "SELECT c.client,c.session_id,c.tool_kind,c.mcp_server,COUNT(*)", 1)
+		query += ` GROUP BY c.client,c.session_id,c.tool_kind,c.mcp_server`
+	} else {
+		query += ` GROUP BY c.tool_kind,c.mcp_server`
+	}
 	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return SignalTooling{}, err
@@ -277,11 +287,19 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 	mcpCounts := map[string]int64{}
 	var total int64
 	for rows.Next() {
-		var kind string
+		var client, session, kind string
 		var server sql.NullString
 		var count int64
-		if err = rows.Scan(&kind, &server, &count); err != nil {
+		if scope.Sessions != nil {
+			err = rows.Scan(&client, &session, &kind, &server, &count)
+		} else {
+			err = rows.Scan(&kind, &server, &count)
+		}
+		if err != nil {
 			return SignalTooling{}, err
+		}
+		if !scope.Sessions.Allows(client, session) {
+			continue
 		}
 		if !knownSignalToolKind(kind) {
 			kind = "other"

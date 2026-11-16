@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/session"
@@ -25,10 +26,24 @@ func ProjectSessionIndex(ctx context.Context, core, index *store.Store) error {
 // holds projected sources, so a retraction made by a JSONL write, or a
 // purged and rebuilt index, converges without its own trigger. The caller
 // passes its open index connection. It reports whether counted usage changed.
-func SettleAndProject(ctx context.Context, core, index *store.Store, now time.Time) (bool, error) {
-	result, err := core.SettleTelemetry(ctx, now, SettleAfter)
-	if err != nil {
-		return false, err
+//
+// prepare, when set, is the usage layer's source identity preparation and
+// runs first. A pass the store could not complete for lack of source
+// identities still projects its retractions and returns
+// store.ErrTelemetrySourceIdentityPending.
+func SettleAndProject(ctx context.Context, core, index *store.Store, now time.Time, prepare func(context.Context) (bool, error)) (bool, error) {
+	var prepareErr error
+	var preparedChanged bool
+	if prepare != nil {
+		preparedChanged, prepareErr = prepare(ctx)
+	}
+	result, settleErr := core.SettleTelemetry(ctx, now, SettleAfter)
+	result.Changed = result.Changed || preparedChanged
+	if settleErr != nil && !errors.Is(settleErr, store.ErrTelemetrySourceIdentityPending) {
+		return result.Changed, settleErr
+	}
+	if settleErr == nil {
+		settleErr = prepareErr
 	}
 	owned, err := core.TelemetrySessions(ctx)
 	if err != nil {
@@ -39,9 +54,12 @@ func SettleAndProject(ctx context.Context, core, index *store.Store, now time.Ti
 		return result.Changed, err
 	}
 	if len(owned) == 0 && present == 0 {
-		return result.Changed, nil
+		return result.Changed, settleErr
 	}
-	return result.Changed, session.ProjectTelemetrySessions(ctx, index.DB, projected(owned))
+	if err := session.ProjectTelemetrySessions(ctx, index.DB, projected(owned)); err != nil {
+		return result.Changed, err
+	}
+	return result.Changed, settleErr
 }
 
 func projected(owned []store.TelemetrySession) []session.TelemetrySession {

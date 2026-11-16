@@ -1,8 +1,9 @@
 ## Beads Agent Coordination
 
 Read this file when the active request requires Beads coordination. Beads owns
-dispatch, dependency readiness, assignment, and handoff. Repository documents own
-requirements and review verdicts; CEv1 owns evidence for defined content states.
+issue intake, deferral, dispatch, dependency readiness, assignment, and handoff.
+Repository documents own requirements and review verdicts; CEv1 owns evidence
+for defined content states.
 Do not infer authority or completion in one system from another system's label.
 
 ## Local deployment
@@ -310,7 +311,7 @@ Propose the lane from the required decision, not diff size:
 | --- | --- | --- |
 | Restore an existing contract without deciding new user-visible behavior | A | Bounded repair with a fix record and independent review |
 | Decide a new code, state, output shape, or precedence rule | B | Feature topic with the applicable design/review progression |
-| Defer the decision/work | C | Park the bug and record the planning candidate |
+| Defer the decision/work | C | Record the issue and its deferral in Beads |
 
 The user confirms a new lane choice. Reuse an already selected lane in the active
 instruction or approved plan instead of asking again. Do not choose the cheaper
@@ -352,10 +353,21 @@ boundary. Do not close the bug because requirements or `tasks.md` were approved
 or committed; close it only when the work that remedies the defect is delivered
 under its required review/evidence and authorization conditions.
 
-Lane C uses `deferred` and a Backlog candidate in `docs/roadmap.md`, with no Gate
-for work that is not starting. Re-triage when it is promoted, using the current
-contract and the user's decision; do not create a replacement bug merely to
-restart its history.
+Lane C uses a Beads issue in `deferred`. Retain the observed problem or candidate,
+available diagnostic evidence, the user's deferral decision, and enough scope
+and origin context to resume it. Reuse an existing issue for the same work.
+Issue intake and deferral are complete when that record is persisted; they do
+not require a roadmap entry, tracked-document change, commit, or PR. Create no
+Design, Development, or CEv1 gate solely to record or defer work.
+
+Re-triage when the issue is promoted, using the current contract and the user's
+decision; do not create a replacement bug merely to restart its history. Existing
+topic, review, evidence, and delivery obligations still apply to work already
+underway. An issue state change does not grant phase or delivery authority.
+
+[Issue intake and roadmap ownership](../docs/documentation-workflow.md#issue-intake-and-roadmap-ownership)
+defines when a planning decision belongs in the roadmap. Beads intake does not
+establish an approved product requirement or release assignment.
 
 ## State transitions and authority
 

@@ -299,7 +299,126 @@ enum WireFixture {
 		]
 	}
 
+	/// How a fixture snapshot carries `session_scope_view`: derived from the
+	/// fixture's own sessions for the default selection (what the current
+	/// producer publishes), absent (a legacy publication), or given verbatim.
+	enum SessionScopeFixture {
+		case derived
+		case absent
+		case custom(Any)
+	}
+
+	static func confirmedDefault(_ value: String = "work", revision: Int = 0) -> [String: Any] {
+		["confirmed": true, "value": value, "revision": revision, "reason": NSNull()]
+	}
+
+	static let unconfirmedDefault: [String: Any] = ["confirmed": false, "value": NSNull(), "revision": NSNull(), "reason": "read_failed"]
+
+	static func scopeRecent(
+		client: String = "codex", id: String = "session-secret-1", project: Any = "agent-deck", model: String = "gpt-5",
+		first: Any = "2026-08-13T09:40:00Z", last: Any = "2026-08-13T09:58:00Z",
+		effective: String = "unknown", automatic: String = "unknown", reason: String = "origin_metadata_missing",
+		rule: Any = "session-origin-reducer-v1", override: Any = NSNull(), revision: Int = 0
+	) -> [String: Any] {
+		[
+			"client": client, "session_id": id, "project": project, "model": model, "first_at": first, "last_at": last,
+			"origin": [
+				"automatic": automatic, "effective": effective, "reason_code": reason, "rule_version": rule,
+				"override": override, "revision": revision,
+			] as [String: Any],
+		]
+	}
+
+	/// The families of a `work_signals` payload restricted to one selection,
+	/// as a view carries them.
+	static func filteredWorkSignals(_ payload: [String: Any], period: String, client: String) -> [String: Any] {
+		var filtered: [String: Any] = [:]
+		for family in ["activity", "workflow", "tooling"] {
+			let value = payload[family] as? [String: Any] ?? [:]
+			let items = (value["items"] as? [[String: Any]] ?? []).filter {
+				$0["period"] as? String == period && $0["client"] as? String == client
+			}
+			filtered[family] = ["available": value["available"] as? Bool ?? false, "items": items] as [String: Any]
+		}
+		return filtered
+	}
+
+	static func sessionScopeView(
+		scope: String = "work", client: String = "all", period: String = "today",
+		defaults: [String: Any] = confirmedDefault(),
+		sessions: Int = 2, projects: Int = 2, knownDurationMS: Any = 7_200_000, missing: Int = 0,
+		unknownCount: Any = 1, complete: Bool = true, reasons: [String] = [],
+		recent: [[String: Any]] = [scopeRecent()],
+		workSignals: [String: Any]? = nil,
+		publicationID: String? = nil,
+		generatedAt: String = "2026-08-13T10:00:00Z"
+	) -> [String: Any] {
+		[
+			"available": true, "reason": NSNull(), "default": defaults,
+			"selection": ["scope": scope, "client": client, "period": period],
+			"publication_id": publicationID ?? "pub-\(scope)-\(client)-\(period)",
+			"generated_at": generatedAt,
+			"origin_coverage": ["complete": complete, "unknown_count": unknownCount, "reasons": reasons] as [String: Any],
+			"counts": ["sessions": sessions, "projects": projects, "known_duration_ms": knownDurationMS, "missing_duration_count": missing] as [String: Any],
+			"recent": recent,
+			"work_signals": workSignals ?? filteredWorkSignals(WireFixture.workSignals(), period: period, client: client),
+		]
+	}
+
+	static func unavailableSessionScopeView(
+		reason: String, defaults: [String: Any] = confirmedDefault(), selection: [String: Any]? = ["scope": "work", "client": "all", "period": "today"]
+	) -> [String: Any] {
+		[
+			"available": false, "reason": reason, "default": defaults, "selection": selection ?? NSNull(),
+			"publication_id": NSNull(), "generated_at": NSNull(), "origin_coverage": NSNull(), "counts": NSNull(),
+			"recent": [[String: Any]](), "work_signals": workSignals(available: false),
+		]
+	}
+
+	static func decodedSessionScopeView(_ payload: [String: Any]) -> DesktopSessionScopeViewV1 {
+		try! JSONDecoder().decode(DesktopSessionScopeViewV1.self, from: JSONSerialization.data(withJSONObject: payload))
+	}
+
+	/// A view for any selection, built from the same synthetic sessions: two
+	/// unknown Work sessions and one maintenance session per populated client;
+	/// Claude has none. Auxiliary never includes an unknown session.
+	static func fixtureScopeView(_ selection: DesktopSessionScopeSelectionV1, defaults: [String: Any] = confirmedDefault()) -> DesktopSessionScopeViewV1 {
+		let populated = selection.client != "claude"
+		let work = [scopeRecent(), scopeRecent(client: "codex", id: "child-1", project: "ai-tools", reason: "task_child_unconfirmed", rule: "session-origin-reducer-v1")]
+		let auxiliary = [scopeRecent(client: "codex", id: "maint-1", project: "agent-deck", effective: "auxiliary", automatic: "auxiliary", reason: "maintenance_origin", rule: "codex-otel-background-v1")]
+		let rows: [[String: Any]]
+		switch selection.scope {
+		case .work: rows = populated ? work : []
+		case .auxiliary: rows = populated ? auxiliary : []
+		case .all: rows = populated ? work + auxiliary : []
+		}
+		let unknown = rows.filter { ($0["origin"] as? [String: Any])?["effective"] as? String == "unknown" }.count
+		let projects = Set(rows.compactMap { $0["project"] as? String }).count
+		let minutes = rows.count * 18
+		return decodedSessionScopeView(sessionScopeView(
+			scope: selection.scope.rawValue, client: selection.client, period: selection.period, defaults: defaults,
+			sessions: rows.count, projects: projects, knownDurationMS: minutes * 60_000,
+			unknownCount: unknown, recent: rows
+		))
+	}
+
+	/// Every supported selection's fixture view, precomputed so a nonisolated
+	/// reader can answer from it.
+	static func fixtureScopeViews(defaults: [String: Any] = confirmedDefault()) -> [DesktopSessionScopeSelectionV1: DesktopSessionScopeViewV1] {
+		var views: [DesktopSessionScopeSelectionV1: DesktopSessionScopeViewV1] = [:]
+		for scope in DesktopSessionScopeV1.allCases {
+			for client in DesktopSessionScopeSelectionV1.clients {
+				for period in DesktopSessionScopeSelectionV1.periods {
+					let selection = DesktopSessionScopeSelectionV1(scope: scope, client: client, period: period)
+					views[selection] = fixtureScopeView(selection, defaults: defaults)
+				}
+			}
+		}
+		return views
+	}
+
 	static func envelope(
+		sessionScope: SessionScopeFixture = .derived,
 		scopes: [[String: Any]] = [scope(client: "all"), scope(client: "codex"), scope(client: "claude")],
 		clientSubtotalsAvailable: Bool = true,
 		presentationAvailable: Bool = true,
@@ -387,7 +506,7 @@ enum WireFixture {
 			"candidates": candidates,
 		]
 
-		let snapshot: [String: Any] = [
+		var snapshot: [String: Any] = [
 			"wire_version": 1,
 			"generated_at": generatedAt,
 			"next_refresh_at": "2026-08-13T10:05:00Z",
@@ -396,6 +515,29 @@ enum WireFixture {
 			"sessions": sessions,
 			"health": health,
 		]
+		switch sessionScope {
+		case .absent:
+			break
+		case let .custom(view):
+			snapshot["session_scope_view"] = view
+		case .derived:
+			if !sessionsAvailable {
+				snapshot["session_scope_view"] = unavailableSessionScopeView(reason: "sessions_unavailable")
+			} else {
+				let signals = includeWorkSignals
+					? filteredWorkSignals(workSignalsPayload ?? workSignals(available: workSignalsAvailable), period: "today", client: "all")
+					: workSignals(available: false)
+				let rows = sessionItems.map { item in
+					scopeRecent(client: item["client"] as? String ?? "codex", id: item["session_id"] as? String ?? "",
+						project: item["project"] ?? NSNull(), model: item["model"] as? String ?? "",
+						first: item["first_at"] ?? NSNull(), last: item["last_at"] ?? NSNull())
+				}
+				snapshot["session_scope_view"] = sessionScopeView(
+					sessions: max(2, rows.count), unknownCount: max(2, rows.count), recent: rows, workSignals: signals,
+					generatedAt: generatedAt
+				)
+			}
+		}
 
 		let payload: [String: Any] = [
 			"schema_version": 1,
@@ -702,6 +844,50 @@ final class StubLoginItemRegistrar: LoginItemRegistering {
 	}
 }
 
+/// Explicit session-scope reads under test control. Every request is recorded;
+/// a held request waits until the test releases it, so late answers and
+/// overlapping requests are ordered by the test, not by timing.
+actor StubSessionScopeReader: DesktopSessionScopeReading {
+	enum Answer: Sendable {
+		case view(DesktopSessionScopeViewV1)
+		case failure(HelperExecutionError)
+	}
+
+	private(set) var requests: [DesktopSessionScopeSelectionV1] = []
+	private var holding = false
+	private var held: [Int: CheckedContinuation<Void, Never>] = [:]
+	private var overrides: [Int: Answer] = [:]
+	private let answer: @Sendable (DesktopSessionScopeSelectionV1) -> Answer
+
+	init(answer: @escaping @Sendable (DesktopSessionScopeSelectionV1) -> Answer) {
+		self.answer = answer
+	}
+
+	func hold(_ value: Bool) { holding = value }
+
+	/// Answers the request at `index` with `answer` instead of its selection's
+	/// own, e.g. the cancellation a superseded read ends with.
+	func answer(request index: Int, with answer: Answer) { overrides[index] = answer }
+
+	func release(_ index: Int) {
+		held.removeValue(forKey: index)?.resume()
+	}
+
+	func heldCount() -> Int { held.count }
+
+	func sessionScopeView(_ selection: DesktopSessionScopeSelectionV1, recentLimit: Int) async throws -> DesktopSessionScopeViewV1 {
+		requests.append(selection)
+		let index = requests.count - 1
+		if holding {
+			await withCheckedContinuation { held[index] = $0 }
+		}
+		switch overrides.removeValue(forKey: index) ?? answer(selection) {
+		case let .view(view): return view
+		case let .failure(error): throw error
+		}
+	}
+}
+
 /// Builds a view model over a coordinator already in the requested state.
 @MainActor
 func makeModel(
@@ -709,6 +895,7 @@ func makeModel(
 	preferences: DesktopPreferences? = nil,
 	transport: any ProviderSwitching = StubSwitchTransport(),
 	snapshotStore: AppGroupSnapshotStore? = nil,
+	sessionScopeReader: (any DesktopSessionScopeReading)? = nil,
 	// One minute after the fixtures' `generated_at`. A clock further out makes
 	// every derived state additionally `aged`, which silently changes the empty
 	// copy from "today" to "this snapshot" and would mask a real regression in
@@ -725,6 +912,7 @@ func makeModel(
 		coordinator: coordinator,
 		switchController: controller,
 		preferences: resolvedPreferences,
+		sessionScopeReader: sessionScopeReader,
 		now: now
 	)
 }

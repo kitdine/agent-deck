@@ -287,16 +287,8 @@ struct MenuBarSurfaceView: View {
 	}
 
 	private var clientTabs: some View {
-		Picker(t(DesktopCopy.clientFilter), selection: Binding(get: { model.selectedClient }, set: { model.selectClient($0) })) {
-			ForEach(model.clientTabs) { tab in
-				Text(verbatim: "\(tab.label) \(tab.value ?? "")").tag(tab.id)
-			}
-		}
-		.pickerStyle(.segmented)
-		.tint(DesktopVisualTheme.accentStrong)
-		.labelsHidden()
+		MenuBarClientFilters(options: model.clientTabs, selectedID: model.selectedClient, select: model.selectClient)
 		.disabled(model.switchPresentation.blocksSurface)
-		.accessibilityLabel(t(DesktopCopy.clientFilter))
 	}
 
 	@ViewBuilder
@@ -329,6 +321,12 @@ struct MenuBarSurfaceView: View {
 						.foregroundStyle(DesktopVisualTheme.warning)
 						.fixedSize(horizontal: false, vertical: true)
 				}
+				// The hero is always full consumption; the session scope below
+				// never filters it.
+				Text(t(DesktopCopy.sessionScopeUsageOverview))
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 			.accessibilityElement(children: .combine)
@@ -416,7 +414,12 @@ struct MenuBarSurfaceView: View {
 			case .attribution:
 				AttributionPanelView(panel: model.attributionPanel, expansion: sectionExpansion)
 			case .sessions:
-				SessionsPanelView(panel: model.sessionsPanel, expansion: sectionExpansion)
+				SessionsPanelView(panel: model.sessionsPanel, expansion: sectionExpansion, actions: SessionScopeActions(
+					synchronizationKey: model.sessionScopeSynchronizationKey,
+					synchronize: { await model.synchronizeSessionScope() },
+					choose: { model.chooseSessionScope($0) },
+					retry: { await model.retrySessionScope() }
+				))
 			}
 		}
 
@@ -425,6 +428,112 @@ struct MenuBarSurfaceView: View {
 			get: { model.sectionIsExpanded(id) },
 			set: { model.setSection(id, expanded: $0) }
 		)
+	}
+}
+
+/// Native segmented pickers impose their label width on the entire header.
+/// Keep each client and its subtotal visible, reflowing within equal columns
+/// when a localized amount does not fit beside its label.
+struct MenuBarClientFilters: View {
+	let options: [FilterOption]
+	let selectedID: String
+	let select: (String) -> Void
+	@Environment(\.isEnabled) private var isEnabled
+	@FocusState private var focusedID: String?
+
+	var body: some View {
+		HStack(spacing: 2) {
+			ForEach(options) { option in
+				Button {
+					select(option.id)
+				} label: {
+					ViewThatFits(in: .horizontal) {
+						HStack(spacing: 4) {
+							Text(verbatim: option.label)
+							if let value = option.value { Text(verbatim: value).monospacedDigit() }
+						}
+						.fixedSize()
+						VStack(spacing: 2) {
+							Text(verbatim: option.label)
+							if let value = option.value {
+								Text(verbatim: value)
+									.font(.caption)
+									.monospacedDigit()
+									.fixedSize(horizontal: false, vertical: true)
+							}
+						}
+					}
+					.font(.body)
+					.multilineTextAlignment(.center)
+					.padding(.horizontal, 4)
+					.padding(.vertical, 4)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+					.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+					.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.foregroundStyle(option.id == selectedID ? Color.white : DesktopVisualTheme.text)
+				.background(option.id == selectedID ? DesktopVisualTheme.accentStrong : .clear,
+					in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+				.focused($focusedID, equals: option.id)
+				.overlay {
+					if focusedID == option.id {
+						RoundedRectangle(cornerRadius: 6, style: .continuous)
+							.strokeBorder(DesktopVisualTheme.info, lineWidth: 2)
+					}
+				}
+				.accessibilityLabel(option.label)
+				.accessibilityValue(option.value ?? "")
+				.accessibilityAddTraits(option.id == selectedID ? [.isSelected] : [])
+				.modifier(ClientFilterFrameProbe(id: option.id))
+			}
+		}
+		.fixedSize(horizontal: false, vertical: true)
+		.padding(2)
+		.background(DesktopVisualTheme.surfaceEmphasis, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+		.coordinateSpace(name: "menubar.clientFilters")
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel(t(DesktopCopy.clientFilter))
+		.onMoveCommand { direction in
+			guard isEnabled, let focusedID, let index = options.firstIndex(where: { $0.id == focusedID }) else { return }
+			let offset: Int
+			switch direction {
+			case .left: offset = -1
+			case .right: offset = 1
+			default: return
+			}
+			let next = min(options.count - 1, max(0, index + offset))
+			self.focusedID = options[next].id
+			select(options[next].id)
+		}
+		.onKeyPress(.return) {
+			guard isEnabled, let focusedID else { return .ignored }
+			select(focusedID)
+			return .handled
+		}
+	}
+}
+
+struct ClientFilterFramesPreferenceKey: PreferenceKey {
+	static let defaultValue: [String: CGRect] = [:]
+	static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+		value.merge(nextValue(), uniquingKeysWith: { _, newer in newer })
+	}
+}
+
+private struct ClientFilterFrameProbe: ViewModifier {
+	let id: String
+	func body(content: Content) -> some View {
+		#if DEBUG
+		content.background {
+			GeometryReader { proxy in
+				Color.clear.preference(key: ClientFilterFramesPreferenceKey.self,
+					value: [id: proxy.frame(in: .named("menubar.clientFilters"))])
+			}
+		}
+		#else
+		content
+		#endif
 	}
 }
 

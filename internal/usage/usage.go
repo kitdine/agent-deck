@@ -1118,6 +1118,26 @@ type preparedSource struct {
 	file                        SourceFile
 	validateCaptured            func() error
 	readBytes                   int64
+	// thread is the source thread identity this publication stores: carried
+	// from the checkpoint on an append, read from the source when the parse
+	// started at its beginning, and invalid while it is not yet assessed.
+	thread sql.NullString
+}
+
+// sourceThreads lists the threads this Codex source positively identifies:
+// its own first session_meta ID and its canonical rollout name.
+func (p *preparedSource) sourceThreads() []string {
+	if p.entry.Client != "codex" {
+		return nil
+	}
+	var threads []string
+	if p.thread.Valid && p.thread.String != "" {
+		threads = append(threads, p.thread.String)
+	}
+	if id, ok := store.CodexRolloutThreadID(p.entry.Path); ok {
+		threads = append(threads, id)
+	}
+	return threads
 }
 
 func newSourceStats() map[string]int {
@@ -1159,6 +1179,8 @@ type usageCheckpoint struct {
 	parserVersion                                 int
 	turnIndexRead                                 bool
 	turnIndex                                     sql.NullInt64
+	// thread is the stored source thread identity; invalid means unassessed.
+	thread sql.NullString
 }
 
 type usageQueryer interface {
@@ -1167,7 +1189,7 @@ type usageQueryer interface {
 
 func loadUsageCheckpoint(ctx context.Context, q usageQueryer, path string) (usageCheckpoint, error) {
 	var c usageCheckpoint
-	err := q.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path).Scan(&c.cursor, &c.identity, &c.size, &c.modified, &c.changed, &c.hash, &c.session, &c.turn, &c.model, &c.started, &c.parserVersion, &c.cumulative)
+	err := q.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json,thread_id FROM usage_source_files WHERE path=?", path).Scan(&c.cursor, &c.identity, &c.size, &c.modified, &c.changed, &c.hash, &c.session, &c.turn, &c.model, &c.started, &c.parserVersion, &c.cumulative, &c.thread)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, nil
 	}
@@ -1410,12 +1432,57 @@ func (s *Service) prepareSource(ctx context.Context, entry InventoryEntry, force
 	p.found, p.reset, p.sourceMutated = found, reset, sourceMutated
 	p.state, p.priorStarted, p.events, p.tools = state, priorStarted, events, toolActivities
 	p.cursor, p.anchorHash = cursor, hash(anchor)
+	switch {
+	case client != "codex":
+		p.thread = sql.NullString{Valid: true}
+	case found && !reset:
+		p.thread = checkpoint.thread
+		// An upgraded checkpoint has no identity, and an earlier parse may
+		// have ended before the first metadata record arrived. Assess the
+		// original head before publishing an append, never inherited metadata
+		// encountered only in that append.
+		if !p.thread.Valid || (p.thread.String == "" && state.threadSeen) {
+			head, readErr := io.ReadAll(io.NewSectionReader(file, 0, min(entry.Size, int64(sourceIdentityHeadBytes))))
+			if readErr != nil {
+				return p, readErr
+			}
+			if thread, decided := firstSessionThread(head, entry.Size <= sourceIdentityHeadBytes); decided {
+				p.thread = sql.NullString{String: thread, Valid: true}
+			}
+			validateBody := p.validateCaptured
+			p.validateCaptured = func() error {
+				if err := validateBody(); err != nil {
+					return err
+				}
+				return s.validateSnapshot(path, file, entry, 0, head, 0, nil)
+			}
+			if err := p.validateCaptured(); err != nil {
+				return p, err
+			}
+		}
+	case state.threadSeen:
+		p.thread = sql.NullString{String: state.thread, Valid: true}
+	default:
+		// A source read from its beginning without any session_meta carries no
+		// thread identity once it holds a complete record.
+		p.thread = sql.NullString{Valid: cursor > 0}
+	}
 	return p, nil
 }
 
 // publishFacts writes events and tool calls of one source, through the cold
 // bulk path when cold allows it, and adds their logical changes to r.
-func publishFacts(ctx context.Context, tx *sql.Tx, path string, cold bool, events []Event, tools []activity.Record, r map[string]int) error {
+//
+// threads is the thread identity of the source. Before any fact is written,
+// OTel ownership of those threads is retracted in the same transaction, so a
+// child thread whose facts are accounted under its parent's session ID is
+// never counted from both JSONL and OTel, in any block of any publication.
+func publishFacts(ctx context.Context, tx *sql.Tx, path string, threads []string, cold bool, events []Event, tools []activity.Record, r map[string]int) error {
+	if len(threads) > 0 {
+		if _, err := store.RetractTelemetryForJSONLThreads(ctx, tx, threads, time.Now()); err != nil {
+			return err
+		}
+	}
 	if cold {
 		handled, imported, updated, err := publishColdSource(ctx, tx, path, events, tools)
 		if err != nil {
@@ -1497,7 +1564,7 @@ func (s *Service) publishPrepared(ctx context.Context, tx *sql.Tx, p *preparedSo
 	for _, event := range p.events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
 	}
-	if err = publishFacts(ctx, tx, path, !found, p.events, p.tools, r); err != nil {
+	if err = publishFacts(ctx, tx, path, p.sourceThreads(), !found, p.events, p.tools, r); err != nil {
 		return err
 	}
 	for _, signal := range state.signals {
@@ -1528,7 +1595,7 @@ func (s *Service) publishPrepared(ctx context.Context, tx *sql.Tx, p *preparedSo
 	if client == "codex" {
 		storedTurn = storedCodexTurn(state)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, p.anchorHash, state.session, storedTurn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at,thread_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET thread_id=excluded.thread_id, identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, p.anchorHash, state.session, storedTurn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt, p.thread)
 	if err != nil {
 		return err
 	}
@@ -1642,6 +1709,11 @@ type parseState struct {
 	codexHasSignal       bool
 	codexOutput          bool
 	codexAwaitingContext bool
+	// threadSeen and thread hold the source's own identity: the payload.id of
+	// the first session_meta this parse read. Later session_meta records, such
+	// as history a thread inherited, never replace it.
+	threadSeen bool
+	thread     string
 	// signals accumulates the reduction of each turn-opening message seen in
 	// this scan. Only the reduction is kept, per Decision 2; the text does not
 	// leave the parse call that read it.
@@ -1761,6 +1833,11 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		p, _ := v["payload"].(map[string]any)
 		typ, _ := v["type"].(string)
 		if typ == "session_meta" {
+			if !state.threadSeen {
+				id, _ := p["id"].(string)
+				state.threadSeen = true
+				state.thread, _ = store.NormalizeThreadID(id)
+			}
 			session, _ := p["session_id"].(string)
 			if session == "" {
 				session, _ = p["id"].(string)

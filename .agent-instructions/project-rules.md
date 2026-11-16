@@ -457,7 +457,10 @@ remain authoritative. Record only within the active scope and authorization.
 Read [Branching](branching.md) for a branch, merge, or version-assembly operation.
 Completing a feature does not itself authorize a merge; version-contract work
 owns assembly. Active version membership is recorded in that contract topic and
-projected in status, while later planning belongs in the roadmap.
+projected in status, while cross-version direction and planning decisions belong
+in the roadmap. Beads owns issue intake and deferred work; use
+[Issue intake and roadmap ownership](../docs/documentation-workflow.md#issue-intake-and-roadmap-ownership)
+for roadmap update and delivery triggers.
 
 Classify the merge before selecting review/evidence work. Fast-forwarding to an
 already verified identical tree can reuse its evidence; a new combined tree or
@@ -504,7 +507,7 @@ formats, following the shared Skill's status-summary contract.
 | Topic review record or Lane A fix record | Full round: subject, content identity, method, findings, dispositions, evidence, verdict | Another subject's history without an explicit relationship |
 | `docs/topics/<topic>/tasks.md` | Document Draft/Review and task Dev/Review cells, plus concise current state and report pointers | Finding IDs, finding descriptions or dispositions, scores, repair instructions, or round narratives |
 | `docs/status.md` | Integrated project/release state, version-assembly projection, and pointers | Unmerged topic task progress, review details, scores, repair instructions, or matrix copies |
-| `docs/roadmap.md` | Later version direction, unscheduled candidates, and withdrawals | Active-version membership authority, execution details, or review-round content |
+| `docs/roadmap.md` | Cross-version direction, significant tradeoffs, and withdrawal decisions | Live issue backlog, active-version membership authority, execution details, or review-round content |
 
 Write the full report once. Update related documents only with information they
 own and only when their subject changes. A PASS updates the applicable Review

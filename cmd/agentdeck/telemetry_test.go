@@ -299,7 +299,7 @@ func TestBackgroundSessionIsVisibleThroughSessionCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := telemetry.SettleAndProject(ctx, core, index, time.Now()); err != nil || !changed {
+	if changed, err := telemetry.SettleAndProject(ctx, core, index, time.Now(), nil); err != nil || !changed {
 		t.Fatalf("settle = %v %v", changed, err)
 	}
 	index.Close()
@@ -346,7 +346,7 @@ func TestTelemetryImportRetractionReachesTheSessionIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := telemetry.SettleAndProject(ctx, core, index, time.Now()); err != nil || !changed {
+	if changed, err := telemetry.SettleAndProject(ctx, core, index, time.Now(), nil); err != nil || !changed {
 		t.Fatalf("settle = %v %v", changed, err)
 	}
 	index.Close()
@@ -392,5 +392,93 @@ func TestTelemetryListenerWaitsOutAHeldStateLock(t *testing.T) {
 	database.Close()
 	if time.Now().Before(released) {
 		t.Fatal("store opened while the lock was still held")
+	}
+}
+
+func TestTelemetryImportReportsIncompleteSourceIdentityAndRecovers(t *testing.T) {
+	state, home := telemetryState(t)
+	ctx := context.Background()
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".codex", "sessions", "unreadable-copy.jsonl")
+	for _, q := range []string{
+		`INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES('` + path + `','missing',0,0,'')`,
+		`INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES('e','codex','parent','e','2026-10-01T00:00:00Z','gpt-5',10,1,'` + path + `',0)`,
+	} {
+		if _, err = core.DB.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := filepath.Join(t.TempDir(), "import.json")
+	if err = os.WriteFile(file, []byte(importFixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	core.Close()
+	_, stderr, code := runTelemetry(t, state, "telemetry", "import", file)
+	if code == 0 || !strings.Contains(stderr, "source identity preparation is incomplete") {
+		t.Fatalf("import %d %q", code, stderr)
+	}
+	core, err = store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err = core.DB.QueryRow(`SELECT count(*) FROM telemetry_observations`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("receipt lost %d %v", n, err)
+	}
+	if _, err = core.DB.Exec(`DELETE FROM usage_events; DELETE FROM usage_source_files`); err != nil {
+		t.Fatal(err)
+	}
+	core.Close()
+	if _, stderr, code = runTelemetry(t, state, "telemetry", "import", file); code != 0 {
+		t.Fatalf("recovery %d %q", code, stderr)
+	}
+}
+
+func TestTelemetryImportAutomaticallyRefreshesBuiltinClassification(t *testing.T) {
+	state, _ := telemetryState(t)
+	ctx := context.Background()
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := telemetry.Decode([]byte(importFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = telemetry.Import(ctx, core, records, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err = core.AcceptInventory(ctx, "later", 1, nil, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err = core.FinishInventory(ctx, "later", "complete"); err != nil {
+		t.Fatal(err)
+	}
+	core.Close()
+	file := filepath.Join(t.TempDir(), "export.json")
+	if err = os.WriteFile(file, []byte(importFixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 2; pass++ {
+		if _, stderr, code := runTelemetry(t, state, "telemetry", "import", file); code != 0 {
+			t.Fatalf("pass %d: %d %s", pass, code, stderr)
+		}
+		core, err = store.Open(ctx, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var class, reason, rule string
+		if err = core.DB.QueryRow(`SELECT automatic,reason_code,rule_version FROM session_origins WHERE session_id='bg-cli-1'`).Scan(&class, &reason, &rule); err != nil || class != "work" || reason != "default_work" || rule != "codex-otel-exec-work-v1" {
+			t.Fatalf("%s %s %s %v", class, reason, rule, err)
+		}
+		if pass == 0 {
+			if _, err = core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token='old'`); err != nil {
+				t.Fatal(err)
+			}
+		}
+		core.Close()
 	}
 }

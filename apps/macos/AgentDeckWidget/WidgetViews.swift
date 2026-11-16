@@ -673,6 +673,83 @@ private struct TypedUnavailableWidget: View {
 	}
 }
 
+/// The scoped session count line: scope, count and unknown are one unit and
+/// never shown apart. Unavailable is text, not a zero.
+enum WidgetSessionScopeText {
+	static func scopeShort(_ scope: DesktopSessionScopeV1, bundle: Bundle? = nil) -> String {
+		switch scope {
+		case .work: WidgetCopy.text("Work", bundle: bundle)
+		case .auxiliary: WidgetCopy.text("Aux", bundle: bundle)
+		case .all: WidgetCopy.text("All", bundle: bundle)
+		}
+	}
+
+	static func scopeFull(_ scope: DesktopSessionScopeV1, bundle: Bundle? = nil) -> String {
+		scope == .auxiliary ? WidgetCopy.text("Auxiliary", bundle: bundle) : scopeShort(scope, bundle: bundle)
+	}
+
+	/// `now` is the entry date the footer's age is measured from; a retained
+	/// summary's age is measured from the same instant.
+	static func visible(
+		_ row: WidgetSessionScopeRow, now: Date = Date(), locale: Locale = .current, bundle: Bundle? = nil
+	) -> String {
+		guard case let .value(scope, count, unknownCount, retainedAt) = row else {
+			return WidgetCopy.text("Session scope unavailable", bundle: bundle)
+		}
+		let unknown = unknownCount.map { WidgetFormat.sessionCount($0, locale: locale) } ?? "—"
+		let figures = "\(scopeShort(scope, bundle: bundle)) \(WidgetFormat.sessionCount(count, locale: locale)) \(WidgetCopy.text("sessions", bundle: bundle)) · \(WidgetCopy.text("Unknown", bundle: bundle)) \(unknown)"
+		guard let age = retainedAge(retainedAt, now: now, locale: locale, bundle: bundle) else { return figures }
+		return "\(figures) · \(age)"
+	}
+
+	static func accessibility(
+		_ row: WidgetSessionScopeRow, period: WidgetPeriod, now: Date = Date(), locale: Locale = .current, bundle: Bundle? = nil
+	) -> WidgetAccessibilityDescriptor {
+		let label = WidgetCopy.text("Session scope", bundle: bundle)
+		guard case let .value(scope, count, unknownCount, retainedAt) = row else {
+			return WidgetAccessibility.metric(label: label, values: [WidgetCopy.text("Session scope unavailable", bundle: bundle)])
+		}
+		let unknown = unknownCount.map { WidgetFormat.fullCount($0, locale: locale) } ?? WidgetCopy.text("Data unavailable", bundle: bundle)
+		return WidgetAccessibility.metric(label: label, values: [
+			scopeFull(scope, bundle: bundle),
+			"\(WidgetFormat.fullCount(count, locale: locale)) \(WidgetCopy.text("sessions", bundle: bundle))",
+			"\(WidgetCopy.text("Unknown", bundle: bundle)) \(unknown)",
+			WidgetCopy.period(period, bundle: bundle),
+			retainedAge(retainedAt, now: now, locale: locale, bundle: bundle),
+		])
+	}
+
+	/// The retained summary's own success age, with the footer's existing
+	/// wording and old (> 6 h) tier; nil when the summary is current. It never
+	/// reads "Updated now" for kept numbers: under a minute it is the
+	/// relative time the formatter gives, still that summary's own instant.
+	static func retainedAge(_ retainedAt: Date?, now: Date, locale: Locale = .current, bundle: Bundle? = nil) -> String? {
+		guard let retainedAt else { return nil }
+		let formatter = RelativeDateTimeFormatter()
+		formatter.unitsStyle = .full
+		formatter.locale = locale
+		let relative = formatter.localizedString(for: min(retainedAt, now), relativeTo: now)
+		let isOld = now.timeIntervalSince(retainedAt) > 6 * 60 * 60
+		return WidgetCopy.format(isOld ? "Last updated %@" : "Updated %@", value: relative, bundle: bundle)
+	}
+}
+
+private struct SessionScopeLine: View {
+	let row: WidgetSessionScopeRow
+	let period: WidgetPeriod
+	let now: Date
+
+	var body: some View {
+		Text(WidgetSessionScopeText.visible(row, now: now))
+			.font(.system(size: 9.5))
+			.foregroundStyle(.secondary)
+			.lineLimit(3)
+			.fixedSize(horizontal: false, vertical: true)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.widgetAccessibility(WidgetSessionScopeText.accessibility(row, period: period, now: now))
+	}
+}
+
 private struct MagnitudeWidgetView: View {
 	let model: WidgetSurfaceModel
 	let family: WidgetFamily
@@ -711,11 +788,16 @@ private struct MagnitudeWidgetView: View {
 				label: WidgetCopy.period(WidgetPeriod(rawValue: selected.period) ?? .today),
 				values: [cost(selected), volume(selected)]
 			))
+			SessionScopeLine(row: model.sessionScopeRow, period: model.entry.period, now: model.entry.date)
+				.padding(.top, 2)
+			// The compact 7-bucket chart yields height to the session row
+			// (ux/widget.md: at least 14pt, 4pt above).
 			MiniBarChart(
 				values: items.map { WidgetFormat.chartValue($0.value) },
 				tone: WidgetPalette.info
 			)
-			.padding(.top, 7)
+			.frame(minHeight: 14)
+			.padding(.top, 4)
 			.widgetAccessibility(WidgetAccessibility.trend(items: items))
 		}
 	}
@@ -760,6 +842,8 @@ private struct MagnitudeWidgetView: View {
 					selected.totals.pricingComplete ? nil : WidgetCopy.text("Cost incomplete"),
 				]
 			))
+			SessionScopeLine(row: model.sessionScopeRow, period: model.entry.period, now: model.entry.date)
+				.padding(.top, 2)
 			PeriodColumns(items: referencePeriods, showsTokens: false)
 				.frame(maxWidth: 150, alignment: .leading)
 				.padding(.top, 7)
@@ -785,8 +869,10 @@ private struct MagnitudeWidgetView: View {
 		scope.daily.items.map { WidgetFormat.chartValue($0.value) }
 	}
 
+	/// Tokens are total usage: the session scope never filters them. The
+	/// legacy all-session total is no longer shown here — the session row is.
 	private func volume(_ item: DesktopUsagePeriodV1) -> String {
-		"\(WidgetFormat.tokens(item.totals.tokens)) · \(item.totals.sessions) \(WidgetCopy.text("Sessions"))"
+		"\(WidgetFormat.tokens(item.totals.tokens)) \(WidgetCopy.text("Tokens")) · \(WidgetCopy.text("All usage"))"
 	}
 
 	private func averageCost(_ item: DesktopUsagePeriodV1) -> String {

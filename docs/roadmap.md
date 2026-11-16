@@ -1,15 +1,23 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-10-08
+updated: 2026-11-07
 ---
 
-# AgentDeck Roadmap and Backlog
+<a id="agentdeck-roadmap-and-backlog"></a>
 
-This file is the authority for later version direction, unapproved planning
-intake, and withdrawn candidates. Active version membership is owned by the
-applicable `vX-Y-Z-contract` topic and projected in `status.md`. Moving an item
+# AgentDeck Roadmap
+
+This file is the authority for cross-version direction, significant planning
+tradeoffs, and withdrawal decisions. Beads owns live issue intake and deferred
+work; recording or changing an issue does not require a roadmap update. Active
+version membership is owned by the applicable `vX-Y-Z-contract` topic and
+projected in `status.md`. Moving an item
 between these sections is a planning decision, not implementation authorization.
+Follow [Issue intake and roadmap ownership](documentation-workflow.md#issue-intake-and-roadmap-ownership)
+for update and delivery triggers. Existing release inventories and Backlog entries
+retain their recorded planning context, not current dispatch or approval state.
+
 ## v0.6.0 — Trusted usage and subscription visibility
 
 Stable `v0.6.0` was published on 2026-09-30 from `a5e969d7`. The five feature
@@ -359,6 +367,12 @@ the evidence; this planning record does not claim a product repair.
 
 ## Backlog
 
+This section retains planning intake and provenance from before the 2026-11-07
+ownership change. New issues and deferred work belong in Beads. Status and
+approval statements below describe their recorded snapshots; consult the owning
+topic and Beads for current state. Reconcile individual entries only during
+related authorized planning work under the ownership rules linked above.
+
 The operator selected long-scan performance as a main priority for the next
 version on 2026-10-07 and proposed v0.7.0 on 2026-10-08 as recorded above;
 the implementation plan remains unapproved. `ad-bug-menubar-long-scan-timeout` is deferred (Lane C). An installed
@@ -428,6 +442,15 @@ is selected into v0.6.0 with quota, reset information and reminders.
 
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
+
+- [ ] Link each Codex per-session memory-extraction (Memories stage1) request to
+  the source session it summarizes. scan-performance counts these OTel-only
+  requests as their own `codex-otel-background` sessions and leaves this link
+  to a later topic; `auxiliary-session-classification` classifies them as
+  auxiliary without it and explicitly does not take it on (2026-11-03). It
+  requires read-only access to the Codex memories state store, which needs its
+  own design, privacy review and format evidence. Coordination:
+  `ad-codex-memory-source-linkage`, deferred.
 
 - [x] Give `state_busy` cause-specific, safe recovery guidance. The selected
   `health-recovery` topic resolved the `state.lock`/`scan.lock`, read-only doctor

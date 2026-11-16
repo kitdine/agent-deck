@@ -31,6 +31,10 @@ func TestUsagePartitionShadowPublicationAndTransactionalInvalidation(t *testing.
 	if err != nil || len(parts) != 2 {
 		t.Fatalf("partitions: %+v %v", parts, err)
 	}
+	metadata, err := db.UsageProjectionMetadataRevision(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := range parts {
 		p := &parts[i]
 		revision, err := db.BeginUsagePartition(ctx, *p)
@@ -39,7 +43,7 @@ func TestUsagePartitionShadowPublicationAndTransactionalInvalidation(t *testing.
 		}
 		p.Revision = revision
 		p.Dirty = false
-		if err := db.PublishUsagePartition(ctx, *p, revision, 0, "v1", []byte("old")); err != nil {
+		if err := db.PublishUsagePartition(ctx, *p, revision, metadata, "v1", []byte("old")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -56,7 +60,7 @@ func TestUsagePartitionShadowPublicationAndTransactionalInvalidation(t *testing.
 		t.Fatal("build removed active payload")
 	}
 	exec(`UPDATE usage_events SET input_tokens=17 WHERE event_key='a'`)
-	if err := db.PublishUsagePartition(ctx, p, revision, 0, "v2", []byte("new")); !errors.Is(err, ErrUsagePartitionChanged) {
+	if err := db.PublishUsagePartition(ctx, p, revision, metadata, "v2", []byte("new")); !errors.Is(err, ErrUsagePartitionChanged) {
 		t.Fatalf("stale publication accepted: %v", err)
 	}
 	active, _ = db.UsagePartitions(ctx, from, to)

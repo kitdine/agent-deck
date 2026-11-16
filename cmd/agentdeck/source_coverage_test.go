@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -119,11 +120,27 @@ func TestDesktopBootstrapUsesSeparateVersionedStream(t *testing.T) {
 	}
 	decoder := json.NewDecoder(&stdout)
 	publication, terminal := false, false
+	lastPublication, order := "", []string{}
+	var batch struct {
+		PublicationID string `json:"publication_id"`
+		AsOf          string `json:"as_of"`
+		Default       struct {
+			Confirmed bool    `json:"confirmed"`
+			Value     *string `json:"value"`
+		} `json:"default"`
+		Views []struct {
+			Available    bool `json:"available"`
+			Selection    struct{ Scope, Client, Period string }
+			GenerationID *string `json:"generation_id"`
+			GeneratedAt  string  `json:"generated_at"`
+		} `json:"views"`
+	}
 	for decoder.More() {
 		var event struct {
-			Schema  int    `json:"schema_version"`
-			Command string `json:"command"`
-			Type    string `json:"type"`
+			Schema  int             `json:"schema_version"`
+			Command string          `json:"command"`
+			Type    string          `json:"type"`
+			Data    json.RawMessage `json:"data"`
 		}
 		if err := decoder.Decode(&event); err != nil {
 			t.Fatal(err)
@@ -133,8 +150,45 @@ func TestDesktopBootstrapUsesSeparateVersionedStream(t *testing.T) {
 		}
 		publication = publication || event.Type == "publication"
 		terminal = terminal || event.Type == "terminal"
+		switch event.Type {
+		case "publication":
+			var value struct {
+				Header struct {
+					PublicationID string `json:"publication_id"`
+				} `json:"header"`
+			}
+			if err := json.Unmarshal(event.Data, &value); err != nil {
+				t.Fatal(err)
+			}
+			lastPublication = value.Header.PublicationID
+		case "session_scope_batch":
+			if err := json.Unmarshal(event.Data, &batch); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if event.Type != "progress" && event.Type != "publication" {
+			order = append(order, event.Type)
+		}
 	}
 	if !publication || !terminal {
 		t.Fatal("bootstrap returned without publication and terminal")
+	}
+	// The default scope's Widget batch follows the terminal line, once, for
+	// the last publication: publishing it starts no second helper.
+	if !reflect.DeepEqual(order, []string{"terminal", "session_scope_batch"}) {
+		t.Fatalf("stream tail = %v", order)
+	}
+	if lastPublication == "" || batch.PublicationID != lastPublication || !batch.Default.Confirmed || batch.Default.Value == nil || *batch.Default.Value != "work" || len(batch.Views) != 9 {
+		t.Fatalf("session-scope batch = %+v, last publication %q", batch, lastPublication)
+	}
+	asOf, err := time.Parse(time.RFC3339, batch.AsOf)
+	if err != nil || asOf.Nanosecond() != 0 {
+		t.Fatalf("as_of %q: %v", batch.AsOf, err)
+	}
+	for index, view := range batch.Views {
+		generated, parseErr := time.Parse(time.RFC3339Nano, view.GeneratedAt)
+		if !view.Available || view.Selection.Scope != "work" || view.GenerationID == nil || *view.GenerationID != *batch.Views[0].GenerationID || parseErr != nil || !generated.Equal(asOf) {
+			t.Fatalf("view %d = %+v", index, view)
+		}
 	}
 }

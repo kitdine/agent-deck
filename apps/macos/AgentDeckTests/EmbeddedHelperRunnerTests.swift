@@ -647,6 +647,39 @@ private actor NativeLocationSequence {
 }
 
 extension EmbeddedHelperRunnerTests {
+    func testSessionOriginOperationsRecheckOwnershipAndReleaseOnQueryFailure() async throws {
+        for operation in ["view", "batch", "origin"] {
+            let account = try ownershipAccount()
+            let bundle = try makeEmbeddedHelperBundle(in: account)
+            let process = OriginOwnershipProbe(root: account.appendingPathComponent(".agentdeck").path)
+            let session = NativeOwnershipSession(accountHome: { account })
+            let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process,
+                environment: ["HOME": account.path], ownershipSession: session)
+            defer { runner.closeOwnershipSession() }
+            _ = try await runner.resolveStateRoot()
+            let fd = try exclusiveDescriptor(account)
+            defer { Darwin.close(fd) }
+            XCTAssertNotEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+            await process.failQuery()
+            if operation == "origin" {
+                _ = await runner.runSessionOriginCommand(["--format", "json", "session", "scope", "get"])
+            } else {
+                do {
+                    if operation == "view" {
+                        _ = try await runner.sessionScopeView(.init(scope: .all, client: "all", period: "today"))
+                    } else {
+                        _ = try await runner.sessionScopeBatch(scope: .all, recentLimit: 5, asOf: "2026-11-16T00:00:00Z")
+                    }
+                    XCTFail("failed ownership query must stop \(operation)")
+                } catch {}
+            }
+            let calls = await process.operationCalls
+            XCTAssertEqual(calls, 0, "\(operation) reached the helper without a successful ownership query")
+            XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0, "\(operation) retained the prior ownership session")
+            flock(fd, LOCK_UN)
+        }
+    }
+
     private func ownershipAccount() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -890,5 +923,22 @@ extension EmbeddedHelperRunnerTests {
         let a = try NativeOwnershipSession.physicalPath(URL(fileURLWithPath: "/tmp/" + suffix))
         let b = try NativeOwnershipSession.physicalPath(URL(fileURLWithPath: "/private/tmp/" + suffix))
         XCTAssertEqual(a, b)
+    }
+}
+
+private actor OriginOwnershipProbe: EmbeddedHelperProcess {
+    let root: String
+    var queryFails = false
+    private(set) var operationCalls = 0
+    init(root: String) { self.root = root }
+    func failQuery() { queryFails = true }
+    func run(executableURL: URL, arguments: [String], environment: [String: String], timeout: Duration) async throws -> HelperProcessOutput {
+        if arguments == ["desktop", "state-location", "--format", "json"] {
+            if queryFails { throw HelperExecutionError.malformedOutput }
+            let payload: [String: Any] = ["schema_version": 1, "command": "desktop.state-location", "partial": false, "data": ["installed": true, "state_root": root]]
+            return HelperProcessOutput(exitStatus: 0, stdout: try JSONSerialization.data(withJSONObject: payload))
+        }
+        operationCalls += 1
+        throw HelperExecutionError.malformedOutput
     }
 }

@@ -128,6 +128,27 @@ public actor WidgetSnapshotPublisher {
 		return .published(affectedKinds: affectedKinds)
 	}
 
+	/// The last accepted, complete session-scope batch in the snapshot this
+	/// publisher last verified (or, before its first publication, in the App
+	/// Group file). A set without items carries no numbers to keep.
+	public func retainedSessionScopeSummary() -> AppGroupSessionScopeSummarySetV1? {
+		let existing = baseline ?? store.readExisting()
+		baseline = existing
+		guard case let .known(snapshot) = existing, let set = snapshot.sessionScopeSummary, !set.items.isEmpty else {
+			return nil
+		}
+		return set
+	}
+
+	/// The summary set exactly as last verified, including an unavailable one,
+	/// for a publication that changes nothing about sessions.
+	public func lastSessionScopeSummary() -> AppGroupSessionScopeSummarySetV1? {
+		let existing = baseline ?? store.readExisting()
+		baseline = existing
+		guard case let .known(snapshot) = existing else { return nil }
+		return snapshot.sessionScopeSummary
+	}
+
 	private func issue(for error: Error) -> WidgetSnapshotPublisherIssue {
 		switch error {
 		case AppGroupSnapshotStoreError.oversizedSnapshot:

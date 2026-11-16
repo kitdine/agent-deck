@@ -67,6 +67,11 @@ func ownershipOf(t *testing.T, database *store.Store, thread string) ownership {
 
 func insertJSONLEvent(t *testing.T, database *store.Store, thread, key string) {
 	t.Helper()
+	// A committed source has a checkpoint; facts without one are an unfinished
+	// import, which settlement waits for.
+	if _, err := database.DB.Exec(`INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,thread_id) VALUES('/home/.codex/sessions/rollout.jsonl','i',0,0,'','') ON CONFLICT(path) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.DB.Exec(`INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES(?,'codex',?,?,'2026-10-29T12:30:00Z','gpt-6-astra',100,5,'/home/.codex/sessions/rollout.jsonl',0)`, key, thread, key); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +215,7 @@ func TestConflictingCountsAreNeverCounted(t *testing.T) {
 
 func TestUnsupportedProducerStaysCaptureOnly(t *testing.T) {
 	database, _ := openStore(t)
-	importRecords(t, database, exportBody([]attr{s("service.name", "codex_exec"), s("service.version", "0.166.0")}, completed("u-1", "1000", "10")))
+	importRecords(t, database, exportBody([]attr{s("service.name", "codex-desktop"), s("service.version", "0.165.0")}, completed("u-1", "1000", "10")))
 	importRecords(t, database, exportBody(codexResource, append(completed("u-2", "1000", "10")[:0], s("event.name", "codex.websocket_event"), s("event.kind", "response.completed"), s("conversation.id", "u-2"), i("input_token_count", "5"))))
 	recordInventory(t, database, "inv", receivedAt.Add(time.Minute))
 	settle(t, database, receivedAt.Add(time.Hour))
@@ -219,7 +224,7 @@ func TestUnsupportedProducerStaysCaptureOnly(t *testing.T) {
 	if capability, reason := MeteringCapability(true, "", true); capability != CapabilityCaptureOnly || reason != ReasonProducerUnsupported {
 		t.Fatalf("capability %s %s", capability, reason)
 	}
-	if capability, _ := MeteringCapability(true, supportTable[0].Name(), true); capability != CapabilityReconciled {
+	if capability, _ := MeteringCapability(true, "codex_exec/0.165.0/codex_exec/sse", true); capability != CapabilityReconciled {
 		t.Fatalf("supported producer capability %s", capability)
 	}
 }
@@ -237,7 +242,7 @@ func TestSourceMarkerQueryIsTheClassificationInterface(t *testing.T) {
 	}
 }
 
-func TestSupportTableRequiresTheVerifiedOriginator(t *testing.T) {
+func TestAdmissionRequiresTheVerifiedOriginator(t *testing.T) {
 	database, _ := openStore(t)
 	tui := []attr{s("service.name", "codex-app-server"), s("service.version", "0.165.0")}
 	withOriginator := func(conversation, originator string) []attr {

@@ -19,8 +19,10 @@ import (
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
+	"github.com/kitdine/agent-deck/internal/usage"
 )
 
 const telemetryRedactedToken = "<redacted: run with --reveal-local-token>"
@@ -112,7 +114,7 @@ func readTelemetryStatus(ctx context.Context, opts *commandOptions) (telemetry.S
 }
 
 var telemetryReasonText = map[string]string{
-	telemetry.ReasonProducerUnsupported: "producer version not verified",
+	telemetry.ReasonProducerUnsupported: "producer family or event shape not supported",
 	telemetry.ReasonNoProducerObserved:  "no verified producer event received yet",
 }
 
@@ -152,7 +154,7 @@ func renderTelemetryStatus(w io.Writer, status telemetry.Status) error {
 			fmt.Fprintf(&b, "Reason: %s\n", telemetryReasonText[*status.ReasonCode])
 		}
 		if status.BackgroundSessions > 0 {
-			fmt.Fprintf(&b, "Background sessions counted: %d\n", status.BackgroundSessions)
+			fmt.Fprintf(&b, "OTel-owned sessions counted: %d\n", status.BackgroundSessions)
 		}
 		fmt.Fprintf(&b, "Pending observations: %d\n", status.PendingObservations)
 		if status.ConflictObservations > 0 {
@@ -455,19 +457,29 @@ func newTelemetryImportCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			defer database.Close()
-			reconciler := &telemetry.Reconciler{Store: database, Now: time.Now, SessionsChanged: func(ctx context.Context) error {
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			reconciler := &telemetry.Reconciler{Store: database, Now: time.Now, RefreshSessions: true, PrepareSources: usage.New(database, home).PrepareSourceIdentities, SessionsChanged: func(ctx context.Context) error {
 				index, err := store.OpenSessions(ctx, stateRoot)
 				if err != nil {
 					return err
 				}
 				defer index.Close()
-				return telemetry.ProjectSessionIndex(ctx, database, index)
+				if err := telemetry.ProjectSessionIndex(ctx, database, index); err != nil {
+					return err
+				}
+				_, err = sessionorigin.Reconcile(ctx, database, index, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home})
+				return err
 			}}
 			applied, err := reconciler.Import(command.Context(), records, time.Now())
 			if err != nil {
 				return err
 			}
-			if _, err := reconciler.Settle(command.Context()); err != nil {
+			if _, err := reconciler.Settle(command.Context()); errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+				return fmt.Errorf("%w: records stored; source identity preparation is incomplete and will retry on the next normal scan or settlement", err)
+			} else if err != nil {
 				return err
 			}
 			result := telemetryImportResult{Records: len(records), Inserted: applied.Inserted, Duplicate: applied.Duplicate,
@@ -564,6 +576,11 @@ func newTelemetryServeCommand(opts *commandOptions) *cobra.Command {
 			defer database.Close()
 			err = telemetry.Serve(ctx, telemetry.ServeOptions{
 				StateRoot: stateRoot, Home: home, Owner: owner, Store: database, Published: published,
+				PrepareSources: usage.New(database, home).PrepareSourceIdentities,
+				ClassifySessions: func(ctx context.Context, index *store.Store) error {
+					_, err := sessionorigin.Reconcile(ctx, database, index, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home})
+					return err
+				},
 				Inventory: func(ctx context.Context) error {
 					result, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, AppOwned: owner == "app", Background: true}).Request(ctx, scanruntime.ScopeBoth)
 					if err == nil && (result.Usage.State != "completed" || result.Session.State != "completed") {

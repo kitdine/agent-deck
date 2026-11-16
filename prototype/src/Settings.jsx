@@ -1,7 +1,63 @@
-import { useEffect, useRef } from "react";
-import { WarningCircle, X } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { Gauge, GearSix, Pulse, Stack, WarningCircle, X } from "@phosphor-icons/react";
 import { catalogs } from "./i18n.js";
+import { AuxiliarySettings } from "./AuxiliarySettings.jsx";
 import { TelemetrySettings } from "./TelemetrySettings.jsx";
+import "./settingsTabs.css";
+
+// 分页设置（用户 2026-11-07 提出，2026-11-08 定为默认；?settingsTabs=0 只用于对照旧的单页长列表）。
+// 一页长列表已经到 5 组 15 行、内容约 1325 px，
+// 900 px 高的屏幕要滚 1.7 屏；按 macOS 偏好设置的惯例改成工具栏分页，每页都不必滚动。
+// 页的划分按"用户为什么来这里"：通用（启动、更新、菜单栏外观）、会话（看谁、怎么分类）、
+// 实时用量（OTel 采集）、额度（订阅额度读取与提醒）。各组的行与合同不变，只换容器。
+const PANES = [
+  { key: "general", Icon: GearSix, zh: "通用", en: "General" },
+  { key: "sessions", Icon: Stack, zh: "会话", en: "Sessions" },
+  { key: "live", Icon: Pulse, zh: "实时用量", en: "Live usage" },
+  { key: "quota", Icon: Gauge, zh: "额度", en: "Quota" },
+];
+// 同一次 App 运行内记住上次停留的页：关窗再开回到原处，而不是每次都跳回「通用」。
+let rememberedPane = null;
+
+function SettingsTabs({ panes, value, onChange, lang }) {
+  const refs = useRef({});
+  const move = (event, delta) => {
+    event.preventDefault();
+    const index = panes.findIndex((pane) => pane.key === value);
+    const next = panes[(index + delta + panes.length) % panes.length].key;
+    onChange(next);
+    requestAnimationFrame(() => refs.current[next]?.focus());
+  };
+  return (
+    <div
+      className="settings-tabs"
+      role="tablist"
+      aria-label={lang === "zh" ? "设置分页" : "Settings sections"}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowRight") move(event, 1);
+        if (event.key === "ArrowLeft") move(event, -1);
+      }}
+    >
+      {panes.map(({ key, Icon, zh, en }) => (
+        <button
+          type="button"
+          role="tab"
+          key={key}
+          id={`settings-tab-${key}`}
+          data-pane={key}
+          aria-selected={value === key}
+          aria-controls="settings-pane"
+          tabIndex={value === key ? 0 : -1}
+          ref={(node) => (refs.current[key] = node)}
+          onClick={() => onChange(key)}
+        >
+          <Icon size={20} weight={value === key ? "fill" : "regular"} aria-hidden="true" />
+          <span>{lang === "zh" ? zh : en}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // 设置是独立窗口，不是 popover 里的一页——macOS 上 ⌘, 打开的东西从来不长在弹出面板里。
 // OTel 是 scan-performance 的设计候选；其他控件继续对应现有偏好。
@@ -68,10 +124,26 @@ function Field({ id, label, hint, children, error, errorTone = "bad" }) {
   );
 }
 
-export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false, telemetryScenario = "unconfigured", eventDriven = false }) {
+export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false, telemetryScenario = "unconfigured", eventDriven = false, auxSettings = null, tabbed = false, initialPane = null }) {
   const dict = catalogs[lang];
   const windowRef = useRef(null);
   const loginRefusedOnce = useRef(false);
+  // 会话页只在本主题的设置组存在时出现；其他标本没有这一页。
+  const panes = PANES.filter((pane) => pane.key !== "sessions" || auxSettings);
+  const [pane, setPaneState] = useState(() => {
+    const wanted = rememberedPane ?? initialPane;
+    return panes.some((item) => item.key === wanted) ? wanted : "general";
+  });
+  const setPane = (next) => {
+    rememberedPane = next;
+    setPaneState(next);
+    // 页实例常驻，正文不再随切页重建；新页从顶部开始显示。
+    document.getElementById("settings-pane")?.scrollTo(0, 0);
+  };
+  // 分页时所有页都挂载，只隐藏非当前页（ASC-SET-R9-F1）。卸载会丢掉组内仍需行动的状态，
+  // 例如实时用量刚写入的 Codex 托管段：切走再回来后关闭采集就不会再移除它。
+  const show = (key) => !tabbed || pane === key;
+  const paneLabel = panes.find((item) => item.key === pane)?.[lang === "zh" ? "zh" : "en"];
 
   useEffect(() => {
     // 焦点给窗口本身而不是关闭按钮：Esc 照样能关，也不会在红绿灯上留一圈焦点环
@@ -151,11 +223,12 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
 
   return (
     <section
-      className={`settings-window${embedded ? " embedded" : ""}`}
+      className={`settings-window${embedded ? " embedded" : ""}${auxSettings ? " as-enabled" : ""}${tabbed ? " tabbed" : ""}`}
       role="dialog"
       aria-label={dict.settings.title}
       ref={windowRef}
       tabIndex={-1}
+      data-pane={tabbed ? pane : undefined}
     >
       <header>
         {!embedded && (
@@ -167,11 +240,16 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
             <i className="light" aria-hidden="true" />
           </div>
         )}
-        <strong>{dict.settings.title}</strong>
+        {/* 分页时标题栏显示当前页名，和 macOS 偏好设置窗口一致。 */}
+        <strong>{tabbed ? paneLabel : dict.settings.title}</strong>
       </header>
+      {tabbed && <SettingsTabs panes={panes} value={pane} onChange={setPane} lang={lang} />}
 
-      <div className="settings-body">
-        <div className="settings-group" data-group="general">
+      <div
+        className="settings-body"
+        {...(tabbed ? { id: "settings-pane", role: "tabpanel", "aria-labelledby": `settings-tab-${pane}` } : {})}
+      >
+        <div className="settings-group" data-group="general" hidden={!show("general")}>
           <span className="settings-group-title">{dict.settings.general}</span>
           <Field
             id="launchAtLogin"
@@ -196,7 +274,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
           </Field>
         </div>
 
-        <div className="settings-group">
+        <div className="settings-group" hidden={!show("general")}>
           <span className="settings-group-title">{dict.settings.menubar}</span>
           <Field id="menubarValue" label={dict.settings.menubarValue} hint={dict.settings.menubarValueHint}>
             <Segmented
@@ -225,13 +303,16 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
           </Field>
         </div>
 
-        <TelemetrySettings lang={lang} enabled={!!prefs.otelEnabled} onEnabled={set("otelEnabled")} scenario={telemetryScenario} />
+        {/* 会话默认范围决定菜单栏「会话」页下次打开看什么，紧跟菜单栏组。 */}
+        {auxSettings && <AuxiliarySettings lang={lang} {...auxSettings} hidden={!show("sessions")} />}
+
+        <TelemetrySettings lang={lang} enabled={!!prefs.otelEnabled} onEnabled={set("otelEnabled")} scenario={telemetryScenario} hidden={!show("live")} />
 
         {/* 订阅额度。三个开关的层级是有依赖的，不是并列：
             不读取额度 → 状态栏通路与提醒都无从谈起；
             不开提醒 → 阈值不可编辑。禁用而不是隐藏，
             因为隐藏会让人以为产品没有这个能力。 */}
-        <div className="settings-group" data-group="quota">
+        <div className="settings-group" data-group="quota" hidden={!show("quota")}>
           <span className="settings-group-title">{dict.settings.quota}</span>
           <Field id="quotaProbe" label={dict.settings.quotaProbe} hint={dict.settings.quotaProbeHint}>
             <Switch

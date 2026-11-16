@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-09
-updated: 2026-10-29
+updated: 2026-11-15
 ---
 
 # 展示恢复、事件更新与有界采集
@@ -639,16 +639,17 @@ orphan 清理与来源所有权检查跳过它；全量 rebuild 后由 reconcile
   session scan”的分支；`session search` 不会命中，因为没有正文。
 - 会话索引的文件 inventory 全集对账（删除 inventory 中不存在的来源）跳过 `otel:` 来源；用户的会话排除
   （project/source/session/client）同样适用于投影，被排除的会话不再投影。
-- store 另提供只读查询（按 client 与 session id 批量取来源标记），作为 `auxiliary-session-classification`
-  采用的分类接口；它不是会话读取接口。带此标记的会话属于辅助会话（同 claude-mem 观察会话）。在该专题采用
-  标记之前，这些会话按上面的读取路径出现在工作视图中，数值正确但会话数偏多；这是跨主题依赖，不在本主题以
-  其他方式隐藏。
+- store 提供按 client 与 session id 批量读取 core 来源标记的分类接口。
+  现行自动分类由 [版本兼容计量专题](../otel-version-tolerant-metering/architecture.md)维护，
+  OTel-owned TUI 会话按有边界规则推断辅助，exec 会话默认工作。数字所有权与用途分别处理，
+  所有版本采用相同家族规则。晚到 JSONL 撤销标记后自动重新分类。
 逐会话记忆提取请求与其来源会话的关联需读取 Codex memories 状态库，不属于本主题，作为后续待办记录。
 
-能力状态：`disabled → capture_only → reconciled`。`reconciled` 表示接收到的 producer/版本/transport/事件形状
-在经实验验证的支持表中，按上表计量；支持表外一律 `capture_only`。0.165.0 SSE 的 `codex_exec` 已有上述实验依据；
-条目进入支持表前，实现须以同类隔离实验补齐并记录：WebSocket transport、Memories stage1 请求、交互式 TUI 与
-Desktop 的 service.name/originator、重试/失败/中断不产生虚构 usage、主会话压缩请求的表现。任一组合未验证则不入表。
+能力状态为 `disabled → capture_only → reconciled`。现行准入按经验证的 producer/originator
+家族、SSE 完成事件形状及完整有效计数判断，版本只保留为来源信息，要求非空、最多 256 字节
+且无 `/` 分隔符。家族为 codex_exec/codex_exec 和 codex-app-server/codex-tui。
+未知家族、transport 或形状仍为 capture_only。原 0.165.0 隔离实验作为历史证据保留，
+新规则及历史自动补计由 [版本兼容计量专题](../otel-version-tolerant-metering/architecture.md)规定。
 token counts 缺失保持 null，不把每个 SSE event 当调用，不从失败/中断虚构 usage。
 OTLP integer/string number 解码保留整数精度；负值、overflow、cached > input、reasoning > output
 或明确 total 与 components 冲突进入 invalid，不经 float 截断后计量。未知的 detail

@@ -33,6 +33,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -1165,7 +1166,12 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
-			if err = finishAcceptedInventory(ctx, core, r.id); err != nil {
+			if err = finishUsageInventory(ctx, core, usageService, r.id); err != nil {
+				r.setUsage(failedUsage(err, duration))
+				return
+			}
+			if _, err := core.SettleTelemetry(ctx, time.Now(), telemetry.SettleAfter); err != nil {
+				finishDomainInventory(core, r.id, err)
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
@@ -1188,11 +1194,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		defer perftrace.Span(perftrace.ScanDerive)()
 		started := time.Now()
 		r.setProgressStage("statistics")
-		// The inventory this round accepted can settle OTel ownership; settle
-		// first so the publication below already counts background usage.
-		if sessionsErr == nil {
-			_, _ = telemetry.SettleAndProject(ctx, core, sessions, time.Now())
-		}
+		// A successful session result includes projection and classification.
+		// A session failure still permits publishing the durable usage result.
+
 		_ = r.desktopService(stateRoot).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 		r.publishFinalServing(ctx, stateRoot)
 		r.setDerivedCache(time.Since(started).Milliseconds())
@@ -1229,7 +1233,11 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 				// releasing the consumer first cannot block the usage readers.
 				coordinator.ConsumerDone(ingest.ConsumerSession)
 				<-r.usageDone
-				checkpoint := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(sources))
+				if err := r.settleAndClassify(ctx, stateRoot, core, sessions, usageService); err != nil {
+					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+					return
+				}
+				checkpoint := sessionorigin.WatchFingerprint(epoch, ingest.FingerprintSources(sources))
 				if err := core.SetSetting(ctx, "watch.fingerprint.session", checkpoint); err != nil {
 					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 					return
@@ -1536,6 +1544,8 @@ func failureCode(err error) string {
 		return stateErr.Code
 	}
 	switch {
+	case errors.Is(err, store.ErrTelemetrySourceIdentityPending):
+		return "source_identity_pending"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "deadline_exceeded"
 	case errors.Is(err, context.Canceled):

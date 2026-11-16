@@ -119,7 +119,7 @@ func (s *Service) signalsBatch(ctx context.Context, options []SignalOptions, pro
 						continue
 					}
 					// Match eventsRange's SQL string comparisons and half-open boundaries.
-					if event.EventAt < starts[i] || event.EventAt >= ends[i] || (o.Client != "" && event.Client != o.Client) {
+					if event.EventAt < starts[i] || event.EventAt >= ends[i] || (o.Client != "" && event.Client != o.Client) || !o.Sessions.Allows(event.Client, event.SessionID) {
 						continue
 					}
 					if o.Activity != "" && (!covered || (category.kind != o.Activity && category.sub != o.Activity)) {

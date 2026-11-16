@@ -1,4 +1,5 @@
 import AgentDeckShared
+import AppKit
 import SwiftUI
 
 /// A panel whose own data is absent shows this in place of its values rather
@@ -681,21 +682,53 @@ struct AttributionPanelView: View {
 	}
 }
 
+/// What the Sessions tab asks of its window-level session-scope state. The
+/// view owns no request state: closing a detail or switching tabs loses nothing.
+struct SessionScopeActions {
+	var synchronizationKey: String
+	var synchronize: () async -> Void
+	var choose: (DesktopSessionScopeV1) -> Void
+	var retry: () async -> Void
+
+	@MainActor static var inert: SessionScopeActions {
+		SessionScopeActions(synchronizationKey: "", synchronize: {}, choose: { _ in }, retry: {})
+	}
+}
+
+private enum SessionScopeFocus: Hashable {
+	case scope(DesktopSessionScopeV1)
+	case row(String)
+	case back
+}
+
+private enum SessionCommandCopy: Equatable {
+	case copied
+	case failed
+}
+
 struct SessionsPanelView: View {
 	let panel: SessionsPanelModel
 	let expansion: SectionExpansion
+	let actions: SessionScopeActions
 	@State private var signalNavigation = WorkSignalNavigationState()
+	@State private var originDetail: SessionScopeRow?
+	@State private var commandCopy: SessionCommandCopy?
 	@FocusState private var focusedSignal: WorkSignalSection?
+	@FocusState private var scopeFocus: SessionScopeFocus?
 	@AccessibilityFocusState private var accessibilityFocus: WorkSignalAccessibilityTarget?
 
 	init(
 		panel: SessionsPanelModel,
 		initialNavigation: WorkSignalNavigationState = WorkSignalNavigationState(),
-		expansion: @escaping SectionExpansion = { _ in .constant(true) }
+		initialOriginDetail: SessionScopeRow? = nil,
+		expansion: @escaping SectionExpansion = { _ in .constant(true) },
+		actions: SessionScopeActions = .inert
 	) {
 		self.panel = panel
 		self.expansion = expansion
+		self.actions = actions
 		_signalNavigation = State(initialValue: initialNavigation)
+		_originDetail = State(initialValue: initialOriginDetail)
 	}
 
 	var body: some View {
@@ -703,6 +736,8 @@ struct SessionsPanelView: View {
 			if panel.available {
 				if let detail = signalNavigation.detail {
 					signalDetail(detail)
+				} else if let originDetail {
+					originDetailView(originDetail)
 				} else {
 					overview
 				}
@@ -710,17 +745,36 @@ struct SessionsPanelView: View {
 				UnavailableRow()
 			}
 		}
-		.onChange(of: panel.workSignals.state) { _, state in
-			if state == .empty {
-				_ = signalNavigation.close()
-			}
+		// A detail belongs to the selection it was opened from; any new
+		// selection returns to the list rather than mixing identities.
+		.onChange(of: panel.scope.selectionKey) { _, _ in
+			originDetail = nil
+			commandCopy = nil
+			_ = signalNavigation.close()
+		}
+		.onChange(of: panel.scope.announcement) { _, announcement in
+			guard let announcement else { return }
+			NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+				userInfo: [.announcement: announcement, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+		}
+		.task(id: actions.synchronizationKey) {
+			await actions.synchronize()
 		}
 	}
 
 	private var overview: some View {
 		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
-			StatChipRow(chips: panel.stats)
-			if panel.workSignals.state != .empty {
+			scopeHeader
+			if panel.scope.state == .ready {
+				StatChipRow(chips: panel.scope.stats)
+				if let missing = panel.scope.missingDurationNote {
+					note(missing)
+				}
+				sessionRows
+			}
+			// The signals are their own data domain: a selection with no listed
+			// session still shows them, each family with its own availability.
+			if panel.scope.state == .ready {
 				VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
 					HStack(alignment: .firstTextBaseline) {
 						Text(t(DesktopCopy.sessionsSignals))
@@ -756,36 +810,223 @@ struct SessionsPanelView: View {
 					}
 				}
 			}
-			CollapsibleSection(title: t(DesktopCopy.sessionsProjectRows), isExpanded: expansion("sessions.projects")) {
-				if let emptyCopy = panel.emptyCopy {
-					Text(emptyCopy)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-						.fixedSize(horizontal: false, vertical: true)
-				} else {
-					SessionProjectRowsView(rows: panel.projects)
-				}
-			}
-			if !panel.recent.isEmpty {
-				CollapsibleSection(title: t(DesktopCopy.sessionsRecent), isExpanded: expansion("sessions.recent")) {
-					ForEach(Array(panel.recent.enumerated()), id: \.element.id) { index, row in
-						HStack(alignment: .firstTextBaseline) {
-							VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
-								Text(row.title).font(.body).lineLimit(1).truncationMode(.middle)
-								Text(row.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-							}
-							Spacer()
-							Text(row.when).font(.caption).foregroundStyle(.secondary)
+		}
+	}
+
+	private func note(_ text: String) -> some View {
+		Text(text)
+			.font(.caption)
+			.foregroundStyle(DesktopVisualTheme.muted)
+			.fixedSize(horizontal: false, vertical: true)
+	}
+
+	/// Scope control, its effect, the shown selection and the area's state.
+	/// Selection is shown by text weight and a border, never by color alone.
+	@ViewBuilder
+	private var scopeHeader: some View {
+		let scope = panel.scope
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			if !scope.choices.isEmpty {
+				HStack(spacing: 2) {
+					ForEach(scope.choices) { choice in
+						Button {
+							actions.choose(choice.id)
+						} label: {
+							Text(choice.label)
+								.font(choice.pressed ? .body.weight(.semibold) : .body)
+								.lineLimit(1)
+								.fixedSize()
+								.frame(maxWidth: .infinity, minHeight: 26)
+								.contentShape(Rectangle())
 						}
-						.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+						.buttonStyle(.plain)
+						.foregroundStyle(choice.pressed ? DesktopVisualTheme.text : DesktopVisualTheme.muted)
+						.desktopSelectedSegment(choice.pressed)
+						.overlay {
+							if choice.pressed {
+								RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(DesktopVisualTheme.line, lineWidth: 1)
+							}
+						}
+						.focused($scopeFocus, equals: .scope(choice.id))
+						.accessibilityLabel(choice.label)
+						.accessibilityAddTraits(choice.pressed ? [.isSelected, .isButton] : .isButton)
+					}
+				}
+				.padding(2)
+				.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+				.disabled(!scope.choicesEnabled)
+				.accessibilityElement(children: .contain)
+				.accessibilityLabel(t(DesktopCopy.sessionScopeTitle))
+				.accessibilityHint(t(DesktopCopy.sessionScopeNote))
+				note(t(DesktopCopy.sessionScopeNote))
+			}
+			if let selection = scope.selectionLine {
+				Text(selection)
+					.font(.caption.weight(.semibold))
+					.foregroundStyle(DesktopVisualTheme.text)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			if let notice = scope.notice {
+				Label {
+					Text(notice).fixedSize(horizontal: false, vertical: true)
+				} icon: {
+					Image(systemName: scope.state == .ready && scope.retryLabel == nil ? "info.circle" : "exclamationmark.triangle.fill")
+						.foregroundStyle(scope.state == .ready && scope.retryLabel == nil ? DesktopVisualTheme.info : DesktopVisualTheme.warning)
+				}
+				.font(.caption)
+				.foregroundStyle(DesktopVisualTheme.text)
+			}
+			if let unknown = scope.unknownLine {
+				note(unknown)
+			}
+			if let snapshotTime = scope.snapshotTime {
+				note(snapshotTime)
+			}
+			if let hint = scope.hint {
+				note(hint)
+			}
+			if let retry = scope.retryLabel {
+				Button(retry) {
+					Task { await actions.retry() }
+				}
+				.buttonStyle(.borderless)
+			}
+		}
+	}
+
+	@ViewBuilder
+	private var sessionRows: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			if let empty = panel.scope.emptyCopy {
+				note(empty)
+			} else {
+				VStack(alignment: .leading, spacing: 0) {
+					ForEach(Array(panel.scope.rows.enumerated()), id: \.element.id) { index, row in
+						Button {
+							openOrigin(row)
+						} label: {
+							HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+								VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+									Text(row.title).font(.body).lineLimit(1).truncationMode(.middle)
+									Text(row.detail).font(.caption).foregroundStyle(DesktopVisualTheme.muted)
+										.lineLimit(1).truncationMode(.middle)
+								}
+								Spacer(minLength: MenuBarGeometry.withinRow)
+								VStack(alignment: .trailing, spacing: MenuBarGeometry.withinRow) {
+									Text(row.classLabel).font(.caption.weight(.semibold))
+										.multilineTextAlignment(.trailing)
+										.fixedSize(horizontal: false, vertical: true)
+									Text(row.when).font(.caption).foregroundStyle(DesktopVisualTheme.muted).monospacedDigit()
+								}
+							}
+							.frame(maxWidth: .infinity, minHeight: MenuBarGeometry.rowMinimumHeight, alignment: .leading)
+							.contentShape(Rectangle())
+						}
+						.buttonStyle(.plain)
+						.focused($scopeFocus, equals: .row(row.id))
 						.accessibilityElement(children: .combine)
-						if index < panel.recent.count - 1 {
+						.accessibilityAddTraits(.isButton)
+						if index < panel.scope.rows.count - 1 {
 							Divider().overlay(DesktopVisualTheme.lineSoft)
 						}
 					}
 				}
+				.desktopCard()
+			}
+			note(t(DesktopCopy.sessionScopeProjectsNote))
+		}
+	}
+
+	private func openOrigin(_ row: SessionScopeRow) {
+		commandCopy = nil
+		originDetail = row
+		Task { @MainActor in
+			await Task.yield()
+			scopeFocus = .back
+		}
+	}
+
+	/// Returns to the row that opened the detail, or to the scope control when
+	/// that row is no longer in the list.
+	private func closeOrigin() {
+		let origin = originDetail?.id
+		originDetail = nil
+		commandCopy = nil
+		Task { @MainActor in
+			await Task.yield()
+			if let origin, panel.scope.rows.contains(where: { $0.id == origin }) {
+				scopeFocus = .row(origin)
+			} else if let pressed = panel.scope.choices.first(where: \.pressed) {
+				scopeFocus = .scope(pressed.id)
 			}
 		}
+	}
+
+	private func originDetailView(_ row: SessionScopeRow) -> some View {
+		let detail = row.origin
+		return VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			Button {
+				closeOrigin()
+			} label: {
+				Label(t(DesktopCopy.sessionOriginBack), systemImage: "chevron.left")
+			}
+			.buttonStyle(.borderless)
+			.keyboardShortcut(.cancelAction)
+			.focused($scopeFocus, equals: .back)
+			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+				Text(detail.sessionID)
+					.font(.headline)
+					.textSelection(.enabled)
+					.fixedSize(horizontal: false, vertical: true)
+					.accessibilityAddTraits(.isHeader)
+				note(detail.subtitle)
+				ForEach([
+					(t(DesktopCopy.sessionOriginEffective), detail.effective),
+					(t(DesktopCopy.sessionOriginAutomatic), detail.automatic),
+					(t(DesktopCopy.sessionOriginReason), detail.reason),
+					(t(DesktopCopy.sessionOriginRuleVersion), detail.ruleVersion),
+					(t(DesktopCopy.sessionOriginOverride), detail.override),
+					(t(DesktopCopy.sessionOriginOverrideRevision), detail.overrideRevision),
+				], id: \.0) { label, value in
+					VStack(alignment: .leading, spacing: 2) {
+						Text(label).font(.caption).foregroundStyle(DesktopVisualTheme.muted)
+						Text(value).font(.body).fixedSize(horizontal: false, vertical: true)
+					}
+					.accessibilityElement(children: .combine)
+				}
+				note(t(DesktopCopy.sessionOriginReadOnly))
+				Text(detail.command)
+					.font(.caption.monospaced())
+					.textSelection(.enabled)
+					.fixedSize(horizontal: false, vertical: true)
+					.padding(MenuBarGeometry.withinRow)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.background(DesktopVisualTheme.surfaceEmphasis, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+				Button(t(DesktopCopy.sessionOriginCopyCommand)) {
+					copyCommand(detail.command)
+				}
+				.buttonStyle(.borderless)
+				if let commandCopy {
+					Text(commandCopy == .copied ? t(DesktopCopy.sessionOriginCopied) : t(DesktopCopy.sessionOriginCopyFailed))
+						.font(.caption)
+						.foregroundStyle(commandCopy == .copied ? DesktopVisualTheme.muted : DesktopVisualTheme.warning)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+			}
+			.desktopCard()
+		}
+	}
+
+	/// The copied text is exactly the visible command. A failed copy stays
+	/// stated until the next action, so the command can be copied by hand.
+	private func copyCommand(_ command: String) {
+		NSPasteboard.general.clearContents()
+		let copied = NSPasteboard.general.setString(command, forType: .string)
+		commandCopy = copied ? .copied : .failed
+		NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+			.announcement: copied ? t(DesktopCopy.sessionOriginCopied) : t(DesktopCopy.sessionOriginCopyFailed),
+			.priority: NSAccessibilityPriorityLevel.medium.rawValue,
+		])
 	}
 
 	@ViewBuilder
@@ -843,38 +1084,6 @@ struct SessionsPanelView: View {
 
 	private func workSignalTitle(_ section: WorkSignalSection) -> String {
 		panel.workSignals.summaries.first(where: { $0.id == section })?.title ?? section.rawValue
-	}
-}
-
-private struct SessionProjectRowsView: View {
-	let rows: [ShareRow]
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 0) {
-			ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-				HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
-					Text(row.label)
-						.font(.body)
-						.lineLimit(1)
-						.truncationMode(.middle)
-					Spacer()
-					Text(row.value)
-						.font(.caption)
-						.foregroundStyle(DesktopVisualTheme.dim)
-						.lineLimit(1)
-					Text(row.shareText)
-						.font(.body.weight(.semibold))
-						.monospacedDigit()
-						.frame(minWidth: 74, alignment: .trailing)
-						.lineLimit(1)
-				}
-				.frame(minHeight: 32)
-				.accessibilityElement(children: .combine)
-				if index < rows.count - 1 {
-					Divider().overlay(DesktopVisualTheme.lineSoft)
-				}
-			}
-		}
 	}
 }
 
