@@ -82,7 +82,7 @@ Evidence:
 - Reviewer: Claude Code，独立复评会话；未参与 Repair 1，未修改产品代码、测试或配置。
 - Method: 对照 Round 1 发现与 Repair 1 记录，检查修复差异、Health 文案查找顺序和新增回归测试断言是否会因原缺陷失败；按既定配方复算修复候选指纹；核对 CEv1 中修复态各准则的显式复用评估。未重跑原生套件：修复态 native-regression 证据为同一精确状态的新取证。
 - Reviewed state: HEAD `a4a5d684bc1e2d067f8e92113aa1c7f064bd4ba5`；修复候选 `installed-state-ownership:app-state-location:repair-r1-f1-20261110`；28 输入 SHA-256 `6e5da36e2499dc8699f0163373138e626399222af676c5627eb0c1daf08ade9e`，本轮复算一致。
-- Completion gate: 见文末收口状态。
+- Completion gate: VERIFIED（收口目标 `installed-state-ownership:app-state-location:review-r2-20261110`，7/7；见文末收口状态。）
 
 ### 🔴 严重问题 — 必须修复
 
@@ -116,3 +116,5 @@ Task checkpoint：`ad-installed-state-ownership-app-state-location`；ContentSta
 提交建议：取得明确授权后，单独提交 Task 6 的状态路径、原生所有权会话、Health 文案及其修复、Swift/Go 夹具与 harness、tasks.md 状态和本评审记录；保留 Codex 与 Claude 贡献者署名并核验 SSH 签名。
 
 推送建议：取得独立推送授权后，核验提交范围、正文、trailer 和签名，再推送 `origin/feature/installed-state-ownership`；未执行推送。
+
+2026-11-16 集成记录格式校正：将本轮门禁字段中的文末指引展开为文末已记录的 VERIFIED，便于完整 PR 范围的结构检查。主控制器重新查询上述原始 ContentState，结果仍为 VERIFIED 7/7，missing、invalidated、unresolved 均为空。原评审内容、候选身份、结论和验证边界保留。
