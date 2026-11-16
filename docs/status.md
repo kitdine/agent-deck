@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,24 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- OTel member behavior in this tree: version-tolerant admission, automatic
+  historical readmission, JSONL/OTel numerical ownership and built-in session
+  classification are delivered by source commit `3f66611bfe4530fe9b724d968c0040ea81492efd`.
+  The [topic tasks](topics/otel-version-tolerant-metering/tasks.md) and
+  [final review](topics/otel-version-tolerant-metering/reviews/builtin-rule-set.md)
+  preserve source acceptance and known limits: TUI purpose is inferred, exec
+  Memories remain Work, and unresolved session-only watch identity remains pending.
+  Local implementation reviews and topic evidence passed; actual merge identity,
+  GitHub review, CI and integration evidence belong to the `v0-7-0-contract`
+  workspace's assembly record. Source completion is not release acceptance.
+- The 2026-11-15 contract decision excludes pricing/subscription estimates and
+  OpenCode product support from v0.7.0; installed-state ownership and OTel
+  metering are selected. With this OTel member, installed-state ownership and
+  final combined acceptance remain open. Older batch bullets below retain their
+  original evidence; their pricing/auxiliary remaining-member statements are
+  historical. The version contract remains the membership authority; roadmap
+  direction reconciliation is reserved for its closure task.
 
 - Partial v0.7.0 assembly: [PR #64](https://github.com/kitdine/agent-deck/pull/64)
   integrated `auxiliary-session-classification` into remote main at
