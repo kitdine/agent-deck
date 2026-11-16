@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -77,7 +78,10 @@ func ownershipCommandProcess() (bool, int) {
 	root := newRootCommandWithError(os.Stdin, os.Stdout, os.Stderr)
 	root.SetArgs(args)
 	command, err := root.ExecuteContextC(ctx)
-	if err == nil {
+	// The deadline is how this harness stops a foreground surface. A surface
+	// that reports it while the deadline is already over ended normally; one
+	// that stopped between rounds returns nil.
+	if err == nil || (ctx.Err() != nil && errors.Is(err, context.DeadlineExceeded)) {
 		return true, 0
 	}
 	if jsonOutputRequested(args) {
@@ -288,6 +292,11 @@ func seedOwnershipCommand(t *testing.T, f ownershiptest.Fixture, state string, r
 	}
 	if strings.HasPrefix(row.name, "session") || strings.HasPrefix(row.name, "desktop.") {
 		invoke("", "session", "scan")
+		// A session-scoped scan returns before its round publishes the derived
+		// caches. The full scope joins that round and waits for all of it, so
+		// nothing in this process still reads the fixture state while the
+		// child runs or the fixture directory is removed.
+		invoke("", "scan")
 	}
 	ext := ""
 	if strings.HasPrefix(row.name, "extension.") {

@@ -29,7 +29,7 @@ BIN_LINK ?= /usr/local/bin/agentdeck
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall install-macos-app uninstall-macos-app release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-desktop-refresh-integration check-macos-distribution
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-ownership-acceptance check-privacy check-release-distribution check-whitespace install uninstall install-macos-app uninstall-macos-app release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-desktop-refresh-integration check-macos-distribution
 
 .PHONY: release-artifact-verify
 
@@ -142,6 +142,11 @@ check-install:
 	bash scripts/test-install-local-app.sh
 	bash scripts/test-completion-install.sh
 	bash scripts/test-shell-integration-acceptance.sh
+
+# Cross-surface ownership acceptance in a temporary account. Its access barrier
+# is sandbox-exec, which cannot nest: run it outside any outer sandbox.
+check-ownership-acceptance:
+	bash scripts/test-ownership-acceptance-environment.sh
 
 check-privacy:
 	@bash scripts/check-privacy.sh
