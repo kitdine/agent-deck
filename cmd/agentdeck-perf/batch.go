@@ -36,6 +36,11 @@ type batchState struct {
 	// UnitDir is the run unit attempt being prepared; startRunUnit records
 	// there what it actually restored. Never persisted.
 	UnitDir string `json:"-"`
+	// State is the measured build's state root for Home, bound per run by
+	// bindStateRoot and re-resolved before every reset. Never persisted.
+	State        string                        `json:"-"`
+	StateSource  string                        `json:"-"`
+	resolveState func() (stateLocation, error) `json:"-"`
 }
 
 func (b *batchState) save() error { return writeJSON(filepath.Join(b.Root, "batch.json"), b) }
@@ -166,7 +171,11 @@ func (b *batchState) startRunUnit(mode stateMode) error {
 	if binding != b.Binding {
 		return errors.New("source tree no longer matches the template binding")
 	}
-	state := filepath.Join(b.Home, ".agentdeck")
+	// Resolved and confined again right before the destructive reset.
+	state, err := b.stateRoot()
+	if err != nil {
+		return err
+	}
 	for _, path := range []string{state, filepath.Join(b.Home, "app-group"), filepath.Join(b.Home, "Library")} {
 		if err := os.RemoveAll(path); err != nil {
 			return err
@@ -215,6 +224,7 @@ type unitIdentity struct {
 	Binding     string            `json:"source_binding"`
 	Template    templateManifest  `json:"template"`
 	Restored    map[string]string `json:"restored_sha256"`
+	StateRoot   string            `json:"state_root,omitempty"`
 }
 
 // recordUnitStart refuses a restore whose bytes are not the template the
@@ -241,7 +251,7 @@ func (b *batchState) recordUnitStart(mode stateMode, restored map[string]string)
 	}
 	records = append(records, unitIdentity{Mode: [...]string{"full", "no_cache", "empty"}[mode], Generation: b.Generations,
 		AnchorDate: b.Anchor, Corpus: b.WorkingCopy.Corpus, WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days,
-		Unparsed: b.WorkingCopy.Unparsed, Binding: b.Binding, Template: b.Template, Restored: restored})
+		Unparsed: b.WorkingCopy.Unparsed, Binding: b.Binding, Template: b.Template, Restored: restored, StateRoot: b.State})
 	return writeJSON(path, records)
 }
 
@@ -251,7 +261,7 @@ func (b *batchState) noOpCheck(traceDir string) (map[string]int64, error) {
 	if err := b.startRunUnit(stateFull); err != nil {
 		return nil, err
 	}
-	if _, err := runCLI(b.Agentdeck, b.Home, filepath.Join(b.Home, ".agentdeck"), traceDir, b.TZ, "noop", "scan"); err != nil {
+	if _, err := runCLI(b.Agentdeck, b.Home, b.State, traceDir, b.TZ, "noop", "scan"); err != nil {
 		return nil, err
 	}
 	return scanEndCounts(traceDir)

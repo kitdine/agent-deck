@@ -73,7 +73,9 @@ type conditionPlan struct {
 	// adds the heroes of each publication of an independent bootstrap from
 	// empty state, for a first frame that shows a partial first batch.
 	oracle, bootstrap bool
-	run               func(cfg runConfig, dir string, index int, s schedule) error
+	// app: the condition launches the App, whose helper chooses the state root.
+	app bool
+	run func(cfg runConfig, dir string, index int, s schedule) error
 }
 
 func runBatchCommand(args []string, stdout, stderr io.Writer) int {
@@ -143,6 +145,17 @@ func runBatch(cfg runConfig, condition string, formal bool, stdout io.Writer) er
 	if err != nil {
 		return err
 	}
+	// Every reset, restore, CLI run and worker wait uses the root the
+	// measured binaries report for the batch HOME.
+	for _, arm := range []*runConfig{&cfg, cfg.Baseline} {
+		if arm == nil {
+			continue
+		}
+		if err := bindStateRoot(arm, plan.app); err != nil {
+			return fmt.Errorf("bind measured state root: %w", err)
+		}
+	}
+	environment.StateRoot, environment.StateRootSource = cfg.Batch.State, cfg.Batch.StateSource
 	// Keep the machine awake for the whole run; caffeinate exits with us.
 	caffeinate := exec.Command("/usr/bin/caffeinate", "-dimsu", "-w", strconv.Itoa(os.Getpid()))
 	if err := caffeinate.Start(); err != nil {
@@ -485,6 +498,8 @@ type armIdentity struct {
 	WorkingCopy       string            `json:"working_copy_identity"`
 	ShiftDays         int               `json:"shift_days"`
 	Unparsed          int               `json:"timestamps_unparsed"`
+	StateRoot         string            `json:"state_root,omitempty"`
+	StateRootSource   string            `json:"state_root_source,omitempty"`
 }
 
 // appBinaries are the measured App's executables, relative to the bundle.
@@ -505,7 +520,8 @@ func writeArmIdentity(cfg runConfig) error {
 func identifyArm(cfg runConfig) (armIdentity, error) {
 	b := cfg.Batch
 	identity := armIdentity{Binaries: map[string]string{}, AnchorDate: b.Anchor, Corpus: b.WorkingCopy.Corpus,
-		WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days, Unparsed: b.WorkingCopy.Unparsed}
+		WorkingCopy: b.WorkingCopy.Identity, ShiftDays: b.WorkingCopy.Days, Unparsed: b.WorkingCopy.Unparsed,
+		StateRoot: b.State, StateRootSource: b.StateSource}
 	identity.P09BaselineTraced = cfg.P09BaselineTraced
 	var err error
 	if cfg.Perf != "" {
@@ -545,6 +561,10 @@ type batchEnvironment struct {
 	Template      templateManifest `json:"template"`
 	Generations   int              `json:"working_copy_generations"`
 	StartedAt     int64            `json:"started_uptime_ns"`
+	// The measured build's state root for the batch HOME and how it was
+	// learned (state_location, or legacy_default for an older build).
+	StateRoot       string `json:"state_root"`
+	StateRootSource string `json:"state_root_source"`
 }
 
 func output(name string, args ...string) string {
@@ -695,7 +715,7 @@ func launchApp(cfg runConfig, home, traceDir string, steps []map[string]any, tim
 	}
 	// Scan workers the App started outlive it briefly; their traces are
 	// complete, and the state root safe to reset, only once they exit.
-	if waitErr := waitForWorkers(filepath.Join(home, ".agentdeck"), 60*time.Second); err == nil {
+	if waitErr := waitForWorkers(cfg.Batch.State, 60*time.Second); err == nil {
 		err = waitErr
 	}
 	return err
@@ -845,9 +865,12 @@ func unflushedTrace(dir string) (string, error) {
 }
 
 func workerRunning(stateDir string) bool {
-	needles := []string{"--state-dir " + stateDir + " scan-worker"}
-	if resolved, err := filepath.EvalSymlinks(stateDir); err == nil && resolved != stateDir {
-		needles = append(needles, "--state-dir "+resolved+" scan-worker")
+	if stateDir == "" {
+		return false
+	}
+	var needles []string
+	for _, alias := range pathAliases(stateDir) {
+		needles = append(needles, "--state-dir "+alias+" scan-worker")
 	}
 	for _, line := range strings.Split(output("/bin/ps", "-Ao", "command="), "\n") {
 		for _, needle := range needles {
@@ -867,7 +890,7 @@ func helperAlive(cfg runConfig) bool {
 			return true
 		}
 	}
-	return workerRunning(filepath.Join(cfg.Batch.Home, ".agentdeck"))
+	return workerRunning(cfg.Batch.State)
 }
 
 func appendCLIRun(dir string, run cliRun) error {
@@ -983,7 +1006,7 @@ func conditionPlans() map[string]conditionPlan {
 	usable := step("wait_usable", "ms", 30000)
 	settle := step("sleep", "ms", 2000)
 	home := func(cfg runConfig) string { return cfg.Batch.Home }
-	state := func(cfg runConfig) string { return filepath.Join(cfg.Batch.Home, ".agentdeck") }
+	state := func(cfg runConfig) string { return cfg.Batch.State }
 	recordCLI := func(dir string, run cliRun, err error) error {
 		if appendErr := appendCLIRun(dir, run); err == nil {
 			err = appendErr
@@ -991,16 +1014,16 @@ func conditionPlans() map[string]conditionPlan {
 		return err
 	}
 	return map[string]conditionPlan{
-		"P01-first": {pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
+		"P01-first": {app: true, pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
 			run: app(stateFull, fixed(usable, settle, click(5000, 1)), 2*time.Minute)},
 		// Inner open/close clicks per process after the first, which is skipped.
-		"P01-repeat": {pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 10, Inner: 20}, oracle: true,
+		"P01-repeat": {app: true, pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 10, Inner: 20}, oracle: true,
 			run: app(stateFull, func(s schedule) []map[string]any {
 				return []map[string]any{usable, settle, click(5000, s.Inner+1)}
 			}, 5*time.Minute)},
 		// A first and a repeated click while a full rebuild of the working copy
 		// runs in a separate state root; stats counts only clicks inside it.
-		"P01-rebuild": {pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
+		"P01-rebuild": {app: true, pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
 			run: func(cfg runConfig, dir string, _ int, _ schedule) error {
 				if err := cfg.Batch.startRunUnit(stateFull); err != nil {
 					return err
@@ -1024,7 +1047,7 @@ func conditionPlans() map[string]conditionPlan {
 			}},
 		// The excluded routing segment: Inner pairs of an event click (reported,
 		// never invalidating, when unrouted) and an action click in one process.
-		"P01-routing": {pilot: schedule{Units: 1, Inner: 20},
+		"P01-routing": {app: true, pilot: schedule{Units: 1, Inner: 20},
 			run: app(stateFull, func(s schedule) []map[string]any {
 				steps := []map[string]any{usable, settle}
 				for range s.Inner {
@@ -1033,13 +1056,13 @@ func conditionPlans() map[string]conditionPlan {
 				}
 				return steps
 			}, 10*time.Minute)},
-		"P02": {pilot: schedule{Units: 20}, formal: schedule{Units: 100},
+		"P02": {app: true, pilot: schedule{Units: 20}, formal: schedule{Units: 100},
 			run: app(stateFull, fixed(usable, settle, click(5000, 1)), 2*time.Minute)},
 		// Selections start once the publication is complete: P03 requires a
 		// restored publication with no background work.
 		// Formal: 4 run units of 25 per dimension, so the gate resamples whole
 		// A B B A groups (design decision of 2026-10-24, MH-R1-F2).
-		"P03": {pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 4, Inner: 25}, oracle: true,
+		"P03": {app: true, pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 4, Inner: 25}, oracle: true,
 			run: app(stateFull, func(s schedule) []map[string]any {
 				return []map[string]any{usable, step("wait_complete", "ms", 600000), settle, click(5000, 1),
 					step("select", "dimension", "client", "values", []string{"codex", "claude", "all"}, "count", s.Inner, "ms", 5000),
@@ -1051,18 +1074,18 @@ func conditionPlans() map[string]conditionPlan {
 			}, 30*time.Minute)},
 		// Launch conditions start at app.ready, not at a click; they open the
 		// popover with the alternative stimulus as soon as the item is on screen.
-		"P04": {pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
+		"P04": {app: true, pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true,
 			run: app(stateNoCache, fixed(step("open_action", "ms", 30000)), 3*time.Minute)},
 		// P11's first frame shows a partial first batch (performance evaluation,
 		// P11 row): it is checked against the bootstrap publication with its
 		// coverage, including the partial marker, not against the full hero.
-		"P11-first": {pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true, bootstrap: true,
+		"P11-first": {app: true, pilot: schedule{Units: 20}, formal: schedule{Units: 100}, oracle: true, bootstrap: true,
 			run: app(stateEmpty, fixed(step("open_action", "ms", 60000)), 5*time.Minute)},
-		"P11-full": {pilot: schedule{Units: 1}, formal: schedule{Units: 5},
+		"P11-full": {app: true, pilot: schedule{Units: 1}, formal: schedule{Units: 5},
 			run: app(stateEmpty, fixed(step("open_action", "ms", 60000), step("wait_complete", "ms", 3600000)), 70*time.Minute)},
 		// The window opens 120 s after model.usable once no helper is alive; a
 		// helper alive 7 min after model.usable is a product failure.
-		"P06": {pilot: schedule{Units: 1, Window: 300}, formal: schedule{Units: 3, Window: 1800},
+		"P06": {app: true, pilot: schedule{Units: 1, Window: 300}, formal: schedule{Units: 3, Window: 1800},
 			run: func(cfg runConfig, dir string, _ int, s schedule) error {
 				if err := cfg.Batch.startRunUnit(stateFull); err != nil {
 					return err
@@ -1176,7 +1199,7 @@ func conditionPlans() map[string]conditionPlan {
 		// Formal: 4 write sequences of 25, each from a regenerated working
 		// copy, so the gate resamples whole A B B A groups (design decision of
 		// 2026-10-24, MH-R1-F2).
-		"P10": {pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 4, Inner: 25}, writes: true,
+		"P10": {app: true, pilot: schedule{Units: 1, Inner: 20}, formal: schedule{Units: 4, Inner: 25}, writes: true,
 			run: runP10},
 	}
 }

@@ -500,6 +500,10 @@ func TestUnitIdentityRecordsTheTemplateEachAttemptRestored(t *testing.T) {
 	}
 	b := &batchState{Root: root, Home: home, Anchor: "2026-10-29", Binding: binding,
 		WorkingCopy: shiftResult{Corpus: "corpus", Identity: "copy", Days: 7}}
+	cfg := runConfig{Agentdeck: fakeStateLocation(t, reportIsolatedRoot), TZ: "UTC", Batch: b}
+	if err := bindStateRoot(&cfg, false); err != nil {
+		t.Fatal(err)
+	}
 	generate := func(generation int) {
 		template := filepath.Join(root, "template")
 		if err := os.MkdirAll(template, 0o700); err != nil {
@@ -557,7 +561,7 @@ func TestUnitIdentityRecordsTheTemplateEachAttemptRestored(t *testing.T) {
 		core, session := sha256Hex(fmt.Sprintf("core-%d", generation)), sha256Hex(fmt.Sprintf("session-%d", generation))
 		if got.Generation != generation || got.Mode != "full" || got.Binding != binding || got.Template.CoreSHA256 != core ||
 			got.Restored["agentdeck.sqlite3"] != core || got.Restored["sessions.sqlite3"] != session ||
-			got.WorkingCopy != "copy" || got.Corpus != "corpus" || got.AnchorDate != "2026-10-29" {
+			got.WorkingCopy != "copy" || got.Corpus != "corpus" || got.AnchorDate != "2026-10-29" || got.StateRoot != b.State {
 			t.Fatalf("%s: record = %+v, want generation %d as restored", dir, got, generation)
 		}
 	}
