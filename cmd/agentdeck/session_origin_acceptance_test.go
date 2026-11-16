@@ -72,10 +72,10 @@ func cohortOTelExport(conversation string) string {
 		return fmt.Sprintf(`{"key":%q,"value":{"stringValue":%q}}`, key, value)
 	}
 	count := func(key, value string) string { return fmt.Sprintf(`{"key":%q,"value":{"intValue":%q}}`, key, value) }
-	resource := "[" + attr("service.name", "codex_exec") + "," + attr("service.version", "0.165.0") + "]"
+	resource := "[" + attr("service.name", "codex-app-server") + "," + attr("service.version", "0.165.0") + "]"
 	record := "[" + strings.Join([]string{
 		attr("event.name", "codex.sse_event"), attr("event.kind", "response.completed"), attr("model", "gpt-5.4"),
-		attr("originator", "codex_exec"), attr("conversation.id", conversation),
+		attr("originator", "codex-tui"), attr("conversation.id", conversation),
 		count("input_token_count", "1000"), count("output_token_count", "10"), count("cached_token_count", "0"),
 	}, ",") + "]"
 	return fmt.Sprintf(`{"resourceLogs":[{"resource":{"attributes":%s},"scopeLogs":[{"logRecords":[{"timeUnixNano":"1793272990000000000","body":{"stringValue":"x"},"attributes":%s}]}]}]}`, resource, record)
@@ -143,10 +143,10 @@ type cohortOracle map[string]string
 
 func baseOracle() cohortOracle {
 	return cohortOracle{
-		"claude/" + cohortWork:     "unknown",
+		"claude/" + cohortWork:     "work",
 		"claude/" + cohortObserver: "auxiliary",
-		"claude/" + cohortUnknown:  "unknown",
-		"codex/" + cohortCodex:     "unknown",
+		"claude/" + cohortUnknown:  "work",
+		"codex/" + cohortCodex:     "work",
 		"codex/" + cohortOTel:      "auxiliary",
 	}
 }
@@ -336,11 +336,11 @@ func TestIntegratedAcceptanceEverySurfaceAgreesOnTheCohort(t *testing.T) {
 		rules[value["client"].(string)+"/"+value["session_id"].(string)] = origin["reason_code"].(string) + "/" + origin["rule_version"].(string)
 	}
 	wantRules := map[string]string{
-		"claude/" + cohortWork:     "origin_metadata_missing/origin-reducer-v1",
+		"claude/" + cohortWork:     "default_work/default-work-v1",
 		"claude/" + cohortObserver: "maintenance_origin/claude-mem-sdk-map-v1",
-		"claude/" + cohortUnknown:  "origin_metadata_missing/origin-reducer-v1",
-		"codex/" + cohortCodex:     "origin_metadata_missing/origin-reducer-v1",
-		"codex/" + cohortOTel:      "maintenance_origin/codex-otel-background-v1",
+		"claude/" + cohortUnknown:  "default_work/default-work-v1",
+		"codex/" + cohortCodex:     "default_work/default-work-v1",
+		"codex/" + cohortOTel:      "maintenance_origin/codex-otel-tui-background-v1",
 	}
 	if !reflect.DeepEqual(rules, wantRules) {
 		t.Fatalf("rules = %v\nwant    %v", rules, wantRules)
@@ -356,7 +356,7 @@ func TestIntegratedAcceptanceEverySurfaceAgreesOnTheCohort(t *testing.T) {
 		t.Fatalf("legacy selection = %#v", selection)
 	}
 	text := runOriginCLI(t, c.state, "--no-color", "session", "list")
-	if text.exit != 0 || !strings.Contains(text.stdout, "Scope: work · 3 sessions · 3 unknown") || strings.Contains(text.stdout, cohortObserver) || strings.Contains(text.stdout, cohortOTel) {
+	if text.exit != 0 || !strings.Contains(text.stdout, "Scope: work · 3 sessions · 0 unknown") || strings.Contains(text.stdout, cohortObserver) || strings.Contains(text.stdout, cohortOTel) {
 		t.Fatalf("text default = %#v", text)
 	}
 
@@ -471,7 +471,7 @@ func TestIntegratedAcceptanceControlChainKeepsEveryEventAndCost(t *testing.T) {
 	// Disabling the source invalidates its evidence only.
 	c.run(t, "--format", "json", "session", "origin-source", "disable", "claude-mem")
 	noImport("after disable")
-	check("after disable", cleared.with(observer, "unknown"))
+	check("after disable", cleared.with(observer, "work"))
 	c.run(t, "--format", "json", "session", "origin-source", "set", "claude-mem", "--data-dir", c.claudeMem.Dir)
 	noImport("after re-enable")
 	check("after re-enable", cleared)
@@ -533,7 +533,7 @@ func TestIntegratedAcceptanceIncrementalEqualsFullRebuild(t *testing.T) {
 	writeCohortFile(t, filepath.Join(c.home, ".codex", "sessions", "2026", "10", "29", "rollout-2026-10-29T11-23-00-"+cohortOTel+".jsonl"), codexRollout(cohortOTel))
 	c.run(t, "--format", "json", "scan")
 
-	revoked := baseOracle().with("codex/"+cohortOTel, "unknown")
+	revoked := baseOracle().with("codex/"+cohortOTel, "work")
 	c.assertSurfaces(t, "incremental", revoked)
 	events, totals := c.usageIdentity(t, "incremental")
 	// The session's rollout is now the usage source: its single turn replaces
@@ -581,7 +581,7 @@ func TestIntegratedAcceptanceUnreadableSourceDegradesAndRecovers(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(c.claudeMem.Dir, 0o700) })
 	c.run(t, "--format", "json", "scan")
-	degraded := oracle.with("claude/"+cohortObserver, "unknown")
+	degraded := oracle.with("claude/"+cohortObserver, "work")
 	c.assertSurfaces(t, "source unreadable", degraded)
 	view := c.run(t, "--format", "json", "desktop", "session-scope", "--scope", "work", "--client", "claude", "--period", "today", "--recent-limit", "20", "--as-of", cohortAsOf)["data"].(map[string]any)
 	coverage := view["origin_coverage"].(map[string]any)

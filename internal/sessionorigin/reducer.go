@@ -12,8 +12,8 @@ import (
 )
 
 // ReducerVersion names the shared reduction and the canonical encodings below.
-// It is the rule_version of a result no maintenance rule produced.
-const ReducerVersion = "origin-reducer-v1"
+// Diagnostic results use this version; normal defaults name their rule.
+const ReducerVersion = "origin-reducer-v2"
 
 // Evidence purposes.
 const (
@@ -33,7 +33,8 @@ type Evidence struct {
 // Assessment is everything the reducer knows about one canonical session.
 // Flags record why evidence could not be produced; they never stand in for it.
 type Assessment struct {
-	Evidence []Evidence
+	Evidence     []Evidence
+	FallbackRule string
 	// Unavailable names the rule whose source could not be read for this key.
 	Unavailable string
 	// Unsupported names the rule whose source marks this key outside its
@@ -54,12 +55,11 @@ type Result struct {
 	RuleVersion string
 }
 
-// Reduce applies the classification rules of architecture §3.3 in one fixed
-// order. A missing mapping never proves work, and nothing but validated
-// maintenance evidence yields auxiliary.
+// Reduce prioritizes stale inputs, conflicts, auxiliary evidence and source
+// diagnostics before defaults. Default Work is a result, not work evidence.
 func Reduce(a Assessment) Result {
 	if a.InputMismatch {
-		return Result{ClassUnknown, ReasonOriginInputMismatch, ReducerVersion}
+		return Result{ClassWork, ReasonOriginInputMismatch, ReducerVersion}
 	}
 	auxiliary, work := []string{}, false
 	for _, item := range a.Evidence {
@@ -70,25 +70,48 @@ func Reduce(a Assessment) Result {
 			work = true
 		}
 	}
-	sort.Strings(auxiliary)
+	sort.Slice(auxiliary, func(i, j int) bool {
+		priority := func(id string) int {
+			for _, r := range builtinRules {
+				if r.ID == id {
+					return r.Priority
+				}
+			}
+			return 1000
+		}
+		a, b := priority(auxiliary[i]), priority(auxiliary[j])
+		if a == b {
+			return auxiliary[i] < auxiliary[j]
+		}
+		return a < b
+	})
 	if a.Conflicting || (work && len(auxiliary) > 0) {
-		return Result{ClassUnknown, ReasonConflictingOrigin, ReducerVersion}
+		return Result{ClassWork, ReasonConflictingOrigin, ReducerVersion}
 	}
 	if len(auxiliary) > 0 {
+		for _, rule := range builtinRules {
+			if rule.Class == ClassAuxiliary && rule.matches(a) {
+				return Result{ClassAuxiliary, ReasonMaintenanceOrigin, rule.ID}
+			}
+		}
 		return Result{ClassAuxiliary, ReasonMaintenanceOrigin, auxiliary[0]}
 	}
-	// Explicit work evidence alone has no reason code yet (adding one is a
-	// contract change for all four surfaces), so it stays conservatively unknown.
+	// Diagnostics remain visible even though the session stays in Work.
 	if a.Unavailable != "" {
-		return Result{ClassUnknown, ReasonOriginSourceUnavailable, a.Unavailable}
+		return Result{ClassWork, ReasonOriginSourceUnavailable, a.Unavailable}
 	}
 	if a.Unsupported != "" {
-		return Result{ClassUnknown, ReasonOriginRuleUnsupported, a.Unsupported}
+		return Result{ClassWork, ReasonOriginRuleUnsupported, a.Unsupported}
 	}
 	if a.TaskChild {
-		return Result{ClassUnknown, ReasonTaskChildUnconfirmed, ReducerVersion}
+		return Result{ClassWork, ReasonTaskChildUnconfirmed, ReducerVersion}
 	}
-	return Result{ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion}
+	for _, rule := range builtinRules {
+		if rule.Class == ClassWork && rule.matches(a) {
+			return Result{ClassWork, ReasonDefaultWork, rule.ID}
+		}
+	}
+	panic("missing default rule")
 }
 
 // Effective overlays a user override on the automatic class. Only an active
@@ -114,8 +137,15 @@ type SourceGeneration struct {
 	ParserVersion int64
 }
 
-// ruleVersions are the maintenance rules this reducer version evaluates.
-var ruleVersions = []string{RuleClaudeMemSDKMapV1, RuleCodexOTelBackgroundV1}
+// ruleVersions are the ordered rules included in every input token.
+var ruleVersions = BuiltinRuleIDs()
+
+// WatchFingerprint binds a completed session inventory to its rule policy.
+// A rule upgrade schedules classification even when source files are unchanged.
+func WatchFingerprint(epoch int64, sourceFingerprint string) string {
+	return "v2:" + strconv.FormatInt(epoch, 10) + ":" + sourceFingerprint +
+		":" + ReducerVersion + ":" + strings.Join(ruleVersions, ",")
+}
 
 // InputToken is the canonical origin_input_token: SHA-256 over the canonical
 // key, each current source's identity and generation, parser-supplied purpose
@@ -123,7 +153,11 @@ var ruleVersions = []string{RuleClaudeMemSDKMapV1, RuleCodexOTelBackgroundV1}
 // and the classifier use this one encoding; it never reads a path or content,
 // so an append or a move keeps the token and a rewrite changes it.
 func InputToken(client, sessionID string, sources []SourceGeneration, parserEvidence []Evidence) string {
-	lines := []string{"origin-input-v1", "reducer=" + ReducerVersion, "rules=" + strings.Join(ruleVersions, ","),
+	return inputTokenWithRules(client, sessionID, sources, parserEvidence, ReducerVersion, ruleVersions)
+}
+
+func inputTokenWithRules(client, sessionID string, sources []SourceGeneration, parserEvidence []Evidence, reducer string, rules []string) string {
+	lines := []string{"origin-input-v1", "reducer=" + reducer, "rules=" + strings.Join(rules, ","),
 		"client=" + escape(client), "session=" + escape(sessionID)}
 	copies := make([]string, 0, len(sources))
 	for _, source := range sources {

@@ -1,10 +1,18 @@
 ---
 status: active
 created: 2026-10-26
-updated: 2026-11-03
+updated: 2026-11-15
 ---
 
 # 辅助会话识别与工作视图隔离：需求
+
+## 2026-11-15 默认策略更新
+
+本需求中普通来源、冲突和缺映射默认 unknown，以及精确 0.165.0 OTel 条目的条款，已由
+[自动分类需求](../otel-version-tolerant-metering/requirements.md)和
+[当前产品合同](../../specs/cli-design.md#session-origin-classification)更新。
+现行默认工作、TUI 后台推断、exec 工作兜底和可选增强状态按新合同执行。
+以下原始需求和既有验收记录保留其历史上下文，用户覆盖、完整消耗和范围选择合同继续适用。
 
 ## 来源与状态
 

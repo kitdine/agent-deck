@@ -2452,6 +2452,9 @@
       "success_schema": {
         "command": "string",
         "data": {
+          "builtin_rules": [
+            "string"
+          ],
           "sources": [
             {
               "available": "boolean",
@@ -2459,6 +2462,7 @@
               "configured": null,
               "enabled": null,
               "kind": "string",
+              "otel_owned_sessions": "number",
               "reason_code": "string",
               "receiver": "string",
               "rule_version": "string",

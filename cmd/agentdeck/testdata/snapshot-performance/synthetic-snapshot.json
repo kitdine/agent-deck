@@ -7437,7 +7437,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 34
+          "count": 35
         },
         {
           "name": "pending_operations",
@@ -7543,7 +7543,7 @@
       "generated_at": "2026-08-13T10:00:00Z",
       "origin_coverage": {
         "complete": true,
-        "unknown_count": 1,
+        "unknown_count": 0,
         "reasons": []
       },
       "counts": {
@@ -7561,10 +7561,10 @@
           "first_at": "2026-08-13T08:00:00Z",
           "last_at": "2026-08-13T08:00:05Z",
           "origin": {
-            "automatic": "unknown",
-            "effective": "unknown",
-            "reason_code": "origin_metadata_missing",
-            "rule_version": "origin-reducer-v1",
+            "automatic": "work",
+            "effective": "work",
+            "reason_code": "default_work",
+            "rule_version": "default-work-v1",
             "override": null,
             "revision": 0
           }

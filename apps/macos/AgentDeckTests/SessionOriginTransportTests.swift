@@ -152,6 +152,22 @@ final class SessionOriginTransportTests: XCTestCase {
 		XCTAssertEqual(SessionOriginDecoding.sourceStatus(run(envelope("session.origin_source.status", #"{"sources":[\#(claude)]}"#))), .unavailable)
 	}
 
+    func testRuleStatusCountsAreOptionalForOldHelpersAndValidatedForNewHelpers() {
+        let claude = #"{"source":"claude-mem","kind":"adapter","available":false,"rule_version":"claude-mem-sdk-map-v1","reason_code":"source_not_configured"}"#
+        let codex = #"{"source":"codex-otel-background","kind":"builtin","available":true,"rule_version":"codex-otel-tui-background-v1","background_sessions":1,"otel_owned_sessions":3}"#
+        let data = #"{"sources":[\#(claude),\#(codex)],"builtin_rules":["claude-mem-sdk-map-v1","codex-otel-tui-background-v1","codex-otel-exec-work-v1","default-work-v1"]}"#
+        guard case let .value(value) = SessionOriginDecoding.sourceStatus(run(envelope("session.origin_source.status",data))) else { return XCTFail("new status") }
+        XCTAssertEqual(value.codexBackground.otelOwnedSessions,3)
+        XCTAssertEqual(value.builtinRules?.last,"default-work-v1")
+        let old = #"{"sources":[\#(claude),\#(codex.replacingOccurrences(of: ",\"otel_owned_sessions\":3",with: ""))]}"#
+        guard case let .value(legacy) = SessionOriginDecoding.sourceStatus(run(envelope("session.origin_source.status",old))) else { return XCTFail("old helper") }
+        XCTAssertNil(legacy.codexBackground.otelOwnedSessions)
+        XCTAssertNil(legacy.builtinRules)
+        for invalid in [data.replacingOccurrences(of:"\"otel_owned_sessions\":3",with:"\"otel_owned_sessions\":0"),data.replacingOccurrences(of:"\"otel_owned_sessions\":3",with:"\"otel_owned_sessions\":-1")] {
+            XCTAssertEqual(SessionOriginDecoding.sourceStatus(run(envelope("session.origin_source.status",invalid))),.unavailable)
+        }
+    }
+
 	private func run(_ stdout: Data) -> DesktopOriginHelperRun { .succeeded(stdout: stdout) }
 
 	private func envelope(_ command: String, _ data: String, partial: Bool = false) -> Data {

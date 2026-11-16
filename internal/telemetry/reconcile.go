@@ -31,15 +31,13 @@ const (
 // later complete inventory, before its conversation can be OTel-owned.
 const SettleAfter = 10 * time.Minute
 
-// SupportEntry is one producer/version/transport/event shape whose identity
-// and ownership behavior an isolated producer experiment verified.
+// SupportEntry identifies the admitted producer family, the version the
+// producer actually reported, and the transport of one observation.
 type SupportEntry struct {
 	Producer   string
 	Version    string
 	Originator string
 	Transport  string
-	EventName  string
-	EventKind  string
 }
 
 // Name identifies the entry in observations and session markers.
@@ -47,30 +45,20 @@ func (e SupportEntry) Name() string {
 	return e.Producer + "/" + e.Version + "/" + e.Originator + "/" + e.Transport
 }
 
-// supportTable lists the combinations verified by isolated producer
-// experiments on 2026-10-29 (Bug ad-bug-codex-subagent-usage-attribution):
-// usage events carry conversation.id; main requests are in the conversation's
-// rollout; background requests (Memories consolidation, TUI title generation)
-// run under conversations without a rollout; counts equal the server's usage;
-// failed attempts emit no usage event. Combinations not listed, such as the
-// Desktop originator or WebSocket, stay capture_only.
-var supportTable = []SupportEntry{
-	{Producer: "codex_exec", Version: "0.165.0", Originator: "codex_exec", Transport: "sse", EventName: "codex.sse_event", EventKind: "response.completed"},
-	{Producer: "codex-app-server", Version: "0.165.0", Originator: "codex-tui", Transport: "sse", EventName: "codex.sse_event", EventKind: "response.completed"},
-}
-
+// supported applies store.TelemetryAdmitted, the single admission definition.
+// The families and event shape were verified by isolated producer experiments
+// (2026-10-29, Bug ad-bug-codex-subagent-usage-attribution): usage events
+// carry conversation.id, counts equal the server's usage, and failed attempts
+// emit no usage event. The version is kept as provenance and never compared.
 func supported(record Record) (SupportEntry, bool) {
-	for _, entry := range supportTable {
-		if record.Producer == entry.Producer && record.ProducerVersion == entry.Version && record.Originator == entry.Originator && record.Transport == entry.Transport &&
-			record.EventName == entry.EventName && record.EventKind == entry.EventKind {
-			return entry, true
-		}
+	if !store.TelemetryAdmitted(record.Producer, record.ProducerVersion, record.Originator, record.Transport, record.EventName, record.EventKind) {
+		return SupportEntry{}, false
 	}
-	return SupportEntry{}, false
+	return SupportEntry{Producer: record.Producer, Version: record.ProducerVersion, Originator: record.Originator, Transport: record.Transport}, true
 }
 
 // MeteringCapability is the reconciler's verdict: disabled when the receiver
-// is off, reconciled when the latest valid producer is in the support table,
+// is off, reconciled when the latest metered event was admitted,
 // capture_only otherwise.
 func MeteringCapability(enabled bool, lastSupportEntry string, anyReceived bool) (Capability, string) {
 	switch {
@@ -147,7 +135,14 @@ type Reconciler struct {
 	Batch   int
 	// SessionsChanged, when set, runs after a settle pass changed OTel-owned
 	// sessions, to refresh the session-index projection.
-	SessionsChanged   func(context.Context) error
+	SessionsChanged func(context.Context) error
+	// RefreshSessions requests initial projection/classification even without a numerical change.
+	RefreshSessions bool
+	// PrepareSources, when set, runs before every settle pass. The caller
+	// injects the usage layer's source identity preparation, which this
+	// package cannot import. The store checks the outcome inside the settle
+	// transaction, so a missing or failed preparation defers promotion.
+	PrepareSources    func(context.Context) (bool, error)
 	projectionPending bool
 }
 
@@ -192,21 +187,41 @@ func (r *Reconciler) Drain(ctx context.Context) (store.TelemetryApplyResult, err
 }
 
 // Settle re-evaluates conversation ownership and, when anything changed,
-// refreshes the session-index projection.
+// refreshes the session-index projection. A pass that could not promote
+// because source identities are incomplete still commits and projects its
+// retractions, and returns store.ErrTelemetrySourceIdentityPending: it is not
+// a successful settlement.
 func (r *Reconciler) Settle(ctx context.Context) (store.TelemetrySettleResult, error) {
+	var prepareErr error
+	var preparedChanged bool
+	if r.PrepareSources != nil {
+		preparedChanged, prepareErr = r.PrepareSources(ctx)
+	}
 	result, err := r.Store.SettleTelemetry(ctx, r.Now(), SettleAfter)
-	if err != nil {
+	// Preparation may have committed a retraction before settlement fails.
+	// Keep that work pending until its projection succeeds on a later call.
+	r.projectionPending = r.projectionPending || r.RefreshSessions || preparedChanged || result.Changed
+	result.Changed = r.projectionPending
+	pending := errors.Is(err, store.ErrTelemetrySourceIdentityPending)
+	if err != nil && !pending {
 		return result, err
 	}
-	result.Changed = result.Changed || r.projectionPending
 	if result.Changed && r.SessionsChanged != nil {
 		if err := r.SessionsChanged(ctx); err != nil {
 			r.projectionPending = true
 			return result, err
 		}
 	}
-	r.projectionPending = false
-	return result, nil
+	r.RefreshSessions = false
+	if pending {
+		r.projectionPending = false
+		return result, err
+	}
+	// Callers publish completed and identity-pending passes. An ordinary
+	// preparation error suppresses that notification, so a later successful
+	// pass must still report the committed changes even after projection.
+	r.projectionPending = result.Changed && prepareErr != nil && !errors.Is(prepareErr, store.ErrTelemetrySourceIdentityPending)
+	return result, prepareErr
 }
 
 // Import normalizes records from an explicitly named OTLP JSON file through

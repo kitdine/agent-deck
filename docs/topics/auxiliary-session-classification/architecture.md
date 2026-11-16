@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-27
-updated: 2026-11-11
+updated: 2026-11-15
 ---
 
 # 辅助会话分类：架构与数据合同
@@ -104,38 +104,30 @@ ID 格式限制为规范 UUID；非 UUID/合成 provider 前缀不参与此适�
 
 ### 3.3 分类归约
 
-规则输出 automatic=`work|auxiliary|unknown`，reason_code 与 rule_version；effective 另叠加用户覆盖。
-首版维护适配器可产生 auxiliary；当前原生 parser 没有已核实的显式用户用途字段，普通来源保守 unknown，
-仍在 Work 视图。不会宣称普通日志已被证明为 work。显式用户覆盖可将其设为 work。
-任务子代理与主会话同 ID 时保持同一 canonical 会话；有独立 ID 但无可验证用途关系则 unknown，仍可见。
-后续支持的显式用途/父子字段必须带真实格式 fixture 和规则版本，不在此凭字段名虚构客户端能力。
+2026-11-15 起，本节采用 [版本兼容计量与自动分类合同](../otel-version-tolerant-metering/architecture.md)。
+规则输出 automatic、reason_code、rule_version，effective 叠加仍与当前来源绑定的用户覆盖。
+可读会话默认 work，unknown/origin_metadata_missing 表示尚未生成分类，正常扫描自动补齐。
+任务子代理共享父 ID 时仍属于同一 canonical 会话，独立 ID 无用途结论时默认工作。
 
-同 canonical 多来源先按现有身份规则去重，归约保留所有有效证据的冲突状态；不以低优先级副本
-覆盖主源身份。精确维护映射与明确工作证据冲突、混合用途或循环关联 → unknown/conflicting_origin。
-缺映射不证明 work；映射读取失败/版本未知 → unknown/origin_source_unavailable。
-移除或禁用适配器使受影响自动证据失效，重分类为 unknown；用户覆盖不随之删除。
-覆盖优先但不抹掉 automatic 的冲突/缺失原因。证据与会话源 generation 不匹配时只能 unknown，不能旧 auxiliary 隐藏新来源。
+来源 generation 不匹配先拒绝旧证据并输出 work/origin_input_mismatch。
+明确工作与辅助证据冲突或来源报告冲突时输出 work/conflicting_origin。
+有效辅助证据优先于兜底；启用来源不可读或规则不支持时保留诊断并显示 work。
+默认 work 是兜底结果，不作为与辅助证据冲突的工作证据。override 优先且保留 automatic 诊断。
 
-reason_code 是对外稳定的封闭枚举，与 rule_version 分开：哪个维护规则命中由 rule_version 表达，
-原因码不随来源增多而增加。首版枚举：
-
-| reason_code | automatic | 含义 |
+| reason_code | 新派生 automatic | 含义 |
 | --- | --- | --- |
-| maintenance_origin | auxiliary | 任一维护规则命中（claude-mem `claude-mem-sdk-map-v1`、Codex OTel `codex-otel-background-v1`），具体规则见 rule_version |
-| origin_metadata_missing | unknown | 没有任何可用证据，普通来源默认（CLI JSON 与 Settings 标本已用此码；菜单栏标本内部键 `origin_missing` 实现时映射到此码） |
-| task_child_unconfirmed | unknown | 有独立 ID 的任务子代理，无可验证用途关系 |
-| conflicting_origin | unknown | 维护证据与明确工作证据冲突、混合用途或循环关联 |
-| origin_source_unavailable | unknown | 映射读取失败或来源版本未知 |
-| origin_rule_unsupported | unknown | 来源有标记但不在当前规则版本覆盖的支持条目内 |
-| origin_input_mismatch | unknown | 证据与当前会话源 generation 不匹配 |
+| maintenance_origin | auxiliary | 精确维护映射或已声明的 TUI 后台推断命中，规则见 rule_version |
+| default_work | work | exec 或普通会话的默认工作结果 |
+| origin_metadata_missing | unknown | 尚无派生分类，等待正常扫描 |
+| task_child_unconfirmed | work | 独立任务子代理无其他用途结论 |
+| conflicting_origin | work | 用途证据冲突、混合用途或循环关联 |
+| origin_source_unavailable | work | 已启用来源不可读 |
+| origin_rule_unsupported | work | 来源标记不能由活动规则识别 |
+| origin_input_mismatch | work | 证据与当前来源 generation 不匹配 |
 
-新增原因码属于合同变更，需同步四个 UX 表面。消费者遇到不认识的码时显示通用“原因暂不可显示”，
-仍按 effective/automatic 字段呈现分类，不从未知码推断 auxiliary，也不隐藏会话。菜单栏详情已映射
-maintenance_origin，因此 Codex OTel 来源不需要新文案；Widget 只消费聚合与安全 availability reason，不受影响。
-
-实现验收必须包含至少一种真实 SDK observer 格式的脱敏或合成忠实 fixture：匹配 memory ID 为辅助，
-content ID-only、synthetic ID、跨 client、重复副本、用户任务子代理与冲突均不误隐藏。
-源码核对不能替代支持版本的隔离端到端验收；无法得到可验证匹配则停止该适配器交付，不降低 AC1 为全 unknown。
+schema 34 只读保留有效旧分类及 v1 输入 token 验证。schema 35 正常写入迁移后重新归约。
+覆盖缺口仍按原因码判断，work 类别不抹掉 partial。CLI、desktop JSON、原生原因文案同步
+支持 default_work。用户无需逐会话设置即可得到默认结果，覆盖保留为可选纠正。
 
 ### 3.4 Codex OTel 后台来源（内建）
 
@@ -144,31 +136,22 @@ content ID-only、synthetic ID、跨 client、重复副本、用户任务子代�
 管理，分类可用性只取决于 core 可读。未开启 OTel 时没有标记行，结果为“无证据”，不是 unavailable。
 （来源状态展示为区分“未开启”与“已开启但无记录”只读接收器开关，见 §7，不参与分类。）
 
-规则 `codex-otel-background-v1`：client=codex + 精确 session_id 命中 `telemetry_sessions` +
-`source_kind='codex-otel-background'` + `support_entry` 属于规则版本列出的支持表条目 → 维护来源证据，
-reason_code=`maintenance_origin`（规则由 rule_version 标识，见 §3.3 枚举）。首版条目按 `SupportEntry.Name()`
-精确字符串列出 scan-performance 支持表现有的全部两条，均经 2026-10-29 隔离实验证明其无 rollout 会话只承载后台请求
-（Memories 整理、TUI 标题生成；scan-performance `reviews/otel-capture-and-reconciliation.md` 支持表实验、
-`internal/telemetry/reconcile.go` supportTable 注释）：
+内置规则按固定优先级执行 claude-mem-sdk-map-v1、codex-otel-tui-background-v1、
+codex-otel-exec-work-v1、default-work-v1。规则表含版本 ID、匹配、结果和依据，变更参与
+输入 token，正常扫描自动重算。分类仍从本地 core 标记读取。
 
-| support_entry | 后台请求 |
-| --- | --- |
-| `codex_exec/0.165.0/codex_exec/sse` | exec 模式下的 Memories 整理 |
-| `codex-app-server/0.165.0/codex-tui/sse` | TUI 下的 Memories 整理与线程标题生成 |
+admitted codex-app-server/codex-tui 的 OTel-owned 会话推断为 auxiliary，exec 家族默认 work。
+版本保留来源信息，全部合法版本采用相同规则。TUI 无 rollout 的用户主会话也可能命中推断，
+exec 的 Memories 会话可能显示为工作，这些限制在详情依据中呈现。
+2026-10-29 的两个 0.165.0 实验条目保留在原评审历史中，旧 codex-otel-background-v1
+自动证据在规则升级时重算，用户覆盖继续生效。
 
-支持表新增条目时，只有证明其无 rollout 会话属于后台维护才随新规则版本加入，
-否则该会话为 unknown/`origin_rule_unsupported`。不使用 originator、model、`otel:` 前缀、空项目或时间相似性。
+TelemetrySessionOriginMarkers 继续提供 source_kind、support_entry、settled_at，按 200 ID
+参数化只读查询。来源状态按 support_entry 分组计数并复用相同家族判定，分别报告推断辅助数
+与全部 OTel 所有会话数。保留既有 TelemetrySessionSourceKinds 接口。
 
-读取接口：本主题在 `internal/store/telemetry.go` **新增** `TelemetrySessionOriginMarkers(ctx, client, ids)`，
-返回 session_id → {source_kind, support_entry, settled_at}，沿用 200 个一批、参数化 `IN`、只读查询，不建表、不改 schema、
-不写任何行；空候选不查。scan-performance 已交付的 `TelemetrySessionSourceKinds` 保持签名与行为不变，不由本主题改写。
-来源状态另用同文件新增的只读计数 `TelemetryBackgroundSessionCount(ctx)`（`source_kind='codex-otel-background'` 行数）。
-两者均归属任务 1（store 层），规则调用归属任务 2。
-
-证据随标记存在而存在：晚到 JSONL 使 scan-performance 在同一事务删除标记后，该会话的此证据失效，按普通 Codex
-来源重新归约（当前为 unknown），不得以旧 auxiliary 隐藏 JSONL 会话。标记与明确工作证据并存时为
-unknown/conflicting_origin。规则不改变 OTel 贡献、usage 事件、token、金额或会话索引投影。
-查询经该接口在现有 scan/rebuild 协调阶段以候选 Codex canonical ID 批量执行，范围切换不调用它。
+晚到 JSONL 原子撤销标记后，旧辅助推断失效，正常刷新为相应默认结果。真实用途证据冲突
+保留 conflicting_origin 并显示工作。分类不改变 token、金额或原始用量。
 
 `telemetry_sessions` 不在 serving trigger 清单中：标记写入/撤销总与 usage_events、usage_sessions 同事务，
 现有 trigger 已推进 usage_revision 并写入会话失效；本主题 migration 仍为 telemetry_sessions 安装同类
@@ -334,7 +317,7 @@ Settings 显示适配器状态/安全原因与只读查询提示，不展示/编
 
 来源状态只读入口 `session origin-source status`（JSON command `session.origin_source.status`），CLI 与 Settings 共用。
 它不扫描、不打开外部插件库、不启动监听器、不读 token 或 Codex 配置，也不写任何状态。
-data 为 `sources` 数组，固定两项、顺序固定，每项字段白名单如下：
+data 包含固定两项、顺序固定的 `sources` 数组及按规则优先级排列的 `builtin_rules` ID 列表。各来源字段如下。
 
 | 字段 | claude-mem（kind=adapter） | codex-otel-background（kind=builtin） |
 | --- | --- | --- |
@@ -342,9 +325,10 @@ data 为 `sources` 数组，固定两项、顺序固定，每项字段白名单�
 | configured、enabled | 来自本机非导出配置；读取失败为 null | 恒为 null（内建，无配置/开关） |
 | available | 仅当配置可读、已配置且启用、core 可读，且最近一次 origin_adapter_runs.outcome 为 ok/partial 时 true；其余（含停用后残留的旧运行摘要）一律 false | core 可读时 true |
 | supported_version | 运行结果的 validated_version，未知为 null | null |
-| rule_version | `claude-mem-sdk-map-v1` | `codex-otel-background-v1` |
+| rule_version | `claude-mem-sdk-map-v1` | `codex-otel-tui-background-v1` |
 | receiver | 不出现 | `enabled`/`disabled`/`unknown`：只用 `telemetry.LoadConfig` 读 receiver.json 的 enabled，读取或解析失败为 unknown |
-| background_sessions | 不出现 | `TelemetryBackgroundSessionCount`；core 不可读为 null |
+| background_sessions | 不出现 | 规则推断的 TUI 辅助会话数；core 不可读为 null |
+| otel_owned_sessions | 不出现 | 全部 OTel-owned 会话数；core 不可读为 null |
 | reason_code | 安全原因或 null | 安全原因或 null |
 | last_run_at | origin_adapter_runs.finished_at，未运行为 null | 不出现 |
 
@@ -371,9 +355,11 @@ claude-mem 的 available 按原因取值：source_config_unreadable、source_not
 source_not_yet_read、source_unavailable、source_version_unsupported 均为 false；reason=null 时为 true。
 disable 不删除 origin_adapter_runs 摘要，但停用后 available 由配置判定为 false，摘要只保留 last_run_at/supported_version 供查看。
 
-“单项读取失败”恰为三种：core 不可读（core_unavailable）、本机来源配置不可读（source_config_unreadable）、
-receiver.json 读取或解析失败（receiver=unknown，无论是否有记录、reason 是否为 otel_receiver_unknown）。出现任一种时
-envelope partial=true，命令仍 exit0；未配置、停用、尚未读取、来源不可用/版本不支持、无记录等是已确认状态，partial=false。
+core、本机来源配置或 receiver.json 读取失败时 envelope partial=true。
+已启用 adapter 存在运行记录且 outcome 为 unavailable、unsupported、partial 或其他非 ok
+结果时也为 partial。未配置、停用、尚未运行和确定无记录本身为正常状态，命令仍 exit0。
+未配置/停用以“可选增强未启用/已关闭”中性呈现，内置自动分类独立就绪。
+旧 helper 缺少新增字段时消费者保留缺省，不伪造计数。
 只有参数错误为 exit2。
 新增 reason_code 属于合同变更；消费者遇到不认识的码显示通用“状态原因暂不可显示”，不推断为可用。
 状态读的是已提交结果，不代表本机插件当前运行状态，也不证明映射覆盖率。

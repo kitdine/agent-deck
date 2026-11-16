@@ -118,10 +118,11 @@ func (s *Store) OriginDerivedState(ctx context.Context) (OriginDerivedState, err
 // every INSERT/UPDATE/DELETE (migration 34); an epoch change is part of the
 // vector itself.
 type OriginSelectionState struct {
-	Epoch     int64
-	Revision  int64
-	Origins   []SessionOrigin
-	Overrides []OriginOverride
+	SchemaVersion int
+	Epoch         int64
+	Revision      int64
+	Origins       []SessionOrigin
+	Overrides     []OriginOverride
 }
 
 // ReadOriginSelectionState reads the selection input. A core that predates
@@ -138,6 +139,7 @@ func (s *Store) ReadOriginSelectionState(ctx context.Context) (OriginSelectionSt
 	if err := tx.QueryRowContext(ctx, `SELECT d.epoch,g.revision,m.version FROM derived_snapshot_generation d JOIN serving_generation g ON g.singleton=d.singleton JOIN schema_metadata m ON m.singleton=d.singleton WHERE d.singleton=1`).Scan(&state.Epoch, &state.Revision, &version); err != nil {
 		return state, err
 	}
+	state.SchemaVersion = version
 	if version > CurrentSchemaVersion {
 		return state, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}

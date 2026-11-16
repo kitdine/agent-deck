@@ -2,48 +2,84 @@ package sessionorigin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
-// Built-in and adapter source names, as stored in origin_evidence.adapter.
 const (
 	SourceCodexOTelBackground = "codex-otel-background"
 	SourceClaudeMem           = "claude-mem"
 )
 
-// codexOTelBackgroundEntries are the support entries, by SupportEntry.Name(),
-// whose rollout-less conversations an isolated producer experiment
-// (2026-10-29) showed carry only background requests: exec Memories
-// consolidation, and TUI Memories consolidation and thread-title generation.
-// An entry joins only with a new rule version after the same proof.
-var codexOTelBackgroundEntries = map[string]bool{
-	"codex_exec/0.165.0/codex_exec/sse":      true,
-	"codex-app-server/0.165.0/codex-tui/sse": true,
+// BuiltinRule describes an ordered, versioned classification decision.
+// Defaults are results, never purpose evidence that conflicts with auxiliary.
+type BuiltinRule struct {
+	ID        string
+	Priority  int
+	Class     string
+	Rationale string
+	matches   func(Assessment) bool
 }
 
-// CodexOTelBackgroundEntries lists the entries rule codex-otel-background-v1 covers.
-func CodexOTelBackgroundEntries() []string {
-	return []string{"codex_exec/0.165.0/codex_exec/sse", "codex-app-server/0.165.0/codex-tui/sse"}
+var builtinRules = []BuiltinRule{
+	{RuleClaudeMemSDKMapV1, 10, ClassAuxiliary, "Exact mapping from the enabled optional claude-mem adapter.", func(a Assessment) bool {
+		for _, e := range a.Evidence {
+			if e.RuleVersion == RuleClaudeMemSDKMapV1 && e.Purpose == PurposeAuxiliary {
+				return true
+			}
+		}
+		return false
+	}},
+	{RuleCodexOTelTUIBackgroundV1, 20, ClassAuxiliary, "Inferred from an OTel-owned Codex TUI conversation without JSONL; a rollout-less main conversation can also match.", func(a Assessment) bool {
+		for _, e := range a.Evidence {
+			if e.RuleVersion == RuleCodexOTelTUIBackgroundV1 && e.Purpose == PurposeAuxiliary {
+				return true
+			}
+		}
+		return false
+	}},
+	{RuleCodexOTelExecWorkV1, 30, ClassWork, "Work by default for an OTel-owned Codex exec conversation; background Memories work can also match.", func(a Assessment) bool { return a.FallbackRule == RuleCodexOTelExecWorkV1 }},
+	{RuleDefaultWorkV1, 40, ClassWork, "Work by default when no other purpose rule applies.", func(Assessment) bool { return true }},
 }
 
-// AssessCodexMarker applies rule codex-otel-background-v1 to one marker of a
-// codex session. A marker inside the rule's entries is maintenance evidence
-// whose source token is the entry and its settle time; any other marker is
-// unsupported. Originator, model, the otel: prefix, an empty project or time
-// proximity are never used.
+func BuiltinRules() []BuiltinRule { return append([]BuiltinRule(nil), builtinRules...) }
+func BuiltinRuleIDs() []string {
+	out := make([]string, 0, len(builtinRules))
+	for _, r := range builtinRules {
+		out = append(out, r.ID)
+	}
+	return out
+}
+func RuleRationale(id string) string {
+	for _, r := range builtinRules {
+		if r.ID == id {
+			return r.Rationale
+		}
+	}
+	return ""
+}
+
+// markerFamily uses the same family/version constraints as numerical admission.
+func markerFamily(entry string) string {
+	p := strings.Split(entry, "/")
+	if len(p) != 4 || !store.TelemetryAdmitted(p[0], p[1], p[2], p[3], store.TelemetryAdmittedEventName, store.TelemetryAdmittedEventKind) {
+		return ""
+	}
+	return p[0]
+}
+func CodexMarkerIsBackground(entry string) bool { return markerFamily(entry) == "codex-app-server" }
+
 func AssessCodexMarker(marker store.TelemetrySessionOriginMarker) Assessment {
 	if marker.SourceKind != store.TelemetrySessionSourceKind {
 		return Assessment{}
 	}
-	if !codexOTelBackgroundEntries[marker.SupportEntry] {
-		return Assessment{Unsupported: RuleCodexOTelBackgroundV1}
+	switch markerFamily(marker.SupportEntry) {
+	case "codex_exec":
+		return Assessment{FallbackRule: RuleCodexOTelExecWorkV1}
+	case "codex-app-server":
+		return Assessment{Evidence: []Evidence{{Adapter: SourceCodexOTelBackground, RuleVersion: RuleCodexOTelTUIBackgroundV1, Purpose: PurposeAuxiliary, SourceToken: strconv.Quote(marker.SupportEntry) + "|" + strconv.Quote(marker.SettledAt), ValidatedVersion: marker.SupportEntry}}}
+	default:
+		return Assessment{Unsupported: RuleCodexOTelTUIBackgroundV1}
 	}
-	return Assessment{Evidence: []Evidence{{
-		Adapter:          SourceCodexOTelBackground,
-		RuleVersion:      RuleCodexOTelBackgroundV1,
-		Purpose:          PurposeAuxiliary,
-		SourceToken:      strconv.Quote(marker.SupportEntry) + "|" + strconv.Quote(marker.SettledAt),
-		ValidatedVersion: marker.SupportEntry,
-	}}}
 }

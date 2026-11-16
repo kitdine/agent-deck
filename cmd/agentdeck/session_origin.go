@@ -723,7 +723,7 @@ func runClassifyQueryOrSet(ctx context.Context, opts *commandOptions, client, se
 }
 
 func runClassifyClear(ctx context.Context, opts *commandOptions, client, sessionID, requestID string, expected *int64) error {
-	core, _, err := opts.openStore(ctx)
+	core, stateRoot, err := opts.openStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -732,8 +732,25 @@ func runClassifyClear(ctx context.Context, opts *commandOptions, client, session
 	if err != nil {
 		return originServiceError(err)
 	}
-	data := classificationClearResult{ClearResult: result, PublicationPending: result.Outcome == sessionorigin.OutcomeSaved}
-	return writeOriginEnvelope(opts, "session.classify", data, false, result.Warnings, func(w io.Writer) error {
+	// Clearing remains core-only: an absent index never prevents withdrawing
+	// an override. When the index is readable, refresh the automatic result
+	// after the durable receipt; a refresh failure cannot undo that receipt.
+	refreshPending := false
+	if sessions, openErr := store.OpenSessionsReadOnly(ctx, stateRoot); openErr == nil {
+		home, homeErr := userHomeDir()
+		if homeErr == nil {
+			_, homeErr = sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home})
+		}
+		sessions.Close()
+		refreshPending = homeErr != nil
+	} else if !errors.Is(openErr, os.ErrNotExist) {
+		refreshPending = true
+	}
+	if refreshPending {
+		result.Warnings = append(result.Warnings, "classification_refresh_pending")
+	}
+	data := classificationClearResult{ClearResult: result, PublicationPending: result.Outcome == sessionorigin.OutcomeSaved || refreshPending}
+	return writeOriginEnvelope(opts, "session.classify", data, refreshPending, result.Warnings, func(w io.Writer) error {
 		return renderClassificationReceipt(w, data.Receipt, data.PublicationPending, true, data.Receipt.Replayed)
 	})
 }
@@ -827,6 +844,7 @@ func renderClassificationQuery(w io.Writer, data classificationQuery) error {
 		{"Automatic", sessionClassLabel(origin.Automatic)},
 		{"Reason", unavailableText(origin.ReasonCode) + " — " + classificationReasonText(origin.ReasonCode)},
 		{"Rule", unavailableText(origin.RuleVersion)},
+		{"Rule basis", sessionorigin.RuleRationale(origin.RuleVersion)},
 		{"Override", override},
 		{"Revision", strconv.FormatInt(origin.Revision, 10)},
 	}
@@ -834,6 +852,9 @@ func renderClassificationQuery(w io.Writer, data classificationQuery) error {
 		return err
 	}
 	for _, line := range lines {
+		if line[0] == "Rule basis" && line[1] == "" {
+			continue
+		}
 		if _, err := fmt.Fprintf(w, "%-10s %s\n", line[0], line[1]); err != nil {
 			return err
 		}
@@ -901,10 +922,12 @@ func isTerminalControl(r rune) bool { return r < 0x20 || r >= 0x7f && r <= 0x9f 
 
 func classificationReasonText(code string) string {
 	switch code {
+	case sessionorigin.ReasonDefaultWork:
+		return "Work by default"
 	case sessionorigin.ReasonMaintenanceOrigin:
 		return "a supported maintenance rule matched this session"
 	case sessionorigin.ReasonOriginMetadataMissing:
-		return "no origin evidence is available"
+		return "Waiting for automatic classification"
 	case sessionorigin.ReasonTaskChildUnconfirmed:
 		return "a task subagent without a verifiable purpose"
 	case sessionorigin.ReasonConflictingOrigin:
@@ -1235,7 +1258,7 @@ func runOriginSourceDisable(ctx context.Context, opts *commandOptions) error {
 	}
 	data := originSourceResult{Source: sessionorigin.SourceClaudeMem, Configured: configured, Enabled: false, MappingCoverage: "unavailable", EvidenceInvalidated: &invalidated}
 	return writeOriginEnvelope(opts, "session.origin_source.disable", data, len(warnings) > 0, warnings, func(w io.Writer) error {
-		text := "ORIGIN SOURCE DISABLED\nSource    claude-mem\nEnabled   no\nEvidence  invalidated; affected sessions are unknown and stay in Work"
+		text := "ORIGIN SOURCE DISABLED\nSource    claude-mem\nEnabled   no\nEvidence  invalidated; affected sessions default to Work"
 		if !invalidated {
 			text = "ORIGIN SOURCE DISABLED\nSource    claude-mem\nEnabled   no\nEvidence  invalidation pending; the next session scan applies it"
 		}
@@ -1275,6 +1298,7 @@ type originSourceStatus struct {
 	LastRunAt          *string `json:"-"`
 	Receiver           string  `json:"-"`
 	BackgroundSessions *int    `json:"-"`
+	OTelOwnedSessions  *int    `json:"-"`
 }
 
 func (s originSourceStatus) MarshalJSON() ([]byte, error) {
@@ -1287,12 +1311,14 @@ func (s originSourceStatus) MarshalJSON() ([]byte, error) {
 	} else {
 		fields["receiver"] = s.Receiver
 		fields["background_sessions"] = s.BackgroundSessions
+		fields["otel_owned_sessions"] = s.OTelOwnedSessions
 	}
 	return json.Marshal(fields)
 }
 
 type originSourceStatusData struct {
-	Sources []originSourceStatus `json:"sources"`
+	Sources      []originSourceStatus `json:"sources"`
+	BuiltinRules []string             `json:"builtin_rules"`
 }
 
 // Origin-source status reason codes (architecture §7), distinct from the
@@ -1319,6 +1345,7 @@ type originStatusInputs struct {
 	run        store.OriginAdapterRun
 	runFound   bool
 	background int
+	owned      int
 	receiver   string
 }
 
@@ -1339,8 +1366,16 @@ func readOriginStatusInputs(ctx context.Context, stateRoot string) originStatusI
 		in.coreErr = err
 		return in
 	}
-	if in.background, err = core.TelemetryBackgroundSessionCount(ctx); err != nil {
+	counts, err := core.TelemetrySessionCountsBySupportEntry(ctx)
+	if err != nil {
 		in.coreErr = err
+	} else {
+		for entry, n := range counts {
+			in.owned += n
+			if sessionorigin.CodexMarkerIsBackground(entry) {
+				in.background += n
+			}
+		}
 	}
 	return in
 }
@@ -1383,7 +1418,7 @@ func originSourceStatuses(in originStatusInputs) ([]originSourceStatus, bool) {
 			claude.ReasonCode = reason(sourceReasonUnavailable)
 		}
 	}
-	codex := originSourceStatus{Source: sessionorigin.SourceCodexOTelBackground, Kind: "builtin", RuleVersion: sessionorigin.RuleCodexOTelBackgroundV1, Receiver: in.receiver}
+	codex := originSourceStatus{Source: sessionorigin.SourceCodexOTelBackground, Kind: "builtin", RuleVersion: sessionorigin.RuleCodexOTelTUIBackgroundV1, Receiver: in.receiver}
 	switch {
 	case in.coreErr != nil:
 		codex.ReasonCode = reason(sourceReasonCoreUnavailable)
@@ -1391,6 +1426,8 @@ func originSourceStatuses(in originStatusInputs) ([]originSourceStatus, bool) {
 		codex.Available = true
 		count := in.background
 		codex.BackgroundSessions = &count
+		owned := in.owned
+		codex.OTelOwnedSessions = &owned
 		if count == 0 {
 			switch in.receiver {
 			case "disabled":
@@ -1402,7 +1439,7 @@ func originSourceStatuses(in originStatusInputs) ([]originSourceStatus, bool) {
 			}
 		}
 	}
-	partial := in.coreErr != nil || in.configErr != nil || in.receiver == "unknown"
+	partial := in.coreErr != nil || in.configErr != nil || in.receiver == "unknown" || (in.config.ClaudeMem.Enabled() && in.runFound && in.run.Outcome != "ok")
 	return []originSourceStatus{claude, codex}, partial
 }
 
@@ -1416,8 +1453,9 @@ func runOriginSourceStatus(ctx context.Context, opts *commandOptions) error {
 	if partial {
 		warnings = []string{"origin_source_status_incomplete"}
 	}
-	data := originSourceStatusData{Sources: sources}
+	data := originSourceStatusData{Sources: sources, BuiltinRules: sessionorigin.BuiltinRuleIDs()}
 	return writeOriginEnvelope(opts, "session.origin_source.status", data, partial, warnings, func(w io.Writer) error {
+		fmt.Fprintln(w, "Automatic classification enabled")
 		for _, source := range sources {
 			if _, err := fmt.Fprintln(w, originSourceStatusLine(source)); err != nil {
 				return err
@@ -1428,10 +1466,10 @@ func runOriginSourceStatus(ctx context.Context, opts *commandOptions) error {
 }
 
 var knownSourceReasons = map[string]string{
-	sourceReasonNotConfigured:      "not configured",
-	sourceReasonDisabled:           "disabled",
-	sourceReasonNotYetRead:         "not read yet; run agentdeck session scan",
-	sourceReasonUnavailable:        "source unavailable",
+	sourceReasonNotConfigured:      "Optional enhancement not enabled",
+	sourceReasonDisabled:           "Optional enhancement disabled",
+	sourceReasonNotYetRead:         "Waiting for automatic classification",
+	sourceReasonUnavailable:        "Enhancement unavailable; sessions remain in Work",
 	sourceReasonVersionUnsupported: "version unsupported",
 	sourceReasonConfigUnreadable:   "configuration unreadable",
 	sourceReasonCoreUnavailable:    "AgentDeck state unreadable",
@@ -1461,13 +1499,18 @@ func originSourceStatusLine(source originSourceStatus) string {
 		if source.Enabled != nil && *source.Configured {
 			parts = append(parts, map[bool]string{true: "enabled", false: "disabled"}[*source.Enabled])
 		}
-		parts = append(parts, map[bool]string{true: "available", false: "unavailable"}[source.Available])
+		if source.Configured == nil || (source.Enabled != nil && *source.Enabled) {
+			parts = append(parts, map[bool]string{true: "available", false: "unavailable"}[source.Available])
+		}
 		if source.SupportedVersion != nil {
 			parts = append(parts, safeCell(*source.SupportedVersion))
 		}
 		if source.LastRunAt != nil {
 			parts = append(parts, "last read "+safeCell(*source.LastRunAt))
 		}
+	} else if source.BackgroundSessions != nil && source.OTelOwnedSessions != nil {
+		parts = append(parts, fmt.Sprintf("%d inferred auxiliary sessions", *source.BackgroundSessions),
+			fmt.Sprintf("%d OTel-owned sessions", *source.OTelOwnedSessions), "receiver "+source.Receiver)
 	} else {
 		switch {
 		case source.BackgroundSessions == nil:

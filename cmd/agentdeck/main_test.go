@@ -31,6 +31,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/watch"
@@ -1698,7 +1699,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2388,7 +2389,7 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
+	if want := sessionorigin.WatchFingerprint(epoch, raw); checkpoint != want {
 		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
 	}
 	if err = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
@@ -2398,7 +2399,7 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	bound, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, raw)
-	if err != nil || bound != fmt.Sprintf("v1:%d:%s", epoch, raw) {
+	if err != nil || bound != sessionorigin.WatchFingerprint(epoch, raw) {
 		t.Fatalf("captured checkpoint=%q err=%v", bound, err)
 	}
 	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {

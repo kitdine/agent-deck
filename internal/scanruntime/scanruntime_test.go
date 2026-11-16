@@ -17,6 +17,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -247,7 +248,7 @@ func TestSessionCompletionPersistsDiscoveredInventoryCheckpoint(t *testing.T) {
 	if closeErr := sessions.Close(); epochErr != nil || closeErr != nil {
 		t.Fatalf("session epoch error=%v closeErr=%v", epochErr, closeErr)
 	}
-	want := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(captured))
+	want := sessionorigin.WatchFingerprint(epoch, ingest.FingerprintSources(captured))
 	if persisted != want {
 		t.Fatalf("persisted checkpoint=%q want finite inventory %q", persisted, want)
 	}

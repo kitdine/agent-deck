@@ -309,6 +309,15 @@ type TelemetrySettleResult struct {
 // once it is at least settleAfter old and a complete inventory was captured
 // after it was received. Missing contributions of otel_owned observations,
 // such as after a rebuild, are restored.
+//
+// JSONL evidence is also a source whose saved thread_id or canonical rollout
+// name is the conversation, which covers a child thread whose facts are
+// accounted under its parent's session ID, and an earlier jsonl_owned
+// observation of the same conversation. Before ownership is decided, up to
+// TelemetryReadmissionLimit capture_only observations the current admission
+// definition admits return to pending. While source thread identity is
+// incomplete the pass retracts but neither readmits, promotes nor restores,
+// and returns ErrTelemetrySourceIdentityPending after committing.
 func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter time.Duration) (TelemetrySettleResult, error) {
 	var result TelemetrySettleResult
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -329,6 +338,25 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 	if err := tx.QueryRowContext(ctx, `SELECT max(captured_at) FROM inventory_runs WHERE state IN ('complete','update_pending')`).Scan(&inventoryAt); err != nil {
 		return result, err
 	}
+	// Readmission, promotion and contribution restore all rest on complete
+	// source thread identity. Without it this pass still retracts every thread
+	// local JSONL evidence names, and reports that it did not settle.
+	sources := telemetrySourceThreads{ready: true}
+	needed, err := telemetrySettleNeedsSources(ctx, tx)
+	if err != nil {
+		return result, err
+	}
+	if needed {
+		if sources, err = readTelemetrySourceThreads(ctx, tx); err != nil {
+			return result, err
+		}
+	}
+	ready := sources.ready
+	if ready {
+		if _, err := readmitTelemetry(ctx, tx, TelemetryReadmissionLimit); err != nil {
+			return result, err
+		}
+	}
 	threads, err := queryStrings(ctx, tx, `SELECT DISTINCT thread_id FROM telemetry_observations WHERE thread_id <> '' AND state IN ('pending','otel_owned')`)
 	if err != nil {
 		return result, err
@@ -337,27 +365,22 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 	for _, thread := range threads {
 		var evidence int
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_events WHERE client = 'codex' AND session_id = ? AND substr(source_path, 1, 5) <> 'otel:')
- OR EXISTS(SELECT 1 FROM usage_source_files WHERE session_id = ? AND substr(path, 1, 5) <> 'otel:')`, thread, thread).Scan(&evidence); err != nil {
+ OR EXISTS(SELECT 1 FROM usage_source_files WHERE session_id = ? AND substr(path, 1, 5) <> 'otel:')
+ OR EXISTS(SELECT 1 FROM telemetry_observations WHERE thread_id = ? AND state = 'jsonl_owned')`, thread, thread, thread).Scan(&evidence); err != nil {
 			return result, err
 		}
+		if evidence == 0 && sources.evidence[strings.ToLower(thread)] {
+			evidence = 1
+		}
 		if evidence != 0 {
-			keys, err := queryStrings(ctx, tx, `SELECT observation_key FROM telemetry_observations WHERE thread_id = ? AND state IN ('pending','otel_owned')`, thread)
-			if err != nil {
-				return result, err
-			}
-			for _, key := range keys {
-				if err := deleteContribution(ctx, tx, key); err != nil {
-					return result, err
-				}
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state = 'jsonl_owned', reason = 'jsonl_evidence' WHERE thread_id = ? AND state IN ('pending','otel_owned')`, thread); err != nil {
-				return result, err
-			}
-			if err := syncTelemetrySession(ctx, tx, thread, now); err != nil {
+			if err := retractTelemetryThread(ctx, tx, thread, now); err != nil {
 				return result, err
 			}
 			result.Retracted++
 			result.Changed = true
+			continue
+		}
+		if !ready {
 			continue
 		}
 		if inventoryAt.Valid {
@@ -386,7 +409,13 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 	if err := restoreCoverage(); err != nil {
 		return result, err
 	}
-	return result, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return result, err
+	}
+	if !ready {
+		return result, ErrTelemetrySourceIdentityPending
+	}
+	return result, nil
 }
 
 // Older receivers could store or count incomplete observations. Reclassify
@@ -782,4 +811,24 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// TelemetrySessionCountsBySupportEntry keeps numerical ownership separate from
+// classification. The caller applies its rule to each entry, not a version max.
+func (s *Store) TelemetrySessionCountsBySupportEntry(ctx context.Context) (map[string]int, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT support_entry,count(*) FROM telemetry_sessions WHERE source_kind=? GROUP BY support_entry`, TelemetrySessionSourceKind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var entry string
+		var n int
+		if err := rows.Scan(&entry, &n); err != nil {
+			return nil, err
+		}
+		out[entry] = n
+	}
+	return out, rows.Err()
 }

@@ -317,7 +317,7 @@ func TestSessionClassifyQuerySetAndConflictContracts(t *testing.T) {
 		}
 	}
 	readable := runOriginCLI(t, state, "--no-color", "session", "classify", "work-a", "--client", "claude")
-	for _, want := range []string{"Client     claude", "Effective  AUXILIARY", "Automatic  UNKNOWN", "Reason     origin_metadata_missing", "Rule       origin-reducer-v1", "Override   auxiliary (matched, binding limited)", "Revision   2"} {
+	for _, want := range []string{"Client     claude", "Effective  AUXILIARY", "Automatic  UNKNOWN", "Reason     origin_metadata_missing", "Rule       origin-reducer-v2", "Override   auxiliary (matched, binding limited)", "Revision   2"} {
 		if !strings.Contains(readable.stdout, want) {
 			t.Fatalf("query text missing %q:\n%s", want, readable.stdout)
 		}
@@ -438,7 +438,7 @@ func originStatusSources(t *testing.T, result originCLIResult) ([]map[string]any
 		t.Fatalf("sources order = %#v", sources)
 	}
 	claudeFields := []string{"available", "configured", "enabled", "kind", "last_run_at", "reason_code", "rule_version", "source", "supported_version"}
-	codexFields := []string{"available", "background_sessions", "configured", "enabled", "kind", "reason_code", "receiver", "rule_version", "source", "supported_version"}
+	codexFields := []string{"available", "background_sessions", "configured", "enabled", "kind", "otel_owned_sessions", "reason_code", "receiver", "rule_version", "source", "supported_version"}
 	for index, want := range [][]string{claudeFields, codexFields} {
 		got := make([]string, 0)
 		for key := range sources[index] {
@@ -512,7 +512,7 @@ func TestSessionOriginSourceStatusStatesAndPrivacy(t *testing.T) {
 		Run: &store.OriginAdapterRun{Adapter: "claude-mem", Outcome: "ok", ValidatedVersion: &version, FinishedAt: "2026-11-03T08:00:00Z"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := core.DB.Exec(`INSERT INTO telemetry_sessions(client,session_id,source_kind,model,first_at,last_at,support_entry,settled_at) VALUES('codex','bg-1',?, 'm','a','b','codex_exec/0.165.0/codex_exec/sse','s')`, store.TelemetrySessionSourceKind); err != nil {
+	if _, err := core.DB.Exec(`INSERT INTO telemetry_sessions(client,session_id,source_kind,model,first_at,last_at,support_entry,settled_at) VALUES('codex','bg-1',?, 'm','a','b','codex-app-server/0.169.0/codex-tui/sse','s')`, store.TelemetrySessionSourceKind); err != nil {
 		t.Fatal(err)
 	}
 	core.Close()
@@ -529,7 +529,7 @@ func TestSessionOriginSourceStatusStatesAndPrivacy(t *testing.T) {
 		t.Fatal("status changed state bytes")
 	}
 	text := runOriginCLI(t, state, "--no-color", "session", "origin-source", "status")
-	if !strings.Contains(text.stdout, "claude-mem              adapter   configured  enabled  available  15.2.1  last read 2026-11-03T08:00:00Z") || !strings.Contains(text.stdout, "codex-otel-background   builtin   1 background sessions  receiver disabled") {
+	if !strings.Contains(text.stdout, "claude-mem              adapter   configured  enabled  available  15.2.1  last read 2026-11-03T08:00:00Z") || !strings.Contains(text.stdout, "codex-otel-background   builtin   1 inferred auxiliary sessions  1 OTel-owned sessions  receiver disabled") {
 		t.Fatalf("status text = %q", text.stdout)
 	}
 	for _, output := range []string{statusRun.stdout, text.stdout} {
@@ -581,9 +581,9 @@ func TestOriginSourceStatusDecisionTable(t *testing.T) {
 	}{
 		{"core unavailable", originStatusInputs{config: configured, coreErr: os.ErrPermission, receiver: "enabled"}, sourceReasonCoreUnavailable, false, sourceReasonCoreUnavailable, true},
 		{"config error before core", originStatusInputs{configErr: os.ErrPermission, coreErr: os.ErrPermission, receiver: "enabled"}, sourceReasonConfigUnreadable, false, sourceReasonCoreUnavailable, true},
-		{"run unavailable", originStatusInputs{config: configured, runFound: true, run: store.OriginAdapterRun{Outcome: "unavailable"}, receiver: "enabled"}, sourceReasonUnavailable, false, sourceReasonNoBackground, false},
+		{"run unavailable", originStatusInputs{config: configured, runFound: true, run: store.OriginAdapterRun{Outcome: "unavailable"}, receiver: "enabled"}, sourceReasonUnavailable, false, sourceReasonNoBackground, true},
 		{"run unsupported", originStatusInputs{config: configured, runFound: true, run: store.OriginAdapterRun{Outcome: "unsupported"}, receiver: "unknown"}, sourceReasonVersionUnsupported, false, sourceReasonReceiverUnknown, true},
-		{"run partial", originStatusInputs{config: configured, runFound: true, run: store.OriginAdapterRun{Outcome: "partial"}, receiver: "disabled", background: 2}, "", true, "", false},
+		{"run partial", originStatusInputs{config: configured, runFound: true, run: store.OriginAdapterRun{Outcome: "partial"}, receiver: "disabled", background: 2}, "", true, "", true},
 	}
 	for _, tc := range cases {
 		sources, partial := originSourceStatuses(tc.in)
@@ -900,5 +900,113 @@ UNION ALL SELECT 'origin',client||'/'||session_id,evidence_revision,input_token,
 	defer core.Close()
 	if after := snapshot(); after != before {
 		t.Fatalf("purge-index changed core origin state:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+func TestOriginSourceCountsUseTheSameVersionTolerantRule(t *testing.T) {
+	state := seedOriginSessions(t)
+	core, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, entry := range []string{"codex_exec/0.165.0/codex_exec/sse", "codex_exec/0.169.0/codex_exec/sse", "codex-app-server/0.169.0/codex-tui/sse", "codex-app-server/future/codex-tui/sse", "codex-app-server//codex-tui/sse"} {
+		if _, err = core.DB.Exec(`INSERT INTO telemetry_sessions VALUES('codex',?,'codex-otel-background','m','a','b',?,'s')`, fmt.Sprint(i), entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	core.Close()
+	result := runOriginCLI(t, state, "--format", "json", "session", "origin-source", "status")
+	data := mustOriginOK(t, result)["data"].(map[string]any)
+	sources, _ := originStatusSources(t, result)
+	if sources[1]["background_sessions"] != float64(2) || sources[1]["otel_owned_sessions"] != float64(5) || sources[1]["rule_version"] != "codex-otel-tui-background-v1" {
+		t.Fatalf("counts %#v", sources[1])
+	}
+	if !reflect.DeepEqual(data["builtin_rules"], []any{"claude-mem-sdk-map-v1", "codex-otel-tui-background-v1", "codex-otel-exec-work-v1", "default-work-v1"}) {
+		t.Fatalf("rule order %#v", data)
+	}
+	text := runOriginCLI(t, state, "session", "origin-source", "status").stdout
+	if !strings.Contains(text, "Automatic classification enabled") || !strings.Contains(text, "Optional enhancement not enabled") {
+		t.Fatalf("status copy %s", text)
+	}
+	if !strings.Contains(text, "2 inferred auxiliary sessions") || !strings.Contains(text, "5 OTel-owned sessions") {
+		t.Fatalf("status omitted ownership counts: %s", text)
+	}
+}
+
+func TestClearingOverrideReportsUnreadableSessionIndex(t *testing.T) {
+	state := seedOriginSessions(t)
+	mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--set", "auxiliary"))
+	index, err := store.OpenSessions(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer index.Close()
+	if _, err := index.DB.Exec(`DROP TABLE session_metadata`); err != nil {
+		t.Fatal(err)
+	}
+	index.Close()
+	result := mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--clear"))
+	if result["partial"] != true || !strings.Contains(fmt.Sprint(result["warnings"]), "classification_refresh_pending") {
+		t.Errorf("missing refresh failure: %#v", result)
+	}
+	if result["data"].(map[string]any)["outcome"] != "saved" {
+		t.Fatalf("clear receipt lost: %#v", result)
+	}
+	core, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	var cleared bool
+	if err := core.DB.QueryRow(`SELECT value IS NULL FROM origin_overrides WHERE client='claude' AND session_id='work-a'`).Scan(&cleared); err != nil || !cleared {
+		t.Fatalf("override not cleared: %v %v", cleared, err)
+	}
+}
+
+func TestClearingOverrideAutomaticallyReclassifiesWithoutChangingReceipt(t *testing.T) {
+	state := seedOriginSessions(t)
+	mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--set", "auxiliary"))
+	cleared := mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--clear"))["data"].(map[string]any)
+	if cleared["outcome"] != "saved" || cleared["classification_reason"] != "not_queried" {
+		t.Fatalf("receipt changed %#v", cleared)
+	}
+	queried := mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude"))["data"].(map[string]any)["origin"].(map[string]any)
+	if queried["automatic"] != "work" || queried["effective"] != "work" || queried["reason_code"] != "default_work" || queried["rule_version"] != "default-work-v1" {
+		t.Fatalf("automatic refresh %#v", queried)
+	}
+}
+
+func TestClearingOverrideKeepsSavedReceiptWhenClassificationRefreshFails(t *testing.T) {
+	state := seedOriginSessions(t)
+	mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--set", "auxiliary"))
+	core, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = core.DB.Exec(`CREATE TRIGGER reject_refresh BEFORE INSERT ON session_origins BEGIN SELECT RAISE(ABORT,'fixture refresh failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	core.Close()
+	result := mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--clear"))
+	if result["partial"] != true || result["data"].(map[string]any)["outcome"] != "saved" {
+		t.Fatalf("clear lost receipt %#v", result)
+	}
+	core, err = store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cleared bool
+	if err = core.DB.QueryRow(`SELECT value IS NULL FROM origin_overrides WHERE client='claude' AND session_id='work-a'`).Scan(&cleared); err != nil || !cleared {
+		t.Fatalf("not cleared %v %v", cleared, err)
+	}
+	if _, err = core.DB.Exec(`DROP TRIGGER reject_refresh`); err != nil {
+		t.Fatal(err)
+	}
+	core.Close()
+	// A normal retry succeeds without recreating an override or a manual rule.
+	mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude", "--clear"))
+	queried := mustOriginOK(t, runOriginCLI(t, state, "--format", "json", "session", "classify", "work-a", "--client", "claude"))["data"].(map[string]any)["origin"].(map[string]any)
+	if queried["effective"] != "work" || queried["reason_code"] != "default_work" {
+		t.Fatalf("retry %#v", queried)
 	}
 }

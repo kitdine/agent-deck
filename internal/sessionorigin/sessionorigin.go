@@ -34,13 +34,17 @@ const (
 
 // Rule versions identify which maintenance rule produced evidence.
 const (
-	RuleClaudeMemSDKMapV1     = "claude-mem-sdk-map-v1"
-	RuleCodexOTelBackgroundV1 = "codex-otel-background-v1"
+	RuleClaudeMemSDKMapV1        = "claude-mem-sdk-map-v1"
+	RuleCodexOTelBackgroundV1    = "codex-otel-background-v1" // retired; historical records only
+	RuleCodexOTelTUIBackgroundV1 = "codex-otel-tui-background-v1"
+	RuleCodexOTelExecWorkV1      = "codex-otel-exec-work-v1"
+	RuleDefaultWorkV1            = "default-work-v1"
 )
 
 // Classification reason codes are a closed, externally stable enum
 // (architecture §3.3). Adding one is a contract change for all four surfaces.
 const (
+	ReasonDefaultWork             = "default_work"
 	ReasonMaintenanceOrigin       = "maintenance_origin"
 	ReasonOriginMetadataMissing   = "origin_metadata_missing"
 	ReasonTaskChildUnconfirmed    = "task_child_unconfirmed"
@@ -51,19 +55,20 @@ const (
 )
 
 var reasonAutomatic = map[string]string{
+	ReasonDefaultWork:             ClassWork,
 	ReasonMaintenanceOrigin:       ClassAuxiliary,
 	ReasonOriginMetadataMissing:   ClassUnknown,
-	ReasonTaskChildUnconfirmed:    ClassUnknown,
-	ReasonConflictingOrigin:       ClassUnknown,
-	ReasonOriginSourceUnavailable: ClassUnknown,
-	ReasonOriginRuleUnsupported:   ClassUnknown,
-	ReasonOriginInputMismatch:     ClassUnknown,
+	ReasonTaskChildUnconfirmed:    ClassWork,
+	ReasonConflictingOrigin:       ClassWork,
+	ReasonOriginSourceUnavailable: ClassWork,
+	ReasonOriginRuleUnsupported:   ClassWork,
+	ReasonOriginInputMismatch:     ClassWork,
 }
 
 // ReasonCodes lists the closed enum in its documented order.
 func ReasonCodes() []string {
 	return []string{ReasonMaintenanceOrigin, ReasonOriginMetadataMissing, ReasonTaskChildUnconfirmed,
-		ReasonConflictingOrigin, ReasonOriginSourceUnavailable, ReasonOriginRuleUnsupported, ReasonOriginInputMismatch}
+		ReasonConflictingOrigin, ReasonOriginSourceUnavailable, ReasonOriginRuleUnsupported, ReasonOriginInputMismatch, ReasonDefaultWork}
 }
 
 // AutomaticForReason returns the automatic class a known reason implies.

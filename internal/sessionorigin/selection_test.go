@@ -55,7 +55,7 @@ func keysOf(values []SelectedSession) []string {
 func mixedFixture(t *testing.T) stores {
 	t.Helper()
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-2")
 	s.indexCopy(t, "claude", "c-1", "/c/c-1.jsonl", "c-1", "p1", "/w/alpha", "2026-10-29T08:00:00Z", "2026-10-29T09:00:00Z", 1)
 	s.indexCopy(t, "claude", "c-1", "/archive/c-1.jsonl", "c-1-archive", "p1a", "/w/alpha-archive", "2026-10-29T08:00:00Z", "2026-10-29T08:30:00Z", 0)
@@ -70,8 +70,8 @@ func mixedFixture(t *testing.T) stores {
 
 // The oracle is the unscoped index listing with hand-stated effective classes.
 var mixedEffective = map[string]string{
-	"codex/bg-1": ClassAuxiliary, "codex/bg-2": ClassWork, "claude/c-1": ClassUnknown,
-	"claude/c-2": ClassAuxiliary, "codex/x-1": ClassUnknown, "claude/bg-1": ClassUnknown,
+	"codex/bg-1": ClassAuxiliary, "codex/bg-2": ClassWork, "claude/c-1": ClassWork,
+	"claude/c-2": ClassAuxiliary, "codex/x-1": ClassWork, "claude/bg-1": ClassWork,
 }
 
 func TestScopesPartitionTheCanonicalSet(t *testing.T) {
@@ -113,7 +113,7 @@ func TestScopesPartitionTheCanonicalSet(t *testing.T) {
 		t.Fatalf("work %v + aux %v != all %v", keysOf(work.Sessions), keysOf(aux.Sessions), keysOf(all.Sessions))
 	}
 	// Unknown stays in Work and is counted there; Auxiliary has none.
-	if work.UnknownCount != 3 || aux.UnknownCount != 0 || all.UnknownCount != 3 {
+	if work.UnknownCount != 0 || aux.UnknownCount != 0 || all.UnknownCount != 0 {
 		t.Fatalf("unknown work=%d aux=%d all=%d", work.UnknownCount, aux.UnknownCount, all.UnknownCount)
 	}
 	// Projects are a set union, not a sum: /w/alpha is shared by c-1 and x-1;
@@ -207,7 +207,7 @@ func durationOf(t *testing.T, snapshot Snapshot, key string) int64 {
 // hidden by its outdated auxiliary class.
 func TestTokenMismatchNeverHidesASession(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.reconcile(t, ReconcileOptions{})
 	if got := keysOf(s.selectScope(t, Selection{Scope: ScopeAuxiliary}).Sessions); !reflect.DeepEqual(got, []string{"codex/bg-1"}) {
 		t.Fatalf("aux before %v", got)
@@ -217,7 +217,7 @@ func TestTokenMismatchNeverHidesASession(t *testing.T) {
 		t.Fatalf("outdated auxiliary hid a session: %v", keysOf(got.Sessions))
 	}
 	work := s.selectScope(t, Selection{Scope: ScopeWork})
-	if len(work.Sessions) != 1 || work.Sessions[0].Origin != (Origin{Automatic: ClassUnknown, Effective: ClassUnknown, ReasonCode: ReasonOriginInputMismatch, RuleVersion: ReducerVersion}) || work.UnknownCount != 1 {
+	if len(work.Sessions) != 1 || work.Sessions[0].Origin != (Origin{Automatic: ClassWork, Effective: ClassWork, ReasonCode: ReasonOriginInputMismatch, RuleVersion: ReducerVersion}) || work.UnknownCount != 0 {
 		t.Fatalf("work during the window %+v", work.Sessions)
 	}
 	// The next pass binds the new token and the session returns to Auxiliary.
@@ -233,7 +233,7 @@ func TestTokenMismatchNeverHidesASession(t *testing.T) {
 // override that classifies the session closes its gap.
 func TestCoverageGapsAreCountedBeforeTheScope(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.indexCopy(t, "claude", "c-1", "/c/c-1.jsonl", "c-1", "p", "/w/a", "2026-10-29T08:00:00Z", "2026-10-29T09:00:00Z", 1)
 	s.reconcile(t, ReconcileOptions{})
 	for _, scope := range []string{ScopeWork, ScopeAuxiliary, ScopeAll} {
@@ -276,28 +276,28 @@ func TestOverridesApplyOnlyToTheirCurrentBinding(t *testing.T) {
 		}
 		return all.Sessions[0]
 	}
-	if got := get().Origin; got.Effective != ClassAuxiliary || got.Automatic != ClassUnknown || got.Override == nil || !got.Override.Applied || got.Override.BindingStatus != BindingMatched || got.Revision != 1 {
+	if got := get().Origin; got.Effective != ClassAuxiliary || got.Automatic != ClassWork || got.Override == nil || !got.Override.Applied || got.Override.BindingStatus != BindingMatched || got.Revision != 1 {
 		t.Fatalf("matched override %+v %+v", got, got.Override)
 	}
 	// A restored, unmatched override is listed but never classifies.
 	if _, err := s.core.DB.Exec(`UPDATE origin_overrides SET binding_state='unmatched'`); err != nil {
 		t.Fatal(err)
 	}
-	if got := get().Origin; got.Effective != ClassUnknown || got.Override == nil || got.Override.Applied || got.Override.BindingStatus != BindingUnmatched {
+	if got := get().Origin; got.Effective != ClassWork || got.Override == nil || got.Override.Applied || got.Override.BindingStatus != BindingUnmatched {
 		t.Fatalf("unmatched override %+v %+v", got, got.Override)
 	}
 	// A matched state whose birth differs from the indexed one does not apply.
 	if _, err := s.core.DB.Exec(`UPDATE origin_overrides SET binding_state='matched', binding_digest='other-birth'`); err != nil {
 		t.Fatal(err)
 	}
-	if got := get().Origin; got.Effective != ClassUnknown || got.Override.Applied || got.Override.BindingStatus != BindingUnmatched {
+	if got := get().Origin; got.Effective != ClassWork || got.Override.Applied || got.Override.BindingStatus != BindingUnmatched {
 		t.Fatalf("foreign binding %+v %+v", got, got.Override)
 	}
 	// A tombstone keeps its revision and no override.
 	if _, err := s.core.DB.Exec(`UPDATE origin_overrides SET value=NULL, revision=2`); err != nil {
 		t.Fatal(err)
 	}
-	if got := get().Origin; got.Effective != ClassUnknown || got.Override != nil || got.Revision != 2 {
+	if got := get().Origin; got.Effective != ClassWork || got.Override != nil || got.Revision != 2 {
 		t.Fatalf("tombstone %+v", got)
 	}
 }
@@ -382,7 +382,7 @@ func TestSearchSeparatesDocumentAndSessionCounts(t *testing.T) {
 		}
 	}
 	work := s.selectScope(t, Selection{Scope: ScopeWork, Query: "needle"})
-	if len(work.Documents) != 2 || work.SelectedSessionCount != 1 || !reflect.DeepEqual(keysOf(work.Sessions), []string{"claude/c-1"}) || work.UnknownCount != 1 {
+	if len(work.Documents) != 2 || work.SelectedSessionCount != 1 || !reflect.DeepEqual(keysOf(work.Sessions), []string{"claude/c-1"}) || work.UnknownCount != 0 {
 		t.Fatalf("work search docs=%d sessions=%d %v", len(work.Documents), work.SelectedSessionCount, keysOf(work.Sessions))
 	}
 	aux := s.selectScope(t, Selection{Scope: ScopeAuxiliary, Query: "needle"})
@@ -625,7 +625,7 @@ func TestReclassificationDirtiesOnlyAffectedPartitions(t *testing.T) {
 // serving revision once and enqueues one session invalidation marker per key.
 func TestOriginWriteAmplification(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-2")
 	if _, err := s.core.DB.Exec(`DELETE FROM usage_derived_invalidations`); err != nil {
 		t.Fatal(err)
@@ -801,4 +801,47 @@ func TestSelectAbsentCoreKeepsEverySessionUnknownInWork(t *testing.T) {
 	if _, err := reader.SelectAbsentCore(context.Background(), Selection{Scope: "everything"}); !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("invalid scope = %v", err)
 	}
+}
+
+func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
+	s := openStores(t)
+	ctx := context.Background()
+	s.settleBackground(t, "codex_exec", "codex_exec", "legacy-exec")
+	s.reconcile(t, ReconcileOptions{})
+	sources, err := s.sessions.SessionOriginSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gens []SourceGeneration
+	for _, source := range sources {
+		gens = append(gens, SourceGeneration{Identity: source.Identity, PrefixHash: source.PrefixHash, ParserVersion: source.ParserVersion})
+	}
+	token := inputTokenWithRules("codex", "legacy-exec", gens, nil, "origin-reducer-v1", []string{RuleClaudeMemSDKMapV1, RuleCodexOTelBackgroundV1})
+	if _, err = s.core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token=?`, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id; UPDATE schema_metadata SET version=34`); err != nil {
+		t.Fatal(err)
+	}
+	s.core.Close()
+	legacy, err := store.OpenReadOnly(ctx, s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := (Reader{Core: legacy, Sessions: s.sessions, StateRoot: s.root}).Select(ctx, Selection{Scope: ScopeAuxiliary}, nil)
+	if err != nil || len(selected.Sessions) != 1 || selected.Sessions[0].Origin.RuleVersion != RuleCodexOTelBackgroundV1 {
+		t.Fatalf("legacy read %+v %v", selected, err)
+	}
+	if version, err := legacy.SchemaVersion(ctx); err != nil || version != 34 {
+		t.Fatalf("readonly migrated %d %v", version, err)
+	}
+	legacy.Close()
+	upgraded, err := store.Open(ctx, s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	s.core = upgraded
+	s.reconcile(t, ReconcileOptions{})
+	s.wantOrigin(t, "codex", "legacy-exec", ClassWork, ReasonDefaultWork, RuleCodexOTelExecWorkV1)
 }

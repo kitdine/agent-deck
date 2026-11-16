@@ -1834,7 +1834,7 @@ func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.St
 	if after != epoch {
 		return "", errors.New("session index changed while recording checkpoint")
 	}
-	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
+	return sessionorigin.WatchFingerprint(epoch, fingerprint), nil
 }
 
 var discoverSessionInventory = ingest.Discover
@@ -3388,8 +3388,18 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 				if scanErr != nil {
 					return 0, scanErr
 				}
-				_, _ = telemetry.SettleAndProject(ctx, database, sessions, time.Now())
-				_, _ = sessionorigin.Reconcile(ctx, database, sessions, sessionorigin.ReconcileOptions{StateRoot: stateDir, Home: home})
+				// Numerical ownership may remain pending while readable sessions
+				// are classified. The watcher retries without acknowledging it.
+				_, settleErr := telemetry.SettleAndProject(ctx, database, sessions, time.Now(), usage.New(database, home).PrepareSourceIdentities)
+				if settleErr != nil && !errors.Is(settleErr, store.ErrTelemetrySourceIdentityPending) {
+					return 0, settleErr
+				}
+				if _, err := sessionorigin.Reconcile(ctx, database, sessions, sessionorigin.ReconcileOptions{StateRoot: stateDir, Home: home}); err != nil {
+					return 0, err
+				}
+				if settleErr != nil {
+					return result.Documents + result.Removed, settleErr
+				}
 				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
 				if checkpointErr == nil {
 					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
@@ -3449,6 +3459,10 @@ func persistWatchFingerprint(ctx context.Context, database *store.Store, domain,
 
 func renderWatchText(w io.Writer, event watch.Event) error {
 	at := renderDisplayTimeWithZone(event.GeneratedAt)
+	if event.Type == "scan_pending" {
+		_, err := fmt.Fprintf(w, "%s %s scan pending (%s). Retrying automatically.\n", at, strings.Title(event.Domain), strings.ReplaceAll(event.Reason, "_", " "))
+		return err
+	}
 	if event.Skipped {
 		_, err := fmt.Fprintf(w, "%s Watch scan skipped: %s.\n", at, strings.ReplaceAll(event.Reason, "_", " "))
 		return err
