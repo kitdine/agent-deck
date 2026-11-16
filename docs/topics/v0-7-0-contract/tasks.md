@@ -1,13 +1,16 @@
 ---
 status: active
 created: 2026-10-08
-updated: 2026-11-01
+updated: 2026-11-15
 ---
 
 # v0.7.0 Contract — Tasks
 
-Target: `v0.7.0`, covering scan performance, pricing-system redesign,
-auxiliary-session isolation, and Codex work-signal compatibility and recovery.
+Target: `v0.7.0`, covering scan performance, auxiliary-session isolation,
+Codex work-signal compatibility and recovery, installed-state ownership, and
+version-tolerant OTel metering with automatic classification. Pricing redesign
+and OpenCode product support are excluded by the
+[2026-11-15 membership decision](#membership-change--2026-11-15).
 Origin: the operator's 2026-10-08 four-theme proposal and subsequent explicit
 request to design this version contract. The intake is recorded in
 [Roadmap](../../roadmap.md#v070--scan-performance-pricing-redesign-and-work-sessions-proposed)
@@ -63,7 +66,11 @@ Historical v0.6.0 subscription-plan carriers `ad-v070` / `ad-v070-plan` are
 superseded records, not this iteration's dispatch or approval. Preserve their
 history and use `ad-v070-iteration` for this plan's coordination.
 
-## Feature registration — 2026-10-09 (not started)
+## Feature registration — 2026-10-09 (historical; withdrawn 2026-11-15)
+
+The following registration is historical. OpenCode V2 product support is no
+longer selected or registered for `v0.7.0`; `ad-opencode-support` retains its
+unversioned planning history. Project Hook/Skill support is unaffected.
 
 The operator proposed `opencode-support` for `v0.7.0`. This is a version-local
 feature registration only: feature design and development have not started.
@@ -92,9 +99,33 @@ the Documents review checkbox refers to this document only, not feature design
 or development. Formal membership changes follow this contract's existing
 authorization and review boundary.
 
+## Membership change — 2026-11-15
+
+The operator explicitly removed pricing-system redesign and subscription
+estimates (`cost-transparency`, carrier `ad-cost-transparency`) and OpenCode V2
+product support (`opencode-support`, carrier `ad-opencode-support`) from
+`v0.7.0`, and added `installed-state-ownership` and
+`otel-version-tolerant-metering`. The removed work remains unversioned future
+work; its intake and issue history are preserved, without new feature work.
+
+This decision supersedes the earlier selection and remaining-member statements
+in historical review rounds and integration batches below. It does not undo
+integrated code or erase evidence. Existing Codex, scan-performance and auxiliary
+integration results retain their original scope; neither new topic is integrated.
+Their own task reviews, required evidence, delivery and final integration review
+remain prerequisites, not consequences of membership.
+
+This material change returns the document to independent review. It authorizes
+contract and planning synchronization, not product implementation, branch
+refresh, commit, push, PR, merge, installation or release. Per the operator's explicit workspace boundary, this revision changes only
+the contract worktree. Global `docs/status.md` / `docs/roadmap.md` projections
+remain at their integrated baseline and will be reconciled at authorized
+integration/version closure. Their older intake does not override this explicit
+membership decision. No main modification or branch merge is implied.
+
 ## Selected membership
 
-The following four areas are selected in this draft for contract review.
+The following five areas are the current selected membership.
 Membership approval does not establish feature readiness. A blocked or unfinished
 member remains selected until the operator explicitly changes membership.
 Material additions, removals, deferrals or independently shippable slices return
@@ -102,13 +133,15 @@ this contract to review; readiness or elapsed time cannot silently reduce scope.
 
 | Selected area | Existing planning carrier | Owning work and current readiness |
 | --- | --- | --- |
-| Long scans, incremental cost and waiting behavior | `ad-bug-menubar-long-scan-timeout` | Proposed feature topic `scan-performance`; carrier is deferred/unassigned. The timeout symptom is established; the cause of the unusually expensive full read is not. Requirements, budgets, UX, architecture and decomposition need fresh design. |
-| Pricing-system redesign and subscription estimates | `ad-cost-transparency` | Proposed feature topic `cost-transparency`; carrier is deferred/unassigned. Re-design the whole topic around the four minimum inputs below; its old description and decomposition are not an approved scope ceiling. |
-| Auxiliary-session identity and work-view isolation | `ad-auxiliary-session-classification` | Proposed feature topic `auxiliary-session-classification`; carrier is deferred/unassigned. Default isolation with a switch is selected; classification, unknown treatment, persistence and surface contracts still belong to feature design. |
+| Long scans, incremental cost and waiting behavior | `ad-bug-menubar-long-scan-timeout` | `scan-performance` integrated through PR #61; see the recorded batch below for exact evidence and retained acceptance limits. |
+| Auxiliary-session identity and work-view isolation | `ad-auxiliary-session-classification` | `auxiliary-session-classification` integrated through PR #64; see the recorded batch below. The new OTel member changes classification/ownership interactions and requires fresh integration assessment of those changes. |
 | Codex Activity/Workflow/Tooling compatibility and historical recovery | `ad-bug-codex-work-signals-missing` | Confirmed Lane A fix delivered to `main` by [PR #58](https://github.com/kitdine/agent-deck/pull/58), merge `b450704bc43807487a51a777a90dc4f8793d30dc`. Current/legacy, direct/nested, string/block content and targeted Version 7 recovery passed independent review and exact merge-state CEv1 VERIFIED 5/5. Real-history resource cost and installed native surfaces remain joint acceptance with `scan-performance`; the area remains selected. |
+| Installed-state ownership | `ad-bug-dev-schema-migrates-release-state` | Existing topic `installed-state-ownership`, workspace/branch `feature/installed-state-ownership`; Tasks 1–7 reviewed, final ownership acceptance and stable-contract reconciliation remain open. Required requirements-text revision and accepted installation-method limits remain owned by that topic. Not integrated or certified batch-ready. |
+| Version-tolerant OTel metering and automatic classification | `ad-bug-otel-version-pinned-metering` | Existing topic `otel-version-tolerant-metering`, workspace/branch `feature/otel-version-tolerant-metering`; Documents and Tasks reviewed locally, awaiting authorized delivery. Uncommitted topic evidence does not certify a merge. Not integrated or certified batch-ready. |
 
-The proposed topic names identify intended owners, not existing worktrees,
-approved documents or implementation tasks. Do not duplicate origin Bugs merely
+Readiness above is the 2026-11-15 planning snapshot. Each owning workspace's
+`docs/topics/<topic>/tasks.md`, review records and live Beads dispatch govern
+subsequent progress. Resolve exact delivered content and gates at assembly. Do not duplicate origin Bugs merely
 to represent design stages, current-message support and historical replay.
 The already-delivered canonical session ID/project-attribution repair remains
 separate from auxiliary filtering and is not silently reopened by this version.
@@ -154,7 +187,11 @@ failure, repair, archive and reopening history is retained in the
 This integration does not certify real-user history scale, numerical scan budgets
 or installed native UI; those remain part of the selected combined acceptance.
 
-### Pricing redesign: required intake and scope discovery
+### Pricing redesign intake (historical; excluded from v0.7.0)
+
+The following 2026-10-08 intake is preserved for deferred, unversioned
+`ad-cost-transparency`. It is not a requirement, dependency or acceptance
+condition for the current version.
 
 The owning topic must re-open requirements discovery before implementation
 decomposition. The operator's four minimum requirements are:
@@ -200,22 +237,47 @@ auxiliary identity. Classification must preserve canonical identity and remain
 stable across duplicate sources, replay and late metadata. Work, auxiliary and
 all views must reconcile under the reviewed unknown policy. Explain scope
 differences between work KPIs and total usage/cost rather than forcing unlike
-time/event measures to match. Include observer/synthetic-model duplicate-metering
-checks with the pricing topic.
+time/event measures to match. OTel/JSONL duplicate-metering and automatic
+classification interactions belong to `otel-version-tolerant-metering`.
+
+### Installed-state ownership
+
+Non-installed processes must not open, migrate or write the real installed state.
+Installation identity, state/client-config guards, receipts, diagnostics, App
+state location and Debug identity follow the owning topic's reviewed contracts.
+Preserve its installation-method-specific limits; do not claim stronger cask
+atomicity or cleanup guarantees than its approved scope. Task 8 owns combined
+ownership acceptance; the requirements-text revision and its independent review
+belong to the topic's document flow and are prerequisites to Task 8's final
+conclusion. Task 9 reconciles the then-current stable product contract. Source defects remain open
+until their actual delivery boundary is satisfied.
+
+### OTel version-tolerant metering
+
+Admit supported OTel shapes independently of exact Codex version allowlists,
+re-admit eligible historical observations without double counting JSONL-owned
+threads, and apply the reviewed built-in classification rules automatically.
+Preserve event/token identity, user overrides and incomplete/conflict diagnostics.
+Use the AgentDeck-only design, not its superseded cross-repository proposal.
+Its changes to scan publication, auxiliary classification, schema migration and
+native/CLI presentation require cross-member integration assessment. Retain the
+owning topic's inference limits and real-versus-synthetic acceptance boundaries.
 
 ## Dependencies and acceptance
 
-The roadmap's P1/W1/W2/P2/C0/A1/A2/V1 labels describe design and acceptance order;
-they are not approved implementation-task IDs. This contract does not reproduce
-or freeze feature decomposition.
+The roadmap's original P1/W1/W2/P2/C0/A1/A2/V1 labels are historical intake,
+not current implementation-task IDs. In particular, C0 pricing work no longer
+blocks this version. Owning topics retain their approved decomposition.
 
 | Dependency | Gate before dependent work |
 | --- | --- |
 | Scan baseline → historical replay and performance implementation | `scan-performance` independently approves representative measurements and numerical resource/latency budgets before applying performance changes. |
 | Current-message compatibility → historical signal recovery | The Bug's bounded regression contract passes before acceptance of its historical recovery; final delivery covers both or receives an explicit membership/slicing decision. |
 | Historical recovery → final scan acceptance | The performance topic includes recovery/reparse costs and correctness, not only steady-state no-op timing. |
-| Pricing redesign → pricing implementation | Required requirements, affected UX, architecture and final decomposition pass their own reviews; all four minimum inputs and discovered additions have explicit dispositions. |
-| Auxiliary identity → work-view consistency | Reviewed classification/unknown/override contracts precede aggregate filtering; signal and settled cost-scope semantics are consumed where applicable. |
+| Auxiliary identity → work-view consistency | Reviewed classification/unknown/override contracts precede aggregate filtering; signal semantics and complete usage/cost preservation apply; classification changes from OTel require integration review. |
+| Installed-state completion → its batch | Finish required requirements reconciliation, ownership acceptance and stable-contract tasks; resolve source-topic review/evidence and authorized delivery before assembly. |
+| OTel delivery → its batch | Deliver reviewed content under separate authorization and bind/reuse evidence for that committed content; assess changed scan-performance and auxiliary-session contracts at integration. |
+| Shared schema and product contract → each new-member batch | Resolve actual source/target identities, migrations and `cli-design.md` versions against then-current main. The older installed-state base and OTel schema/spec changes require explicit compatibility assessment; do not freeze speculative version numbers or assume a merge order. Any necessary branch refresh needs separate authorization. |
 | All selected deliveries → version closure | Selected members have delivered, independently reviewed results and applicable exact-target evidence, or explicit operator-approved membership dispositions. |
 
 Each member's design owns exact files, fixtures, affected surfaces and numerical
@@ -229,9 +291,13 @@ criteria. Initial verification routing, under
 - Current Codex message compatibility: L2 isolated JSONL-to-SQLite regressions,
   usage/activity/session/desktop consumers and Go core regression. Historical
   replay raises the affected path to L3.
-- Pricing and auxiliary classification: L2 for shared parser/output/persistence
-  contracts; L3 for migration execution or privacy-sensitive inputs. Verify actual
-  CLI/native behavior and complete/partial/unknown amounts at the claimed layer.
+- Auxiliary classification and OTel metering: L2 for parser/output/persistence
+  contracts; L3 for migration, historical re-admission, JSONL/OTel metering
+  ownership revocation and
+  privacy-sensitive inputs. Verify CLI/native behavior at the claimed layer.
+- Installed-state ownership: L3 for guarded state access, receipts, concurrent
+  installation paths and isolated App identity. Preserve required real-install
+  acceptance from its owning topic; this planning change does not execute it.
 - Contract documents: L0. Release artifact and installation acceptance: L4 only
   at a separately authorized release boundary.
 
@@ -239,7 +305,8 @@ Use `scripts/run-go-test.sh` for Go verification. Reuse valid exact-content
 evidence; the level table is not an unconditional full-suite checklist. Browser
 specimens prove design states, not native runtime acceptance.
 
-Exclude Antigravity support, Linux, automatic updating, multi-device work,
+Exclude pricing redesign/subscription estimates, OpenCode product support,
+Antigravity support, Linux, automatic updating, multi-device work,
 invoice reconciliation and unrelated runtime/OS recovery from this selection.
 New product decisions stay in their owning topics and receive their required
 reviews. v0.6.x native/performance/accessibility exceptions remain historical;
@@ -260,8 +327,8 @@ authorization at that boundary.
 Accept whole coherent, completed topics/fixes in incremental batches. For each:
 resolve live source/target commits and trees, reviewed matrices and records,
 actual delivered scope, origin-Bug disposition and exact-state evidence. Compare
-overlapping contracts, persisted state, configuration, pricing/classification
-and scan/replay assumptions. Classify the actual merge through Branching; no
+overlapping contracts, persisted state, configuration, classification, metering
+ownership, installation ownership and scan/replay assumptions. Classify the actual merge through Branching; no
 textual conflict is not proof of compatibility.
 
 Feature/fix PRs target `main` directly under `assemble`; they are distinct from
@@ -623,6 +690,23 @@ CI runs (`43572725411`, `43572728514`) remain distinct pre-merge evidence. Aggre
 `assemble` checkboxes remain unchecked pending `cost-transparency` and final
 combined acceptance. No history was rewritten.
 
+### Membership disposition — 2026-11-15
+
+The current remaining members are `installed-state-ownership` and
+`otel-version-tolerant-metering`, plus final combined acceptance. Earlier batch
+statements naming pricing as remaining are historical and superseded by the
+membership decision above. Both aggregate task checkboxes remain unchecked;
+this document revision does not establish aggregate assembly completion.
+
+The existing CEv1 criterion `v0-7-0-contract:assemble:combined-acceptance`
+still names historical pricing scope. Before binding aggregate evidence, resolve
+a new criterion identity for the revised combined acceptance and explicitly
+disposition the old requirement under this operator decision using the supported
+provider lifecycle. Preserve the historical criterion/evidence; do not overwrite
+its description or satisfy its obsolete pricing wording with new-scope evidence.
+The aggregate gate remains open until that declaration and actual acceptance
+are resolved; this document revision does not perform or certify either.
+
 ### 1. `assemble`
 
 **Prerequisites:** reviewed contract membership with VERIFIED document evidence,
@@ -650,7 +734,9 @@ their real boundaries, retaining missing/failed evidence as such.
 **Verification:** L0 for records; select product L2/L3 checks for changed
 interactions and uncovered criteria, reusing unaffected valid evidence. Final
 combined acceptance covers representative scale with signal replay, auxiliary
-filters and pricing together, full/incremental agreement, no-op/append bounds,
+filters, OTel re-admission, JSONL/OTel metering ownership and installed-state
+guards together,
+full/incremental agreement, no-op/append bounds,
 queued/cancelled/failed scans, restart safety and preserved event/token identity.
 Numerical budgets come from the reviewed owning feature, not this draft.
 
@@ -666,21 +752,22 @@ claims agree; the contract completion gate is resolved for the actual content.
 
 **Files/boundary:** `docs/specs/cli-design.md`, affected
 `docs/specs/cli-manual.md`, this topic's `tasks.md` and
-`reviews/v0-7-0-contract.md`, integrated `docs/status.md`, necessary
+`reviews/v0-7-0-contract.md`, integrated `docs/status.md`, `docs/roadmap.md`
+(only the explicit pricing/OpenCode withdrawal and version-direction reconciliation,
+without a second membership list), necessary
 `docs/README.md` / archive-index pointers, and member-topic retirement metadata
 only at the authorized lifecycle boundary.
 
 Reconcile the then-current primary contract and add one consistent version-history
 entry/frontmatter revision. State new fields/defaults, command/output compatibility,
-unknown/estimated amounts and credits, model/price-source identity, historical
-replay and normal-upgrade behavior. Preserve databases, event/token identity,
+installation-ownership refusals, OTel admission/classification defaults,
+actual schema compatibility, historical replay and normal-upgrade behavior. Preserve databases, event/token identity,
 providers, credentials, exclusions, source logs and user settings. Identify any
 intentional changed default or recomputed derived value explicitly.
 
 Verify protected-data and normal-upgrade claims on isolated copies and the
 authorized native acceptance route. Missing supported fields remain unavailable
-with a reason. Do not equate credits estimates with actual quota, or claim invoice
-accuracy. Preserve independent member acceptance and all current residual risks.
+with a reason. Preserve independent member acceptance and all current residual risks.
 
 **Verification:** L0 contract/link/version consistency plus exact-state contract
 completion evidence, reusing valid feature/integration checks. Select additional
@@ -728,3 +815,11 @@ evidence reuses the unchanged scope and document-set decisions through an
 explicit impact assessment, with fresh scoped L0 checks. The operator separately
 authorized this document's commit and push on 2026-10-09. Aggregate assembly and
 contract closure remain open.
+
+### Current membership review — 2026-11-15
+
+The revised five-member selection and corresponding acceptance/dependency changes
+passed independent [Round 5](reviews/tasks.md#round-5--2026-11-15) re-review after
+closing all Round 4 findings. Final exact-content evidence and delivery status
+belong to that record. Round 1–4 retain their original content identities and
+verdicts. Aggregate assembly and version closure remain open.

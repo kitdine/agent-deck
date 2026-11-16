@@ -352,3 +352,104 @@ Task: `ad-v0-7-0-contract-doc-tasks-design`；内容只包括本主题 `tasks.md
 
 后续仍由既有 `assemble` 与版本收尾任务承接四个选定成员。OpenCode 仍只是
 登记项，本次文档复评不授予其设计/开发，不声称 aggregate Task 或版本完成。
+
+
+## Round 4 — 2026-11-15
+
+Verdict: FAIL
+Completion gate: NOT_VERIFIED
+
+- 对象：本轮 v0.7.0 成员调整；移除价格体系/订阅估算与 OpenCode V2 产品支持，
+  加入 installed-state-ownership 与 otel-version-tolerant-metering。
+- 授权：用户显式编排请求；随后明确只保留合同工作树修改，main 的规划修改已撤回。
+  工作区 v0-7-0-contract，分支 feature/v0-7-0-contract；不含产品实现或 Git 交付。
+- 方法：Claude Agent / claude-fable-5-2 冷上下文只读独立评审，T3 返回实际模型
+  claude-fable-5-2、配置 effort=medium；主代理 Codex 核对源文档并记录正式结论。
+  提案由另一个 Claude Opus 5.5 上下文提供；本轮评审未参与提案或写入。
+- 内容态：HEAD `aee4067f650add968477cbbd8d75c40084635634`；文档 blob
+  `356142a790b6c0003b79c091ffc200431437192f`；fingerprint
+  `d1d45e2200f865acfd72106e7b65cb2946924de3881e28b702c8004fc247cf3d`。
+- L0：主代理运行 `python3 scripts/check-docs.py`、`git diff --check` 均通过。
+  文档 WorkUnit 的 scope/document_set/l0 三项 required 已核对；固定 gate 查询
+  对本轮目标返回 missing_target_state / NOT_VERIFIED，旧观察 target_matches=false。
+  不复用旧 Round 3 PASS；未认证成员产品或 aggregate completion。
+
+### Findings
+
+- V070-R4-F1 — P2：Task 8 句子把 requirements 文本修订包含进组合验收产出，
+  与源主题“由它自己的设计/评审处理、仅阻塞最终验收结论”不符。修复明确文档流程
+  的所有权及 Task 8 的前置条件，未增加开工阻塞。
+- V070-R4-F2 — P2：schema/spec 兼容条件只挂在第二个新成员批次，而较旧的
+  installed-state 基线即使先集成也必须核对当时 main。修复为每个新增成员批次。
+- V070-R4-F3 — P2：承诺未来 roadmap 同步但两个 Task 的文件边界均未承接。
+  修复在 Task 2 中声明受限的撤回/版本方向同步；不在本次修改 main。
+- V070-R4-F4 — P3：installed release state、ownership 和 pricing/classification
+  的措辞可能混淆构建类型、安装归属及计量归属。修复为 real installed state、
+  JSONL/OTel metering ownership 及各实际集成关注点。
+
+上述均已形成修复候选，待独立复评关闭。另在成员处置段记录 aggregate 旧
+combined-acceptance 准则的显式替代前提，不修改历史节点，不伪造已完成验收。
+当前 roadmap 保留旧基线是用户明确边界；新成员决定以用户指令及版本契约为准，
+不宣称现有 main roadmap 已与新契约一致。Round 1–3 及批次证据保持原身份。
+
+
+## Round 5 — 2026-11-15
+
+Verdict: PASS
+Completion gate: VERIFIED
+
+- 范围：本主题 tasks.md 的五成员范围、依赖、验收与未来对账；只修改合同工作树。
+  不认证任何成员产品、集成批次、aggregate 或发布完成，不修改 main。
+- 角色/方法：新建冷上下文 Claude Agent / claude-fable-5-2 独立只读复评，
+  T3 actual model=claude-fable-5-2，配置 effort=medium；主代理 Codex 核对
+  精确候选与发现处置并记录正式结论。订阅余量未知；未切换计费渠道。
+- 复评输入：HEAD `aee4067f650add968477cbbd8d75c40084635634`，tasks.md blob
+  `b77ca4bb8f49473c52c39ae4c5b084bf444df6ee`。主代理重新核对该 blob 一致。
+  候选仅 tasks.md 与本评审记录变化。复评不重复未变 L0，不运行产品测试。
+- V070-R4-F1 closed：需求文本修订与独立评审属于成员的文档流程，Task 8
+  仅消费该前提形成最终组合验收结论，不新增开工阻塞。
+- V070-R4-F2 closed：每个新成员批次均须检查当时 main 的 schema/spec 兼容。
+- V070-R4-F3 closed：Task 2 承接受限 roadmap 撤回/版本方向对账，仍不在本次
+  修改 main，也不增设成员清单。
+- V070-R4-F4 closed：安装状态归属、JSONL/OTel 计量归属及实际构建类型边界已区分。
+- 无新阻塞发现。辅助会话行的 classification/ownership 在上下文中指计量归属；
+  不引入另一项保证。aggregate 准则处置的实际提供方机制仍须在该边界解析，
+  本次不制造新机制或改写旧节点。
+- 判定依据为用户当前成员决定与 Branching 的版本契约成员权威；main roadmap
+  仍是旧提案基线，按用户明确决定留待授权集成/收尾处理，不能声称其已同步。
+- 复评后同步仅勾选 Documents Review 并把当前评审入口指向本轮；五成员、任务
+  边界和验收语义未改变。完成证据须以显式 preserves 与 target-bound roll-up
+  复用输入语义评审，document_set/l0 在最终文档态核对，不重标旧观察。
+
+### Orchestration checkpoint
+
+authority_epoch=2；已消费请求 `v070-scope-e1-research-20261116`、
+`v070-scope-e2-review-r4-20261116`、`v070-scope-e2-review-r5-20261116`。
+提案 Claude Opus 5.5 / medium；两次独立评审为不同冷上下文的 Claude Fable 5.2 /
+medium。只进行一轮修复/复评。作者与评审使用同一 Claude harness 的不同上下文，
+由 Codex 主代理负责全部权威写入；独立性来自冷上下文与只读角色，不声称跨厂商评审。
+文档 carrier 沿用 `ad-v0-7-0-contract-doc-tasks-design`；assemble 保持开放。
+已完成本轮最终态文档 gate；当前仅待授权提交，不包含任何 Git 交付。
+
+
+### Final evidence and handoff
+
+- 最终 HEAD：`aee4067f650add968477cbbd8d75c40084635634`；tasks.md blob：
+  `fb2a914ae41cac4eea7d7c8ad9ccf2330894a9f4`；recipe 为
+  `sha256(head=<HEAD>;document=<blob>)`，fingerprint：
+  `64bcc148fb02aa494d8d12c8f7429a3fdcd3c86e7a99906568902e6225d384bd`。
+- WorkUnit：`urn:cev1:github.com/kitdine/agent-deck:work-unit:v0-7-0-contract:tasks.md`。
+  ContentState：`urn:cev1:github.com/kitdine/agent-deck:content-state:64bcc148fb02aa494d8d12c8f7429a3fdcd3c86e7a99906568902e6225d384bd`。
+- 输入评审态：`urn:cev1:github.com/kitdine/agent-deck:content-state:81493210dcefc5374cee3dddbba557b7a80bba1f5aaf58b879ed121f06194b20`。
+  最终 scope 通过显式 preserves 和 target-bound rolls_up 复用其独立评审，
+  document_set 与 l0 是最终态直接观察。8 个新节点回读一致；11 条关系预检
+  全部 ok，写入 11 条。固定 gate-status 查询最终态 VERIFIED 3/3，missing、
+  invalidated、unresolved 均为空。旧观察及历史交付元数据未改写。
+- 最终 tasks.md 状态下 `python3 scripts/check-docs.py`、
+  `python3 scripts/check-review-records.py --base HEAD docs/topics/v0-7-0-contract/reviews/tasks.md`、
+  `git diff --check` 均通过。仅本记录随后同步 gate 结果，并再次检查记录结构。
+- Beads 两个移出成员的 candidate-v0.7.0 标签已移除，保留各自原生命周期；
+  版本规划与 assemble 已记下新的成员决定，未接管两个新增主题的任务。
+  文档任务移交 awaiting_commit；aggregate、成员集成和版本收尾保持开放。
+- 本次无 commit、push、PR、merge、安装或发布。main 的两份规划文档修改
+  已按用户决定撤回；后续全局投影仅由授权的集成/Task 2 承接。
