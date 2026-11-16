@@ -883,14 +883,20 @@ extension EmbeddedHelperRunnerTests {
 
 private actor SuspendedOwnershipRecheck {
     let location: NativeStateLocation
+    let recheckStarted: @Sendable () -> Void
     var calls = 0
     private var continuation: CheckedContinuation<NativeStateLocation, Never>?
-    var waiting: Bool { continuation != nil }
-    init(_ location: NativeStateLocation) { self.location = location }
+    init(_ location: NativeStateLocation, recheckStarted: @escaping @Sendable () -> Void) {
+        self.location = location
+        self.recheckStarted = recheckStarted
+    }
     func query() async -> NativeStateLocation {
         calls += 1
         if calls == 1 { return location }
-        return await withCheckedContinuation { continuation = $0 }
+        return await withCheckedContinuation {
+            continuation = $0
+            recheckStarted()
+        }
     }
     func finish() { continuation?.resume(returning: location); continuation = nil }
 }
@@ -899,14 +905,15 @@ extension EmbeddedHelperRunnerTests {
     func testCloseReleasesProvisionalLockBeforeRecheckReturns() async throws {
         let account = try ownershipAccount()
         let session = NativeOwnershipSession(accountHome: { account })
-        let suspended = SuspendedOwnershipRecheck(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))
+        let reachedRecheck = expectation(description: "provisional ownership lock acquired; recheck suspended")
+        let suspended = SuspendedOwnershipRecheck(
+            NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path),
+            recheckStarted: { reachedRecheck.fulfill() }
+        )
         let work = Task { try await session.resolve { await suspended.query() } }
-        for _ in 0..<1000 {
-            if await suspended.waiting { break }
-            await Task.yield()
-        }
-        let waiting = await suspended.waiting
-        XCTAssertTrue(waiting)
+        // The actor signals after the real shared lock is acquired and the
+        // recheck continuation is installed. Scheduler yields cannot prove it.
+        await fulfillment(of: [reachedRecheck], timeout: 5)
         let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
         XCTAssertNotEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
         session.close()
