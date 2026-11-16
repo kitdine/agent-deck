@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 34
+	CurrentSchemaVersion   = 35
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )

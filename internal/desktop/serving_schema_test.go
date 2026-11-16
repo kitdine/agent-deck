@@ -14,10 +14,10 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Schema 31's, 32's and 33's published format and canonical fact layout
-	// are unchanged by migrations 32 to 34. Exercise each old header against
-	// the upgraded state reader.
-	for _, schema := range []int{31, 32, 33} {
+	// Schema 31's to 34's published format and canonical fact layout are
+	// unchanged by migrations 32 to 35. Exercise each old header against the
+	// upgraded state reader.
+	for _, schema := range []int{31, 32, 33, 34} {
 		full.Header.Generation.CoreSchema = schema
 		bytes, err := encodeServingSnapshot(full)
 		if err != nil {
@@ -31,7 +31,7 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 			t.Fatalf("compatible schema %d publication lost or redated: %v", schema, err)
 		}
 	}
-	for _, schema := range []int{30, 35} {
+	for _, schema := range []int{30, 36} {
 		full.Header.Generation.CoreSchema = schema
 		bytes, err := encodeServingSnapshot(full)
 		if err != nil {
@@ -44,7 +44,7 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 			t.Fatalf("unknown schema %d accepted: %v", schema, err)
 		}
 	}
-	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(33, 32) || compatibleServingCoreSchema(34, 33) || compatibleServingCoreSchema(31, 35) || compatibleServingCoreSchema(33, 35) {
+	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(33, 32) || compatibleServingCoreSchema(34, 33) || compatibleServingCoreSchema(35, 34) || compatibleServingCoreSchema(30, 35) || compatibleServingCoreSchema(31, 36) || compatibleServingCoreSchema(35, 36) {
 		t.Fatal("schema exception widened to downgrade or future migration")
 	}
 }

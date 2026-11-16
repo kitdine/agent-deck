@@ -713,7 +713,7 @@ struct SessionOriginSettingsGroup: View {
 	private var sourceNote: some View {
 		switch controller.sourceNote {
 		case .adapterUnavailable:
-			OriginCaption(t(DesktopCopy.originSourceNoteAdapter))
+			EmptyView()
 		case .coreUnavailable:
 			OriginCaption(t(DesktopCopy.originSourceNoteCore))
 			Button(t(DesktopCopy.originActionReadAgain)) { Task { await controller.readLatestValues() } }

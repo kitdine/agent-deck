@@ -157,7 +157,7 @@ func TestListOverridesBounds(t *testing.T) {
 
 func TestReasonCodeEnumIsClosed(t *testing.T) {
 	codes := ReasonCodes()
-	if len(codes) != 7 {
+	if len(codes) != 8 {
 		t.Fatalf("reason codes = %v", codes)
 	}
 	for _, code := range codes {

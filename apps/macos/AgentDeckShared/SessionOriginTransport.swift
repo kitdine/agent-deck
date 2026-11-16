@@ -180,11 +180,12 @@ public struct DesktopOriginSourceStatusV1: Codable, Equatable, Sendable {
 	public let lastRunAt: String?
 	public let receiver: String?
 	public let backgroundSessions: Int?
+ public let otelOwnedSessions: Int?
 
 	public init(
 		source: String, kind: String, configured: Bool? = nil, enabled: Bool? = nil, available: Bool,
 		supportedVersion: String? = nil, ruleVersion: String, reasonCode: String?, lastRunAt: String? = nil,
-		receiver: String? = nil, backgroundSessions: Int? = nil
+		receiver: String? = nil, backgroundSessions: Int? = nil, otelOwnedSessions: Int? = nil
 	) {
 		self.source = source
 		self.kind = kind
@@ -197,6 +198,7 @@ public struct DesktopOriginSourceStatusV1: Codable, Equatable, Sendable {
 		self.lastRunAt = lastRunAt
 		self.receiver = receiver
 		self.backgroundSessions = backgroundSessions
+ self.otelOwnedSessions = otelOwnedSessions
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -206,6 +208,7 @@ public struct DesktopOriginSourceStatusV1: Codable, Equatable, Sendable {
 		case reasonCode = "reason_code"
 		case lastRunAt = "last_run_at"
 		case backgroundSessions = "background_sessions"
+ case otelOwnedSessions = "otel_owned_sessions"
 	}
 }
 
@@ -216,10 +219,12 @@ public struct DesktopOriginSourceStatusesV1: Equatable, Sendable {
 	public let codexBackground: DesktopOriginSourceStatusV1
 	/// The envelope's partial flag: one of the three single reads failed.
 	public let partial: Bool
+ public let builtinRules: [String]?
 
-	public init(claudeMem: DesktopOriginSourceStatusV1, codexBackground: DesktopOriginSourceStatusV1, partial: Bool) {
+	public init(claudeMem: DesktopOriginSourceStatusV1, codexBackground: DesktopOriginSourceStatusV1, partial: Bool, builtinRules: [String]? = nil) {
 		self.claudeMem = claudeMem
-		self.codexBackground = codexBackground
+		self.builtinRules = builtinRules
+ self.codexBackground = codexBackground
 		self.partial = partial
 	}
 }
@@ -354,6 +359,8 @@ private struct OriginErrorEnvelope: Decodable {
 
 private struct OriginSourceStatusData: Decodable {
 	let sources: [DesktopOriginSourceStatusV1]
+ let builtinRules: [String]?
+ enum CodingKeys: String,CodingKey {case sources;case builtinRules="builtin_rules"}
 }
 
 private struct OriginOutcomeProbe: Decodable {
@@ -454,7 +461,10 @@ enum SessionOriginDecoding {
 			decoded.data.sources[1].source == DesktopOriginSourceStatusV1.codexBackground, decoded.data.sources[1].kind == "builtin"
 		else { return .unavailable }
 		let sources = decoded.data.sources
-		return .value(DesktopOriginSourceStatusesV1(claudeMem: sources[0], codexBackground: sources[1], partial: decoded.partial))
+        if let rules = decoded.data.builtinRules, rules.isEmpty || Set(rules).count != rules.count || rules.contains(where: { $0.isEmpty }) { return .unavailable }
+        if let owned = sources[1].otelOwnedSessions, owned < 0 || sources[1].backgroundSessions.map({ $0 < 0 || $0 > owned }) == true { return .unavailable }
+        if let count = sources[1].backgroundSessions, count < 0 { return .unavailable }
+        return .value(DesktopOriginSourceStatusesV1(claudeMem: sources[0], codexBackground: sources[1], partial: decoded.partial, builtinRules: decoded.data.builtinRules))
 	}
 }
 

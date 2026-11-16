@@ -111,7 +111,7 @@ func (s stores) settleBackground(t *testing.T, service, originator, conversation
 
 func (s stores) settle(t *testing.T) {
 	t.Helper()
-	if _, err := telemetry.SettleAndProject(context.Background(), s.core, s.sessions, receivedAt.Add(telemetry.SettleAfter)); err != nil {
+	if _, err := telemetry.SettleAndProject(context.Background(), s.core, s.sessions, receivedAt.Add(telemetry.SettleAfter), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -180,12 +180,10 @@ func TestCodexOTelBackgroundSessionsAreMaintenance(t *testing.T) {
 	}
 
 	s.reconcile(t, ReconcileOptions{})
-	for _, id := range []string{"memories-exec", "title-tui"} {
-		s.wantOrigin(t, "codex", id, ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1)
-	}
-	evidence, err := s.core.OriginEvidenceFor(context.Background(), "codex", []string{"memories-exec"})
-	if err != nil || len(evidence["memories-exec"]) != 1 || evidence["memories-exec"][0].Adapter != SourceCodexOTelBackground ||
-		evidence["memories-exec"][0].ValidatedVersion != "codex_exec/0.165.0/codex_exec/sse" {
+	s.wantOrigin(t, "codex", "memories-exec", ClassWork, ReasonDefaultWork, RuleCodexOTelExecWorkV1)
+	s.wantOrigin(t, "codex", "title-tui", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelTUIBackgroundV1)
+	evidence, err := s.core.OriginEvidenceFor(context.Background(), "codex", []string{"memories-exec", "title-tui"})
+	if err != nil || len(evidence["memories-exec"]) != 0 || len(evidence["title-tui"]) != 1 {
 		t.Fatalf("evidence %+v %v", evidence, err)
 	}
 	// Classification changes no OTel contribution, event identity, token or amount.
@@ -195,15 +193,15 @@ func TestCodexOTelBackgroundSessionsAreMaintenance(t *testing.T) {
 	// The same ID on another client is not hidden by a codex marker.
 	s.indexSession(t, "claude", "memories-exec", "/home/.claude/projects/p/memories-exec.jsonl", "claude-copy", "p", "2026-10-29T11:00:00Z")
 	s.reconcile(t, ReconcileOptions{})
-	s.wantOrigin(t, "claude", "memories-exec", ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
-	s.wantOrigin(t, "codex", "memories-exec", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1)
+	s.wantOrigin(t, "claude", "memories-exec", ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
+	s.wantOrigin(t, "codex", "memories-exec", ClassWork, ReasonDefaultWork, RuleCodexOTelExecWorkV1)
 }
 
 func TestLateRolloutRevokesCodexMaintenance(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "late-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "late-1")
 	s.reconcile(t, ReconcileOptions{})
-	s.wantOrigin(t, "codex", "late-1", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1)
+	s.wantOrigin(t, "codex", "late-1", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelTUIBackgroundV1)
 
 	// A late rollout JSONL event retracts the marker in the same transaction.
 	if _, err := s.core.DB.Exec(`INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES('jsonl-late','codex','late-1','jsonl-late','2026-10-29T12:30:00Z','gpt-5.6-terra',100,5,'/home/.codex/sessions/rollout-late-1.jsonl',0)`); err != nil {
@@ -216,7 +214,7 @@ func TestLateRolloutRevokesCodexMaintenance(t *testing.T) {
 	s.settle(t)
 	s.indexSession(t, "codex", "late-1", "/home/.codex/sessions/rollout-late-1.jsonl", "rollout-late-1", "r", "2026-10-29T12:30:00Z")
 	s.reconcile(t, ReconcileOptions{})
-	s.wantOrigin(t, "codex", "late-1", ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "codex", "late-1", ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 	if evidence, _ := s.core.OriginEvidenceFor(context.Background(), "codex", []string{"late-1"}); len(evidence["late-1"]) != 0 {
 		t.Fatalf("stale evidence kept: %+v", evidence)
 	}
@@ -225,20 +223,20 @@ func TestLateRolloutRevokesCodexMaintenance(t *testing.T) {
 func TestCodexMarkersOutsideTheRuleAndUnmarkedOTelSourcesAreUnknown(t *testing.T) {
 	s := openStores(t)
 	// A marker from a support entry this rule version does not cover.
-	if _, err := s.core.DB.Exec(`INSERT INTO telemetry_sessions(client,session_id,source_kind,model,first_at,last_at,support_entry,settled_at) VALUES('codex','future-1','codex-otel-background','m','2026-10-29T12:00:00Z','2026-10-29T12:00:00Z','codex_exec/0.166.0/codex_exec/sse','2026-10-29T12:10:00Z')`); err != nil {
+	if _, err := s.core.DB.Exec(`INSERT INTO telemetry_sessions(client,session_id,source_kind,model,first_at,last_at,support_entry,settled_at) VALUES('codex','future-1','codex-otel-background','m','2026-10-29T12:00:00Z','2026-10-29T12:00:00Z','codex-desktop/0.166.0/codex-desktop/sse','2026-10-29T12:10:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	s.settle(t)
 	// An otel:-prefixed source with an empty project but no marker.
 	s.indexSession(t, "codex", "plain-1", "otel:codex/plain-1", "otel:codex/plain-1", "", "2026-10-29T12:00:00Z")
 	s.reconcile(t, ReconcileOptions{})
-	s.wantOrigin(t, "codex", "future-1", ClassUnknown, ReasonOriginRuleUnsupported, RuleCodexOTelBackgroundV1)
-	s.wantOrigin(t, "codex", "plain-1", ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "codex", "future-1", ClassWork, ReasonOriginRuleUnsupported, RuleCodexOTelTUIBackgroundV1)
+	s.wantOrigin(t, "codex", "plain-1", ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 }
 
 func TestUnchangedPassWritesNothingAndRemovedSessionsLoseDerivedRows(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.indexSession(t, "codex", "work-1", "/r/work-1.jsonl", "work-1", "w", "2026-10-29T10:00:00Z")
 	first := s.reconcile(t, ReconcileOptions{})
 	if first.Sessions != 2 || first.Changed != 2 {
@@ -317,11 +315,11 @@ func (s stores) override(t *testing.T, client, id, value string) {
 
 func TestDuplicateCopiesShareOneCanonicalClassification(t *testing.T) {
 	s := openStores(t)
-	s.settleBackground(t, "codex_exec", "codex_exec", "dup-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "dup-1")
 	// An archived copy of the same canonical session (a file copy, not a rollout of the background session).
 	s.indexSession(t, "codex", "dup-1", "/archive/dup-1.jsonl", "archive-dup-1", "a", "2026-10-29T12:00:00Z")
 	s.reconcile(t, ReconcileOptions{})
-	s.wantOrigin(t, "codex", "dup-1", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1)
+	s.wantOrigin(t, "codex", "dup-1", ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelTUIBackgroundV1)
 	var rows int
 	if err := s.core.DB.QueryRow(`SELECT count(*) FROM session_origins WHERE session_id='dup-1'`).Scan(&rows); err != nil || rows != 1 {
 		t.Fatalf("rows=%d %v", rows, err)
@@ -356,9 +354,9 @@ func TestClaudeMemObserverSessionsEndToEnd(t *testing.T) {
 	}
 	s.wantOrigin(t, "claude", observerID, ClassAuxiliary, ReasonMaintenanceOrigin, RuleClaudeMemSDKMapV1)
 	for _, id := range []string{userID, childID} {
-		s.wantOrigin(t, "claude", id, ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+		s.wantOrigin(t, "claude", id, ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 	}
-	s.wantOrigin(t, "codex", observerID, ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "codex", observerID, ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 	run, found, err := s.core.OriginAdapterRunFor(context.Background(), SourceClaudeMem)
 	if err != nil || !found || run.Outcome != "ok" || run.ValidatedVersion == nil || *run.ValidatedVersion != claudemem.ValidatedVersion {
 		t.Fatalf("run %+v %v %v", run, found, err)
@@ -380,7 +378,7 @@ func TestClaudeMemObserverSessionsEndToEnd(t *testing.T) {
 	if disabled := s.reconcile(t, ReconcileOptions{Now: func() time.Time { return receivedAt.Add(3 * time.Hour) }}); disabled.ClaudeMem != nil {
 		t.Fatalf("disabled adapter ran: %+v", disabled)
 	}
-	s.wantOrigin(t, "claude", observerID, ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "claude", observerID, ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 	if kept, _, _ := s.core.OriginAdapterRunFor(context.Background(), SourceClaudeMem); runText(kept) != runText(run) {
 		t.Fatalf("run summary changed by disable: %+v", kept)
 	}
@@ -423,7 +421,7 @@ func TestClaudeMemFailuresKeepCandidatesUnknown(t *testing.T) {
 	for _, name := range []string{"unavailable", "unsupported"} {
 		s.reconcile(t, ReconcileOptions{ReadClaudeMem: read(name)})
 		for _, id := range []string{observerID, userID} {
-			s.wantOrigin(t, "claude", id, ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
+			s.wantOrigin(t, "claude", id, ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
 		}
 		run, _, _ := s.core.OriginAdapterRunFor(context.Background(), SourceClaudeMem)
 		if run.Outcome != results[name].Outcome || run.Reason == nil || *run.Reason != results[name].Reason {
@@ -431,8 +429,8 @@ func TestClaudeMemFailuresKeepCandidatesUnknown(t *testing.T) {
 		}
 	}
 	s.reconcile(t, ReconcileOptions{ReadClaudeMem: read("partial")})
-	s.wantOrigin(t, "claude", observerID, ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
-	s.wantOrigin(t, "claude", userID, ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "claude", observerID, ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
+	s.wantOrigin(t, "claude", userID, ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 
 	// An unreadable configuration cannot confirm the adapter's state: no run
 	// is recorded and candidates are unknown.
@@ -450,7 +448,7 @@ func TestClaudeMemFailuresKeepCandidatesUnknown(t *testing.T) {
 	if after, _, _ := s.core.OriginAdapterRunFor(context.Background(), SourceClaudeMem); runText(after) != runText(before) {
 		t.Fatal("run summary written without configuration")
 	}
-	s.wantOrigin(t, "claude", userID, ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
+	s.wantOrigin(t, "claude", userID, ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
 }
 
 func TestNotConfiguredClaudeMemNeverRuns(t *testing.T) {
@@ -466,7 +464,7 @@ func TestNotConfiguredClaudeMemNeverRuns(t *testing.T) {
 	if _, found, _ := s.core.OriginAdapterRunFor(context.Background(), SourceClaudeMem); found {
 		t.Fatal("run summary without configuration")
 	}
-	s.wantOrigin(t, "claude", observerID, ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion)
+	s.wantOrigin(t, "claude", observerID, ClassWork, ReasonDefaultWork, RuleDefaultWorkV1)
 	if _, err := os.Stat(SourceConfigDir(s.root)); !os.IsNotExist(err) {
 		t.Fatalf("reconcile created configuration: %v", err)
 	}
@@ -479,7 +477,7 @@ func TestIncrementalPassesEqualAFullRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A sequence of incremental changes, each followed by a pass.
-	s.settleBackground(t, "codex_exec", "codex_exec", "bg-1")
+	s.settleBackground(t, "codex-app-server", "codex-tui", "bg-1")
 	s.reconcile(t, ReconcileOptions{})
 	s.indexSession(t, "claude", observerID, "/c/observer.jsonl", "observer", "o", "2026-10-29T10:00:00Z")
 	s.reconcile(t, ReconcileOptions{})
@@ -571,7 +569,7 @@ func TestPluginUpgradeInvalidatesClaudeMemEvidence(t *testing.T) {
 		t.Fatalf("summary %+v", summary.ClaudeMem)
 	}
 	for _, id := range []string{observerID, userID} {
-		s.wantOrigin(t, "claude", id, ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
+		s.wantOrigin(t, "claude", id, ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
 	}
 	if evidence, _ := s.core.OriginEvidenceFor(context.Background(), "claude", []string{observerID}); len(evidence[observerID]) != 0 {
 		t.Fatalf("evidence kept after plugin upgrade: %+v", evidence)
@@ -602,11 +600,31 @@ func TestMixedPluginInstallInvalidatesClaudeMemEvidence(t *testing.T) {
 	if summary.ClaudeMem == nil || summary.ClaudeMem.Outcome != claudemem.OutcomeUnsupported || *summary.ClaudeMem.Reason != claudemem.ReasonPluginVersion {
 		t.Fatalf("summary %+v", summary.ClaudeMem)
 	}
-	s.wantOrigin(t, "claude", observerID, ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
+	s.wantOrigin(t, "claude", observerID, ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1)
 	if evidence, _ := s.core.OriginEvidenceFor(context.Background(), "claude", []string{observerID}); len(evidence[observerID]) != 0 {
 		t.Fatalf("evidence kept beside a mixed install: %+v", evidence)
 	}
 	if record, found, _ := s.core.OriginOverrideRecord(context.Background(), "claude", userID); !found || record.Value == nil || *record.Value != "auxiliary" {
 		t.Fatal("override lost")
+	}
+}
+
+func TestRuleUpgradeRetiresOldExecEvidenceAndPreservesOverrides(t *testing.T) {
+	s := openStores(t)
+	s.settleBackground(t, "codex_exec", "codex_exec", "upgrade-exec")
+	s.reconcile(t, ReconcileOptions{})
+	s.override(t, "codex", "upgrade-exec", ClassAuxiliary)
+	if _, err := s.core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token='old-v1'; INSERT INTO origin_evidence VALUES('codex-otel-background','codex-otel-background-v1','codex','upgrade-exec','old','auxiliary','0.165','old'); INSERT INTO origin_evidence VALUES('other-adapter','other-v1','codex','upgrade-exec','other','work','v','old')`); err != nil {
+		t.Fatal(err)
+	}
+	s.reconcile(t, ReconcileOptions{})
+	s.wantOrigin(t, "codex", "upgrade-exec", ClassWork, ReasonDefaultWork, RuleCodexOTelExecWorkV1)
+	var old, other int
+	if err := s.core.DB.QueryRow(`SELECT sum(adapter='codex-otel-background'),sum(adapter='other-adapter') FROM origin_evidence WHERE session_id='upgrade-exec'`).Scan(&old, &other); err != nil || old != 0 || other != 1 {
+		t.Fatalf("old=%d other=%d %v", old, other, err)
+	}
+	selected := s.selectScope(t, Selection{Scope: ScopeAuxiliary})
+	if len(selected.Sessions) != 1 || selected.Sessions[0].Origin.Override == nil || !selected.Sessions[0].Origin.Override.Applied {
+		t.Fatal("upgrade lost override")
 	}
 }

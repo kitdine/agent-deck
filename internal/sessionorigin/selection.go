@@ -138,7 +138,7 @@ type Snapshot struct {
 	auxiliary    []usage.SessionKey
 }
 
-// CoverageGapReasons are the unknown reasons that mean classification input
+// CoverageGapReasons are the diagnostic reasons that mean classification input
 // was missing or stale rather than confirmed: a session with one of them might
 // be auxiliary once its source is readable again. Confirmed unknown states
 // (metadata missing, unconfirmed task child, conflict, unsupported rule) are
@@ -277,14 +277,14 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 		if item, ok := overrides[key]; ok {
 			override = &item
 		}
-		classified := Classify(indexed, origin, override)
+		classified := classify(indexed, origin, override, state.SchemaVersion == 34)
 		if classified.Effective == ClassAuxiliary {
 			snapshot.auxiliary = append(snapshot.auxiliary, usage.SessionKey{Client: indexed.Client, SessionID: indexed.SessionID})
 		}
 		if !selection.inWindow(indexed.Metadata) {
 			continue
 		}
-		if classified.Effective == ClassUnknown && isCoverageGap(classified.ReasonCode) {
+		if (classified.Override == nil || !classified.Override.Applied) && isCoverageGap(classified.ReasonCode) {
 			snapshot.CoverageGaps[classified.ReasonCode]++
 		}
 		if !InScope(selection.Scope, classified.Effective) {
@@ -345,11 +345,15 @@ func InScope(scope, effective string) bool {
 
 // Classify derives one indexed session's classification. The stored
 // automatic class applies only when its input token equals the token of the
-// copies indexed now: otherwise it is unknown/origin_input_mismatch, so an
+// copies indexed now: otherwise it is work/origin_input_mismatch, so an
 // outdated auxiliary class never hides a session. A missing row is
 // unknown/origin_metadata_missing. An override classifies only while its
 // binding is matched and equals the binding of the session's current birth.
 func Classify(indexed session.IndexedSession, origin *store.SessionOrigin, override *store.OriginOverride) Origin {
+	return classify(indexed, origin, override, false)
+}
+
+func classify(indexed session.IndexedSession, origin *store.SessionOrigin, override *store.OriginOverride, legacySchema bool) Origin {
 	generations := make([]SourceGeneration, 0, len(indexed.Copies))
 	sources := make([]store.SessionOriginSource, 0, len(indexed.Copies))
 	for _, copy := range indexed.Copies {
@@ -358,10 +362,16 @@ func Classify(indexed session.IndexedSession, origin *store.SessionOrigin, overr
 	}
 	result := Origin{Automatic: ClassUnknown, ReasonCode: ReasonOriginMetadataMissing, RuleVersion: ReducerVersion}
 	if origin != nil {
-		if origin.InputToken == InputToken(indexed.Client, indexed.SessionID, generations, nil) {
+		matches := origin.InputToken == InputToken(indexed.Client, indexed.SessionID, generations, nil)
+		// Schema34 reads must not migrate or reinterpret intact legacy results.
+		// Still verify the source generation; schema35 never accepts the retired rules.
+		if legacySchema {
+			matches = matches || origin.InputToken == inputTokenWithRules(indexed.Client, indexed.SessionID, generations, nil, "origin-reducer-v1", []string{RuleClaudeMemSDKMapV1, RuleCodexOTelBackgroundV1})
+		}
+		if matches {
 			result.Automatic, result.ReasonCode, result.RuleVersion = origin.Automatic, origin.ReasonCode, origin.RuleVersion
 		} else {
-			result.ReasonCode = ReasonOriginInputMismatch
+			result.Automatic, result.ReasonCode = ClassWork, ReasonOriginInputMismatch
 		}
 	}
 	result.Effective = result.Automatic

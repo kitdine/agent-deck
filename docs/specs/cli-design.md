@@ -1,7 +1,7 @@
 ---
 status: active
-version: 34
-updated: 2026-11-13
+version: 35
+updated: 2026-11-15
 created: 2026-07-14
 ---
 
@@ -1960,32 +1960,55 @@ DTOs. Classification never changes usage events, tokens, costs, or pricing, and
 consumption totals (`usage summary`, prices, quota, and the consumption blocks
 of `usage stats`) always remain `all`.
 
-Automatic classification is rebuildable derived state. Only explicitly
-supported maintenance-origin metadata can produce `auxiliary`; directories,
-models, project names, empty projects, and timing similarity are never used.
-Ordinary sources stay `unknown` and remain in the Work view; AgentDeck does not
-claim that an ordinary log is proven work. Task subagents sharing the parent's
-session ID remain that canonical session; a subagent with its own ID and no
-verifiable relation is `unknown`. Two maintenance rules exist:
+Automatic classification is rebuildable derived state. Readable sessions default
+to `work` through an ordered, versioned rule set. Normal scans, rebuilds,
+telemetry settlement and rule-version changes refresh derived classifications.
+`unknown/origin_metadata_missing` indicates that no derived result is available
+yet. Task children without confirmed purpose remain visible as Work.
 
-- `claude-mem-sdk-map-v1` reads the claude-mem plugin's session-mapping
-  metadata read-only from an explicitly configured absolute data root during
-  the existing scan/rebuild stages. The plugin is never modified.
-- `codex-otel-background-v1` is built in. It reads only AgentDeck's own
-  `telemetry_sessions` facts: a Codex session whose marker has
-  `source_kind=codex-otel-background` and a listed support entry
-  (`codex_exec/0.165.0/codex_exec/sse`,
-  `codex-app-server/0.165.0/codex-tui/sse`) is maintenance. When a late JSONL
-  source removes the marker, the evidence lapses and the session is
-  re-reduced; an old `auxiliary` never hides a JSONL session.
+The ordered rules are:
 
-`reason_code` is a closed enum, separate from `rule_version`:
-`maintenance_origin` (automatic `auxiliary`), and `origin_metadata_missing`,
+- `claude-mem-sdk-map-v1` uses an enabled optional adapter's exact session
+  mapping to classify auxiliary activity.
+- `codex-otel-tui-background-v1` infers Auxiliary for admitted OTel-owned
+  `codex-app-server/codex-tui` conversations. A rollout-less TUI main session
+  can also match this inference.
+- `codex-otel-exec-work-v1` keeps admitted OTel-owned
+  `codex_exec/codex_exec` conversations in Work, including ephemeral user
+  sessions. Exec Memories activity can also appear in Work.
+- `default-work-v1` supplies Work when earlier evidence and diagnostics yield
+  no other result. Defaults do not participate as explicit purpose evidence.
+
+These Codex rules apply across admitted producer versions, including 0.165.0.
+The old `codex-otel-background-v1` automatic evidence is retired on normal
+reconciliation. User overrides retain their binding and priority. Late JSONL
+removes the OTel marker and automatically refreshes the session's classification.
+Numerical eligibility remains independent of purpose and preserves JSONL/OTel
+exclusive ownership. Family and completed SSE shape determine admission, with
+a nonempty producer version of at most 256 bytes and no `/` separator.
+
+`reason_code` remains a closed enum separate from `rule_version`.
+`maintenance_origin` implies automatic Auxiliary. `default_work`,
 `task_child_unconfirmed`, `conflicting_origin`, `origin_source_unavailable`,
-`origin_rule_unsupported`, `origin_input_mismatch` (all automatic `unknown`).
-Adding a code is a contract change. Consumers that meet an unknown code show a
-generic "reason unavailable", keep the effective/automatic values, and never
-infer `auxiliary` or hide the session.
+`origin_rule_unsupported` and `origin_input_mismatch` imply Work for newly
+classified sessions. Stale source-generation evidence is rejected before
+auxiliary inference. Actual purpose conflicts retain their diagnostic while
+keeping the session visible in Work. Coverage gaps still follow diagnostic
+reasons, so a failed source read can produce partial coverage with a Work class.
+Consumers display the effective/automatic fields and a generic reason label
+for unfamiliar reason codes.
+
+Schema 35 adds the `default_work` constraint value and source thread identity.
+A read-only schema 34 open preserves valid legacy v1 results and their source
+binding without migration. Writable migration and the next normal scan produce
+the new defaults.
+
+Source status exposes `builtin_rules` in priority order. Its Codex row reports
+`background_sessions` for inferred TUI auxiliary sessions and
+`otel_owned_sessions` for all numerically OTel-owned sessions. The rule version
+names the TUI rule. Unconfigured or disabled claude-mem is a neutral optional
+enhancement state. Core/config/receiver read failures and enabled adapter
+unavailable, unsupported or partial runs retain partial diagnostics.
 
 A user override (`work` or `auxiliary`, never `unknown`) is stored in core,
 takes precedence for `effective`, and preserves the automatic value and its
@@ -1994,6 +2017,12 @@ never deletes overrides, source logs, or usage. Writes to overrides and the
 saved default scope use compare-and-set on a confirmed revision with an
 idempotent request ID; a conflict is never retried as an overwrite, and a core
 read failure is never interpreted as revision 0 or no override.
+
+Clearing an override commits its idempotent receipt before refreshing automatic
+classification. An absent session index permits a core-only clear. Other index
+open errors or refresh failures preserve the saved receipt, report
+`classification_refresh_pending`, and recover on a later normal refresh.
+Historical receipt fields retain `not_queried` semantics.
 
 Scopes are `work` = work plus unknown, `auxiliary`, and `all`. Client,
 project, and time filters and the scope apply before ordering, pagination,
@@ -2444,6 +2473,16 @@ DTO reflection is not a user-facing contract. Optional costs print their decimal
 value or `unavailable`, never pointer representations. `--quiet` suppresses only
 successful non-essential text mutation output. JSON and errors are unaffected.
 JSON is the stable automation and GUI contract. Watch uses NDJSON.
+
+Watch event schema 1 also supports `scan_pending` with
+`reason=source_identity_pending`, `skipped=false`, and the number of domain
+changes already committed. Readable sessions are classified before this event.
+The incomplete domain keeps its previous checkpoint and retries on the next
+poll while other domains continue. Recovery emits `scan_completed` and advances
+the checkpoint. Text output names the pending state and automatic retry.
+Session checkpoints include the active classification rules, so an upgrade can
+refresh classifications even when source files are unchanged.
+
 
 Normal JSON uses:
 

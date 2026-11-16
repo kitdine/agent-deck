@@ -867,7 +867,7 @@ final class SessionOriginSettingsController {
 			return .statusUnavailable
 		case let .loaded(statuses):
 			if OriginSettingsCopy.reportsCoreUnavailable(statuses) { return .coreUnavailable }
-			return statuses.claudeMem.available ? nil : .adapterUnavailable
+			return statuses.claudeMem.enabled != true || statuses.claudeMem.available ? nil : .adapterUnavailable
 		}
 	}
 }
@@ -925,7 +925,7 @@ enum OriginSettingsCopy {
 
 	static func automaticHelp(_ automatic: OriginLookupResult.Automatic?) -> String? {
 		guard let automatic else { return nil }
-		return "\(automatic.reasonCode) · \(automatic.ruleVersion ?? "—")"
+		return "\(automatic.reasonCode) · \(automatic.ruleVersion ?? "—")" + SessionOriginCopy.ruleRationale(automatic.ruleVersion)
 	}
 
 	private static let claudeMemStates: [String: (OriginStatusLine.Tone, String)] = [
@@ -953,7 +953,14 @@ enum OriginSettingsCopy {
 
 	/// The built-in Codex background row (ux/settings.md five states). Every
 	/// "no records" state is a confirmed, non-error state.
-	static func codexBackgroundRow(_ status: DesktopOriginSourceStatusV1) -> OriginSourceRow {
+    static func codexBackgroundRow(_ status: DesktopOriginSourceStatusV1) -> OriginSourceRow {
+        let row = legacyCodexBackgroundRow(status)
+        guard status.available, let owned = status.otelOwnedSessions, let background = status.backgroundSessions, owned > 0 else { return row }
+        let counts = t(DesktopCopy.originCodexOwnership, Int64(background), Int64(owned))
+        return OriginSourceRow(name: row.name, tone: row.tone, text: counts, code: row.code)
+    }
+
+    private static func legacyCodexBackgroundRow(_ status: DesktopOriginSourceStatusV1) -> OriginSourceRow {
 		let name = t(DesktopCopy.originCodexName)
 		switch (status.reasonCode, status.available, status.backgroundSessions) {
 		case let (nil, true, count?) where count > 0:

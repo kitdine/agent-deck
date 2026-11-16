@@ -152,8 +152,8 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 	private func query(_ target: DesktopOriginTargetV1, automatic: String = "auxiliary", effective: String? = nil, override: String? = nil, revision: Int64) -> DesktopOriginLookupOutcome {
 		let state = override.map { DesktopSessionOriginOverrideV1(value: $0, bindingStatus: "matched", bindingLimited: false, applied: true) }
 		return .found(DesktopClassificationQueryV1(target: target, classificationAvailable: true, origin: DesktopSessionOriginV1(
-			automatic: automatic, effective: effective ?? override ?? automatic, reasonCode: "maintenance_origin",
-			ruleVersion: "claude-mem-sdk-map-v1", override: state, revision: revision
+			automatic: automatic, effective: effective ?? override ?? automatic, reasonCode: automatic == "work" ? "default_work" : "maintenance_origin",
+			ruleVersion: automatic == "work" ? "default-work-v1" : "claude-mem-sdk-map-v1", override: state, revision: revision
 		)))
 	}
 
@@ -249,7 +249,7 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 	/// Choosing the value already confirmed sends nothing, for the default and
 	/// for a session's classification.
 	func testChoosingTheConfirmedValueSendsNothing() async {
-		let transport = StubOriginTransport(lookups: [query(maintenance, override: "work", revision: 2)])
+		let transport = StubOriginTransport(lookups: [query(maintenance, automatic: "work", override: "work", revision: 2)])
 		let controller = makeController(transport)
 		await controller.open()
 		await controller.selectDefault(.work)
@@ -694,7 +694,7 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 	/// A matched row opens its session in the lookup.
 	func testAMatchedRowOpensItsSession() async {
 		let row = DesktopOriginOverrideV1(client: "claude", sessionID: "maint-1", value: "work", bindingStatus: "matched", revision: 2)
-		let transport = StubOriginTransport(pages: [page([row])], lookups: [query(maintenance, override: "work", revision: 2)])
+		let transport = StubOriginTransport(pages: [page([row])], lookups: [query(maintenance, automatic: "work", override: "work", revision: 2)])
 		let controller = makeController(transport)
 		await controller.open()
 		await controller.openOverride(row)
@@ -1051,9 +1051,9 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 			supportedVersion: version, ruleVersion: "claude-mem-sdk-map-v1", reasonCode: reason)
 	}
 
-	private func codex(available: Bool, reason: String?, count: Int?, receiver: String = "enabled") -> DesktopOriginSourceStatusV1 {
+	private func codex(available: Bool, reason: String?, count: Int?, receiver: String = "enabled", owned: Int? = nil) -> DesktopOriginSourceStatusV1 {
 		DesktopOriginSourceStatusV1(source: "codex-otel-background", kind: "builtin", available: available,
-			ruleVersion: "codex-otel-background-v1", reasonCode: reason, receiver: receiver, backgroundSessions: count)
+			ruleVersion: "codex-otel-background-v1", reasonCode: reason, receiver: receiver, backgroundSessions: count, otelOwnedSessions: owned)
 	}
 
 	/// The built-in row's five states, and an unknown code that is never shown
@@ -1076,7 +1076,12 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 			OriginSourceRow(name: name, tone: .neutral, text: t(DesktopCopy.originSourceReasonUnknown), code: "a_future_reason"))
 		for reason in ["otel_receiver_disabled", "no_background_sessions", "otel_receiver_unknown"] {
 			XCTAssertNotEqual(row(codex(available: true, reason: reason, count: 0)).tone, .bad, "no-records states are not errors: \(reason)")
+			XCTAssertEqual(row(codex(available: true, reason: reason, count: 0, owned: 0)).text,
+				row(codex(available: true, reason: reason, count: 0)).text,
+				"zero ownership counts must preserve the receiver diagnostic: \(reason)")
 		}
+		let execOnly = row(codex(available: true, reason: "otel_receiver_disabled", count: 0, receiver: "disabled", owned: 1))
+		XCTAssertEqual(execOnly.text, t(DesktopCopy.originCodexOwnership, Int64(0), Int64(1)))
 	}
 
 	func testTheClaudeMemRowShowsEachReasonAndNeverCallsAnUnknownCodeAvailable() {
@@ -1160,7 +1165,7 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 		}
 		let statuses = DesktopOriginSourceStatusesV1(
 			claudeMem: claudeMem(available: false, reason: "source_not_configured", configured: false, enabled: false),
-			codexBackground: codex(available: true, reason: nil, count: 1), partial: false
+			codexBackground: codex(available: true, reason: nil, count: 1, owned: 3), partial: false
 		)
 		let coreDown = DesktopOriginSourceStatusesV1(claudeMem: claudeMem(available: false, reason: "core_unavailable"),
 			codexBackground: codex(available: false, reason: "core_unavailable", count: nil), partial: true)
@@ -1171,7 +1176,7 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 		for language in ["en", "zh-Hans"] {
 			setenv("AGENTDECK_TEST_LOCALE", language, 1)
 			let normal = makeController(StubOriginTransport(pages: [page(rows)], statuses: [.value(statuses)],
-				lookups: [query(maintenance, override: "work", revision: 2)]))
+				lookups: [query(maintenance, automatic: "work", override: "work", revision: 2)]))
 			await normal.open()
 			await findMaintenance(normal)
 			let unknown = makeController(StubOriginTransport(pages: [page(rows)], statuses: [.value(statuses)], writes: [.unknown]))
@@ -1179,8 +1184,33 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 			await unknown.selectDefault(.auxiliary)
 			let failed = makeController(StubOriginTransport(defaults: [.unavailable], pages: [.unavailable], statuses: [.value(coreDown)]))
 			await failed.open()
-			let renderings: [(String, AnyView)] = [
-				("group normal", AnyView(SessionOriginSettingsGroup(controller: normal))),
+            let disabled = makeController(StubOriginTransport(statuses: [.value(DesktopOriginSourceStatusesV1(
+                claudeMem: claudeMem(available: false, reason: "source_disabled", enabled: false),
+                codexBackground: codex(available: true, reason: nil, count: 1, owned: 3), partial: false))]))
+            await disabled.open()
+            let unavailable = makeController(StubOriginTransport(statuses: [.value(DesktopOriginSourceStatusesV1(
+                claudeMem: claudeMem(available: false, reason: "source_unavailable"),
+                codexBackground: codex(available: true, reason: nil, count: 1, owned: 3), partial: true))]))
+            await unavailable.open()
+            let captureOff = makeController(StubOriginTransport(statuses: [.value(DesktopOriginSourceStatusesV1(
+                claudeMem: claudeMem(available: false, reason: "source_not_configured", configured: false, enabled: false),
+                codexBackground: codex(available: true, reason: "otel_receiver_disabled", count: 0, receiver: "disabled", owned: 0), partial: false))]))
+            await captureOff.open()
+            let captureUnknown = makeController(StubOriginTransport(statuses: [.value(DesktopOriginSourceStatusesV1(
+                claudeMem: claudeMem(available: false, reason: "source_not_configured", configured: false, enabled: false),
+                codexBackground: codex(available: true, reason: "otel_receiver_unknown", count: 0, receiver: "unknown", owned: 0), partial: true))]))
+            await captureUnknown.open()
+            let execOnly = makeController(StubOriginTransport(statuses: [.value(DesktopOriginSourceStatusesV1(
+                claudeMem: claudeMem(available: false, reason: "source_not_configured", configured: false, enabled: false),
+                codexBackground: codex(available: true, reason: "otel_receiver_disabled", count: 0, receiver: "disabled", owned: 1), partial: false))]))
+            await execOnly.open()
+            let renderings: [(String, AnyView)] = [
+                ("group capture off", AnyView(SessionOriginSettingsGroup(controller: captureOff))),
+                ("group capture unknown", AnyView(SessionOriginSettingsGroup(controller: captureUnknown))),
+                ("group exec only", AnyView(SessionOriginSettingsGroup(controller: execOnly))),
+                ("group disabled", AnyView(SessionOriginSettingsGroup(controller: disabled))),
+                ("group enhancement unavailable", AnyView(SessionOriginSettingsGroup(controller: unavailable))),
+                ("group normal", AnyView(SessionOriginSettingsGroup(controller: normal))),
 				("group unknown", AnyView(SessionOriginSettingsGroup(controller: unknown))),
 				("group core unavailable", AnyView(SessionOriginSettingsGroup(controller: failed))),
 				("sheet normal", AnyView(OriginManageSheet(controller: normal))),
@@ -1218,6 +1248,11 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 				XCTAssertGreaterThan(png.count, 8_000, "\(language) \(state)")
 				let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
 				attachment.name = "Sessions — \(state) — \(language) — 460pt"
+                if let directory = ProcessInfo.processInfo.environment["AGENTDECK_RULE_RENDER_DIR"] {
+                    let url = URL(fileURLWithPath: directory, isDirectory: true)
+                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                    try png.write(to: url.appendingPathComponent("rules-\(state.replacingOccurrences(of: " ", with: "-"))-\(language).png"))
+                }
 				attachment.lifetime = .keepAlways
 				add(attachment)
 			}

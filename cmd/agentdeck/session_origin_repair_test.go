@@ -47,7 +47,7 @@ func TestUsageSelectionMetadataFollowsTheReportWindow(t *testing.T) {
 	if sessions(activeData) != float64(1) || sessions(emptyData) != float64(0) {
 		t.Fatalf("windowed sessions = %v/%v, want 1/0", sessions(activeData), sessions(emptyData))
 	}
-	if active["unknown_count"] != float64(1) || empty["unknown_count"] != float64(0) {
+	if active["unknown_count"] != float64(0) || empty["unknown_count"] != float64(0) {
 		t.Fatalf("stats unknown_count = %v/%v, want 1/0", active["unknown_count"], empty["unknown_count"])
 	}
 	if active["publication_id"] == empty["publication_id"] {
@@ -60,7 +60,7 @@ func TestUsageSelectionMetadataFollowsTheReportWindow(t *testing.T) {
 		return envelope["session_selection"].(map[string]any)
 	}
 	all, today := signals("all"), signals("today")
-	if all["unknown_count"] != float64(1) || today["unknown_count"] != float64(0) {
+	if all["unknown_count"] != float64(0) || today["unknown_count"] != float64(0) {
 		t.Fatalf("signals unknown_count all/today = %v/%v, want 1/0", all["unknown_count"], today["unknown_count"])
 	}
 	if all["publication_id"] == today["publication_id"] {

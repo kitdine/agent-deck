@@ -1274,7 +1274,7 @@
             "automatic": "unknown",
             "effective": "unknown",
             "reason_code": "origin_metadata_missing",
-            "rule_version": "origin-reducer-v1",
+            "rule_version": "origin-reducer-v2",
             "override": null,
             "revision": 0
           }

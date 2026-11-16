@@ -88,24 +88,68 @@ func initializeSessionOriginStorage(ctx context.Context, tx *sql.Tx) error {
 	// One trigger per table and operation, like installUsagePartitionTrigger:
 	// a second family would be parsed again by every read-only serving open.
 	for _, table := range append(append([]string{}, sessionOriginKeyedTables...), sessionOriginUnkeyedTables...) {
-		keyed := table != "origin_preferences" && table != "origin_adapter_runs"
-		for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
-			body := "UPDATE serving_generation SET revision=revision+1 WHERE singleton=1;"
-			if keyed {
-				body += "UPDATE usage_derived_metadata SET revision=revision+1 WHERE singleton=1;"
-				for _, alias := range []string{"OLD", "NEW"} {
-					if (alias == "OLD" && op == "INSERT") || (alias == "NEW" && op == "DELETE") {
-						continue
-					}
-					body += fmt.Sprintf("INSERT INTO usage_derived_invalidations(kind,client,key) VALUES('session',%s.client,%s.session_id) ON CONFLICT(kind,client,key) DO NOTHING;", alias, alias)
-				}
-			}
-			if err := installUsagePartitionTrigger(ctx, tx, table, op, "", body); err != nil {
-				return err
-			}
+		if err := installSessionOriginTriggers(ctx, tx, table); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// installSessionOriginTriggers installs the serving and derived invalidation
+// triggers of one session-origin table.
+func installSessionOriginTriggers(ctx context.Context, tx *sql.Tx, table string) error {
+	keyed := table != "origin_preferences" && table != "origin_adapter_runs"
+	for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
+		body := "UPDATE serving_generation SET revision=revision+1 WHERE singleton=1;"
+		if keyed {
+			body += "UPDATE usage_derived_metadata SET revision=revision+1 WHERE singleton=1;"
+			for _, alias := range []string{"OLD", "NEW"} {
+				if (alias == "OLD" && op == "INSERT") || (alias == "NEW" && op == "DELETE") {
+					continue
+				}
+				body += fmt.Sprintf("INSERT INTO usage_derived_invalidations(kind,client,key) VALUES('session',%s.client,%s.session_id) ON CONFLICT(kind,client,key) DO NOTHING;", alias, alias)
+			}
+		}
+		if err := installUsagePartitionTrigger(ctx, tx, table, op, "", body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sessionOriginReasonCodes is the stored reason-code vocabulary from schema
+// 35 on. default_work joins the seven codes of schema 34.
+const sessionOriginReasonCodes = `'maintenance_origin','origin_metadata_missing','task_child_unconfirmed','conflicting_origin','origin_source_unavailable','origin_rule_unsupported','origin_input_mismatch','default_work'`
+
+// applySourceThreadsAndDefaultWork is migration 35. It adds the nullable
+// source thread identity (NULL means not yet assessed) and widens the
+// session_origins reason-code CHECK. session_origins is derived, so it is
+// rebuilt empty: deleting its rows first runs the existing triggers, which
+// invalidate every affected session partition and advance the serving and
+// derived revisions, so no cache can certify the dropped classifications.
+// Overrides, receipts, evidence and every usage and telemetry fact stay.
+func applySourceThreadsAndDefaultWork(ctx context.Context, tx *sql.Tx) error {
+	for _, statement := range []string{
+		`ALTER TABLE usage_source_files ADD COLUMN thread_id TEXT`,
+		`DELETE FROM session_origins`,
+		`UPDATE serving_generation SET revision=revision+1 WHERE singleton=1`,
+		`UPDATE usage_derived_metadata SET revision=revision+1 WHERE singleton=1`,
+		`DROP TABLE session_origins`,
+		`CREATE TABLE session_origins (
+ client TEXT NOT NULL, session_id TEXT NOT NULL,
+ automatic TEXT NOT NULL CHECK(automatic IN ('work','auxiliary','unknown')),
+ reason_code TEXT NOT NULL CHECK(reason_code IN (` + sessionOriginReasonCodes + `)),
+ rule_version TEXT NOT NULL,
+ input_token TEXT NOT NULL,
+ evidence_revision INTEGER NOT NULL CHECK(evidence_revision >= 0),
+ PRIMARY KEY(client, session_id)
+)`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return installSessionOriginTriggers(ctx, tx, "session_origins")
 }
 
 // Origin mutation kinds and outcomes are the stored receipt vocabulary.

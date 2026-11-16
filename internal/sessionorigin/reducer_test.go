@@ -17,16 +17,16 @@ func TestReduceAppliesTheClosedReasonEnumInOrder(t *testing.T) {
 		in   Assessment
 		want Result
 	}{
-		{"no evidence", Assessment{}, Result{ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion}},
-		{"codex maintenance", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleCodexOTelBackgroundV1)}}, Result{ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1}},
+		{"no evidence", Assessment{}, Result{ClassWork, ReasonDefaultWork, RuleDefaultWorkV1}},
+		{"codex maintenance", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleCodexOTelTUIBackgroundV1)}}, Result{ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelTUIBackgroundV1}},
 		{"claude-mem maintenance", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1)}}, Result{ClassAuxiliary, ReasonMaintenanceOrigin, RuleClaudeMemSDKMapV1}},
-		{"maintenance and work", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1), work}}, Result{ClassUnknown, ReasonConflictingOrigin, ReducerVersion}},
-		{"mixed use or cycle", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1)}, Conflicting: true}, Result{ClassUnknown, ReasonConflictingOrigin, ReducerVersion}},
-		{"work alone is not a proven work class", Assessment{Evidence: []Evidence{work}}, Result{ClassUnknown, ReasonOriginMetadataMissing, ReducerVersion}},
-		{"token mismatch beats maintenance", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleCodexOTelBackgroundV1)}, InputMismatch: true}, Result{ClassUnknown, ReasonOriginInputMismatch, ReducerVersion}},
-		{"source unavailable", Assessment{Unavailable: RuleClaudeMemSDKMapV1}, Result{ClassUnknown, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1}},
-		{"rule unsupported", Assessment{Unsupported: RuleCodexOTelBackgroundV1}, Result{ClassUnknown, ReasonOriginRuleUnsupported, RuleCodexOTelBackgroundV1}},
-		{"task child", Assessment{TaskChild: true}, Result{ClassUnknown, ReasonTaskChildUnconfirmed, ReducerVersion}},
+		{"maintenance and work", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1), work}}, Result{ClassWork, ReasonConflictingOrigin, ReducerVersion}},
+		{"mixed use or cycle", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1)}, Conflicting: true}, Result{ClassWork, ReasonConflictingOrigin, ReducerVersion}},
+		{"work alone is not a proven work class", Assessment{Evidence: []Evidence{work}}, Result{ClassWork, ReasonDefaultWork, RuleDefaultWorkV1}},
+		{"token mismatch beats maintenance", Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleCodexOTelTUIBackgroundV1)}, InputMismatch: true}, Result{ClassWork, ReasonOriginInputMismatch, ReducerVersion}},
+		{"source unavailable", Assessment{Unavailable: RuleClaudeMemSDKMapV1}, Result{ClassWork, ReasonOriginSourceUnavailable, RuleClaudeMemSDKMapV1}},
+		{"rule unsupported", Assessment{Unsupported: RuleCodexOTelTUIBackgroundV1}, Result{ClassWork, ReasonOriginRuleUnsupported, RuleCodexOTelTUIBackgroundV1}},
+		{"task child", Assessment{TaskChild: true}, Result{ClassWork, ReasonTaskChildUnconfirmed, ReducerVersion}},
 		{"task child with maintenance evidence", Assessment{TaskChild: true, Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1)}}, Result{ClassAuxiliary, ReasonMaintenanceOrigin, RuleClaudeMemSDKMapV1}},
 	}
 	for _, c := range cases {
@@ -116,23 +116,47 @@ func TestBindingUsesStableBirthOnly(t *testing.T) {
 	}
 }
 
-func TestAssessCodexMarkerUsesOnlyTheRuleEntries(t *testing.T) {
-	for _, entry := range CodexOTelBackgroundEntries() {
-		a := AssessCodexMarker(store.TelemetrySessionOriginMarker{SourceKind: store.TelemetrySessionSourceKind, SupportEntry: entry, SettledAt: "2026-10-29T12:10:00Z"})
-		if got := Reduce(a); got != (Result{ClassAuxiliary, ReasonMaintenanceOrigin, RuleCodexOTelBackgroundV1}) {
-			t.Fatalf("%s: %+v", entry, got)
-		}
-		if a.Evidence[0].SourceToken != `"`+entry+`"|"2026-10-29T12:10:00Z"` {
-			t.Fatalf("source token %q", a.Evidence[0].SourceToken)
+func TestAssessCodexMarkerUsesAllAdmittedVersions(t *testing.T) {
+	for _, version := range []string{"0.165.0", "0.169.0", "2-rc.1", "future"} {
+		for _, family := range []struct{ producer, originator, class, rule string }{{"codex_exec", "codex_exec", ClassWork, RuleCodexOTelExecWorkV1}, {"codex-app-server", "codex-tui", ClassAuxiliary, RuleCodexOTelTUIBackgroundV1}} {
+			entry := family.producer + "/" + version + "/" + family.originator + "/sse"
+			a := AssessCodexMarker(store.TelemetrySessionOriginMarker{SourceKind: store.TelemetrySessionSourceKind, SupportEntry: entry, SettledAt: "now"})
+			got := Reduce(a)
+			if got.Automatic != family.class || got.RuleVersion != family.rule {
+				t.Fatalf("%s: %+v", entry, got)
+			}
+			if family.class == ClassWork && len(a.Evidence) != 0 {
+				t.Fatal("fallback became work evidence")
+			}
 		}
 	}
-	for _, entry := range []string{"codex_exec/0.166.0/codex_exec/sse", "codex-app-server/0.165.0/codex-desktop/sse", "codex_exec/0.165.0/codex_exec/websocket", ""} {
+	for _, entry := range []string{"codex_exec//codex_exec/sse", "codex-app-server/0.169.0/codex-desktop/sse", "codex_exec/0.169.0/codex_exec/websocket", ""} {
 		got := Reduce(AssessCodexMarker(store.TelemetrySessionOriginMarker{SourceKind: store.TelemetrySessionSourceKind, SupportEntry: entry}))
-		if got != (Result{ClassUnknown, ReasonOriginRuleUnsupported, RuleCodexOTelBackgroundV1}) {
-			t.Fatalf("%q: %+v", entry, got)
+		if got.Automatic != ClassWork || got.ReasonCode != ReasonOriginRuleUnsupported {
+			t.Fatalf("%q %+v", entry, got)
 		}
 	}
-	if got := Reduce(AssessCodexMarker(store.TelemetrySessionOriginMarker{SourceKind: "other", SupportEntry: CodexOTelBackgroundEntries()[0]})); got.Automatic != ClassUnknown || got.ReasonCode != ReasonOriginMetadataMissing {
-		t.Fatalf("other source kind: %+v", got)
+}
+
+func TestBuiltinRulesAreOrderedAndDefaultsDoNotConflict(t *testing.T) {
+	rules := BuiltinRules()
+	seen := map[string]bool{}
+	priority := 0
+	for _, r := range rules {
+		if r.ID == "" || seen[r.ID] || r.Priority <= priority || r.Rationale == "" {
+			t.Fatalf("bad rule %+v", r)
+		}
+		seen[r.ID] = true
+		priority = r.Priority
+	}
+	if seen[RuleCodexOTelBackgroundV1] || len(rules) != 4 {
+		t.Fatalf("rules %+v", rules)
+	}
+	got := Reduce(Assessment{FallbackRule: RuleCodexOTelExecWorkV1, Evidence: []Evidence{auxiliaryEvidence(RuleClaudeMemSDKMapV1)}})
+	if got.Automatic != ClassAuxiliary || got.RuleVersion != RuleClaudeMemSDKMapV1 {
+		t.Fatalf("fallback conflict %+v", got)
+	}
+	if got := Reduce(Assessment{Evidence: []Evidence{auxiliaryEvidence(RuleCodexOTelTUIBackgroundV1), auxiliaryEvidence(RuleClaudeMemSDKMapV1)}}); got.RuleVersion != rules[0].ID {
+		t.Fatalf("priority %+v", got)
 	}
 }

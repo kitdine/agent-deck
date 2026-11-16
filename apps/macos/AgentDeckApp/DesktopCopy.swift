@@ -171,7 +171,7 @@ enum DesktopCopy {
 	static let sessionScopeUnavailable = "Session data unavailable; counts cannot be reported."
 	static let sessionScopeUnavailableHint = "Retry using Refresh above; existing scan behavior is unchanged."
 	static let sessionScopeOverride = "Includes a user override; automatic classification retained."
-	static let sessionScopeSourceUnavailable = "Origin metadata unavailable; unconfirmed origins stay Unknown. User overrides remain effective."
+	static let sessionScopeSourceUnavailable = "Origin metadata unavailable. Sessions remain in Work. User overrides remain effective."
 	static let sessionScopeInputMismatch = "Source generation mismatch; stale origin does not hide sessions."
 	static let sessionScopeLegacy = "Scope projection missing; session scope unavailable."
 	static let sessionScopeLegacyHint = "Legacy all-session totals cannot be used as Work counts. Update AgentDeck, then refresh."
@@ -198,11 +198,14 @@ enum DesktopCopy {
 	static let sessionOriginReadOnly = "Use the CLI to inspect or correct origin; this panel is read only."
 	static let sessionOriginCopyCommand = "Copy inspect command"
 	static let sessionOriginCopyFailed = "Copy failed; select the command above to copy manually."
+	static let sessionReasonDefaultWork = "Work by default"
+	static let originTUIInference = "Inferred from TUI telemetry without JSONL; a main conversation may also match."
+	static let originExecDefault = "Exec conversations default to Work, including background Memories activity."
 	static let sessionReasonMaintenance = "Recognized background maintenance origin"
-	static let sessionReasonMetadataMissing = "Origin metadata missing; purpose not inferred"
-	static let sessionReasonTaskChild = "Task agent: purpose unconfirmed, retained in Work as Unknown"
-	static let sessionReasonConflicting = "Conflicting or mixed origin evidence; purpose not inferred"
-	static let sessionReasonSourceUnavailable = "Origin source unavailable"
+	static let sessionReasonMetadataMissing = "Waiting for automatic classification"
+	static let sessionReasonTaskChild = "Task purpose unconfirmed; retained in Work"
+	static let sessionReasonConflicting = "Conflicting origin evidence; retained in Work"
+	static let sessionReasonSourceUnavailable = "Enhancement unavailable; sessions remain in Work"
 	static let sessionReasonRuleUnsupported = "Origin marker not covered by the current rule version"
 	static let sessionReasonInputMismatch = "Origin evidence does not match source generation"
 	static let sessionReasonUnknown = "Reason cannot be shown"
@@ -498,24 +501,25 @@ enum DesktopCopy {
 	static let originPreviousPage = "Previous page"
 	static let originNextPage = "Next page"
 	static let originDone = "Done"
-	static let originDetectionTitle = "Automatic detection"
-	static let originDetectionNote = "Only background maintenance is detected as Auxiliary; task sub-agents always count as Work."
+	static let originDetectionTitle = "Automatic classification enabled"
+	static let originDetectionNote = "Sessions default to Work. Supported TUI background activity and optional exact mappings can classify as Auxiliary."
 	static let originSourceAvailableVersion = "Available · %@"
-	static let originSourceNotConfigured = "Not configured · set up with the CLI"
-	static let originSourceMetadataUnreadable = "Metadata unreadable"
+	static let originSourceNotConfigured = "Optional enhancement not enabled"
+	static let originSourceMetadataUnreadable = "Enhancement unavailable; sessions remain in Work"
 	static let originSourceVersionUnsupported = "Version not supported"
-	static let originSourceDisabled = "Disabled"
-	static let originSourceNotYetRead = "Not read yet"
+	static let originSourceDisabled = "Optional enhancement disabled"
+	static let originSourceNotYetRead = "Waiting for automatic classification"
 	static let originSourceConfigUnreadable = "Local source configuration unreadable"
 	static let originSourceCoreUnavailable = "Local usage database unreadable"
 	static let originSourceReasonUnknown = "Status reason cannot be shown"
 	static let originCodexName = "Codex background"
+	static let originCodexOwnership = "Inferred auxiliary: %1$lld · OTel-owned: %2$lld"
 	static let originCodexRecords = "%lld background session records"
 	static let originCodexReceiverOff = "No records · OTel capture is off (see Live usage)"
 	static let originCodexNoRecords = "No records · capture is on, no background session yet"
 	static let originCodexReceiverUnknown = "No records · capture state unknown"
 	static let originSourcesUnavailable = "Origin source status unavailable"
-	static let originSourceNoteAdapter = "While a source is unavailable, detection reports Unknown, which counts as Work. Manual classification still works."
+	static let originSourceNoteAdapter = "Enhancement unavailable; sessions remain in Work"
 	static let originSourceNoteCore = "The local usage database cannot be read right now: current and manual classifications are unavailable and cannot be changed. Saved manual classifications are not deleted."
 
 	// Settings window — subscription quota (ux/settings-quota.md).
@@ -657,7 +661,7 @@ enum DesktopCopy {
 		sessionScopeDefaultUnknownHint, sessionScopeSnapshotTime,
 		sessionScopeKnownDuration, sessionScopeMissingDuration, sessionScopeNoMatches,
 		sessionScopeProjectsNote, sessionScopeAnnouncement, sessionOriginBack,
-		sessionOriginEffective, sessionOriginAutomatic, sessionOriginReason,
+		sessionReasonDefaultWork, originTUIInference, originExecDefault, sessionOriginEffective, sessionOriginAutomatic, sessionOriginReason,
 		sessionOriginRuleVersion, sessionOriginOverride, sessionOriginOverrideRevision,
 		sessionOriginUserOverrideSuffix, sessionOriginOverrideSuffix,
 		sessionOriginOverrideApplied, sessionOriginOverrideUnmatched, sessionOriginOverrideNone,
@@ -714,11 +718,11 @@ enum DesktopCopy {
 		originCountsIncludedInWork, originReading, originClassificationUnavailable, originCardNote, originOverridesTitle,
 		originOverridesEmpty, originOverridesUnavailable, originUnmatched, originRemove, originRemoveLabel,
 		originShowLabel, originPage, originPreviousPage, originNextPage, originDone, originDetectionTitle,
-		originDetectionNote, originSourceAvailableVersion, originSourceNotConfigured, originSourceMetadataUnreadable,
-		originSourceVersionUnsupported, originSourceDisabled, originSourceNotYetRead, originSourceConfigUnreadable,
-		originSourceCoreUnavailable, originSourceReasonUnknown, originCodexName, originCodexRecords,
+		originDetectionNote, originSourceAvailableVersion, originSourceNotConfigured,
+		originSourceVersionUnsupported, originSourceDisabled,  originSourceConfigUnreadable,
+		originSourceCoreUnavailable, originSourceReasonUnknown, originCodexName, originCodexOwnership, originCodexRecords,
 		originCodexReceiverOff, originCodexNoRecords, originCodexReceiverUnknown, originSourcesUnavailable,
-		originSourceNoteAdapter, originSourceNoteCore,
+		 originSourceNoteCore,
 		settingsGroupQuota, settingsQuotaProbe, settingsQuotaProbeHint,
 		settingsQuotaClients, settingsQuotaClientsHint,
 		settingsQuotaInterval, settingsQuotaIntervalHint,

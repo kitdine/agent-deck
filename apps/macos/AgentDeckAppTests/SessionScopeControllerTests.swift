@@ -498,7 +498,7 @@ final class SessionScopeControllerTests: XCTestCase {
 
 	func testEveryKnownReasonHasItsOwnCopyAndAnUnknownCodeFallsBackWithoutChangingTheClass() async {
 		let known = ["maintenance_origin", "origin_metadata_missing", "task_child_unconfirmed", "conflicting_origin",
-			"origin_source_unavailable", "origin_rule_unsupported", "origin_input_mismatch"]
+			"origin_source_unavailable", "origin_rule_unsupported", "origin_input_mismatch", "default_work"]
 		XCTAssertEqual(Set(SessionOriginCopy.reasonKeys.keys), Set(known))
 		let texts = known.map(SessionOriginCopy.reason)
 		XCTAssertEqual(Set(texts).count, known.count)

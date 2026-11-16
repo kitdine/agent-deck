@@ -124,11 +124,14 @@ enum AgentDeckFoundationVerifier {
         try require(ahead.data.wireVersion == 1 && ahead.partial && !ahead.data.provider.available && !ahead.data.usage.available && !ahead.data.sessions.available && ahead.data.health.available, "schema-ahead section availability")
         try require(ahead.warnings.contains("sessions_unavailable"), "independent session warning survives")
 		try require(schema?.count == 99 && schema?.supportedCount == 32 && schema?.recoveryCommand == nil, "schema version pair")
-		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 32
+		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 35
 			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 32)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 31)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 32)
-			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33), "derived-only schema transition")
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 35)
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 34, current: 35)
+			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 34)
+			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36), "derived-only schema transition")
         try require(hook?.count == 2 && hook?.supportedCount == nil && hook?.recoveryCommand == nil, "Hook refusal count")
 
         try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")

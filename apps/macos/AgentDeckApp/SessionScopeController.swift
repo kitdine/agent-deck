@@ -271,7 +271,8 @@ struct SessionScopePanelModel: Equatable, Sendable {
 /// implies auxiliary.
 enum SessionOriginCopy {
 	static let reasonKeys: [String: String] = [
-		"maintenance_origin": DesktopCopy.sessionReasonMaintenance,
+		"default_work": DesktopCopy.sessionReasonDefaultWork,
+ "maintenance_origin": DesktopCopy.sessionReasonMaintenance,
 		"origin_metadata_missing": DesktopCopy.sessionReasonMetadataMissing,
 		"task_child_unconfirmed": DesktopCopy.sessionReasonTaskChild,
 		"conflicting_origin": DesktopCopy.sessionReasonConflicting,
@@ -280,6 +281,13 @@ enum SessionOriginCopy {
 		"origin_input_mismatch": DesktopCopy.sessionReasonInputMismatch,
 	]
 
+    static func ruleRationale(_ rule: String?) -> String {
+        switch rule {
+        case "codex-otel-tui-background-v1": return " · " + t(DesktopCopy.originTUIInference)
+        case "codex-otel-exec-work-v1": return " · " + t(DesktopCopy.originExecDefault)
+        default: return ""
+        }
+    }
 	static func reason(_ code: String) -> String {
 		t(reasonKeys[code] ?? DesktopCopy.sessionReasonUnknown)
 	}
@@ -535,7 +543,7 @@ extension MenuBarViewModel {
 				subtitle: "\(clientLabel(item.client)) · \(project)",
 				effective: effective,
 				automatic: SessionOriginCopy.classLabel(origin.automatic),
-				reason: SessionOriginCopy.reason(origin.reasonCode),
+				reason: SessionOriginCopy.reason(origin.reasonCode) + SessionOriginCopy.ruleRationale(origin.ruleVersion),
 				ruleVersion: origin.ruleVersion ?? t(DesktopCopy.sessionOriginUnavailable),
 				override: overrideText,
 				overrideRevision: DesktopFormat.count(origin.revision),

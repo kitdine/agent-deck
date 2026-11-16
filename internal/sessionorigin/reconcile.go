@@ -92,6 +92,9 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 	}
 	storedEvidence := map[originKey][]store.OriginEvidence{}
 	for _, item := range stored.Evidence {
+		if item.Adapter != adapterFor(item.Client) {
+			continue
+		}
 		key := originKey{item.Client, item.SessionID}
 		storedEvidence[key] = append(storedEvidence[key], item)
 	}
@@ -110,7 +113,7 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 	switch {
 	case configErr != nil:
 		// The adapter's state cannot be confirmed: its evidence cannot be
-		// trusted or refreshed, so its candidates are unknown, not work.
+		// trusted or refreshed; candidates remain Work with an unavailable diagnostic.
 		for _, id := range byClient["claude"] {
 			assessments[originKey{"claude", id}] = Assessment{Unavailable: RuleClaudeMemSDKMapV1}
 		}
