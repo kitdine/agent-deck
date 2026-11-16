@@ -77,30 +77,55 @@ func ScanMessage(text string) (messageClass, intentSub string) {
 		return MessageClassNone, ""
 	}
 	lowered := strings.ToLower(text)
-	best := -1
-	class, sub := MessageClassNone, ""
-	// Ordered so that an equal position resolves to fault first, then feature,
-	// refactoring, testing — the order the Subcategories table lists.
-	for _, candidate := range []struct {
-		words []string
-		class string
-		sub   string
-	}{
-		{faultWords, MessageClassFault, ""},
-		{featureWords, MessageClassBuild, SubFeature},
-		{refactoringWords, MessageClassBuild, SubRefactoring},
-		{testingWords, MessageClassBuild, SubTesting},
-	} {
-		at := earliestWord(lowered, candidate.words)
-		if at < 0 {
+	// Offsets are visited in order, so the first offset with any whole-word
+	// match is the earliest one; the lowest rank there breaks the tie.
+	for at := 0; at < len(lowered); at++ {
+		candidates := messageWordsByFirstByte[lowered[at]]
+		if len(candidates) == 0 || at > 0 && isWordByte(lowered[at-1]) {
 			continue
 		}
-		if best < 0 || at < best {
-			best, class, sub = at, candidate.class, candidate.sub
+		rank := -1
+		for _, candidate := range candidates {
+			if (rank < 0 || candidate.rank < rank) && strings.HasPrefix(lowered[at:], candidate.word) && wordBoundary(lowered, at, len(candidate.word)) {
+				rank = candidate.rank
+			}
+		}
+		if rank >= 0 {
+			return messageRanks[rank].class, messageRanks[rank].sub
 		}
 	}
-	return class, sub
+	return MessageClassNone, ""
 }
+
+// messageRanks orders the ScanMessage vocabularies so that an equal position
+// resolves to fault first, then feature, refactoring, testing — the order the
+// Subcategories table lists.
+var messageRanks = [...]struct {
+	words []string
+	class string
+	sub   string
+}{
+	{faultWords, MessageClassFault, ""},
+	{featureWords, MessageClassBuild, SubFeature},
+	{refactoringWords, MessageClassBuild, SubRefactoring},
+	{testingWords, MessageClassBuild, SubTesting},
+}
+
+type rankedWord struct {
+	word string
+	rank int
+}
+
+// messageWordsByFirstByte indexes every ScanMessage word by its first byte so
+// the scan tests only words that can start at the current offset.
+var messageWordsByFirstByte = func() (table [256][]rankedWord) {
+	for rank, vocabulary := range messageRanks {
+		for _, word := range vocabulary.words {
+			table[word[0]] = append(table[word[0]], rankedWord{word: word, rank: rank})
+		}
+	}
+	return table
+}()
 
 // Classify applies Decision 3's category precedence to a message reduction and a
 // turn shape. It consults no tool failure status: Codex records every output

@@ -12,7 +12,10 @@ type Envelope struct {
 	Data          any       `json:"data"`
 	Warnings      []string  `json:"warnings"`
 	Partial       bool      `json:"partial"`
-	Error         *Error    `json:"error,omitempty"`
+	// SessionSelection is the additive session-scope metadata of scoped
+	// session and usage reads; it never changes the shape of Data.
+	SessionSelection any    `json:"session_selection,omitempty"`
+	Error            *Error `json:"error,omitempty"`
 }
 
 type Error struct {

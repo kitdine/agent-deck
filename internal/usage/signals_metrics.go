@@ -27,6 +27,8 @@ type SignalScope struct {
 	Client   string
 	Session  string
 	Activity string
+	// Sessions, when set, restricts the scope to the selected sessions.
+	Sessions *SessionFilter
 }
 
 // WorkflowMetrics carries Decision 6's five metrics for one scope.
@@ -276,6 +278,9 @@ func (s *Service) workflowSessionStarts(ctx context.Context, scope SignalScope) 
 		if err = rows.Scan(&client, &session, &startedAt); err != nil {
 			return nil, err
 		}
+		if !scope.Sessions.Allows(client, session) {
+			continue
+		}
 		starts[workflowSessionKey(client, session)] = startedAt
 	}
 	return starts, rows.Err()
@@ -321,6 +326,9 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 		var digest, baseName sql.NullString
 		if err = rows.Scan(&client, &session, &activityKey, &toolName, &toolKind, &startedAt, &commandRead, &digest, &baseName); err != nil {
 			return nil, err
+		}
+		if !scope.Sessions.Allows(client, session) {
+			continue
 		}
 		index, seen := byKey[activityKey]
 		if !seen {

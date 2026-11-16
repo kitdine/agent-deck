@@ -4,24 +4,30 @@ import (
 	"io"
 	"sync/atomic"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/perftrace"
 )
 
-// Metrics is opt-in. Worker durations overlap and are not elapsed wall time.
+// Metrics is enabled with measurement recording. Worker durations overlap
+// and are not elapsed wall time.
 type Metrics struct {
-	active, peak, sourceNS, readNS, decodeNS, budgetNS, usageNS, sessionNS, bytes, reads atomic.Int64
+	active, peak, sourceNS, readNS, decodeNS, budgetNS, usageNS, sessionNS, bytes, reads, records atomic.Int64
 }
 
-func (m *Metrics) Report(wall time.Duration) map[string]float64 {
-	average := float64(0)
-	if wall > 0 {
-		average = float64(m.sourceNS.Load()) / float64(wall)
-	}
-	return map[string]float64{
-		"peak_open_readers": float64(m.peak.Load()), "average_open_readers": average,
-		"read_ms": float64(m.readNS.Load()) / 1e6, "decode_ms": float64(m.decodeNS.Load()) / 1e6,
-		"budget_wait_ms": float64(m.budgetNS.Load()) / 1e6,
-		"usage_send_ms":  float64(m.usageNS.Load()) / 1e6, "session_send_ms": float64(m.sessionNS.Load()) / 1e6,
-		"source_lifetime_ms": float64(m.sourceNS.Load()) / 1e6, "read_bytes": float64(m.bytes.Load()), "read_calls": float64(m.reads.Load()),
+// Counts returns the integer ingest counters recorded with scan.end. P08
+// compares read_bytes and decoded_records exactly across repeated runs.
+func (m *Metrics) Counts() []perftrace.Count {
+	return []perftrace.Count{
+		{Key: "read_bytes", Value: m.bytes.Load()},
+		{Key: "read_calls", Value: m.reads.Load()},
+		{Key: "decoded_records", Value: m.records.Load()},
+		{Key: "peak_open_readers", Value: m.peak.Load()},
+		{Key: "source_ns", Value: m.sourceNS.Load()},
+		{Key: "read_ns", Value: m.readNS.Load()},
+		{Key: "decode_ns", Value: m.decodeNS.Load()},
+		{Key: "budget_wait_ns", Value: m.budgetNS.Load()},
+		{Key: "usage_send_ns", Value: m.usageNS.Load()},
+		{Key: "session_send_ns", Value: m.sessionNS.Load()},
 	}
 }
 

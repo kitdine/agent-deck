@@ -109,6 +109,9 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
     public let sessions: DesktopSessionsSnapshotV1
     public let health: DesktopHealthSnapshotV1
     public let subscription: DesktopSubscriptionSnapshotV1
+    /// The additive session-scope view. `sessions` above keeps describing
+    /// every indexed session and is never read as a scoped figure.
+    public let sessionScopeView: DesktopSessionScopeFieldV1
 
     enum CodingKeys: String, CodingKey {
         case wireVersion = "wire_version"
@@ -119,6 +122,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         case sessions
         case health
         case subscription
+        case sessionScopeView = "session_scope_view"
     }
 
     public init(from decoder: Decoder) throws {
@@ -133,6 +137,28 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         // C11's section is additive and does not raise `wire_version`: a payload
         // that predates it decodes as unavailable, which renders as not probed.
         subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
+        // Additive too, but its absence is legacy, not an empty Work view; and a
+        // view this consumer cannot trust degrades only the session area.
+        if !container.contains(.sessionScopeView) || (try? container.decodeNil(forKey: .sessionScopeView)) == true {
+            sessionScopeView = .absent
+        } else if let view = try? container.decode(DesktopSessionScopeViewV1.self, forKey: .sessionScopeView) {
+            sessionScopeView = .present(view)
+        } else {
+            sessionScopeView = .invalid
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(wireVersion, forKey: .wireVersion)
+        try container.encode(generatedAt, forKey: .generatedAt)
+        try container.encode(nextRefreshAt, forKey: .nextRefreshAt)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(usage, forKey: .usage)
+        try container.encode(sessions, forKey: .sessions)
+        try container.encode(health, forKey: .health)
+        try container.encode(subscription, forKey: .subscription)
+        try container.encodeIfPresent(sessionScopeView.view, forKey: .sessionScopeView)
     }
 
     /// Codex PR #5 twelfth review, P2: lets a quota-only refresh publish a
@@ -142,14 +168,15 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
     func replacingSubscription(_ subscription: DesktopSubscriptionSnapshotV1) -> DesktopSnapshotV1 {
         DesktopSnapshotV1(
             wireVersion: wireVersion, generatedAt: generatedAt, nextRefreshAt: nextRefreshAt,
-            provider: provider, usage: usage, sessions: sessions, health: health, subscription: subscription
+            provider: provider, usage: usage, sessions: sessions, health: health, subscription: subscription,
+            sessionScopeView: sessionScopeView
         )
     }
 
     init(
         wireVersion: Int, generatedAt: String, nextRefreshAt: String, provider: DesktopProviderSnapshotV1,
         usage: DesktopUsageSnapshotV1, sessions: DesktopSessionsSnapshotV1, health: DesktopHealthSnapshotV1,
-        subscription: DesktopSubscriptionSnapshotV1
+        subscription: DesktopSubscriptionSnapshotV1, sessionScopeView: DesktopSessionScopeFieldV1 = .absent
     ) {
         self.wireVersion = wireVersion
         self.generatedAt = generatedAt
@@ -159,6 +186,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         self.sessions = sessions
         self.health = health
         self.subscription = subscription
+        self.sessionScopeView = sessionScopeView
     }
 }
 
@@ -988,6 +1016,350 @@ public struct DesktopRecentSessionV1: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: Session scope view
+
+/// The three session scopes. A value outside this set is never a default:
+/// the view or default carrying it is rejected rather than read as Work.
+public enum DesktopSessionScopeV1: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+	case work
+	case auxiliary
+	case all
+}
+
+/// The closed set of safe reasons the Widget's session-scope summary set may
+/// carry (ux/widget.md: reason is a safe enum or null). The host writes only
+/// these; the Widget treats any other value as an untrusted summary and shows
+/// the session row as unavailable, never the figures beside it.
+public enum DesktopSessionScopeSummaryReasonV1: String, CaseIterable, Equatable, Sendable {
+	case defaultUnconfirmed = "default_unconfirmed"
+	case defaultChanged = "default_changed"
+	case generationUnavailable = "generation_unavailable"
+	case batchInconsistent = "batch_inconsistent"
+	case selectionUnavailable = "selection_unavailable"
+	case summaryUnavailable = "summary_unavailable"
+	case sessionsUnavailable = "sessions_unavailable"
+	case classificationUnavailable = "classification_unavailable"
+	case selectionStale = "selection_stale"
+}
+
+/// One explicit selection: scope × client × period. Every field is required;
+/// there is no implied default.
+public struct DesktopSessionScopeSelectionV1: Codable, Equatable, Hashable, Sendable {
+	public static let clients = ["all", "codex", "claude"]
+	public static let periods = ["today", "7d", "30d"]
+
+	public let scope: DesktopSessionScopeV1
+	public let client: String
+	public let period: String
+
+	public init(scope: DesktopSessionScopeV1, client: String, period: String) {
+		self.scope = scope
+		self.client = client
+		self.period = period
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		scope = try container.decode(DesktopSessionScopeV1.self, forKey: .scope)
+		client = try container.decode(String.self, forKey: .client)
+		period = try container.decode(String.self, forKey: .period)
+		guard Self.clients.contains(client), Self.periods.contains(period) else {
+			throw DesktopWireError.invalidEnvelope
+		}
+	}
+
+	enum CodingKeys: String, CodingKey { case scope, client, period }
+}
+
+/// The saved default. Only `confirmed` with a known value names a scope; an
+/// unreadable default, or a confirmed one whose value is not a known scope, is
+/// unconfirmed and must never fall back to Work.
+public struct DesktopSessionScopeDefaultV1: Codable, Equatable, Sendable {
+	public static let unconfirmed = DesktopSessionScopeDefaultV1(confirmed: false, value: nil, revision: nil, reason: nil)
+
+	public let confirmed: Bool
+	public let value: DesktopSessionScopeV1?
+	public let revision: Int64?
+	public let reason: String?
+
+	public init(confirmed: Bool, value: DesktopSessionScopeV1?, revision: Int64?, reason: String?) {
+		self.confirmed = confirmed && value != nil
+		self.value = self.confirmed ? value : nil
+		self.revision = revision
+		self.reason = reason
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		let confirmed = try container.decode(Bool.self, forKey: .confirmed)
+		let raw = try container.decodeIfPresent(String.self, forKey: .value)
+		self.init(
+			confirmed: confirmed,
+			value: raw.flatMap(DesktopSessionScopeV1.init(rawValue:)),
+			revision: try container.decodeIfPresent(Int64.self, forKey: .revision),
+			reason: try container.decodeIfPresent(String.self, forKey: .reason)
+		)
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(confirmed, forKey: .confirmed)
+		try container.encode(value, forKey: .value)
+		try container.encode(revision, forKey: .revision)
+		try container.encode(reason, forKey: .reason)
+	}
+
+	enum CodingKeys: String, CodingKey { case confirmed, value, revision, reason }
+}
+
+public struct DesktopSessionOriginOverrideV1: Codable, Equatable, Sendable {
+	public let value: String
+	public let bindingStatus: String
+	public let bindingLimited: Bool
+	public let applied: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case value, applied
+		case bindingStatus = "binding_status"
+		case bindingLimited = "binding_limited"
+	}
+}
+
+/// A session's classification as every consumer shows it. The strings stay as
+/// the producer wrote them: a consumer maps known values and shows a generic
+/// fallback for an unknown one, never inferring a class from it.
+public struct DesktopSessionOriginV1: Codable, Equatable, Sendable {
+	public let automatic: String
+	public let effective: String
+	public let reasonCode: String
+	public let ruleVersion: String?
+	public let override: DesktopSessionOriginOverrideV1?
+	public let revision: Int64
+
+	public init(automatic: String, effective: String, reasonCode: String, ruleVersion: String?, override: DesktopSessionOriginOverrideV1?, revision: Int64) {
+		self.automatic = automatic
+		self.effective = effective
+		self.reasonCode = reasonCode
+		self.ruleVersion = ruleVersion
+		self.override = override
+		self.revision = revision
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		automatic = try container.decode(String.self, forKey: .automatic)
+		effective = try container.decode(String.self, forKey: .effective)
+		reasonCode = try container.decode(String.self, forKey: .reasonCode)
+		let rule = try container.decodeIfPresent(String.self, forKey: .ruleVersion)
+		ruleVersion = rule?.isEmpty == true ? nil : rule
+		override = try container.decodeIfPresent(DesktopSessionOriginOverrideV1.self, forKey: .override)
+		revision = try container.decode(Int64.self, forKey: .revision)
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case automatic, effective, override, revision
+		case reasonCode = "reason_code"
+		case ruleVersion = "rule_version"
+	}
+}
+
+public struct DesktopSessionScopeRecentV1: Codable, Equatable, Sendable {
+	public let client: String
+	public let sessionID: String
+	public let project: String?
+	public let model: String?
+	public let firstAt: String?
+	public let lastAt: String?
+	public let origin: DesktopSessionOriginV1
+
+	enum CodingKeys: String, CodingKey {
+		case client, project, model, origin
+		case sessionID = "session_id"
+		case firstAt = "first_at"
+		case lastAt = "last_at"
+	}
+}
+
+/// Recomputed from the selected set. `knownDurationMS` is nil when every
+/// selected session lacks a measurable span; an empty selection is a trusted 0.
+public struct DesktopSessionScopeCountsV1: Codable, Equatable, Sendable {
+	public let sessions: Int
+	public let projects: Int
+	public let knownDurationMS: Int64?
+	public let missingDurationCount: Int
+
+	enum CodingKeys: String, CodingKey {
+		case sessions, projects
+		case knownDurationMS = "known_duration_ms"
+		case missingDurationCount = "missing_duration_count"
+	}
+}
+
+public struct DesktopSessionOriginCoverageV1: Codable, Equatable, Sendable {
+	public let complete: Bool
+	public let unknownCount: Int?
+	public let reasons: [String]
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		complete = try container.decode(Bool.self, forKey: .complete)
+		unknownCount = try container.decodeIfPresent(Int.self, forKey: .unknownCount)
+		reasons = try container.decodeIfPresent([String].self, forKey: .reasons) ?? []
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case complete, reasons
+		case unknownCount = "unknown_count"
+	}
+}
+
+/// The additive `session_scope_view`. An available view carries one complete,
+/// same-publication answer for its selection: counts, recent rows and signals
+/// all describe exactly that selection. An unavailable view carries no figures
+/// at all, so nothing can be shown as a measured zero.
+public struct DesktopSessionScopeViewV1: Codable, Equatable, Sendable {
+	public let available: Bool
+	public let reason: String?
+	public let `default`: DesktopSessionScopeDefaultV1
+	public let selection: DesktopSessionScopeSelectionV1?
+	public let publicationID: String?
+	/// The committed generation the view was verified at, shared by every
+	/// selection read at that generation. Producers before Task 7 omit it; a
+	/// consumer that combines selections must then treat them as unpinnable.
+	public let generationID: String?
+	public let generatedAt: String?
+	public let originCoverage: DesktopSessionOriginCoverageV1?
+	public let counts: DesktopSessionScopeCountsV1?
+	public let recent: [DesktopSessionScopeRecentV1]
+	public let workSignals: DesktopWorkSignalsV1
+
+	enum CodingKeys: String, CodingKey {
+		case available, reason, selection, counts, recent
+		case `default`
+		case publicationID = "publication_id"
+		case generationID = "generation_id"
+		case generatedAt = "generated_at"
+		case originCoverage = "origin_coverage"
+		case workSignals = "work_signals"
+	}
+
+	public init(
+		available: Bool, reason: String?, default defaults: DesktopSessionScopeDefaultV1, selection: DesktopSessionScopeSelectionV1?,
+		publicationID: String?, generatedAt: String?, originCoverage: DesktopSessionOriginCoverageV1?,
+		counts: DesktopSessionScopeCountsV1?, recent: [DesktopSessionScopeRecentV1], workSignals: DesktopWorkSignalsV1,
+		generationID: String? = nil
+	) {
+		self.generationID = generationID
+		self.available = available
+		self.reason = reason
+		self.default = defaults
+		self.selection = selection
+		self.publicationID = publicationID
+		self.generatedAt = generatedAt
+		self.originCoverage = originCoverage
+		self.counts = counts
+		self.recent = recent
+		self.workSignals = workSignals
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		available = try container.decode(Bool.self, forKey: .available)
+		reason = try container.decodeIfPresent(String.self, forKey: .reason)
+		self.default = try container.decode(DesktopSessionScopeDefaultV1.self, forKey: .default)
+		selection = try container.decodeIfPresent(DesktopSessionScopeSelectionV1.self, forKey: .selection)
+		publicationID = try container.decodeIfPresent(String.self, forKey: .publicationID)
+		generationID = try container.decodeIfPresent(String.self, forKey: .generationID)
+		generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
+		originCoverage = try container.decodeIfPresent(DesktopSessionOriginCoverageV1.self, forKey: .originCoverage)
+		counts = try container.decodeIfPresent(DesktopSessionScopeCountsV1.self, forKey: .counts)
+		recent = try container.decodeIfPresent([DesktopSessionScopeRecentV1].self, forKey: .recent) ?? []
+		workSignals = try container.decodeIfPresent(DesktopWorkSignalsV1.self, forKey: .workSignals) ?? .unavailable
+		try validate()
+	}
+
+	/// An available view must name its selection, publication and time, carry
+	/// its figures, and hold only signal items of its own selection. Anything
+	/// else is not a partial answer to trust; it is invalid.
+	public func validate() throws {
+		guard available else {
+			guard counts == nil, originCoverage == nil, recent.isEmpty else { throw DesktopWireError.invalidEnvelope }
+			return
+		}
+		guard let selection, let publicationID, !publicationID.isEmpty, generationID?.isEmpty != true, let counts, let originCoverage,
+			counts.sessions >= 0, counts.projects >= 0, counts.missingDurationCount >= 0,
+			counts.missingDurationCount <= counts.sessions, recent.count <= counts.sessions,
+			(counts.knownDurationMS ?? 0) >= 0, (originCoverage.unknownCount ?? 0) >= 0,
+			(originCoverage.unknownCount ?? 0) <= counts.sessions,
+			counts.knownDurationMS != nil || (counts.sessions > 0 && counts.missingDurationCount == counts.sessions)
+		else { throw DesktopWireError.invalidEnvelope }
+		guard let generatedAt, isRFC3339Timestamp(generatedAt) else { throw DesktopWireError.invalidTimestamp }
+		let foreign = workSignals.activity.items.contains { $0.period != selection.period || $0.client != selection.client }
+			|| workSignals.workflow.items.contains { $0.period != selection.period || $0.client != selection.client }
+			|| workSignals.tooling.items.contains { $0.period != selection.period || $0.client != selection.client }
+		guard !foreign else { throw DesktopWireError.invalidEnvelope }
+	}
+}
+
+/// How a snapshot carries the session-scope view. `absent` is a publication
+/// from before the view existed (legacy); `invalid` is one this consumer cannot
+/// trust. Neither may be read as Work or as the legacy all-session totals.
+public enum DesktopSessionScopeFieldV1: Equatable, Sendable {
+	case absent
+	case invalid
+	case present(DesktopSessionScopeViewV1)
+
+	public var view: DesktopSessionScopeViewV1? {
+		if case let .present(view) = self { return view }
+		return nil
+	}
+}
+
+/// desktop.session-scope: one explicit selection read from committed state.
+public struct DesktopSessionScopeEnvelopeV1: Decodable, Equatable, Sendable {
+	public static let command = "desktop.session-scope"
+
+	public let data: DesktopSessionScopeViewV1
+
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, data }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		guard try container.decode(Int.self, forKey: .schemaVersion) == 1,
+			try container.decode(String.self, forKey: .command) == Self.command
+		else { throw DesktopWireError.invalidEnvelope }
+		data = try container.decode(DesktopSessionScopeViewV1.self, forKey: .data)
+	}
+}
+
+public func decodeDesktopSessionScopeEnvelopeV1(_ data: Data) throws -> DesktopSessionScopeViewV1 {
+	try JSONDecoder().decode(DesktopSessionScopeEnvelopeV1.self, from: data).data
+}
+
+/// desktop.session-scope-batch: one scope read for every client and period in
+/// one helper process, at one committed generation and one instant.
+public struct DesktopSessionScopeBatchEnvelopeV1: Decodable, Equatable, Sendable {
+	public static let command = "desktop.session-scope-batch"
+
+	public let views: [DesktopSessionScopeViewV1]
+
+	enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version", command, data }
+	enum DataKeys: String, CodingKey { case views }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		guard try container.decode(Int.self, forKey: .schemaVersion) == 1,
+			try container.decode(String.self, forKey: .command) == Self.command
+		else { throw DesktopWireError.invalidEnvelope }
+		views = try container.nestedContainer(keyedBy: DataKeys.self, forKey: .data)
+			.decode([DesktopSessionScopeViewV1].self, forKey: .views)
+	}
+}
+
+public func decodeDesktopSessionScopeBatchEnvelopeV1(_ data: Data) throws -> [DesktopSessionScopeViewV1] {
+	try JSONDecoder().decode(DesktopSessionScopeBatchEnvelopeV1.self, from: data).views
+}
+
 public struct DesktopHealthSnapshotV1: Codable, Equatable, Sendable {
     public let available: Bool
     public let status: String?
@@ -1154,6 +1526,134 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
 
 public func decodeDesktopWireEnvelopeV1(_ data: Data) throws -> DesktopWireEnvelopeV1 {
 	try JSONDecoder().decode(DesktopWireEnvelopeV1.self, from: data)
+}
+
+public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
+	public let state: String
+	public let inventoryID: String?
+	public let observedAt: String?
+	public let sources: Int
+	public let committed: Int
+	enum CodingKeys: String, CodingKey {
+		case state, sources, committed
+		case inventoryID = "inventory_id"
+		case observedAt = "observed_at"
+	}
+}
+
+public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
+	public static let maximumSupportedCoreSchema = 35
+
+	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
+	// session-origin storage; 35 adds a source thread identity column and
+	// rebuilds the derived classification table. None changes the canonical
+	// facts in a retained schema-31/32/33/34 publication.
+	// Keep this directional compatibility aligned with the Go serving reader.
+	// All other identity changes still
+	// invalidate a retained publication before date and fullness checks.
+	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
+		stored == current || (stored == 31 && current == 32)
+			|| ((stored == 31 || stored == 32) && current == 33)
+			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
+			|| ((31...34).contains(stored) && current == 35)
+	}
+	public let stateIdentity: String
+	public let coreEpoch: Int64
+	public let sessionEpoch: Int64
+	public let coreSchema: Int
+	public let sessionSchema: Int
+	public let usageRevision: Int64
+	public let sessionRevision: Int64
+	enum CodingKeys: String, CodingKey {
+		case stateIdentity = "state_identity", coreEpoch = "core_epoch", sessionEpoch = "session_epoch"
+		case coreSchema = "core_schema", sessionSchema = "session_schema"
+		case usageRevision = "usage_revision", sessionRevision = "session_revision"
+	}
+}
+
+public struct DesktopServingHeaderV2: Codable, Equatable, Sendable {
+	public let formatVersion: Int
+	public let wireVersion: Int
+	public let generation: DesktopServingGenerationV2
+	public let publicationID: String
+	public let projectionVersion: Int
+	public let usageParserVersion: Int
+	public let activeGeneration: String
+	public let pricingRevision: Int64
+	public let dataObservedThrough: String
+	public let freshness: String
+	public let sessionPrepared: Bool
+	public let timezone: String
+	public let windowStart: String
+	public let windowEnd: String
+	public let generatedAt: String
+	public let usageCoverage: DesktopSourceCoverageV2
+	public let sessionCoverage: DesktopSourceCoverageV2
+	enum CodingKeys: String, CodingKey {
+		case generation, timezone
+		case formatVersion = "format_version", wireVersion = "wire_version", publicationID = "publication_id"
+		case projectionVersion = "projection_version", usageParserVersion = "usage_parser_version", sessionPrepared = "session_prepared"
+		case activeGeneration = "active_generation", pricingRevision = "pricing_revision", dataObservedThrough = "data_observed_through", freshness
+		case windowStart = "window_start", windowEnd = "window_end", generatedAt = "generated_at"
+		case usageCoverage = "usage_coverage", sessionCoverage = "session_coverage"
+	}
+
+	public func matchesCurrentDay(now: Date = Date()) -> Bool {
+		guard let zone = timezone == "Local" ? TimeZone.current : TimeZone(identifier: timezone),
+			let start = DesktopTimestamp.date(from: windowStart), let end = DesktopTimestamp.date(from: windowEnd)
+		else { return false }
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = zone
+		let today = calendar.startOfDay(for: now)
+		return start == today && calendar.date(byAdding: .day, value: 1, to: today) == end
+	}
+}
+
+public struct DesktopServingSnapshotV2: Codable, Equatable, Sendable {
+	public let header: DesktopServingHeaderV2
+	public let payload: DesktopWireEnvelopeV1
+
+	public func validate() throws {
+		let generation = header.generation
+		guard header.formatVersion == 1, header.wireVersion == 2, header.projectionVersion == 1,
+			!header.publicationID.isEmpty, !generation.stateIdentity.isEmpty,
+			generation.coreEpoch > 0, generation.sessionEpoch > 0,
+			generation.coreSchema <= DesktopServingGenerationV2.maximumSupportedCoreSchema, generation.sessionSchema == 1,
+			generation.usageRevision >= 0, generation.sessionRevision >= 0,
+			!header.activeGeneration.isEmpty, header.pricingRevision >= 0, ["current", "stale"].contains(header.freshness),
+			header.generatedAt == payload.data.generatedAt,
+			isRFC3339Timestamp(header.generatedAt), isRFC3339Timestamp(header.windowStart), isRFC3339Timestamp(header.windowEnd)
+		else { throw DesktopWireError.invalidEnvelope }
+		guard let start = DesktopTimestamp.date(from: header.windowStart), let end = DesktopTimestamp.date(from: header.windowEnd),
+			let generated = DesktopTimestamp.date(from: header.generatedAt), start <= generated, generated < end
+		else { throw DesktopWireError.invalidTimestamp }
+		for coverage in [header.usageCoverage, header.sessionCoverage] {
+			guard ["complete", "partial", "unknown", "unavailable", "update_pending"].contains(coverage.state),
+				coverage.sources >= 0, coverage.committed >= 0, coverage.committed <= coverage.sources,
+				coverage.state != "complete" || coverage.sources == coverage.committed
+			else { throw DesktopWireError.invalidEnvelope }
+		}
+	}
+}
+
+public func decodeDesktopServingSnapshotV2(_ data: Data) throws -> DesktopServingSnapshotV2 {
+	let value = try JSONDecoder().decode(DesktopServingSnapshotV2.self, from: data)
+	try value.validate()
+	return value
+}
+
+public enum DesktopTimestamp {
+	/// Value-style parsing avoids constructing ICU formatters on every view read.
+	/// It keeps no mutable cache, so timestamps, clocks and time zones stay independent.
+	public static func date(from value: String) -> Date? {
+		if let date = (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(value))
+			?? (try? Date.ISO8601FormatStyle().parse(value)) { return date }
+		// The existing wire accepts arbitrary fractional widths; Foundation's
+		// value parser stops at nanoseconds. Preserve the old rare-input fallback.
+		let fractional = ISO8601DateFormatter()
+		fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+	}
 }
 
 public struct ProviderUseEnvelopeV1: Decodable, Equatable, Sendable {

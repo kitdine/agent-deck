@@ -318,6 +318,20 @@ var migrations = []migration{
 	{version: 30, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
 	}},
+	{version: 31, apply: initializeServingStorage},
+	{version: 32, apply: initializeUsagePartitions},
+	// Migration 33 adds sanitized OTel observations, the journal cursor and
+	// receiver coverage. It changes no canonical usage fact.
+	{version: 33, apply: initializeTelemetryStorage},
+	// Migration 34 adds session-origin preferences, overrides, receipts and
+	// derived classifications (auxiliary-session-classification). It changes
+	// no canonical usage fact.
+	{version: 34, apply: initializeSessionOriginStorage},
+	// Migration 35 adds the source thread identity that keeps a child thread's
+	// JSONL facts from also being counted from OTel, and admits default_work as
+	// a stored classification reason (otel-version-tolerant-metering). It
+	// changes no canonical usage fact.
+	{version: 35, apply: applySourceThreadsAndDefaultWork},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (

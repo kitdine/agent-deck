@@ -39,9 +39,13 @@ func TestNetworkImportAuditSkipsUntrackedEditorState(t *testing.T) {
 }
 
 func auditNetworkImports(root string) error {
-	allowed := map[string]string{
-		filepath.Clean(filepath.Join(root, "internal", "usage", "price_update.go")):      "net/http",
-		filepath.Clean(filepath.Join(root, "internal", "scanruntime", "scanruntime.go")): "net",
+	// The telemetry receiver binds only 127.0.0.1 and sends nothing; the
+	// development-only mock producer posts only to that loopback receiver.
+	allowed := map[string]map[string]bool{
+		filepath.Clean(filepath.Join(root, "internal", "usage", "price_update.go")):      {"net/http": true},
+		filepath.Clean(filepath.Join(root, "internal", "scanruntime", "scanruntime.go")): {"net": true},
+		filepath.Clean(filepath.Join(root, "internal", "telemetry", "receiver.go")):      {"net": true, "net/http": true},
+		filepath.Clean(filepath.Join(root, "cmd", "agentdeck-perf", "otel.go")):          {"net/http": true},
 	}
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -60,7 +64,7 @@ func auditNetworkImports(root string) error {
 		for _, imported := range file.Imports {
 			name := strings.Trim(imported.Path.Value, "\"")
 			if name == "net" || name == "net/http" {
-				if allowed[filepath.Clean(path)] != name {
+				if !allowed[filepath.Clean(path)][name] {
 					return &networkImportError{path: path, name: name}
 				}
 			}

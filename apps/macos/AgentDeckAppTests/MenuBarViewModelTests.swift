@@ -1,10 +1,48 @@
 import AppKit
 import XCTest
+import SwiftUI
+import Observation
+import Vision
 @testable import AgentDeck
 @testable import AgentDeckShared
 
+private final class DateSurfacePixelView: NSView {
+	var value = ""
+	override func draw(_ dirtyRect: NSRect) {
+		NSColor.white.setFill()
+		NSBezierPath(rect: bounds).fill()
+		NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: 40), .foregroundColor: NSColor.black])
+			.draw(at: NSPoint(x: 20, y: 20))
+	}
+	override func accessibilityChildren() -> [Any]? { [] }
+}
+
+// Each image owns a completed immutable bitmap; recognition does not access
+// AppKit objects or mutable view state off the main actor.
+private struct DateSurfaceFrame: @unchecked Sendable { let image: CGImage }
+
+private enum DateSurfaceCaptureError: Error { case captureUnavailable, imageUnavailable }
+
+private actor DateSurfaceTextRecognizer {
+	private lazy var request: VNRecognizeTextRequest = {
+		let request = VNRecognizeTextRequest()
+		request.recognitionLevel = .accurate
+		request.usesLanguageCorrection = false
+		request.recognitionLanguages = ["en-US"]
+		request.minimumTextHeight = 0.005
+		request.usesCPUOnly = true
+		return request
+	}()
+	func text(_ frame: DateSurfaceFrame) throws -> [String] {
+		try VNImageRequestHandler(cgImage: frame.image, options: [:]).perform([request])
+		return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+	}
+}
+
 @MainActor
 final class MenuBarViewModelTests: XCTestCase {
+	private let dateTextRecognizer = DateSurfaceTextRecognizer()
+	private var lastDateSurfaceText: [String] = []
 	private func healthySnapshotStore() -> AppGroupSnapshotStore {
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
@@ -16,9 +54,239 @@ final class MenuBarViewModelTests: XCTestCase {
 		preferences: DesktopPreferences? = nil
 	) async -> MenuBarViewModel {
 		let host = StubDesktopHost(behavior: .envelope(envelope))
-		let model = await makeModel(host: host, preferences: preferences, snapshotStore: healthySnapshotStore())
+		// Any selection other than the publication's own is read through the
+		// explicit-selection reader, answered from the same synthetic sessions.
+		let views = WireFixture.fixtureScopeViews()
+		let reader = StubSessionScopeReader { .view(views[$0]!) }
+		let model = await makeModel(host: host, preferences: preferences, snapshotStore: healthySnapshotStore(), sessionScopeReader: reader)
 		await model.coordinator.refresh()
 		return model
+	}
+
+	func testServingDateExpiryInvalidatesEveryTodaySurfaceWithoutNewPublication() async throws {
+		let envelope = WireFixture.envelope()
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(envelope))
+		let coverage: [String: Any] = ["state": "complete", "inventory_id": "fixture", "observed_at": "2026-08-13T10:00:00Z", "sources": 2, "committed": 2]
+		let body: [String: Any] = ["payload": payload, "header": [
+			"format_version": 1, "wire_version": 2, "publication_id": "unchanged-full", "projection_version": 1,
+			"usage_parser_version": 1, "session_prepared": true, "timezone": "UTC",
+			"window_start": "2026-08-13T00:00:00Z", "window_end": "2026-08-14T00:00:00Z",
+			"generated_at": "2026-08-13T10:00:00Z", "active_generation": "1:3/2:4", "pricing_revision": 3,
+			"data_observed_through": "2026-08-13T10:00:00Z", "freshness": "current",
+			"usage_coverage": coverage, "session_coverage": coverage,
+			"generation": ["state_identity": "fixture-state", "core_epoch": 1, "session_epoch": 2,
+				"core_schema": 31, "session_schema": 1, "usage_revision": 3, "session_revision": 4],
+		]]
+		let publication = try decodeDesktopServingSnapshotV2(JSONSerialization.data(withJSONObject: body))
+		let host = DateWindowServingHost(publication)
+		let clock = DateWindowClock(try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-13T23:59:59Z")))
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: healthySnapshotStore(), wallNow: { clock.value })
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		let model = MenuBarViewModel(coordinator: coordinator,
+			switchController: SwitchController(transport: StubSwitchTransport(), refreshCoordinator: coordinator),
+			preferences: preferences, now: { clock.value })
+		await coordinator.startInitialRefresh().value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "unchanged-full")
+		model.selectedPeriod = "today"
+		XCTAssertNotNil(model.hero)
+		XCTAssertTrue(model.clientTabs.contains { $0.value != "—" })
+		XCTAssertGreaterThan(try XCTUnwrap(model.sessionStatistics).sessions, 0)
+		XCTAssertTrue(model.sessionsPanel.available)
+		XCTAssertFalse(model.sessionsPanel.scope.rows.isEmpty)
+		preferences.menuBarValue = .cost
+		XCTAssertNotNil(model.menuBarText)
+		preferences.menuBarValue = .tokens
+		XCTAssertNotNil(model.menuBarText)
+		model.selectedPeriod = "7d"
+		let historicalHero = model.hero
+		let historicalTabs = model.clientTabs.map(\.value)
+		let historicalStatistics = model.sessionStatistics
+		XCTAssertNotNil(historicalHero)
+
+		// No refresh or publication: only the clock crosses the exclusive end.
+		clock.value = try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-14T00:00:00Z"))
+		model.selectedPeriod = "today"
+		for client in model.clientTabs.map(\.id) {
+			model.selectedClient = client
+			XCTAssertNil(model.hero)
+			XCTAssertTrue(model.clientTabs.allSatisfy { $0.value == "—" })
+			XCTAssertFalse(model.usagePanel.available)
+			XCTAssertFalse(model.breakdownPanel.available)
+			XCTAssertFalse(model.attributionPanel.qualityAvailable)
+			XCTAssertFalse(model.attributionPanel.pricingAvailable)
+			XCTAssertNil(model.sessionStatistics)
+			XCTAssertFalse(model.sessionsPanel.available)
+			XCTAssertTrue(model.sessionsPanel.scope.stats.isEmpty)
+			XCTAssertTrue(model.sessionsPanel.scope.rows.isEmpty)
+			XCTAssertTrue(model.sessionsPanel.workSignals.activityRows.isEmpty)
+			XCTAssertTrue(model.panelTabs.filter { $0.id != .quota }.allSatisfy(\.marked))
+			for followsPanel in [false, true] {
+				preferences.menuBarScope = followsPanel ? .followPanel : .allClients
+				for value in [MenuBarValueMode.cost, .tokens] {
+					preferences.menuBarValue = value
+					XCTAssertNil(model.menuBarText)
+				}
+			}
+		}
+		model.selectedClient = "all"
+		model.selectedPeriod = "7d"
+		XCTAssertEqual(model.hero?.amount, historicalHero?.amount)
+		XCTAssertEqual(model.clientTabs.map(\.value), historicalTabs)
+		XCTAssertEqual(model.sessionStatistics, historicalStatistics)
+		XCTAssertTrue(model.sessionsPanel.available)
+		XCTAssertNil(model.menuBarText, "Menu bar remains today even when the panel is historical")
+		XCTAssertEqual(coordinator.servingHeader, publication.header)
+	}
+
+	func testDateEventsInvalidateRenderedSurfacesWithoutRefreshOrFilterChanges() async throws {
+		let envelope = WireFixture.envelope()
+		let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(envelope))
+		let coverage: [String: Any] = ["state": "complete", "inventory_id": "fixture", "observed_at": "2026-08-13T10:00:00Z", "sources": 2, "committed": 2]
+		let body: [String: Any] = ["payload": payload, "header": [
+			"format_version": 1, "wire_version": 2, "publication_id": "unchanged-full", "projection_version": 1,
+			"usage_parser_version": 1, "session_prepared": true, "timezone": "UTC",
+			"window_start": "2026-08-13T00:00:00Z", "window_end": "2026-08-14T00:00:00Z",
+			"generated_at": "2026-08-13T10:00:00Z", "active_generation": "1:3/2:4", "pricing_revision": 3,
+			"data_observed_through": "2026-08-13T10:00:00Z", "freshness": "current",
+			"usage_coverage": coverage, "session_coverage": coverage,
+			"generation": ["state_identity": "fixture-state", "core_epoch": 1, "session_epoch": 2,
+				"core_schema": 31, "session_schema": 1, "usage_revision": 3, "session_revision": 4],
+		]]
+		let publication = try decodeDesktopServingSnapshotV2(JSONSerialization.data(withJSONObject: body))
+		let host = DateWindowServingHost(publication)
+		let clock = DateWindowClock(try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-13T23:59:00Z")))
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: healthySnapshotStore(), wallNow: { clock.value })
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		let model = MenuBarViewModel(coordinator: coordinator,
+			switchController: SwitchController(transport: StubSwitchTransport(), refreshCoordinator: coordinator),
+			preferences: preferences, now: { clock.value })
+		await coordinator.startInitialRefresh().value
+		preferences.automaticUpdateEnabled = false
+		preferences.quotaProbeEnabled = false
+		preferences.menuBarValue = .cost
+		model.selectedPanel = .usage
+		let dates = NotificationCenter()
+		let wakes = NotificationCenter()
+		let controller = MenuBarItemController(model: model, openSettings: {},
+			dateNotificationCenter: dates, wakeNotificationCenter: wakes)
+		let button = try XCTUnwrap(controller.statusItem.button)
+		let hosting = NSHostingView(rootView: MenuBarSurfaceView(model: model))
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentView = hosting
+		let previousApplication = NSWorkspace.shared.frontmostApplication
+		defer {
+			window.close()
+			if NSApp.isActive, let previousApplication,
+				previousApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+				!previousApplication.isTerminated {
+				previousApplication.activate(options: [.activateIgnoringOtherApps])
+			}
+		}
+		let activationRequested = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+		window.makeKeyAndOrderFront(nil)
+		let foregroundClock = ContinuousClock()
+		let foregroundDeadline = foregroundClock.now.advanced(by: .seconds(2))
+		while !(NSApp.isActive && window.isKeyWindow && window.isVisible && window.occlusionState.contains(.visible)),
+			foregroundClock.now < foregroundDeadline {
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		guard NSApp.isActive && window.isKeyWindow && window.isVisible && window.occlusionState.contains(.visible) else {
+			XCTFail("Date surface requires active host and visible key window: activationRequested=\(activationRequested), policy=\(NSApp.activationPolicy().rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"), active=\(NSApp.isActive), key=\(window.isKeyWindow), visible=\(window.isVisible), unoccluded=\(window.occlusionState.contains(.visible))")
+			return
+		}
+		let amount = try XCTUnwrap(model.hero?.amount)
+		// Load the on-device recognizer before timing date-change updates.
+		_ = try await dateSurfaceText(hosting)
+		let before = clock.value
+		let after = try XCTUnwrap(DesktopTimestamp.date(from: "2026-08-14T00:00:00Z"))
+		let events: [Notification.Name?] = [nil, .NSCalendarDayChanged, .NSSystemClockDidChange, .NSSystemTimeZoneDidChange, NSWorkspace.didWakeNotification]
+		for event in events {
+			// Re-arm the same publication by a clock event; no filter/preference/refresh change.
+			clock.value = before
+			dates.post(name: .NSSystemClockDidChange, object: nil)
+			try await waitForDateSurface(diagnostics: {
+				"rearm event=\(event?.rawValue ?? "timer") activationRequested=\(activationRequested) policy=\(NSApp.activationPolicy().rawValue) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown") expected=\(amount.debugDescription) button=\(button.title.debugDescription) hero=\(String(describing: model.hero?.amount)) active=\(NSApp.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) unoccluded=\(window.occlusionState.contains(.visible)) rendered=\(self.lastDateSurfaceText)"
+			}) {
+				let rendered = try await self.dateSurfaceText(hosting)
+				return button.title == amount && rendered.contains { $0.contains(amount) }
+			}
+			XCTAssertEqual(model.nextDateInvalidationDelay, 60)
+			XCTAssertTrue(try XCTUnwrap(controller.dateInvalidationTimer).isValid)
+			XCTAssertGreaterThan(try XCTUnwrap(controller.dateInvalidationTimer).fireDate.timeIntervalSinceNow, 0)
+			let changed = expectation(description: "date invalidates mounted consumers")
+			withObservationTracking {
+				_ = model.hero
+				_ = model.sessionsPanel
+			} onChange: { changed.fulfill() }
+			clock.value = after
+			if let event {
+				(event == NSWorkspace.didWakeNotification ? wakes : dates).post(name: event, object: nil)
+			} else {
+				// Exercise the scheduled production timer callback at its exact boundary.
+				try XCTUnwrap(controller.dateInvalidationTimer).fire()
+			}
+			await fulfillment(of: [changed], timeout: 2)
+			try await waitForDateSurface {
+				let rendered = try await self.dateSurfaceText(hosting)
+				let hasSurface = rendered.contains { $0.replacingOccurrences(of: " ", with: "").lowercased().contains("agentdeck") }
+				return button.title.isEmpty && hasSurface && !rendered.contains { $0.contains(amount) }
+			}
+			XCTAssertNil(model.hero)
+			XCTAssertFalse(model.sessionsPanel.available)
+			XCTAssertEqual(model.selectedPeriod, "today")
+			XCTAssertEqual(model.selectedClient, "all")
+			XCTAssertEqual(coordinator.servingHeader, publication.header)
+			XCTAssertEqual(model.nextDateInvalidationDelay, 86400)
+			XCTAssertGreaterThan(try XCTUnwrap(controller.dateInvalidationTimer).fireDate.timeIntervalSinceNow, 86000)
+		}
+		model.selectedPeriod = "7d"
+		XCTAssertNotNil(model.hero)
+		XCTAssertTrue(model.sessionsPanel.available)
+		XCTAssertTrue(button.title.isEmpty)
+	}
+
+	private func waitForDateSurface(file: StaticString = #filePath, line: UInt = #line, diagnostics: () -> String = { "" }, _ condition: () async throws -> Bool) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while clock.now < deadline {
+			if try await condition() { return }
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		XCTFail(diagnostics(), file: file, line: line)
+	}
+
+	private func dateSurfaceText(_ hosting: NSView) async throws -> [String] {
+		hosting.layoutSubtreeIfNeeded()
+		hosting.displayIfNeeded()
+		guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+			throw DateSurfaceCaptureError.captureUnavailable
+		}
+		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+		guard let image = bitmap.cgImage else {
+			throw DateSurfaceCaptureError.imageUnavailable
+		}
+		let rendered = try await dateTextRecognizer.text(DateSurfaceFrame(image: image))
+		lastDateSurfaceText = rendered
+		return rendered
+	}
+
+	func testDateSurfaceReadsRenderedPixelsWithoutAccessibilityNodes() async throws {
+		let view = DateSurfacePixelView(frame: NSRect(x: 0, y: 0, width: 320, height: 100))
+		let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentView = view
+		defer { window.close() }
+		view.value = "$1.44"
+		view.needsDisplay = true
+		XCTAssertEqual(view.accessibilityChildren()?.count, 0)
+		let present = try await dateSurfaceText(view)
+		XCTAssertTrue(present.contains { $0.contains("$1.44") })
+		view.value = ""
+		view.needsDisplay = true
+		let removed = try await dateSurfaceText(view)
+		XCTAssertFalse(removed.contains { $0.contains("$1.44") })
 	}
 
 	func testSchemaSignalNoticeVariantsAndHealthProse() async throws {
@@ -277,7 +545,22 @@ final class MenuBarViewModelTests: XCTestCase {
 		model.selectedPeriod = "today"
 		model.selectedClient = "claude"
 		XCTAssertEqual(model.sessionStatistics?.client, "claude")
-		XCTAssertEqual(model.sessionsPanel.stats.first?.value, DesktopFormat.count(0))
+		await model.synchronizeSessionScope()
+		XCTAssertEqual(model.sessionsPanel.scope.selectionLine?.contains("Claude"), true)
+		XCTAssertEqual(model.sessionsPanel.scope.stats.first?.value, DesktopFormat.count(0))
+	}
+
+	// The rhythm block is reused across selections but follows a new publication.
+	func testRhythmBlockFollowsANewPublication() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host, preferences: nil, snapshotStore: healthySnapshotStore())
+		await model.coordinator.refresh()
+		XCTAssertTrue(model.rhythmBlock.available)
+		host.behavior = .envelope(WireFixture.envelope(
+			scopes: [WireFixture.scope(client: "all", rhythmAvailable: false), WireFixture.scope(client: "codex"), WireFixture.scope(client: "claude")],
+			generatedAt: "2026-08-13T10:05:00Z"))
+		await model.coordinator.refresh()
+		XCTAssertFalse(model.rhythmBlock.available, "a new publication must not show the previous rhythm")
 	}
 
 	func testRhythmBlockIgnoresBothFilters() async {
@@ -390,7 +673,9 @@ final class MenuBarViewModelTests: XCTestCase {
 			WireFixture.scope(client: "all", qualityAvailable: false, pricingAvailable: false),
 			WireFixture.scope(client: "codex"),
 		]
-		let model = await readyModel(envelope: WireFixture.envelope(scopes: scopes, sessionsPeriodsAvailable: false))
+		let model = await readyModel(envelope: WireFixture.envelope(
+			sessionScope: .custom(WireFixture.unavailableSessionScopeView(reason: "sessions_unavailable")),
+			scopes: scopes, sessionsPeriodsAvailable: false))
 
 		let tabs = Dictionary(uniqueKeysWithValues: model.panelTabs.map { ($0.id, $0) })
 		XCTAssertTrue(tabs[.attribution]?.marked ?? false)
@@ -399,6 +684,12 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(tabs[.attribution]?.accessibilityLabel, t(DesktopCopy.panelUnavailableMark, MenuBarPanel.attribution.title))
 		XCTAssertFalse(model.attributionPanel.qualityAvailable)
 		XCTAssertFalse(model.attributionPanel.pricingAvailable)
+
+		// The Sessions tab follows its scope view; the legacy all-session
+		// period family no longer feeds it, so its absence alone marks nothing.
+		let legacyPeriodsOnly = await readyModel(envelope: WireFixture.envelope(sessionsPeriodsAvailable: false))
+		XCTAssertEqual(legacyPeriodsOnly.sessionsPanel.scope.state, .ready)
+		XCTAssertFalse(legacyPeriodsOnly.panelTabs.first { $0.id == .sessions }?.marked ?? true)
 	}
 
 	func testIncompleteCostIsNeverLabeledComplete() async {
@@ -512,18 +803,34 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.usagePanel.chips.first?.note, t(DesktopCopy.notCapturedYet))
 	}
 
-	func testSessionStatisticsComeFromTheProducerRatherThanTheRecentList() async {
-		let model = await readyModel(envelope: WireFixture.envelope(sessionItems: [WireFixture.defaultSessionItem]))
-		model.selectedClient = "codex"
+	func testSessionStatisticsComeFromTheScopeViewRatherThanItsRecentRows() async {
+		let view = WireFixture.sessionScopeView(sessions: 7, projects: 3, knownDurationMS: 5_400_000, missing: 2, unknownCount: 4,
+			recent: [WireFixture.scopeRecent()])
+		let model = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(view)))
+		model.selectedClient = "all"
 		model.selectedPeriod = "today"
 
-		XCTAssertEqual(model.sessionsPanel.stats.first(where: { $0.id == "sessions" })?.value, DesktopFormat.count(2))
-		XCTAssertEqual(model.sessionsPanel.stats.map(\.id), ["sessions", "average", "projects"])
-		XCTAssertEqual(model.sessionsPanel.stats.first(where: { $0.id == "average" })?.value, DesktopFormat.duration(3_600))
-		XCTAssertEqual(model.sessionsPanel.projects.map(\.label), ["agent-deck", "ai-tools"])
-		XCTAssertEqual(model.sessionsPanel.projects.map(\.shareText), [DesktopFormat.duration(4_200), DesktopFormat.duration(3_000)])
-		XCTAssertEqual(model.sessionsPanel.recent.count, 1, "the recent list stays a bounded recent list")
-		XCTAssertEqual(model.sessionsPanel.recent[0].when, DesktopFormat.duration(18 * 60))
+		let scope = model.sessionsPanel.scope
+		XCTAssertEqual(scope.state, .ready)
+		XCTAssertEqual(scope.stats.map(\.id), ["sessions", "projects", "known-duration"])
+		XCTAssertEqual(scope.stats.map(\.value), [DesktopFormat.count(7), DesktopFormat.count(3), DesktopFormat.duration(5_400)])
+		XCTAssertEqual(scope.missingDurationNote, t(DesktopCopy.sessionScopeMissingDuration, Int64(2)))
+		XCTAssertEqual(scope.unknownLine, t(DesktopCopy.sessionScopeUnknownIncluded, Int64(4)))
+		XCTAssertEqual(scope.rows.count, 1, "recent rows stay a bounded list, never the count")
+		XCTAssertEqual(scope.rows[0].when, DesktopFormat.duration(18 * 60))
+		// The legacy all-session figures never reach the session area.
+		XCTAssertFalse(scope.stats.contains { $0.value == DesktopFormat.duration(3_600) })
+	}
+
+	func testKnownDurationIsADashOnlyWhenEveryDurationIsMissing() async {
+		let allMissing = WireFixture.sessionScopeView(sessions: 2, knownDurationMS: NSNull(), missing: 2, recent: [])
+		let missing = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(allMissing)))
+		XCTAssertEqual(missing.sessionsPanel.scope.stats.last?.value, "—")
+		let empty = WireFixture.sessionScopeView(sessions: 0, projects: 0, knownDurationMS: 0, unknownCount: 0, recent: [])
+		let trustedZero = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(empty)))
+		XCTAssertNotEqual(trustedZero.sessionsPanel.scope.stats.last?.value, "—")
+		XCTAssertEqual(trustedZero.sessionsPanel.scope.notice, t(DesktopCopy.sessionScopeEmpty))
+		XCTAssertEqual(trustedZero.sessionsPanel.scope.emptyCopy, t(DesktopCopy.sessionScopeNoMatches))
 	}
 
 	func testCapturedWorkSignalsUseTheSelectedScopeAndFixedOrders() async {
@@ -556,18 +863,25 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		model.selectedClient = "codex"
 		model.selectedPeriod = "30d"
+		await model.synchronizeSessionScope()
 		let thirtyDays = model.sessionsPanel.workSignals
 		XCTAssertEqual(thirtyDays.state, .captured)
 		XCTAssertEqual(thirtyDays.workflowMetrics[0].value, DesktopFormat.workSignalDuration(180))
 		XCTAssertEqual(thirtyDays.topFileText, "tasks.md ×6")
 	}
 
-	func testWorkSignalStateDistinguishesEmptyScopeFromLegacyUncapturedPayload() async {
+	func testAnEmptySessionSelectionKeepsItsSignalFamiliesAndALegacyPayloadStaysUncaptured() async {
+		// Claude lists no session and its families report no item: the signal
+		// area does not follow the session list into an empty state, it shows
+		// each available family honestly as unmeasured.
 		let captured = await readyModel()
 		captured.selectedClient = "claude"
 		captured.selectedPeriod = "today"
-		XCTAssertEqual(captured.sessionsPanel.workSignals.state, .empty)
-		XCTAssertTrue(captured.sessionsPanel.workSignals.summaries.isEmpty)
+		await captured.synchronizeSessionScope()
+		XCTAssertEqual(captured.sessionsPanel.scope.notice, t(DesktopCopy.sessionScopeEmpty))
+		XCTAssertEqual(captured.sessionsPanel.workSignals.state, .captured)
+		XCTAssertTrue(captured.sessionsPanel.workSignals.uncapturedSections.isEmpty)
+		XCTAssertEqual(captured.sessionsPanel.workSignals.summaries.map(\.value), ["—", "—", "—"])
 
 		let legacy = await readyModel(envelope: WireFixture.envelope(includeWorkSignals: false))
 		XCTAssertEqual(legacy.sessionsPanel.workSignals.state, .uncaptured)
@@ -705,14 +1019,21 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertLessThan(failingIndex!, partialIndex!, "reachability precedes completeness")
 	}
 
-	func testSessionIdentifiersNeverReachPresentationState() async {
-		let model = await readyModel()
-		model.selectedClient = "codex"
+	/// The legacy all-session recent list never feeds the session area: only
+	/// the scope view's own rows do, and their detail carries only safe fields.
+	func testLegacyRecentSessionsNeverReachTheSessionArea() async {
+		let view = WireFixture.sessionScopeView(recent: [WireFixture.scopeRecent(id: "scoped-1", project: "notes")])
+		let model = await readyModel(envelope: WireFixture.envelope(sessionScope: .custom(view), sessionItems: [WireFixture.defaultSessionItem]))
 
-		let presented = model.sessionsPanel.recent.flatMap { [$0.id, $0.title, $0.detail, $0.when] }
-			+ model.sessionsPanel.projects.map(\.label)
+		let rows = model.sessionsPanel.scope.rows
+		XCTAssertEqual(rows.map(\.origin.sessionID), ["scoped-1"])
+		let presented = rows.flatMap { row in
+			[row.title, row.detail, row.classLabel, row.when, row.origin.subtitle, row.origin.effective, row.origin.automatic,
+			 row.origin.reason, row.origin.ruleVersion, row.origin.override, row.origin.overrideRevision, row.origin.command]
+		}
 		for value in presented {
-			XCTAssertFalse(value.contains("session-secret-1"))
+			XCTAssertFalse(value.contains("session-secret-1"), value)
+			XCTAssertFalse(value.contains("/"), "no path reaches the detail: \(value)")
 		}
 	}
 
@@ -783,6 +1104,49 @@ final class MenuBarViewModelTests: XCTestCase {
 			XCTAssertEqual(rows.map(\.name), expected)
 			XCTAssertTrue(rows.dropLast().allSatisfy { !$0.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) })
 			XCTAssertTrue(rows.last?.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) == true)
+		}
+	}
+
+	func testInstallationHealthDescriptionsUseWireCodesInBothLanguages() async throws {
+		// These are doctor/desktop fixture shapes: reason is intentionally not
+		// equal to code. Testing dictionary membership alone misses the regression.
+		let checks: [[String: Any]] = [
+			["name": "installation", "status": "warning", "code": "not_installed", "reason": "receipt_missing"],
+			["name": "managed_command_owner", "status": "warning", "code": "managed_command_owner_mismatch", "reason": "claude,codex"],
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_live"],
+			["name": "future_check", "status": "warning", "code": "future_code", "reason": "not_installed"],
+		]
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks,
+		]
+		let previousLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let previousLocale { setenv("AGENTDECK_TEST_LOCALE", previousLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let model = await readyModel(envelope: WireFixture.envelope(health: health))
+			let rows = model.healthDetail.rows
+			XCTAssertEqual(rows.count, 4)
+			let expected = language == "en" ? [
+				"This copy is not installed; isolated state is in use.",
+				"The Hook command belongs to another AgentDeck installation.",
+			] : ["此副本未安装，正在使用隔离状态。", "Hook 命令属于另一个 AgentDeck 安装。"]
+			XCTAssertEqual(Array(rows.prefix(2).map(\.name)), language == "en" ? ["Installation", "Hook command owner"] : ["安装", "Hook 命令归属"])
+			for index in 0..<2 {
+				XCTAssertEqual(rows[index].cause, expected[index])
+				XCTAssertTrue(rows[index].hasDisclosure, "the description must reach the visible detail row")
+				XCTAssertTrue(rows[index].accessibilityText(expanded: true).contains(expected[index]))
+				XCTAssertNil(rows[index].reasonLabel, "do not also interpret the wire code as a reason label")
+				XCTAssertNil(rows[index].actionContent, "copy routing must not invent an executable action")
+			}
+			XCTAssertEqual(rows[2].cause, t(DesktopCopy.healthCauseStateLive))
+			XCTAssertEqual(rows[2].reasonLabel, t("Active lock"))
+			XCTAssertNil(rows[3].cause)
+			XCTAssertNil(rows[3].reasonLabel)
+			XCTAssertFalse(rows[3].hasDisclosure)
 		}
 	}
 
@@ -860,4 +1224,22 @@ final class MenuBarViewModelTests: XCTestCase {
 
 private enum MenuBarPublicationError: Error {
 	case failed
+}
+
+@MainActor
+private final class DateWindowClock {
+	var value: Date
+	init(_ value: Date) { self.value = value }
+}
+
+@MainActor
+private final class DateWindowServingHost: DesktopSnapshotRefreshing, DesktopSnapshotBootstrapping {
+	let publication: DesktopServingSnapshotV2
+	init(_ publication: DesktopServingSnapshotV2) { self.publication = publication }
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 { publication.payload }
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2 { publication }
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		self.publication
+	}
 }

@@ -1,7 +1,7 @@
 ---
 status: active
-version: 32
-updated: 2026-10-07
+version: 36
+updated: 2026-11-16
 created: 2026-07-14
 ---
 
@@ -116,6 +116,7 @@ agentdeck scan [--scope usage|session]
 agentdeck watch [--interval <duration>] [--domains usage,session,extension]
 
 agentdeck backup create|list|inspect|restore
+agentdeck install claim [--takeover]
 agentdeck doctor [--full]
 agentdeck state migrate
 agentdeck version
@@ -210,7 +211,8 @@ operations are exposed through narrow store interfaces and tested contracts.
 
 ## Local State
 
-The default state root is:
+The installed owner normally uses `$HOME/.agentdeck`; a program that is not
+the installed owner uses `$HOME/.agentdeck-dev`. Both have the same state layout:
 
 ```text
 ~/.agentdeck/
@@ -223,6 +225,54 @@ The default state root is:
     ├── claude/
     └── portable/
 ```
+
+### Installation ownership and isolated state
+
+Installation identity is not the build version, branch, working directory, or
+an environment flag. The process resolves its executable through symbolic links
+and compares that physical path with the single user receipt at
+`<account>/Library/Application Support/AgentDeck/installation.json`. Here
+`account` comes from the system account database, not `$HOME`. A valid receipt
+names one executable and one channel: `homebrew_cask`, `homebrew_formula`,
+`make`, or `local_app`. Its version-1 fields are `receipt_version`, `executable`,
+`channel`, `installed_at`, and `installation_id`; unknown fields are invalid.
+The receipt is private, atomically written, and not followed through a symlink.
+If the recorded executable no longer exists, the receipt is stale and the reason
+is `receipt_missing`, even when the receipt file itself remains.
+
+| Process | No `--state-dir` | Explicit `--state-dir` |
+| --- | --- | --- |
+| Installed owner | `$HOME/.agentdeck` | Uses the requested directory subject to the state guard |
+| Not installed, no eligible formula renewal | `$HOME/.agentdeck-dev` | Uses an isolated directory; refuses the real state root or any of its descendants |
+| Current formula keg eligible for renewal | Renews before choosing the default, then uses the installed default | Renews when accessing the real root; an explicitly isolated directory does not trigger renewal |
+
+Default-directory selection respects `$HOME`; the protected real root is the
+system account's `.agentdeck`, including its symlink entries, physical target
+and descendants. Physical path resolution also covers aliases and `..` after
+symlinks; it does not lexically clean away a link before resolving it. A
+non-owner is refused before opening, creating, locking, migrating, or reading
+contents beneath that root, including on read-only paths. Unsafe path resolution
+fails closed. There is no environment or flag bypass.
+
+Access to real state requires a shared `ownership.lock` session, with identity
+rechecked under the lock; the lock remains held through all file/database use.
+Receipt changes take the exclusive lock. Each wait is bounded at five seconds:
+state access can return `ownership_busy`, and installation handoff can return
+`owner_running`. Long-running consumers revalidate before each round, close
+handles on ownership loss, and return `state_ownership_refused`. Stop the App,
+watcher, telemetry listener and affected client activity before handing ownership
+to another path or installation method. The existing `state.lock` has a separate
+purpose and does not replace the ownership session.
+
+A non-owner also cannot write AgentDeck-managed client or shell configuration
+within the real account home, regardless of `--state-dir`. Read-only client-log
+and configuration discovery is unchanged: an isolated AgentDeck state root is
+not a sandbox for source logs. All uninstalled processes share the default
+development root; incompatible development schemas can still yield
+`schema_ahead` there. Use a distinct isolated `--state-dir` when needed.
+
+The state layout and installed-process behavior below remain unchanged; this
+ownership boundary does not grant a database downgrade or change schema support.
 
 The root and subdirectories use mode `0700`. SQLite databases, WAL and journal
 sidecars, the credential key file, backups, locks, and temporary files use mode
@@ -263,12 +313,19 @@ ownership and lifecycles:
 ~/.local/bin/agentdeck                 # installed executable by default
 ~/.local/share/agentdeck/              # installation ownership manifest
 ~/.agentdeck/                          # persistent AgentDeck user state
+~/.agentdeck-dev/                      # default state of a non-owner
+<account>/Library/Application Support/AgentDeck/
+    installation.json                 # user installation receipt
+    ownership.lock                    # advisory ownership session lock
 <invocation directory>/                # project context, never owned by AgentDeck
 ~/.codex/ and ~/.claude/               # client state, accessed only by contract
 ```
 
 Uninstall removes only validated installation artifacts. It never removes the
 state root, credential key file, backups, client files, or project files.
+The receipt, ownership lock, installer-private cleanup manifests and retained
+cleanup helpers are installation metadata, not portable state. Backup/restore
+neither exports them nor grants ownership on the destination machine.
 
 ## Build Identity and Installation
 
@@ -320,20 +377,51 @@ BINDIR  defaults to $PREFIX/bin
 DATADIR defaults to $PREFIX/share/agentdeck
 ```
 
-`make install` builds the binary, creates owner-writable destination
-directories, stages the executable in `BINDIR`, sets mode `0755`, verifies its
-SHA-256, and atomically renames it into place. It writes an ownership manifest
-containing the canonical installed path and SHA-256. It refuses an existing
-destination by default. `FORCE=1` explicitly authorizes replacement at that one
-path and refreshes the manifest; it does not authorize changes to any other
-executable or legacy alias. An interrupted install may leave only recognizable
-temporary files or a manifest mismatch that makes uninstall fail closed.
+`make install` builds and stages the binary, sets mode `0755`, and verifies its
+SHA-256. The staged helper takes the exclusive ownership lock, publishes the
+executable and writes the user receipt in one session. The installer also keeps
+its path/hash/completion manifest and an immutable per-installation cleanup
+record. Existing destinations require `FORCE=1`; a different live owner requires
+the separate `TAKEOVER=1` decision. FORCE authorizes replacement only at that
+target and is not ownership takeover. Neither option overrides an active
+ownership session.
 
 `make uninstall` reads the manifest and removes the executable only when the
 requested install path and current SHA-256 both match. A missing, malformed,
-path-mismatched, or hash-mismatched manifest fails closed. It removes the
-manifest but leaves unrecorded installation directories in place. It never uses
-a broad or recursive removal and never touches `~/.agentdeck/`.
+path-mismatched, or hash-mismatched manifest fails closed. Cleanup also compares
+the original installation ID, channel and executable with the receipt under the
+exclusive lock. A superseded installation is skipped, not upgraded into authority
+to remove the newer one. A missing/invalid receipt while the target remains is
+not deletion permission: reinstall through the original method before retrying.
+It removes matching owned artifacts, never the state roots or client files;
+unrecorded installation directories may remain.
+
+`make install-macos-app` similarly publishes the bundle from `MACOS_APP`
+(default `apps/macos/build/DerivedData/Build/Products/Release/AgentDeck.app`),
+with channel `local_app`. `APPDIR` defaults to `/Applications` and `BIN_LINK` to
+`/usr/local/bin/agentdeck`; the latter links to `Contents/Helpers/agentdeck`.
+`make uninstall-macos-app` uses that installation's retained cleanup helper and
+record. Local App publication, matching receipt removal, Widget unregistration
+and target removal remain inside the exclusive ownership session. Missing or
+damaged cleanup material fails closed; scripts do not add an unlocked fallback
+deletion. Use the same installation paths for upgrade and uninstall.
+
+The public `agentdeck install claim [--takeover]` is for Homebrew formula
+installations only. The executable must be in the current opt-selected
+`agentdeck` or `agentdeck-rc` keg. Claim records its physical Cellar path, not the
+mutable opt link, and writes only the receipt, never the state database or client
+configuration. Another still-existing owner requires `--takeover` after its
+sessions stop. Retained old kegs cannot claim.
+
+Formula upgrades renew automatically only when a valid `homebrew_formula`
+receipt names a removed keg in the same Homebrew prefix and formula, and the
+running program is the new opt-selected keg. Renewal rechecks these conditions
+under the exclusive lock. A renewal lock failure refuses this invocation instead
+of silently switching to empty development data. Keeping the old keg, changing
+prefix or switching stable/RC does not renew; make an explicit claim. Existing
+formula users first adopting this contract must claim once because no old
+receipt exists. Registration/unregistration helpers are internal installer
+protocols, not public recovery commands.
 
 Development and automated tests use an isolated temporary `PREFIX`; they do not
 execute install or uninstall against the real user home. Release archives,
@@ -441,6 +529,34 @@ aborts when `agentdeck` or `agentdeck-rc` is present in the Cellar and prints
 the two-command migration. That migration — `brew uninstall agentdeck` then
 `brew install --cask agentdeck-app` — leaves `~/.agentdeck` untouched in either
 direction, and a Cask uninstall removes App-owned artifacts only.
+
+The Cask's postflight registers the installed helper as `homebrew_cask`; it does
+not use takeover or publish files through the helper. Homebrew owns App
+publication, replacement, rollback and deletion outside AgentDeck's ownership
+lock. Same-path, same-channel upgrades are not ownership handoffs: a matching
+path remains installed without comparing binary generations or hashes.
+Postflight still requests the exclusive lock first. Only when it is refused as
+`owner_running`, the channel is `homebrew_cask`, no staged source is supplied,
+and a valid existing receipt already matches that exact executable and channel,
+registration exits `0` without changing the receipt or its ID/time. Otherwise
+normal refusal applies. Successful locked registration writes a fresh ID/time.
+
+The Cask uninstaller quits the App, conditionally unregisters the exact Widget
+path and lets Homebrew remove the App and linked artifacts. It does not
+unregister installation ownership or delete the receipt: the missing helper
+makes that receipt stale, so the next installation needs no takeover. Neither
+formula nor Cask uninstall removes AgentDeck user state.
+
+This contract does **not** guarantee that Cask file replacement waits for all
+old CLI/worker sessions, or that delayed local-App cleanup is safe when mixed
+with same-path Cask replacement. PlugInKit output-format/exit-0 diagnostic
+ambiguity also remains a limitation. On upgrade, persistent postflight failures
+such as `owned_by_other` or a brew HOME/system-account mismatch can make
+Homebrew's rollback remove the old App too; fix the cause and reinstall.
+An old installed Cask's unconditional Widget-unregistration definition can also
+block its first upgrade before the new template takes effect. New templates do
+not retroactively repair that definition; see the manual's
+[Cask troubleshooting](cli-manual.md#cask-故障排查与已知限制).
 
 The Cask update is a pull request into `kitdine/homebrew-tap` writing `Casks/`
 and never `Formula/`, opened only after the DMG it points at is published. It
@@ -1257,6 +1373,51 @@ that scan fails, it returns the last committed signals with `partial: true` and
 the stable `scan_incomplete` warning. No implicit scan moves to the background,
 which would make report contents depend on a race.
 
+Stored-only stats and summary also read persisted source coverage. Incomplete
+history, unknown coverage, and known uncommitted updates produce respectively
+`source_coverage_partial`, `source_coverage_unknown`, and `source_update_pending`.
+They preserve committed values, exit successfully, and set JSON `partial: true`;
+text warnings go to stderr. These warnings combine with existing pricing and
+scan warnings. A legacy database without coverage is unknown, not complete.
+
+### Serving Publications and Optional Telemetry
+
+The macOS App restores a validated serving publication asynchronously before
+starting background work. Opening or changing a panel consumes the in-memory
+publication; it does not wait for a scan, quota probe, or telemetry event.
+An empty state imports today's sources first and publishes committed partial
+coverage before completing history. Unavailable domains remain unavailable,
+never fabricated zeroes. A failed replacement preserves the last valid data.
+Publication identity, schema, epoch, ownership, permissions, size, corruption,
+and local-day validity are checked before binding a cached value.
+
+The default engine remains finite. File events trigger bounded updates; wake
+and re-enabling automatic updates trigger bounded reconciliation. Disabling
+automatic updates stops App file watching and polling, while startup, manual,
+and CLI requests remain available. App quit stops App-owned watching and work
+at checkpoints without cancelling accepted finite CLI obligations. Closing the
+popover only detaches its display. Widget reads the bounded App Group projection
+and never starts a helper or scans sources. Wire v1 stays compatible; internal
+publication notifications do not extend the public v1 scan event stream.
+
+`telemetry status`, `config-preview`, `enable`, `disable`, and `import` expose
+the optional loopback-only OTel receiver. Collection is off by default and runs
+with the App; enabling it does not install a service or an independent engine.
+Status separates configured preference, actual listener, producer configuration,
+received observations, and reconciled usage. HTTP silence does not prove a
+disconnect. Pending or unsupported observations do not increase totals.
+
+Codex Memories and exporter configuration are read-only observations of the
+user-level config. Explicit Memories off stops collection without changing the
+saved preference; unknown does not infer off. Memories on with no collection
+warns about uncounted background usage. `enable --write-codex-config` is explicit
+consent to append an AgentDeck-managed `[otel]` block; an existing exporter is
+never overwritten. Disable removes only an unchanged managed block and retains
+usage and journal data. Preview redacts the local token unless explicitly
+revealed. No prompts, responses, or tool output enter the telemetry journal.
+JSONL and OTel use exclusive session ownership so reconciliation cannot count
+the same session twice; unsupported producer capabilities remain capture-only.
+
 Attribution has three explicit qualities:
 
 - `exact`: an exact run or an effective session route proves the provider and
@@ -1906,6 +2067,160 @@ session dependency, but its later wire-contract task must still define the
 coherent desktop snapshot, wire version, and Go-owned redaction; it must not
 parse text or interactive rendering.
 
+### Session Origin Classification
+
+Sessions are classified `work`, `auxiliary`, or `unknown` so that background
+maintenance sessions can be separated from the user's work without losing any
+usage. Go owns classification and scope selection; clients consume versioned
+DTOs. Classification never changes usage events, tokens, costs, or pricing, and
+consumption totals (`usage summary`, prices, quota, and the consumption blocks
+of `usage stats`) always remain `all`.
+
+Automatic classification is rebuildable derived state. Readable sessions default
+to `work` through an ordered, versioned rule set. Normal scans, rebuilds,
+telemetry settlement and rule-version changes refresh derived classifications.
+`unknown/origin_metadata_missing` indicates that no derived result is available
+yet. Task children without confirmed purpose remain visible as Work.
+
+The ordered rules are:
+
+- `claude-mem-sdk-map-v1` uses an enabled optional adapter's exact session
+  mapping to classify auxiliary activity.
+- `codex-otel-tui-background-v1` infers Auxiliary for admitted OTel-owned
+  `codex-app-server/codex-tui` conversations. A rollout-less TUI main session
+  can also match this inference.
+- `codex-otel-exec-work-v1` keeps admitted OTel-owned
+  `codex_exec/codex_exec` conversations in Work, including ephemeral user
+  sessions. Exec Memories activity can also appear in Work.
+- `default-work-v1` supplies Work when earlier evidence and diagnostics yield
+  no other result. Defaults do not participate as explicit purpose evidence.
+
+These Codex rules apply across admitted producer versions, including 0.165.0.
+The old `codex-otel-background-v1` automatic evidence is retired on normal
+reconciliation. User overrides retain their binding and priority. Late JSONL
+removes the OTel marker and automatically refreshes the session's classification.
+Numerical eligibility remains independent of purpose and preserves JSONL/OTel
+exclusive ownership. Family and completed SSE shape determine admission, with
+a nonempty producer version of at most 256 bytes and no `/` separator.
+
+`reason_code` remains a closed enum separate from `rule_version`.
+`maintenance_origin` implies automatic Auxiliary. `default_work`,
+`task_child_unconfirmed`, `conflicting_origin`, `origin_source_unavailable`,
+`origin_rule_unsupported` and `origin_input_mismatch` imply Work for newly
+classified sessions. Stale source-generation evidence is rejected before
+auxiliary inference. Actual purpose conflicts retain their diagnostic while
+keeping the session visible in Work. Coverage gaps still follow diagnostic
+reasons, so a failed source read can produce partial coverage with a Work class.
+Consumers display the effective/automatic fields and a generic reason label
+for unfamiliar reason codes.
+
+Schema 35 adds the `default_work` constraint value and source thread identity.
+A read-only schema 34 open preserves valid legacy v1 results and their source
+binding without migration. Writable migration and the next normal scan produce
+the new defaults.
+
+Source status exposes `builtin_rules` in priority order. Its Codex row reports
+`background_sessions` for inferred TUI auxiliary sessions and
+`otel_owned_sessions` for all numerically OTel-owned sessions. The rule version
+names the TUI rule. Unconfigured or disabled claude-mem is a neutral optional
+enhancement state. Core/config/receiver read failures and enabled adapter
+unavailable, unsupported or partial runs retain partial diagnostics.
+
+A user override (`work` or `auxiliary`, never `unknown`) is stored in core,
+takes precedence for `effective`, and preserves the automatic value and its
+reason. Disabling or removing an adapter invalidates its automatic evidence but
+never deletes overrides, source logs, or usage. Writes to overrides and the
+saved default scope use compare-and-set on a confirmed revision with an
+idempotent request ID; a conflict is never retried as an overwrite, and a core
+read failure is never interpreted as revision 0 or no override.
+
+Clearing an override commits its idempotent receipt before refreshing automatic
+classification. An absent session index permits a core-only clear. Other index
+open errors or refresh failures preserve the saved receipt, report
+`classification_refresh_pending`, and recover on a later normal refresh.
+Historical receipt fields retain `not_queried` semantics.
+
+Scopes are `work` = work plus unknown, `auxiliary`, and `all`. Client,
+project, and time filters and the scope apply before ordering, pagination,
+top-N, and statistics; canonical identity and deduplication are unchanged.
+`--session-scope work|auxiliary|all` is accepted by `session list`,
+`session search`, `session --interactive`, and `usage signals`, and by
+`usage stats` for its session, Activity, Workflow, and Tooling analysis
+blocks only. Text defaults to `work`; JSON defaults to `all`, keeping existing
+JSON collections. `--all` still means "no paging" and composes with the scope.
+`session show` resolves an exact ID without scope filtering. Scope reads never
+add a scan; `usage stats` and `usage signals` keep their existing scan
+behavior, and `--no-scan` is unaffected by the scope.
+
+Incomplete classification coverage is distinct from an unavailable selection.
+When committed input is unreadable or stale, affected sessions remain unknown;
+an otherwise readable selection stays available, while JSON sets `partial`
+and adds the coverage reason codes to `warnings`. Text shows a separate
+`PARTIAL` warning with the reasons and `agentdeck session origin-source status`
+as the check command. The interactive browser keeps the warning below the scope
+line, including empty selections and the scope menu; narrow widths retain
+`PARTIAL` and fit the reasons before the check command. This applies to all
+three scopes and does not turn an empty auxiliary selection into proof of
+complete coverage.
+
+Scope publications reuse the core/session read vector and verify it after
+assembly. Classification, override, preference, evidence and telemetry changes
+advance core serving revision through triggers; ordinary session dependencies
+retain their revision triggers. Search text in `session_documents` is the sole
+exception: its FTS5 content shadow table has no revision triggers. Every product
+insert, update or delete of search text advances session serving revision in
+the same transaction, exclusively through the session package. Direct SQL
+writes bypassing that package are unsupported and may retain an old search
+vector/publication until another covered write. Rollback exposes no new
+revision. Scope changes reuse the existing per-session invalidation mechanism;
+they do not introduce another scan or invalidation system.
+
+`session classify` queries one session, sets (`--set work|auxiliary`) or
+withdraws (`--clear`, client required, resolved from the core override without
+reading the index) its override, lists effective overrides
+(`session classify list`, default 20, maximum 200), and reads back an earlier
+receipt (`session classify --request <id>`) without writing; `--id` addresses
+an ID equal to a reserved subcommand. `session scope get|set` reads or saves
+the desktop and Widget default scope and never changes CLI defaults.
+`session origin-source set claude-mem --data-dir <absolute>` and
+`disable claude-mem` manage the only external adapter; the built-in Codex
+source cannot be set or disabled. `session origin-source status`
+(`session.origin_source.status`) is read-only — no scan, no plugin database,
+no listener, no writes — and returns exactly two sources in fixed order,
+`claude-mem` then `codex-otel-background`, with its own closed status reason
+enum. Only unreadable core, unreadable source configuration, or an unreadable
+receiver configuration make it `partial`; it exits 0 except for input errors.
+
+JSON additions are additive. Collections gain a top-level `session_selection`
+(requested and effective scope, default source, availability, unknown count,
+read vector, publication ID), elements may gain an `origin` object, and search
+pagination reports `selected_session_count` beside the document total.
+Write errors are `origin_conflict`, `origin_identity_unavailable`,
+`origin_write_failed`, and `origin_write_unknown` (exit 1; the last keeps the
+request ID so the receipt can be read back). Desktop wire v1 gains an additive
+`session_scope_view`; JSON-only `desktop session-scope` reads one explicit
+scope, or every client and period with `--batch`, from committed state. The
+App Group gains a bounded `session_scope_summary` without IDs, projects,
+models, overrides, or paths; a snapshot without it leaves only the Widget's
+session row unavailable. Classification/control DTOs and the App Group summary
+never contain the configured data root, source paths, session content, or
+credentials; existing session list/search/show content remains governed by
+its own output contract.
+
+The desktop bootstrap response carries the bounded Widget batch for the
+supported client/period combinations. The host reuses that batch when the
+client or period changes; `desktop session-scope --batch` is the fallback,
+and single-combination reads remain compatible. Each view is checked against
+its own client, period, scope and publication identity before use. The batch
+does not authorize extra polling or a new WidgetKit refresh budget, and the
+Widget extension reads only the App Group snapshot, never the CLI or SQLite.
+
+Portable backups keep the saved default scope and overrides but drop derived
+classification, adapter runs, receipts, and the machine-local data root.
+Restore marks overrides unmatched until the current source identity rebinds
+them exactly; it never rebinds by path or bare ID. `session purge-index`
+removes only derived session state; core defaults and overrides survive.
+
 ### Desktop Snapshot Contract
 
 `agentdeck --format json desktop snapshot --wire-version 1 --recent-limit N`
@@ -1998,6 +2313,16 @@ write action; it holds no state of its own that matters.
   database directly, opens no port, and makes no network request. The Go helper
   and the existing AgentDeck state stay authoritative; everything the app holds
   is a disposable projection of them.
+- **Ownership and state path.** Each refresh obtains the guarded state directory
+  from the embedded helper instead of deriving `$HOME/.agentdeck` or forcing that
+  path through `--state-dir`. Failure is helper-unavailable, not a fallback to
+  real state. Only an App whose helper owns and serves real state holds a shared
+  ownership session through exit, rechecking the helper under the lock and on
+  each round. An uninstalled/DerivedData App uses isolated state and holds no
+  long-lived ownership lock. Debug App/Widget bundle IDs, App Group and preference
+  domain are distinct from Release/Perf. Real simultaneous Debug/installed-App
+  operation was explicitly user-waived for this topic; native/helper and stand-in
+  evidence is not a claim of a real dual-App run.
 - **Menu-bar surface.** Five panels — quota, usage, breakdown, attribution, and
   sessions — plus an unfiltered rhythm block, a notice strip carrying refresh,
   Widget-publication, schema and health detail, and a provider footer. Client
@@ -2028,15 +2353,18 @@ write action; it holds no state of its own that matters.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
-- **Refresh scheduling.** Startup remains unconditional. Opt-in periodic full
-  refresh is off by default and schedules from terminal completion plus 60
-  seconds; a monotonic evaluator runs every 30 seconds, so accepted active-app
-  requests occur in the 60–90 second window without overlap or catch-up replay.
-  Manual and provider-switch requests remain available while periodic refresh
-  is off. Quota refresh has its own single-flight lane and cannot block the full
-  deadline evaluator.
-- **Settings.** Exactly four preferences: periodic refresh (off by default,
-  because it is background work the user did not ask for), the menu-bar value
+- **Refresh scheduling.** Startup remains unconditional. Automatic local-data
+  updates are event driven and have no refresh period: while on, a source-file
+  change requests one finite update, and wake or re-enabling requests one finite
+  reconciliation for changes no event reported; a burst of these during a
+  running update merges into exactly one follow-up. While off, the App neither
+  watches log files nor polls them. Manual and provider-switch requests remain
+  available either way. Quota refresh keeps its own single-flight lane and
+  schedule and never requests a data update.
+- **Settings.** Exactly four preferences: automatic local-data updates (stored
+  under the former periodic-refresh preference: a stored value, including an
+  explicit off, is kept; an absent value is on, matching the file watching
+  earlier builds always ran), the menu-bar value
   (cost, tokens, or icon), the menu-bar scope (all clients, or follow the
   panel filter), and start at login. The login-item control renders what
   `SMAppService` reports, never what the toggle intended, so a refusal is
@@ -2170,6 +2498,8 @@ authenticated inside the age stream and re-encrypted for the target machine.
 Normal backups exclude the rebuildable session database. They never include
 original client JSONL, authentication files, attachments, environment data, or
 internal rollback backups.
+Installation receipts, ownership locks, cleanup records and cleanup helper
+copies are likewise excluded; restoring portable data does not claim ownership.
 
 Portable backups also exclude the machine-local derived
 `project-attribution.enabled` negative-gate marker. Its absence immediately
@@ -2272,6 +2602,16 @@ value or `unavailable`, never pointer representations. `--quiet` suppresses only
 successful non-essential text mutation output. JSON and errors are unaffected.
 JSON is the stable automation and GUI contract. Watch uses NDJSON.
 
+Watch event schema 1 also supports `scan_pending` with
+`reason=source_identity_pending`, `skipped=false`, and the number of domain
+changes already committed. Readable sessions are classified before this event.
+The incomplete domain keeps its previous checkpoint and retries on the next
+poll while other domains continue. Recovery emits `scan_completed` and advances
+the checkpoint. Text output names the pending state and automatic retry.
+Session checkpoints include the active classification rules, so an upgrade can
+refresh classifications even when source files are unchanged.
+
+
 Normal JSON uses:
 
 ```json
@@ -2330,10 +2670,39 @@ failure that has no more specific classification.
 | `extension_sync_incomplete` | Extension inventory committed, but its scan fingerprint update failed; diagnosis is required before retry. | 1 |
 | `extension_inventory_unreadable` | Extension inventory cannot be diagnosed from an unreadable or malformed core database. | 1 |
 | `schema_ahead` | The database schema version is newer than this binary supports. | 1 |
+| `state_ownership_refused` | The process cannot access the real state root or write real-account managed client configuration. | 1 |
+| `install_claim_refused` | Installation ownership claim, registration or conditional cleanup was refused. | 1 |
 | `unsupported_wire_version` | A desktop request uses an unsupported wire version. | 2 |
 | `invalid_recent_limit` | A desktop request uses an invalid recent-item limit. | 2 |
 | `invalid_argument` | Command syntax, flags, or another user input is invalid. | 2 |
 | `runtime_error` | The failure is not classified by a more specific code. | 1 |
+
+Ownership errors use the existing failure envelope on stderr.
+`state_ownership_refused` has path-free
+`details: {"resource":"state_root","reason":"<reason>"}`, with resource
+`client_config` instead for a refused client-configuration write.
+`install_claim_refused` has `details: {"reason":"<reason>"}`. Reasons include
+`receipt_missing`, `receipt_invalid`, `receipt_other_executable`,
+`executable_unresolved`, `real_root_unresolved`, `state_path_unresolved` and
+`ownership_busy` for access, and `not_current_formula_keg`, `owned_by_other`,
+`owner_running` for public claim. Cleanup can also report receipt
+missing/invalid. Neither error reveals the other owner's executable path.
+Successful `install.claim` data is
+`{"channel":"homebrew_formula","takeover":false}` (or `true` when requested).
+
+Non-owners receive at most one notice per process, only for text output with a
+TTY stderr and without `--quiet`, before command output:
+
+```text
+note: not the installed AgentDeck (<reason>); using isolated state ~/.agentdeck-dev
+```
+
+With an explicit isolated directory the suffix is `using state <directory>`.
+The notice never enters stdout, JSON or NDJSON. Existing version identity stays
+exactly five fields/lines; installation identity is diagnosed by doctor, not
+added to `version`. Ownership-refused Hook/statusline calls remain silent with
+exit `0` and write no refusal record. `hook-refusals.json` remains reserved for
+the existing `schema_ahead` diagnostic, never for installation refusal.
 
 Not-found messages are human-readable and never render database, driver,
 filesystem-path, or errno text. Provider, credential, session, and extension
@@ -2437,6 +2806,28 @@ canonical URL, and SHA-256), distinct unpriced models, source readability,
 usage cursors, incomplete exact runs, session FTS availability, extension
 fingerprints, duplicate IDs, and missing paths.
 
+`installation` is the first check, before `state`. An installed owner reports
+`ok` with its channel in `reason`; a non-owner reports `warning`,
+`code: not_installed` and the identity reason, with formula recovery
+`agentdeck install claim` when applicable. These checks reuse existing check
+fields and disclose no installation path in JSON.
+
+On a normal installed-owner report, `managed_command_owner` checks absolute
+AgentDeck-managed Hook/statusline commands against the current executable.
+Mismatch produces `warning`, `managed_command_owner_mismatch`, the affected
+client and its re-setup command. PATH-based commands report `path_resolved`:
+doctor cannot reproduce the client's runtime PATH, so this is not proof of
+which executable the client will run. Non-owner and short-circuit reports do
+not run this check.
+
+If real-state access is refused, quick/full doctor never inspects the refused
+directory or hands it to later diagnostics. It emits only `installation` and
+`state` (`error`, `state_ownership_refused`, refusal reason), in a successful
+envelope with `partial: true`, `warnings: ["checks_skipped"]`, exit `0`.
+Text ends with `checks_skipped: the requested state directory was refused; no
+other diagnostics ran`. Missing isolated state retains the existing
+`state_missing`/readable-core-required partial-report behavior.
+
 Doctor must remain usable before an upgrade migration has run. It reads the
 stored schema version before domain queries, reports `schema_outdated` with the
 stored version in `count` and the supported version in optional
@@ -2458,7 +2849,7 @@ checks; schema-ahead text also names the upgrade recovery. A successfully
 rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
-Quick and full mode share the schema-state matrix. With this binary supporting
+Quick and full mode share the schema-state matrix. For a binary supporting
 schema 30, schema 12 reports a `schema_outdated` schema check with `count: 12`,
 `supported_count: 30` and recovery command `agentdeck state migrate`. A complete
 supported schema reports an `ok` schema check with `count: 30`; its optional
@@ -2869,6 +3260,8 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 36 | 2026-11-16 | Reconciles installed-state-ownership: single path/channel receipt, isolated non-owner state and client-write guard, lock-bound access/handoff, formula claim/renewal, local installer conditional cleanup, Homebrew-owned Cask lifecycle and bounded same-path busy registration. Adds the two ownership error codes and doctor checks while preserving installed normal access, version/wire and schema-ahead contracts. Installation metadata is not portable state; Cask/PlugInKit limitations and the explicit A5 real dual-App waiver remain stated. This is a MINOR behavior change, with no release version assigned here. |
+| 34 | 2026-11-13 | Reconciles auxiliary-session-classification (core schema 34): work/auxiliary/unknown session classification from two maintenance rules with a closed `reason_code` enum; `--session-scope` on session list/search/interactive, `usage signals`, and the `usage stats` analysis blocks (text default `work`, JSON default `all`); `session classify`, `session scope get|set`, and `session origin-source set|disable|status`; CAS/idempotent override writes with `origin_*` error codes; additive `session_selection`, element `origin`, desktop wire-v1 `session_scope_view`, `desktop session-scope`, and the App Group `session_scope_summary`; portable backup keeps only defaults and overrides and restores overrides unmatched. Usage, tokens, costs, and consumption totals are unchanged. |
 | 31 | 2026-10-04 | Reconciles the delivered v0.6.5 LaunchServices doctor addition: bounded separate host/Widget sources, conservative five-state classification, deterministic local evidence and manual safety guidance, with a path-free desktop health projection. The approved exception permits the new doctor/health checks, codes, optional details and consequent warning counts; other commands, exits, database formats and existing-check semantics remain unchanged. Complete-refresh targets are unchanged; accepted performance limits and unverified Widget causality/recovery remain explicit in the topic record. |
 | 30 | 2026-09-26 | Reconciles the v0.6.0 contract over its five retained integrated areas: schema/Hook failure visibility, bounded snapshot performance, subscription quota and reset reporting, desktop/Widget refresh, and cause-specific health recovery. Future-schema ordinary command refusal uses `schema_ahead` at exit 1; desktop wire v1 adds subscription and health metadata without replacing existing sections; quota remains opt-in and distinguishes unavailable values from zero; refresh keeps coherent snapshots and bounded Widget reads; lock and extension recovery preserve read-only doctor and safe action semantics. Manual VoiceOver for health recovery is user-waived and untested, and other recorded native/performance exceptions remain explicit. Cost transparency is outside v0.6.0 with no replacement version assigned. |
 | 29 | 2026-09-08 | Reconciles schema-version-signal: narrows future core-schema refusal to `schema_ahead` at unchanged ordinary-error exit 1; defines lock-failure probe precedence, stored/supported version pairs and additive `supported_count` at desktop wire v1; makes doctor short-circuit reports partial with `checks_skipped`; documents the bounded silent Hook refusal diagnostic, successful-read-write-open clearing versus upgrade suppression, and App-side schema attribution. No product release version is assigned. |

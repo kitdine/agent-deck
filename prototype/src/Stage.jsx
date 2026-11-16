@@ -88,6 +88,7 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
         {link("states", lang === "zh" ? "状态" : "States")}
         {link("cli", "CLI")}
         <a href="?scan=waiting">{lang === "zh" ? "扫描进度" : "Scan progress"}</a>
+        <a href="?serving=rebuilding">{lang === "zh" ? "数据准备" : "Data readiness"}</a>
       </nav>
       <div className="stage-groups">
         {showState && (

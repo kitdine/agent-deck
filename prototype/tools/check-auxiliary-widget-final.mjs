@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {decodeSessionScopeSummary as decode,auxiliaryWidgetProjection as project} from '../src/auxiliaryWidget.js';
+let checks=0;const test=(name,f)=>{f();checks++;};
+const base={available:true,scope:'work',count:3,unknown_count:1,client:'codex',period:'7d',publication_id:'p1',generated_at:'2026-08-18T14:30:00Z'};
+const selected={client:'codex',period:'7d'};
+test('complete aggregate',()=>assert.deepEqual(decode(base,selected),{available:true,scope:'work',count:3,unknown:1,reason:null}));
+for(const field of ['available','scope','count','unknown_count','client','period','publication_id','generated_at'])test(`missing ${field}`,()=>{const s={...base};delete s[field];assert.equal(decode(s,selected).available,false);});
+for(const patch of [{scope:'future'},{count:-1},{count:1.5},{count:Number.MAX_SAFE_INTEGER+1},{unknown_count:4},{unknown_count:-1},{client:'claude'},{period:'30d'},{generated_at:'invalid'},{scope:'auxiliary',unknown_count:1}])test('invalid aggregate '+JSON.stringify(patch),()=>assert.equal(decode({...base,...patch},selected).available,false));
+test('partial coverage is not zero',()=>assert.equal(decode({...base,unknown_count:null},selected).unknown,null));
+test('empty is available',()=>assert.equal(decode({...base,count:0,unknown_count:0},selected).available,true));
+test('published scope independent of default',()=>assert.equal(decode({...base,scope:'all'},selected).scope,'all'));
+for(const period of ['today','30d'])for(const state of ['normal','empty','unknown','partial','pending','stale'])test(`${period}/${state} partition`,()=>{const w=project(period,'work',state),a=project(period,'auxiliary',state),all=project(period,'all',state);assert.equal(w.count+a.count,all.count);assert.equal(a.unknown,0);});
+for(const state of ['legacy','defaultUnknown','malformed','selectionMismatch','unknownScope'])test(state,()=>assert.equal(project('today','work',state).available,false));
+console.log(JSON.stringify({checks,failures:0,limits:'synthetic aggregate decoder; no production codec or publication IO'}));

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-10-08
+updated: 2026-11-15
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,56 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- OTel member behavior in this tree: version-tolerant admission, automatic
+  historical readmission, JSONL/OTel numerical ownership and built-in session
+  classification are delivered by source commit `3f66611bfe4530fe9b724d968c0040ea81492efd`.
+  The [topic tasks](topics/otel-version-tolerant-metering/tasks.md) and
+  [final review](topics/otel-version-tolerant-metering/reviews/builtin-rule-set.md)
+  preserve source acceptance and known limits: TUI purpose is inferred, exec
+  Memories remain Work, and unresolved session-only watch identity remains pending.
+  Local implementation reviews and topic evidence passed; actual merge identity,
+  GitHub review, CI and integration evidence belong to the `v0-7-0-contract`
+  workspace's assembly record. Source completion is not release acceptance.
+- The 2026-11-15 contract decision excludes pricing/subscription estimates and
+  OpenCode product support from v0.7.0; installed-state ownership and OTel
+  metering are selected. With this OTel member, installed-state ownership and
+  final combined acceptance remain open. Older batch bullets below retain their
+  original evidence; their pricing/auxiliary remaining-member statements are
+  historical. The version contract remains the membership authority; roadmap
+  direction reconciliation is reserved for its closure task.
+
+- Partial v0.7.0 assembly: [PR #64](https://github.com/kitdine/agent-deck/pull/64)
+  integrated `auxiliary-session-classification` into remote main at
+  `e3ff72eb0db6f54c63ab031544a8a6259b417122` on 2026-11-14. Its merge tree
+  `8bc3398976468058299173b93b363155f0ce6d8c` equals the Round 3 independently
+  reviewed integration candidate; target `90535085723f013cb8b24d83f83015e7d60d53b0`
+  and source `0feb0c6d8965b6037de4c7e04bee839b96039dd0` remain its parents.
+  Pre-merge product CI runs `43572725411` and `43572728514` passed all 8 jobs
+  and Round 2 `@codex review` completed with zero findings; GitHub verifies the
+  server-created merge commit's PGP signature as valid (`verified: true,
+  reason: valid`). The exact-merge integration WorkUnit
+  `v0-7-0-contract:integration:auxiliary-session-classification` is recorded as
+  `VERIFIED` (4/4 pass: `ancestry`, `reviewed-result`, `delivery-signature`, and
+  `postmerge-ci`, with `20261114-ci-success` superseding `20261114-e3ff72eb:postmerge-ci`
+  after post-merge CI run `43586186560` passed all 4 jobs: `classify`,
+  `documentation`, `desktop`, `verify`). `cost-transparency` and final combined
+  acceptance remain required. This records batch integration, not v0.7.0 completion
+  or release.
+
+- Partial v0.7.0 assembly: [PR #61](https://github.com/kitdine/agent-deck/pull/61)
+  integrated scan-performance into remote main at
+  `6fff208ac852b191c0a62df1f5be34c937601cfe`. Its tree
+  `b4211bf442304e85c2dfbd4bdc480bff1ca77150` equals the independently reviewed
+  integration candidate; source `d0bd36ea` and target `d78c3458` remain its
+  parents. Further PR review iterations were stopped by explicit operator
+  decision. Post-merge CI `41321169520` completed successfully in all four jobs,
+  verified on 2026-11-03. GitHub verified the server-created merge's PGP signature.
+  The agent's SSH-only blocking interpretation was explicitly rejected by the
+  operator and corrected; no signature exception or history rewrite is needed.
+  The exact-merge batch integration gate is VERIFIED 4/4.
+  Pricing, auxiliary isolation and combined acceptance
+  remain required. This records integration, not v0.7.0 completion or release.
 
 - Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](archive/topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
 

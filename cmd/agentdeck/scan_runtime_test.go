@@ -9,9 +9,80 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 )
+
+func TestScanTracingPreservesStdoutAndRedactsSources(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".codex", "sessions", "private-session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"type":"session_meta","payload":{"id":"private-session","cwd":"/private-project"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	traceDir := filepath.Join(t.TempDir(), "perf")
+	if err := os.Mkdir(traceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(traceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		if enabled {
+			t.Setenv(perftrace.EnvOut, traceDir)
+			if !perftrace.Start(perfRole([]string{"scan"})) {
+				t.Fatal("tracing did not start")
+			}
+		}
+		var stdout, stderr bytes.Buffer
+		if exit := execute([]string{"--state-dir", t.TempDir(), "--format", "json", "scan"}, bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
+			t.Fatalf("scan exit=%d stderr=%q", exit, stderr.String())
+		}
+		if err := perftrace.Close(); err != nil {
+			t.Fatal(err)
+		}
+		var envelope struct {
+			Data map[string]json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if len(envelope.Data) != 3 || envelope.Data["scope"] == nil || envelope.Data["usage"] == nil || envelope.Data["session"] == nil {
+			t.Fatalf("tracing changed v1 stdout shape: %s", stdout.String())
+		}
+		if bytes.Contains(stderr.Bytes(), []byte("scan_performance")) {
+			t.Fatalf("scan wrote diagnostics to stderr: %q", stderr.String())
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(traceDir, "cli-000001.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"stage":"scan.end"`)) || !bytes.Contains(raw, []byte(`"read_bytes":`)) {
+		t.Fatalf("trace lacks scan counters: %s", raw)
+	}
+	for _, secret := range []string{home, "private-session", "private-project"} {
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Fatalf("trace contains source data %q", secret)
+		}
+	}
+}
+
+func TestPerfRoleNamesHelperAndCollectorProcesses(t *testing.T) {
+	for want, args := range map[perftrace.Role][]string{
+		perftrace.RoleCollector: {"--state-dir", "/state", "scan-worker"},
+		perftrace.RoleHelper:    {"--format", "json", "desktop", "snapshot"},
+		perftrace.RoleCLI:       {"usage", "stats"},
+	} {
+		if got := perfRole(args); got != want {
+			t.Fatalf("perfRole(%v) = %s, want %s", args, got, want)
+		}
+	}
+}
 
 func TestScanCommandReturnsOneCompletedSharedRound(t *testing.T) {
 	state := t.TempDir()

@@ -25,6 +25,12 @@ class @FORMULA_CLASS@ < Formula
 
   def caveats
     <<~EOS
+      Make this installation the owner of your AgentDeck state, once:
+        #{opt_bin}/agentdeck install claim
+      Until then, agentdeck uses isolated state in ~/.agentdeck-dev. Upgrades
+      keep ownership automatically. If another installation, such as the
+      AgentDeck app or make install, owns your state, quit it and add --takeover.
+
       Project-attribution wrappers are optional and only act when a provider
       routes through a declared Headroom wrapper. With no eligibility marker,
       wrappers invoke the real client without starting AgentDeck. When the

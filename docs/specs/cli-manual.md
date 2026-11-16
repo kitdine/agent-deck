@@ -1,6 +1,7 @@
 ---
 status: active
 created: 2026-07-16
+updated: 2026-11-16
 ---
 
 # AgentDeck CLI 目标命令手册
@@ -41,12 +42,88 @@ credential-owned provider configuration 的正式命令契约。执行状态以
 | Flag | 含义 | 是否必填 | 示例 |
 | --- | --- | --- | --- |
 | `--format text\|json\|ndjson` | 输出格式；`ndjson` 仅允许 `watch` 与 `scan` 事件流 | 否，默认 `text` | `agentdeck scan --format ndjson` |
-| `--state-dir <path>` | 覆盖 AgentDeck 状态根目录 | 否，默认 `~/.agentdeck` | `agentdeck doctor --state-dir /tmp/ad-state` |
+| `--state-dir <path>` | 显式选择 AgentDeck 状态根；不能绕过安装所有权守卫 | 否；已安装默认 `~/.agentdeck`，未安装默认 `~/.agentdeck-dev` | `agentdeck doctor --state-dir /tmp/ad-state` |
 | `--no-color` | 禁用终端颜色 | 否 | `agentdeck doctor --no-color` |
 | `--quiet` | 抑制非必要 text 输出；错误和机器输出不受影响 | 否 | `agentdeck usage scan --quiet` |
 | `--verbose` | 在 text 输出中保留完整技术 provenance；JSON 始终保留 | 否 | `agentdeck price history --verbose` |
 | `--version` | 输出构建身份并退出 | 否 | `agentdeck --version` |
 | `-h, --help` | 显示当前命令帮助 | 否 | `agentdeck provider add --help` |
+
+## 安装身份与状态目录
+
+本节对应当前源码及包含本主题的后续发行，不为旧发行补加命令或支持保证。
+安装身份由系统账户主目录下
+`~/Library/Application Support/AgentDeck/installation.json` 的唯一回执决定，
+不是版本号、分支、当前目录或环境开关。回执登记已解析符号链接的可执行文件路径和
+`homebrew_cask`、`homebrew_formula`、`make`、`local_app` 中的一种方式。
+改 HOME 不改变身份；默认状态目录的 HOME 解析仍沿用原行为。
+
+- 已登记的当前程序默认使用 `~/.agentdeck`；未安装程序（包括直接运行
+  `go run`、`dist` 或 DerivedData 中的 App）默认使用 `~/.agentdeck-dev`。
+  多个开发构建共用它，schema 不兼容时仍可能 `schema_ahead`；需要分开时使用不同的
+  隔离 `--state-dir`。
+- 未安装程序不能读取、创建、迁移或锁定真实账户的 `.agentdeck` 及其子路径；
+  符号链接、真实根为链接、链接后接 `..` 都不能绕过。指定真实根会返回
+  `state_ownership_refused`，而非切换成已安装身份。
+- 未安装程序也不能写真实账户内的受管 Codex/Claude、Hook、statusline、OTel 或
+  shell 配置；换状态目录并不授予写权限。只读扫描客户端源日志的能力不变，
+  `--state-dir` 不是日志源路径的沙箱。
+- 文本格式、stderr 为 TTY 且未设 `--quiet` 时，每进程只提示一次
+  `note: not the installed AgentDeck (<reason>); using isolated state ~/.agentdeck-dev`。
+  显式隔离目录时后半句为 `using state <目录>`；JSON/NDJSON 与非 TTY 不打印提示。
+- App 每轮使用内嵌 helper 返回的受保护状态目录，不自行回退到真实目录。
+  只有服务于真实状态的安装版 App 持有长期所有权会话；未安装 App 不持有该会话。
+  Debug 的 App/Widget 标识、App Group 和偏好域独立。真实双 App 同时运行在本主题中
+  获用户明确豁免，已有原生/替身验证不等于该实测已执行。
+
+### Formula 首次认领与升级
+
+| 命令 | 含义 | 条件与 Flags | 示例 |
+| --- | --- | --- | --- |
+| `install claim` | 将当前 Homebrew formula keg 登记为状态拥有者；只写回执，不访问数据库或修改客户端配置 | 必须是 `agentdeck` 或 `agentdeck-rc` 的当前 opt 所指 keg；无位置参数 | `$(brew --prefix)/opt/agentdeck/bin/agentdeck install claim` |
+| `install claim --takeover` | 显式接管另一个仍存在的安装 | 先退出原 App、停止 watch/telemetry、暂停相关客户端；不会绕过活动所有权会话 | `$(brew --prefix)/opt/agentdeck/bin/agentdeck install claim --takeover` |
+
+首次安装或从没有回执的旧版 formula 升级后，先对选中的程序执行一次认领；RC 把示例
+opt 路径中的 `agentdeck` 改为 `agentdeck-rc`。PATH 上的另一个程序不会因此成为拥有者。
+成功文本为 `Claimed: this Homebrew formula installation now owns AgentDeck state.`；
+JSON 使用 `command: "install.claim"`，data 为
+`{"channel":"homebrew_formula","takeover":false}`，请求接管时 takeover 为 true。
+
+后续同 prefix、同 formula 升级时，若旧回执有效、旧 keg 已被清理、当前程序就是新
+opt 目标，首次正常状态访问会在排他锁内自动续登；不需要再次 claim。保留旧 keg、
+切换 stable/RC 或另一 Homebrew prefix 都不自动续登。续登因占用失败时本次访问会
+被拒绝，不会悄悄读空的开发数据；停止旧会话后重试。保留旧 keg 但确实需要迁移时，
+先停止原拥有者，再对当前 keg 显式 `install claim --takeover`。
+
+### 源码 CLI 与本地 App 安装
+
+```bash
+make install
+make install FORCE=1
+# 仅在决定改换拥有者、且原拥有者会话已退出后：
+make install FORCE=1 TAKEOVER=1
+make uninstall
+
+make build-macos-release
+make install-macos-app
+make install-macos-app FORCE=1 TAKEOVER=1
+make uninstall-macos-app
+```
+
+以上是操作员手动选择的命令，不会因构建、诊断或本手册同步而自动执行。
+`build-macos-release` 先构建双架构 CLI helper，再生成默认 MACOS_APP 指向的
+Release bundle；`build-macos-app` 默认构建 Debug，不用于这条 Release 安装链。
+CLI 的 PREFIX 默认 `$HOME/.local`，BINDIR/DATADIR 默认在其下；自定义后，
+升级和卸载继续使用相同路径。App 从 MACOS_APP 发布，APPDIR 默认 `/Applications`，
+BIN_LINK 默认 `/usr/local/bin/agentdeck`；也可指定用户可写位置，例如
+`APPDIR="$HOME/Applications" BIN_LINK="$HOME/.local/bin/agentdeck"`，后续操作保持一致。
+FORCE 仅授权覆盖目标文件，TAKEOVER 才授权改换拥有者，两者不互相替代。
+
+make/本地 App 在排他锁内发布并登记，卸载按原安装 ID 和清理清单匹配后才删除。
+`owner_running` 表示会话仍占用，先退出/停止后重试；不是删除锁文件的指令。
+旧安装的延迟清理不能删除后来安装。回执/清单缺失或损坏而目标仍在时，
+保留目标，通过原安装方式重装修复后再卸载，不能手工删回执来取得删除权限。
+公式认领以外的登记/清理命令是安装器内部协议，不作为用户恢复接口。
 
 ## Provider
 
@@ -494,6 +571,10 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 - `usage summary`、`usage stats` 和 `usage signals` 默认在输出前同步扫描，长扫描共享
   stderr progress。summary 与 stats 的 `--no-scan` 可跳过扫描并立即使用已存聚合；
   signals 没有 `--no-scan` 或 stored-only 模式，始终先尝试扫描再读取持久化派生。
+  stats/summary 的 stored-only 读取还核对持久 coverage：历史未齐、覆盖未知、已知更新
+  未提交分别给出 `source_coverage_partial`、`source_coverage_unknown`、
+  `source_update_pending`。保留已提交值且退出 `0`；text 警告到 stderr，JSON 在 stdout
+  合并 warnings 并标记 `partial: true`。旧库没有 coverage 记录时为 unknown，不推断完整。
   signals 扫描失败时返回上次已提交数据，envelope 标记 `partial: true` 并加入稳定的
   `scan_incomplete` warning。扫描不会移到后台。
 - 非交互 `usage stats` 在 `ACTIVITY BY WEEKDAY / HOUR` 之后、`COVERAGE`
@@ -689,10 +770,10 @@ Session interactive 内容在最多 120 个 visible cells 的左对齐画布内�
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `session --interactive` | 以只读 TTY browser 浏览已索引 sessions，并进入分区详情；不会隐式执行 scan | `--interactive` | 不接受位置参数；要求 text 输出以及 TTY stdin/stdout | `agentdeck session --interactive` |
+| `session --interactive` | 以只读 TTY browser 浏览已索引 sessions，并进入分区详情；不会隐式执行 scan | `--interactive`；`--session-scope`（初始范围） | 不接受位置参数；要求 text 输出以及 TTY stdin/stdout | `agentdeck session --interactive` |
 | `session scan` | 增量建立可清除的 session 搜索索引；启用时在 stderr 报告聚合进度 | 无 | 无 | `agentdeck session scan` |
-| `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
-| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
+| `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--session-scope work\|auxiliary\|all`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
+| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--session-scope`；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
 | `session show <session-id>` | 分区显示一个 session；可按需读取安全 activity/tool 元数据或 normalized invocation usage | `--client codex\|claude`、`--activity`、`--tokens`、`--interactive`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --tokens --page 2` |
 | `session exclude` | 持久化索引排除规则 | `--kind project\|path\|session\|client`；`--value <value>` | 两个 flags 均必填 | `agentdeck session exclude --kind client --value claude` |
 | `session rebuild` | 重建 purgeable index，不删除源日志 | 无 | 无 | `agentdeck session rebuild` |
@@ -770,6 +851,76 @@ selected activity 只展开 safe metadata，selected invocation 展开全部 tok
 named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
 一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
+### 会话分类与范围
+
+会话分为 `work`、`auxiliary`、`unknown`，用于把后台维护会话从工作视图中隔离；所有用量、
+token 与费用完整保留，`usage summary`、价格、额度及 `usage stats` 的消耗块始终为 all。
+只有明确支持的维护来源元数据能判为 auxiliary，普通来源为 unknown 并留在 Work；
+用户任务子代理不被隐藏。范围：`work` = work + unknown，`auxiliary`，`all` = 两者并集。
+
+| 命令 | 行为 |
+| --- | --- |
+| `--session-scope work\|auxiliary\|all` | 用于 `session list/search/--interactive`、`usage signals`，以及 `usage stats` 的会话/Activity/Workflow/Tooling 块；文本默认 work，JSON 默认 all；`--all` 仍只表示取消分页，可与之组合；`session show` 按精确 ID 不受范围过滤 |
+| `session classify <id> --client <client>` | 只读显示 effective/automatic、原因码、规则版本、覆盖与 revision，不显示来源正文或路径 |
+| `session classify <id> --client <client> --set work\|auxiliary` | 保存一条可逆覆盖；不能设为 unknown；与 `--clear` 互斥 |
+| `session classify <id> --client <client> --clear` | 按 core 覆盖键撤销，client 必填，不要求会话可见；回执的分类字段为 not queried |
+| `session classify list [--page N] [--limit N]` | 列出有效覆盖（含 unmatched），默认 20、上限 200，按 client/session_id 排序 |
+| `session classify --request <request-id>` | 只读读回原操作回执，不重发写入；无确认结果返回 `outcome=unknown` |
+| `session classify --id <id> --client <client>` | ID 与保留子命令（如 `list`）同名时使用；不得与位置 ID 同时提供 |
+| `session scope get` / `session scope set work\|auxiliary\|all` | 读取或保存桌面与 Widget 的默认范围；不改变 CLI 默认 |
+| `session origin-source set claude-mem --data-dir <absolute>` | 配置 claude-mem 元数据根；不修改插件，回显不含路径，不宣称映射已验证 |
+| `session origin-source disable claude-mem` | 停用适配器并使其自动证据失效；不删除覆盖、源日志或用量，不触发扫描 |
+| `session origin-source status` | 只读列出 `claude-mem` 与内建 `codex-otel-background` 两项状态；不扫描、不打开插件库、不写状态 |
+
+写入（classify `--set/--clear`、`scope set`）支持 `--expected-revision` 与 `--request-id`；省略时 CLI
+生成请求 ID 并先读当前 revision 再 CAS。冲突不自动重试为覆盖最新值。同请求 ID 同负载重放原回执；
+同值重复写入返回 NO CHANGE，不递增 revision。回执显示 Request ID、Target、Outcome、Revision 与
+publication_pending；保存成功但视图尚未发布时显示 `Views: pending publication`。错误码：
+`origin_conflict`、`origin_identity_unavailable`、`origin_write_failed`、`origin_write_unknown` 退出 `1`
+（后者在 `error.details.request_id` 保留请求 ID，用 `--request` 核对后再重试）；输入错误退出 `2`。
+
+分类原因码是封闭枚举：`maintenance_origin`（auxiliary），`origin_metadata_missing`、
+`task_child_unconfirmed`、`conflicting_origin`、`origin_source_unavailable`、`origin_rule_unsupported`、
+`origin_input_mismatch`（均为 unknown）。命中哪条维护规则由规则版本表达：`claude-mem-sdk-map-v1`
+或 `codex-otel-background-v1`。内建 Codex 来源只读 AgentDeck 自身的 OTel 会话标记，不可 set/disable
+（调用为参数错误）；要把这类会话计入工作，用单会话 `--set work`。
+
+`origin-source status` 的 JSON command 为 `session.origin_source.status`，`data.sources` 固定两项、
+顺序固定，字段为 source、kind、configured、enabled、available、supported_version、rule_version、
+reason_code，claude-mem 另有 last_run_at，Codex 另有 receiver 与 background_sessions。来源状态原因码
+（与分类原因码分开）为 `source_not_configured`、`source_disabled`、`source_not_yet_read`、
+`source_unavailable`、`source_version_unsupported`、`source_config_unreadable`、`otel_receiver_disabled`、
+`no_background_sessions`、`otel_receiver_unknown`、`core_unavailable`。只有 core、来源配置或接收器配置
+不可读时 `partial: true`；命令除参数错误外均退出 `0`。状态是已提交结果，不代表插件当前运行状态。
+
+JSON 不指定范围时保留原有 data 形状。新增顶层 `session_selection`（requested_scope、effective_scope、
+source_default、availability、unknown_count、read_vector、publication_id），数组元素可加 `origin`，
+搜索分页另有 `selected_session_count`，与匹配文档数分开。`usage stats` 文本在范围行中分别标注
+分析块的 `Scope:` 与消耗块的 `Usage scope: all`，并说明 `All usage and costs remain unchanged.`。会话、分类与范围命令不隐式扫描；`usage stats` 与
+`usage signals` 保持原扫描行为，范围参数不增加扫描。
+
+分类来源不可读或输入过期时，受影响会话保持 unknown；可读取的 selection 仍为 available，
+但 JSON envelope 的 `partial` 为 true，`warnings` 包含对应覆盖原因码。文本在范围行下显示
+独立的 `PARTIAL` 警告、原因及 `Check: agentdeck session origin-source status`。
+交互式浏览器同样在范围行下保留警告，空集合及范围菜单也不例外；48 列起优先保留 PARTIAL
+和可容纳的原因，宽度足够时才显示检查命令。三种范围均适用，auxiliary 为空不代表覆盖完整。
+
+交互式浏览器按 `s` 打开范围菜单，方向键选择，Enter 应用，Escape 取消；这只是本次浏览的
+范围，不保存默认值。加载新范围失败时保留此前列表与范围，并显示失败状态；首次加载失败
+不显示伪造的空列表。
+
+桌面内部只读接口 `agentdeck --format json desktop session-scope --scope work|auxiliary|all`
+返回显式范围的视图，`--client all|codex|claude` 默认 all，`--period today|7d|30d` 默认 today。
+`--batch` 返回受支持 client/period 组合的整批视图，不能与显式 `--client` 或 `--period` 同用。
+`--generation-id` 限定已提交代次，`--as-of` 接受 RFC 3339 时间，`--recent-limit` 为 1–20。
+宿主优先复用 bootstrap 携带的批次，
+必要时才调用批量回退；Widget 只读取 App Group 快照。缺少 `session_scope_summary` 时只将
+Widget 的会话行标为不可用，不把未知数显示为 0，也不影响全量费用显示。
+
+可移植备份只保留默认范围与用户覆盖，不含自动分类、适配器运行摘要、回执或本机数据根；
+恢复后覆盖为 unmatched，待当前来源身份精确重新绑定后才生效。`session purge-index`
+不删除 core 中的默认与覆盖。
+
 ## Scan
 
 `agentdeck scan` 通过每个 state root 唯一的按需 worker 同时扫描 usage 与 session。
@@ -842,18 +993,42 @@ release 检查，v0.5.0 在实现之前将其撤回，且没有任何替代物�
 通信。没有任何菜单项、偏好或文案提到应用更新，应用也从不下载、安装、
 替换、重启或请求提权。
 
+### OTel 用量采集
+
+采集默认关闭，接收端仅监听本机 loopback，默认随 App 起停。开启不安装后台服务，
+也不启用独立常驻引擎。状态中的配置、listener、最近事件与实际计量是不同事实。
+
+| 命令 | 行为 |
+| --- | --- |
+| `telemetry status` | 只读接收端、计量、coverage/gaps、Codex Memories 与 exporter 状态；unknown 不推断为关闭或断连 |
+| `telemetry config-preview` | 预览连接配置，不写入；本地 token 默认隐藏 |
+| `telemetry config-preview --reveal-local-token` | 显式显示可复制的本地 token；勿放入共享日志 |
+| `telemetry enable` | 启用采集偏好，不改 Codex 配置；App 未运行时不能据此声称 listener 正在运行 |
+| `telemetry enable --write-codex-config` | 显式同意追加受管 `[otel]` 段；已有 exporter 或不可写时拒绝；成功后需重启 Codex 生效 |
+| `telemetry disable` | 关闭采集，仅移除未被改动的受管段；用户自配或已修改的配置保留；不删除用量与 journal |
+| `telemetry import <otel-json-file>` | 显式导入真实 OTLP JSON，执行相同校验与去重；unsupported/malformed 输入失败，pending 不计入总量 |
+
+支持 text 与 JSON；成功输出到 stdout，错误到 stderr。成功诊断不表示历史完整。
+Codex Memories 明确 off 时无需采集；unknown 不阻止开启。Memories on 且未采集时
+提示 `codex_memories_usage_not_counted`。只保存用量、模型与必要身份，不保存提示、回答或工具输出。
+JSONL 与 OTel 按会话所有权互斥计量，不能因重复导入或双来源而重复累加。
+
 ### 桌面应用
 
 v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用；v0.6.0
 沿用内嵌 CLI 作为数据与受管写入边界。应用以阅读为主，显式写操作包括
 provider 切换和配额/提醒设置。
 
-- **边界**：应用先消费内嵌 helper 的 version-1 `scan` NDJSON stream，再解码
-  `desktop snapshot` 的 wire-v1 envelope。helper 运行期间显示等待、检查、已提交
+- **边界**：应用先异步恢复通过身份、版本和本地日期校验的 serving publication，
+  再安排后台工作。空库优先导入今天，允许先显示明确标注的 partial 数据；未完成域
+  保持 unavailable，不补零。打开与切换面板只读内存 publication，不等待扫描或额度探测。
+  既有 version-1 `scan` NDJSON 与 `desktop snapshot` wire-v1 保持兼容，内部发布通知
+  不混入公共 v1 事件流。helper 运行期间显示等待、检查、已提交
   导入计数和统计阶段；已有 snapshot 保持可见，只有完整新 envelope 校验通过后才
   原子替换。scan/event/snapshot 失败保留旧数据与 retry；关闭 popover 只分离显示，
   worker 继续，重开后读取当前 coordinator state。它不解析 text 输出、不直接读
-  数据库、不监听端口，也不直接发起 HTTP 或读取凭据。可选的配额刷新会让
+  数据库，也不直接发起 HTTP 或读取凭据。显式启用的 OTel 接收由受管 helper
+  监听本机端口。可选的配额刷新会让
   Go helper 启动已认证客户端探测，可能产生客户端的厂商网络流量。Go helper
   与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃投影。
 - **菜单栏表面**：quota、usage、breakdown、attribution、sessions 五个面板，加上
@@ -867,12 +1042,15 @@ provider 切换和配额/提醒设置。
 - **显式写操作**：切换当前 provider 与更改 quota/提醒设置走内嵌 helper 的
   受管 CLI 路径；健康恢复按钮只复制命令或安全步骤，不替用户执行。阅读面板
   与 `desktop snapshot` 保持只读。
-- **刷新调度**：启动刷新不受偏好影响。周期完整刷新默认关闭；开启后从每次终态完成
-  加 60 秒计算单调 deadline，并由 30 秒 evaluator 评估，因此活跃应用的请求窗口为
-  60–90 秒，且不会重叠或回放错过的周期。关闭周期刷新时，手动刷新与 provider switch
-  仍可用；quota 使用独立 single-flight lane，不能阻塞完整刷新 deadline。
-- **设置**：常规偏好包括周期刷新（默认关闭，因为那是用户没有要求的后台
-  工作）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
+- **刷新调度**：启动刷新不受偏好影响。本地数据自动更新由文件事件触发，没有刷新周期：
+  开启时，来源文件变化发起一次有限更新；唤醒或重新开启时发起一次有限校对，覆盖没有
+  事件报告的变化；更新进行中到达的这些请求合并为恰好一次后续更新。关闭时 App 既不
+  监听也不轮询日志文件。手动刷新与 provider switch 始终可用；quota 保持独立的
+  single-flight lane 与调度，不发起数据更新。
+- **退出**：App 退出停止自身 watcher、接收端与 App-owned 工作，在 checkpoint
+  暂停历史补齐；已经接受的有限 CLI 工作仍完成其范围。关闭 popover 不等于退出 App。
+- **设置**：常规偏好包括自动更新本地数据（沿用原周期刷新偏好的存储：已存的值，包括
+  明确的关闭，继续保留；没有存值时为开启，与此前版本一直进行的文件监听一致）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
   跟随面板筛选）与开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
   而非开关的意图，因此系统拒绝是可见的而不是被默认成功。配额设置另有
   读取开关、读取间隔、状态行授权、提醒开关、阈值和重置通知六项控件；依赖
@@ -913,6 +1091,44 @@ brew install --cask kitdine/tap/agentdeck-app
 `agentdeck-app-rc` 是对应的 opt-in RC 通道。直接下载的 `.dmg` 与 `.zip` 同样
 随发布提供，两者携带同一个已公证并 staple 的 bundle。
 
+新 Cask 由 Homebrew 创建、替换、回滚和删除 App，postflight 只登记已安装 helper。
+单纯复制下载的 App 不等于取得状态所有权；使用支持的 Cask 或本地 App 安装方式。
+Cask 不提供 `--takeover`，也没有授权修复命令。卸载退出 App、条件注销目标小组件后
+由 Homebrew 删除 App/链接，不删除回执；登记路径消失后回执为过期状态，
+doctor 使用既有 `receipt_missing`，下一安装不需接管即可登记。
+
+同路径、同 channel 的正常 Cask 升级不需要额外所有权操作。postflight 仍先请求排他锁；
+只有因 `owner_running` 取锁被拒、channel 为 homebrew_cask、没有暂存 source、
+且有效回执已登记完全相同的 helper 路径和 channel 时，才不改回执而成功退出。
+因此会话占用期间的这一升级仍可成功，ID/时间保持原值；正常取锁后重登则生成新值。
+该放行不适用于其他路径、方式、formula 或 make/本地 App。
+
+### Cask 故障排查与已知限制
+
+| 现象 | 安全下一步 |
+| --- | --- |
+| formula 冲突 | 按原提示卸载已安装的 CLI formula，再安装桌面 Cask；不要同时装两个通道 |
+| `owned_by_other` | 保留当前安装；或先用原安装方式卸载它（如 make uninstall / make uninstall-macos-app），再重试本次 Homebrew 操作；不要给 Cask 添加 takeover 参数 |
+| `owner_running` | 退出 App、停止 watch/telemetry、暂停相关客户端后重试；此拒绝用于回执尚未匹配本 Cask 路径/channel 等不满足放行条件的情况 |
+| brew HOME 与系统账户主目录不一致 | 恢复正常调用环境后重试；不把回执改写到临时 HOME，也不手工复制回执 |
+| 旧包升级在 `remove: no plugin at …` 失败 | 先保留旧 App、安装记录和回执，确认是否执行旧 Cask 的卸载定义；见下方边界，不直接删除或强制覆盖 |
+
+首次安装登记被拒时，Homebrew 回滚本次安装。升级若因持续的 owned_by_other 或
+HOME 不一致而登记失败，旧版本 postflight 也可能在回退时再次失败，最终 App 被移除；
+修正原因后需重新安装，不能承诺失败升级总能恢复旧 App。
+
+Homebrew 的文件替换不受 AgentDeck 所有权锁约束，所以不保证替换瞬间没有旧 CLI/worker
+会话，也不保证和本地 App 同路径交错时的延迟清理安全。回执按路径/channel 判定，
+不区别同路径新旧二进制世代。PlugInKit 的退出 0 伴诊断或输出格式变化仍有歧义风险；
+条件注销不是所有真实 Widget 注册状态均已验证的保证。
+
+从已发布旧 Cask 首次升级时，Homebrew 仍执行安装记录中的旧卸载定义，新模板不会
+追溯修改它。若有可信且可正常启动的已发布 Release App，可由操作员按其既有正常
+启动注册路径启动、退出后重试原升级命令；**这对受影响旧包及真实环境的效果尚未验证，
+不承诺可解决**。仍失败则沿既有缺陷报告，等待经验证的处置。
+更新 tap、新模板、brew reinstall 或 --force 都不保证绕过此问题；
+不要自动编辑 Caskroom、手工删 App/回执或追加系统注册命令。
+
 ## Extension
 
 Extension ID 是稳定资源标识，继续使用位置参数。
@@ -949,6 +1165,8 @@ namespace, and watch fingerprints never recursively follow link cycles.
 Portable backup 只导出 `provider_credentials` 与 `credential_secrets` 当前 join 到的
 credential，并只在内存和 age 加密 stream 中处理明文。`credential.key` 永不进入 archive；
 restore 为目标机器创建新 key，并在一个 transaction 中替换 snapshot ciphertext。
+安装回执、ownership.lock、安装方式私有清理清单与 helper 副本不属于便携状态，
+不进入备份；恢复数据不会为目标机器或新路径认领安装身份。
 
 ## Doctor、Watch、Run、Version、Help 与 Completion
 
@@ -979,6 +1197,28 @@ Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 30 �
 `0`；普通读写命令因 `schema_ahead` 拒绝时退出 `1`。已有元数据损坏处理不改成
 未来版本错误。Text 和 JSON 都不输出原始 SQL、SQLite 查询或驱动错误。
 `state migrate` 的 text 成功信息明确确认完成，JSON 返回 `migrated: true`。
+
+### 安装与状态访问诊断
+
+`installation` 始终排在 `state` 前：拥有者为 ok、reason 是安装 channel；
+未安装为 warning / `not_installed`，reason 说明缺失、损坏或其他拥有者等原因。
+formula keg 的可复制恢复命令是 `agentdeck install claim`。JSON 复用已有 check 字段，
+不显示自身或另一个拥有者的安装路径。
+
+已安装且未短路的报告还运行 `managed_command_owner`，检查受管 Hook/statusline
+绝对路径是否指向当前拥有者。`managed_command_owner_mismatch` 会标明受影响客户端，
+按 recovery_command 重新 setup Hook/statusline。基于 PATH 的命令只标为
+`path_resolved`，因为实际客户端环境的 PATH 无法由 doctor 复现，不是已核验其实际程序。
+
+未安装程序显式请求真实根时，doctor 不访问该目录，只输出 installation 与
+state（error / `state_ownership_refused`）两项，成功 envelope 的 partial 为 true，
+warnings 为 `["checks_skipped"]`，仍 exit 0。文本说明
+`the requested state directory was refused; no other diagnostics ran`。
+隔离根不存在则保留原 state_missing 短路语义；不把未执行检查当作已通过。
+已安装正常访问以及 schema_ahead 的版本对、退出码和只读诊断契约不变。
+
+Hook/statusline 因安装所有权拒绝时 stdout/stderr 为空、exit 0，不写拒绝记录。
+`hook-refusals.json` 仍只记录原有 schema_ahead 场景，不记录安装拒绝。
 
 若此前 Hook 投递被拒绝，doctor 还会在数据库检查前读取 `hook-refusals.json`，
 显示 `hook_deliveries_dropped` 和丢弃计数，且只在记录的 `stored` 仍高于当前支持版本时
@@ -1056,6 +1296,8 @@ JSON 失败 envelope 的 `error.code` 是机器契约；完整代码表和 exit 
 | `backup inspect <unreadable>` | `backup_unreadable` | 只说明 backup archive 不可读，不回显 path 或 errno |
 | `session show <unknown>` | `session_not_found` | 保留 `no session "<id>" is known`；stale-index 提示也保持原文 |
 | `extension show <missing>` | `extension_not_found` | 保留 `extension_not_found: <id>` |
+| 普通命令被真实状态/客户端配置守卫拒绝 | `state_ownership_refused` | 不含路径；details 仅 resource（state_root 或 client_config）与 reason |
+| `install claim` 被拒绝 | `install_claim_refused` | 不显示其他拥有者路径；details 仅 reason（not_current_formula_keg、owned_by_other、owner_running） |
 
 两个 `backup inspect` 分类都发生在 passphrase 已成功读入、命令开始打开 archive 之后。
 passphrase 输入本身失败仍属于未分类 CLI 输入层故障，继续返回 `runtime_error`；它不是

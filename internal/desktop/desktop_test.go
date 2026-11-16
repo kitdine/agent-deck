@@ -353,9 +353,7 @@ func TestBuildReadsCompleteIsolatedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open core: %v", err)
 	}
-	if err = core.Close(); err != nil {
-		t.Fatalf("close core: %v", err)
-	}
+	t.Cleanup(func() { _ = core.Close() })
 	index, err := store.OpenSessions(ctx, root)
 	if err != nil {
 		t.Fatalf("OpenSessions: %v", err)
@@ -372,8 +370,17 @@ func TestBuildReadsCompleteIsolatedSnapshot(t *testing.T) {
 		index.Close()
 		t.Fatalf("seed session metadata: %v", err)
 	}
+	// The baseline below is a fully closed process state. Store.Close returns
+	// a lease. Drain idle readers before the final writable connections close
+	// so SQLite can remove its now-unused WAL sidecars itself.
+	if err := store.CloseReadPools(); err != nil {
+		t.Fatalf("close process pools: %v", err)
+	}
 	if err = index.Close(); err != nil {
 		t.Fatalf("close sessions: %v", err)
+	}
+	if err = core.Close(); err != nil {
+		t.Fatalf("close core: %v", err)
 	}
 	databaseDigests := make(map[string][sha256.Size]byte, 2)
 	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {

@@ -582,8 +582,11 @@ func TestReaderAmortizesFileReadsWithoutChangingRecords(t *testing.T) {
 	defer c.Close()
 	first, second := consumePair(t, c, path)
 	c.Close()
-	report := metrics.Report(time.Second)
-	if report["read_bytes"] != float64(len(line)*100) || report["read_calls"] > 3 || report["peak_open_readers"] != 1 {
+	report := map[string]int64{}
+	for _, count := range metrics.Counts() {
+		report[count.Key] = count.Value
+	}
+	if report["read_bytes"] != int64(len(line)*100) || report["read_calls"] > 3 || report["peak_open_readers"] != 1 || report["decoded_records"] != 100 {
 		t.Fatalf("invalid read metrics: %v", report)
 	}
 	if len(first.Records) != 100 || !reflect.DeepEqual(first.Records, second.Records) {

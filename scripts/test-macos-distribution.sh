@@ -91,6 +91,31 @@ trap cleanup_distribution_fixtures EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+cask_load_warnings_are_expected() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+# The cask uses only step stanzas, so Homebrew has nothing to warn about.
+allowed = set()
+ansi = re.compile(r'\x1b\[[0-9;]*m')
+for raw in Path(sys.argv[1]).read_text().splitlines():
+    text = ansi.sub('', raw)
+    annotation = re.match(r'^::(warning|error)(?: [^:]*)?::(.*)$', text)
+    if annotation:
+        # Homebrew emits escaped workflow annotations under GITHUB_ACTIONS.
+        # Decode once so a second warning in the context cannot be hidden.
+        level, body = annotation.groups()
+        body = body.replace('%0D', '\r').replace('%0A', '\n').replace('%25', '%')
+        text = level.title() + ': ' + body
+    for line in text.splitlines():
+        line = line.strip()
+        if re.search(r'deprecat|^(warning|error|::warning|::error)', line, re.IGNORECASE) and line not in allowed:
+            sys.exit(1)
+PY
+}
+
 cask_template="$root/packaging/homebrew/agentdeck-app.rb.tmpl"
 dmg_sha=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 zip_sha=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -120,7 +145,16 @@ grep -F '["agentdeck", "agentdeck-rc"].each do |conflicting_formula|' "$stable_c
 grep -F 'preflight_steps do' "$stable_cask" >/dev/null
 grep -F 'if_path_exists "{{HOMEBREW_CELLAR}}/#{conflicting_formula}" do' "$stable_cask" >/dev/null
 grep -F 'run "/bin/sh", args: ["-c", <<~SH]' "$stable_cask" >/dev/null
-grep -F 'app "AgentDeck.app"' "$stable_cask" >/dev/null
+# Homebrew publishes and removes the App; the installed helper only records
+# ownership afterwards, from a step that may write the installation records.
+grep -Fx '  app "AgentDeck.app"' "$stable_cask" >/dev/null
+grep -F 'postflight_steps do' "$stable_cask" >/dev/null
+grep -F 'writable_paths: ["Library/Application Support/AgentDeck"],' "$stable_cask" >/dev/null
+grep -F 'writable_base: :home,' "$stable_cask" >/dev/null
+if grep -Eq '^[[:space:]]*(preflight|postflight|uninstall_preflight|uninstall_postflight) do' "$stable_cask"; then
+  echo "cask must not use a classic flight block" >&2
+  exit 1
+fi
 grep -F 'binary "#{appdir}/AgentDeck.app/Contents/Helpers/agentdeck"' "$stable_cask" >/dev/null
 grep -F 'etc/bash_completion.d/agentdeck' "$stable_cask" >/dev/null
 grep -F 'share/zsh/site-functions/_agentdeck' "$stable_cask" >/dev/null
@@ -182,7 +216,16 @@ if ! command -v brew >/dev/null 2>&1; then
   echo "here that the rendered cask cannot restate about itself" >&2
   exit 1
 fi
-homebrew_taps="$(brew --repository)/Library/Taps"
+homebrew_fixture_config="$temporary/homebrew-config"
+mkdir -p "$homebrew_fixture_config"
+# The load check runs as an ordinary user does, without developer mode, and
+# section 4 asserts that loading the cask produces no warning at all.
+fixture_brew() {
+  env -u HOMEBREW_DEVELOPER HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
+    XDG_CONFIG_HOME="$homebrew_fixture_config" \
+    HOMEBREW_USER_CONFIG_HOME="$homebrew_fixture_config/homebrew" brew "$@"
+}
+homebrew_taps="$(fixture_brew --repository)/Library/Taps"
 candidate_fixture_root="$homebrew_taps/agentdeck-fixture"
 if [[ -e $candidate_fixture_root ]]; then
   echo "a previous run left $candidate_fixture_root behind; remove it before retrying" >&2
@@ -196,31 +239,61 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   token=${pair%%:*}
   rendered=${pair##*:}
   cp "$rendered" "$fixture_tap/Casks/$token.rb"
-  env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
-    brew ruby "$root/scripts/test-cask-widget-registration.rb" "$fixture_tap/Casks/$token.rb"
+  qualified_cask="agentdeck-fixture/cask-fixture/$token"
+  # New Homebrew versions require explicit trust even for our generated local
+  # fixture. Trust only this cask, in this run's disposable configuration.
+  if fixture_brew command trust >/dev/null 2>&1; then
+    fixture_brew trust --cask "$qualified_cask" >/dev/null
+  fi
+  fixture_brew ruby "$root/scripts/test-cask-widget-registration.rb" "$fixture_tap/Casks/$token.rb"
   load_log="$temporary/brew-info-$token.log"
-  if ! env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
-       brew info --cask "agentdeck-fixture/cask-fixture/$token" >"$load_log" 2>&1; then
+  if ! fixture_brew info --cask "$qualified_cask" >"$load_log" 2>&1; then
     echo "Homebrew rejected the rendered $token cask:" >&2
     cat "$load_log" >&2
     exit 1
   fi
   # A deprecated stanza still loads, so its warning is the only signal it emits
   # and an unasserted warning is how a deprecation reaches a published tap.
-  if grep -Eiq 'deprecat|^warning' "$load_log"; then
+  # The cask declares no classic flight block, so every warning is a failure.
+  if ! cask_load_warnings_are_expected "$load_log"; then
     echo "Homebrew warned while loading the $token cask:" >&2
     cat "$load_log" >&2
     exit 1
   fi
   # Every artifact class the cask declares must survive the load, because the
   # rejection this section exists to catch takes all of them down together.
+  # The artifacts are read from the JSON form: the human-readable listing has
+  # changed layout between Homebrew versions ("AgentDeck.app (App)" under
+  # Artifacts became a bare name under Apps, and binaries left it entirely).
   grep -F 'Required: macOS >= 26' "$load_log" >/dev/null
-  grep -F 'AgentDeck.app (App)' "$load_log" >/dev/null
-  grep -F 'AgentDeck.app/Contents/Helpers/agentdeck (Binary)' "$load_log" >/dev/null
-  grep -F 'share/fish/vendor_completions.d/agentdeck.fish (Binary)' "$load_log" >/dev/null
-  grep -F 'etc/bash_completion.d/agentdeck (Binary)' "$load_log" >/dev/null
-  grep -F 'share/zsh/site-functions/_agentdeck (Binary)' "$load_log" >/dev/null
   grep -F 'brew install --cask ' "$load_log" >/dev/null
+  load_json="$temporary/brew-info-$token.json"
+  fixture_brew info --json=v2 --cask "$qualified_cask" >"$load_json" 2>/dev/null
+  python3 - "$load_json" <<'PY'
+import json
+import sys
+
+artifacts = json.load(open(sys.argv[1]))['casks'][0]['artifacts']
+apps = [entry['app'] for entry in artifacts if 'app' in entry]
+assert apps == [['AgentDeck.app']], f'the cask must declare exactly the AgentDeck app artifact: {apps}'
+binaries = {}
+for entry in artifacts:
+    if 'binary' in entry:
+        source = entry['binary'][0]
+        options = next((item for item in entry['binary'][1:] if isinstance(item, dict)), {})
+        binaries[source] = options.get('target', '')
+expected = {
+    'AgentDeck.app/Contents/Helpers/agentdeck': '',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.fish': 'share/fish/vendor_completions.d/agentdeck.fish',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.bash': 'etc/bash_completion.d/agentdeck',
+    'AgentDeck.app/Contents/Resources/completions/agentdeck.zsh': 'share/zsh/site-functions/_agentdeck',
+}
+for source, target in expected.items():
+    found = [declared for declared in binaries if declared.endswith('/' + source)]
+    assert len(found) == 1, f'missing binary artifact {source}: {sorted(binaries)}'
+    assert binaries[found[0]].endswith(target), f'{source} links to {binaries[found[0]]!r}, not {target}'
+assert len(binaries) == len(expected), f'unexpected binary artifacts: {sorted(binaries)}'
+PY
 done
 rm -rf "$fixture_root"
 fixture_root=

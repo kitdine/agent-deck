@@ -650,7 +650,7 @@ func TestSetupIfUnconfiguredPreparesEveryTargetBeforeCommit(t *testing.T) {
 }
 
 func TestSetupIfUnconfiguredRollsBackCommittedMissingTarget(t *testing.T) {
-	home := t.TempDir()
+	home := physicalTempDir(t) // fault hooks match the physical path the guarded writer uses
 	zshPath := filepath.Join(home, ".zshrc")
 	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
 	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
@@ -686,7 +686,7 @@ func TestSetupIfUnconfiguredRollsBackCommittedMissingTarget(t *testing.T) {
 }
 
 func TestSetupIfUnconfiguredReportsRollbackCleanupFailureAfterRestoringTargets(t *testing.T) {
-	home := t.TempDir()
+	home := physicalTempDir(t) // fault hooks match the physical path the guarded writer uses
 	zshPath := filepath.Join(home, ".zshrc")
 	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
 	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
@@ -730,7 +730,7 @@ func TestSetupIfUnconfiguredReportsRollbackCleanupFailureAfterRestoringTargets(t
 }
 
 func TestSetupIfUnconfiguredReportsRollbackReplacementFailureAfterFallbackRestore(t *testing.T) {
-	home := t.TempDir()
+	home := physicalTempDir(t) // fault hooks match the physical path the guarded writer uses
 	zshPath := filepath.Join(home, ".zshrc")
 	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
 	const zshOriginal = "zsh-original\n"
@@ -772,7 +772,7 @@ func TestSetupIfUnconfiguredReportsRollbackReplacementFailureAfterFallbackRestor
 }
 
 func TestSetupIfUnconfiguredPreservesConcurrentReplacement(t *testing.T) {
-	home := t.TempDir()
+	home := physicalTempDir(t) // fault hooks match the physical path the guarded writer uses
 	zshPath := filepath.Join(home, ".zshrc")
 	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
 	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
@@ -1001,4 +1001,13 @@ func assertFileBytes(t *testing.T, path string, want []byte) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("%s = %q, want %q", path, got, want)
 	}
+}
+
+func physicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

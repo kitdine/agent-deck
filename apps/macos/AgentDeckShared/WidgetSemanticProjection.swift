@@ -57,6 +57,22 @@ public struct WidgetSemanticProjection: Equatable, Sendable {
 			return base.merging(["subscription": root["subscription"] ?? NSNull()]) { _, new in new }
 		}
 
+		if kind == .magnitude {
+			// Magnitude alone shows session counts, so a new summary batch (or
+			// the same numbers turning stale) reloads only that kind.
+			return base.merging([
+				"usage": try semanticUsage(kind: kind, usage: usage, presentation: presentation),
+				"session_scope_summary": root["session_scope_summary"] ?? NSNull(),
+			]) { _, new in new }
+		}
+		return base.merging(["usage": try semanticUsage(kind: kind, usage: usage, presentation: presentation)]) { _, new in new }
+	}
+
+	private static func semanticUsage(
+		kind: AppGroupWidgetKind,
+		usage: [String: Any],
+		presentation: [String: Any]
+	) throws -> [String: Any] {
 		let scopes = presentation["scopes"] as? [[String: Any]] ?? []
 		let semanticScopes: [[String: Any]]
 		switch kind {
@@ -87,11 +103,10 @@ public struct WidgetSemanticProjection: Equatable, Sendable {
 		if kind == .composition {
 			semanticPresentation["client_subtotals"] = presentation["client_subtotals"] ?? NSNull()
 		}
-		let semanticUsage: [String: Any] = [
+		return [
 			"available": usage["available"] ?? NSNull(),
 			"presentation": semanticPresentation,
 		]
-		return base.merging(["usage": semanticUsage]) { _, new in new }
 	}
 
 	private static func selected(_ object: [String: Any], keys: Set<String>) -> [String: Any] {

@@ -1,3 +1,4 @@
+import AgentDeckShared
 import Foundation
 
 // Every user-visible string in the app target resolves through this file. The
@@ -56,6 +57,10 @@ enum DesktopCopy {
 	static let costIncomplete = "Cost incomplete · %lld unpriced"
 	static let costIncompleteAttribution = "Cost incomplete · attribution unavailable"
 	static let heroCounts = "%1$lld events · %2$lld sessions · %3$lld projects"
+	static let heroCountsUnknownProjects = "%1$lld events · %2$lld sessions · — projects"
+	static let sourceCoveragePartial = "Collected usage · source coverage is partial"
+	static let sourceCoverageUnknown = "Stored usage · source coverage is unknown"
+	static let sourceUpdatePending = "Stored usage · source updates are pending"
 
 	// Panels.
 	static let panelUsage = "Usage"
@@ -142,6 +147,69 @@ enum DesktopCopy {
 	static let sessionsSubagent = "Subagent"
 	static let sessionsSubWorkflow = "Skill / workflow"
 
+	// Session scope (auxiliary-session-classification final menu-bar surface).
+	static let sessionScopeTitle = "Session scope"
+	static let sessionScopeWork = "Work"
+	static let sessionScopeAuxiliary = "Auxiliary"
+	static let sessionClassUnknown = "Unknown"
+	static let sessionScopeNote = "Affects sessions and work analysis only. Session counts come from the session index; work analysis may include usage not linked to an indexed session. Usage and costs include all sessions."
+	static let sessionScopeUsageOverview = "Usage overview: all sessions · unaffected by session scope"
+	// Aliases of keys already in the inventory: one catalog key, one entry.
+	static let sessionScopeAllClients = settingsMenuBarScopeAll
+	static let sessionScopeSessions = panelSessions
+	static let sessionOriginUnavailable = quotaUnavailable
+	static let sessionOriginCopied = healthCopied
+	static let sessionScopeUnknownIncluded = "Includes %lld sessions with unknown origin."
+	static let sessionScopeUnknownUnavailable = "Unknown-origin count unavailable."
+	static let sessionScopeEmpty = "No sessions in this selection. Try All or another period."
+	static let sessionScopePartial = "Some origin metadata is missing; unknown sessions remain visible."
+	static let sessionScopeStale = "Showing last successful data; classification update pending."
+	static let sessionScopeLoading = "Loading %1$@; still showing previous %2$@ data."
+	static let sessionScopeLoadingFirst = "Loading %@…"
+	static let sessionScopeFailed = "%1$@ could not load; previous %2$@ data retained."
+	static let sessionScopeRetry = "Retry %@"
+	static let sessionScopeUnavailable = "Session data unavailable; counts cannot be reported."
+	static let sessionScopeUnavailableHint = "Retry using Refresh above; existing scan behavior is unchanged."
+	static let sessionScopeOverride = "Includes a user override; automatic classification retained."
+	static let sessionScopeSourceUnavailable = "Origin metadata unavailable. Sessions remain in Work. User overrides remain effective."
+	static let sessionScopeInputMismatch = "Source generation mismatch; stale origin does not hide sessions."
+	static let sessionScopeLegacy = "Scope projection missing; session scope unavailable."
+	static let sessionScopeLegacyHint = "Legacy all-session totals cannot be used as Work counts. Update AgentDeck, then refresh."
+	static let sessionScopeDefaultUnknown = "Default session scope is unconfirmed; session view unavailable."
+	static let sessionScopeDefaultUnknownHint = "Open Settings (⌘,) to read the saved value. No Work default or counts are assumed."
+	static let sessionScopeSnapshotTime = "Session snapshot: %@"
+	static let sessionScopeKnownDuration = "Known duration"
+	static let sessionScopeMissingDuration = "%lld session durations unknown, not zero."
+	static let sessionScopeNoMatches = "No matching sessions"
+	static let sessionScopeProjectsNote = "Projects are distinct within the selection; Work and Auxiliary may overlap."
+	static let sessionScopeAnnouncement = "%1$@ · %2$lld sessions"
+	static let sessionOriginBack = "Back to sessions"
+	static let sessionOriginEffective = "Effective origin"
+	static let sessionOriginAutomatic = "Automatic origin"
+	static let sessionOriginReason = "Reason"
+	static let sessionOriginRuleVersion = "Rule version"
+	static let sessionOriginOverride = "Override"
+	static let sessionOriginOverrideRevision = "Override revision"
+	static let sessionOriginUserOverrideSuffix = " (user override)"
+	static let sessionOriginOverrideSuffix = " (override)"
+	static let sessionOriginOverrideApplied = "Applied · %@"
+	static let sessionOriginOverrideUnmatched = "Not applied · binding unmatched · %@"
+	static let sessionOriginOverrideNone = "None"
+	static let sessionOriginReadOnly = "Use the CLI to inspect or correct origin; this panel is read only."
+	static let sessionOriginCopyCommand = "Copy inspect command"
+	static let sessionOriginCopyFailed = "Copy failed; select the command above to copy manually."
+	static let sessionReasonDefaultWork = "Work by default"
+	static let originTUIInference = "Inferred from TUI telemetry without JSONL; a main conversation may also match."
+	static let originExecDefault = "Exec conversations default to Work, including background Memories activity."
+	static let sessionReasonMaintenance = "Recognized background maintenance origin"
+	static let sessionReasonMetadataMissing = "Waiting for automatic classification"
+	static let sessionReasonTaskChild = "Task purpose unconfirmed; retained in Work"
+	static let sessionReasonConflicting = "Conflicting origin evidence; retained in Work"
+	static let sessionReasonSourceUnavailable = "Enhancement unavailable; sessions remain in Work"
+	static let sessionReasonRuleUnsupported = "Origin marker not covered by the current rule version"
+	static let sessionReasonInputMismatch = "Origin evidence does not match source generation"
+	static let sessionReasonUnknown = "Reason cannot be shown"
+
 	// Rhythm block.
 	static let rhythmTitle = "Rhythm"
 	static let rhythmScope = "Last 30 days · not affected by the filters above"
@@ -177,6 +245,8 @@ enum DesktopCopy {
 	static let healthUnknownCheck = "Other health check"
 	static let healthAffectedCount = "Affected: %1$lld"
 	static let healthCheckNameKeys: [String: String] = [
+		"installation": "Installation",
+		"managed_command_owner": "Hook command owner",
 		"state": "State",
 		"state_permissions": "State file permissions",
 		"state_lock": healthStateLock,
@@ -198,6 +268,7 @@ enum DesktopCopy {
 		"prices": "Price catalog",
 		"price_provenance": "Price provenance",
 		"unpriced_models": "Unpriced models",
+		"telemetry": "Some usage is not recorded",
 	]
 	static let healthNoticeStateLive = "AgentDeck state is busy"
 	static let healthNoticeScanLive = "AgentDeck scan is running"
@@ -209,6 +280,12 @@ enum DesktopCopy {
 	static let healthCauseScanLive = "Another AgentDeck scan is still running."
 	static let healthEffectStale = "Updates only AgentDeck's derived extension inventory and scan fingerprint; client configuration and installed extensions stay unchanged."
 	static let healthEffectIncomplete = "Client configuration did not change, and inventory was not rolled back."
+	// Installation diagnostics put these classifications in code; reason holds
+	// the installation cause or affected client list, not a copy lookup key.
+	static let healthCodeCauseKeys: [String: String] = [
+		"not_installed": "This copy is not installed; isolated state is in use.",
+		"managed_command_owner_mismatch": "The Hook command belongs to another AgentDeck installation.",
+	]
 	static let healthReasonKeys: [String: String] = [
 		"lock_live": "Active lock", "lock_legacy": "Legacy lock", "lock_owner_unknown": "Lock owner unknown",
 		"lock_reclaimable": "Reclaimable lock", "extension_state_missing": "Extension state missing",
@@ -314,9 +391,44 @@ enum DesktopCopy {
 	static let settingsLoginItemNote = "Registered as a system login item; no background daemon is installed"
 	static let settingsLoginItemRefused = "Could not change the login item"
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
-	static let settingsPeriodicRefresh = "Periodic refresh"
-	static let settingsPeriodicRefreshNote =
-		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
+	static let settingsAutomaticUpdate = "Automatically update local data"
+	static let settingsAutomaticUpdateNote =
+		"Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately."
+	static let settingsGroupLiveUsage = "Live usage"
+	static let settingsOTel = "Enable OTel usage collection"
+	static let settingsOTelHint = "Off by default. Receive live Codex usage without a refresh interval. Collected data is kept when disabled."
+	static let settingsOTelPrivacy = "Only usage, model and required identity fields are retained. Prompts, response text and tool output are not stored."
+	static let settingsOTelViewConfiguration = "View connection configuration"
+	static let settingsOTelHideConfiguration = "Hide configuration"
+	static let settingsOTelPreviewNote = "Not applied to Codex. Token is redacted. Review and merge with existing configuration."
+	static let settingsOTelOff = "Collection is off"
+	static let settingsOTelUnknown = "Receiver ready · Waiting for first event; connection unknown"
+	static let settingsOTelUnknownHint = "No verified configuration or reception observation yet. Silence does not mean unconfigured or disconnected."
+	static let settingsOTelUnconfigured = "Receiver enabled · Configuration check found no valid exporter"
+	static let settingsOTelSetup = "First-time setup requires checking Codex telemetry configuration. The switch changes Codex configuration only after you agree."
+	static let settingsOTelReady = "Receiving · Usage can be counted"
+	static let settingsOTelCaptureOnly = "Receiving · Usage is not counted yet"
+	static let settingsOTelCaptureHint = "Request identity is not verified. Observations are saved without adding them to totals."
+	static let settingsOTelDisconnected = "Confirmed reception failure · Previous data is retained"
+	static let settingsOTelMemoriesOff = "Codex Memories is off · Collection is not needed"
+	static let settingsOTelMemoriesOffHint = "Other Codex usage is already counted from local logs. Turn on Codex Memories to enable collection here."
+	static let settingsOTelMemoriesStopped = "Codex Memories turned off · Receiver stopped"
+	static let settingsOTelMemoriesStoppedHint = "Turn off collection to remove AgentDeck's block from the Codex configuration. If you leave it on, receiving resumes when Codex Memories is turned back on."
+	static let settingsOTelNotCounted = "Codex Memories background usage is not counted"
+	static let settingsOTelNotCountedHint = "Turn on collection and allow the Codex configuration change to count it."
+	static let settingsOTelConsentTitle = "Collection needs a Codex configuration change"
+	static let settingsOTelConsentFile = "File: ~/.codex/config.toml"
+	static let settingsOTelConsentBody = "Only this block is appended; nothing else changes. It is removed when collection is turned off. Takes effect after Codex restarts."
+	static let settingsOTelWriteAndOn = "Write and turn on"
+	static let settingsOTelSelfConfigure = "I'll configure it"
+	static let settingsOTelConflict = "Codex already has another OTel configuration. AgentDeck will not overwrite it. Merge the connection configuration yourself."
+	static let settingsOTelReceiverOnly = "Turn on receiver only"
+	static let settingsOTelWritten = "Codex configuration updated · Takes effect after Codex restarts"
+	static let settingsOTelRefused = "Could not update the Codex configuration; nothing was changed. Retry or configure it yourself."
+	static let settingsOTelSelfConfigured = "Connection configuration is shown below; merge it into your Codex configuration"
+	static let settingsOTelRemoved = "Removed AgentDeck's block from the Codex configuration · Codex stops exporting after restart"
+	static let settingsOTelRestoreIncomplete = "The Codex configuration was changed elsewhere; AgentDeck left it untouched. Check the [otel] section of ~/.codex/config.toml."
+	static let settingsOTelUserConfigKept = "Receiver turned off · Your own Codex OTel configuration was not changed"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -327,6 +439,96 @@ enum DesktopCopy {
 		"When following the panel, picking Codex there also narrows the menu bar to Codex"
 	static let settingsMenuBarScopeAll = "All clients"
 	static let settingsMenuBarScopeFollow = "Follow panel filter"
+
+	// Settings window — Sessions group
+	// (auxiliary-session-classification ux/settings.md, 2026-11-07 redesign).
+	static let originDefaultTitle = "Default session scope"
+	static let originDefaultNote = "Used when the menu bar Sessions tab or the Widget next opens. Work includes sessions of unconfirmed origin."
+	static let originDefaultReading = "Reading the saved scope…"
+	static let originDefaultReadFailed = "The saved scope could not be read. Work is not assumed."
+	static let originDefaultSaving = "Saving as %@…"
+	static let originDefaultNotSaved = "Not saved. Still %@."
+	static let originDefaultReloaded = "Loaded the latest value, %@. Choose again to change it."
+	static let originDefaultSaved = "Saved. An open menu bar keeps its scope; the next open uses this default."
+	static let originDefaultPublicationPending = "Saved. The Widget updates on its next system refresh."
+	static let originUnknown = "The save could not be confirmed. Changes are paused until it is."
+	static let originStillUnknown = "Still unable to confirm whether it was saved."
+	static let originConflict = "Changed elsewhere. Nothing was overwritten."
+	static let originNoChange = "No change."
+	static let originReplayed = "That request had already completed. The latest state is shown."
+	static let originInvalidRequest = "The request ID does not match its contents. Nothing was written."
+	static let originPermissionWarning = "Saved, but hardening the state file permissions failed. Run agentdeck doctor to check; the saved value is kept."
+	static let originLockedByManual = "A classification change is still in progress."
+	static let originLockedByDefault = "A default scope change is still in progress."
+	static let originRequestLabel = "Request"
+	static let originActionReadAgain = "Read again"
+	static let originActionCheckResult = "Check result"
+	static let originActionCheckAgain = "Check again"
+	static let originActionRetryOriginal = "Retry the original request"
+	static let originActionLoadLatest = "Load latest"
+	static let originManualTitle = "Manual classification"
+	static let originManage = "Manage…"
+	static let originOverridesSummaryUnavailable = "Override list unavailable"
+	static let originOverridesSummaryNone = "Correct individual sessions that were detected wrongly"
+	static let originOverridesSummaryCount = "%lld sessions classified manually"
+	static let originOverridesSummaryUnmatched = ", %lld not applied"
+	static let originManualSaving = "Setting %1$@ to %2$@…"
+	static let originManualClearing = "Removing the manual classification of %@…"
+	static let originManualNotSaved = "Not saved. The classification is unchanged."
+	static let originManualReloaded = "Loaded the latest state. Choose again to change it."
+	static let originManualSaved = "Saved. Session views reflect it on their next update."
+	static let originManualCleared = "Manual classification removed. Automatic detection applies."
+	static let originManualPublicationPending = "Saved. Session views have not been updated yet and may be briefly out of date."
+	static let originSheetDescription = "When automatic detection is wrong, set a single session to Work or Auxiliary. Only session statistics change; sessions and source logs are never deleted or modified."
+	static let originSheetCoreUnavailable = "The local usage database cannot be read right now, so sessions cannot be found or reclassified."
+	static let originFindTitle = "Find a session"
+	static let originSessionID = "Complete session ID"
+	static let originFind = "Find"
+	static let originFindHelp = "Copy the complete ID from the menu bar session details or agentdeck session list."
+	static let originNotFound = "No visible session found. Check the client and the complete ID."
+	static let originLookupUnavailable = "Classification unavailable; the session index could not be read."
+	static let originCardClassification = "Classification"
+	static let originCardClassificationLabel = "Classification for this session"
+	static let originChoiceAutomatic = "Automatic"
+	static let originCountsAs = "Counts as"
+	static let originDetected = "Detected"
+	static let originCountsManual = "manual"
+	static let originCountsDetected = "detected"
+	static let originCountsIncludedInWork = ", included in Work"
+	static let originReading = "Reading…"
+	static let originClassificationUnavailable = "Current classification unavailable"
+	static let originCardNote = "Automatic only removes the manual classification; the session is not deleted."
+	static let originOverridesTitle = "Manually classified"
+	static let originOverridesEmpty = "No sessions are classified manually yet."
+	static let originOverridesUnavailable = "The list cannot be read right now; it is not treated as empty."
+	static let originUnmatched = "No matching session; not applied"
+	static let originRemove = "Remove"
+	static let originRemoveLabel = "Remove the manual classification of %1$@ %2$@"
+	static let originShowLabel = "Show %1$@ %2$@"
+	static let originPage = "Page %1$lld of %2$lld"
+	static let originPreviousPage = "Previous page"
+	static let originNextPage = "Next page"
+	static let originDone = "Done"
+	static let originDetectionTitle = "Automatic classification enabled"
+	static let originDetectionNote = "Sessions default to Work. Supported TUI background activity and optional exact mappings can classify as Auxiliary."
+	static let originSourceAvailableVersion = "Available · %@"
+	static let originSourceNotConfigured = "Optional enhancement not enabled"
+	static let originSourceMetadataUnreadable = "Enhancement unavailable; sessions remain in Work"
+	static let originSourceVersionUnsupported = "Version not supported"
+	static let originSourceDisabled = "Optional enhancement disabled"
+	static let originSourceNotYetRead = "Waiting for automatic classification"
+	static let originSourceConfigUnreadable = "Local source configuration unreadable"
+	static let originSourceCoreUnavailable = "Local usage database unreadable"
+	static let originSourceReasonUnknown = "Status reason cannot be shown"
+	static let originCodexName = "Codex background"
+	static let originCodexOwnership = "Inferred auxiliary: %1$lld · OTel-owned: %2$lld"
+	static let originCodexRecords = "%lld background session records"
+	static let originCodexReceiverOff = "No records · OTel capture is off (see Live usage)"
+	static let originCodexNoRecords = "No records · capture is on, no background session yet"
+	static let originCodexReceiverUnknown = "No records · capture state unknown"
+	static let originSourcesUnavailable = "Origin source status unavailable"
+	static let originSourceNoteAdapter = "Enhancement unavailable; sessions remain in Work"
+	static let originSourceNoteCore = "The local usage database cannot be read right now: current and manual classifications are unavailable and cannot be changed. Saved manual classifications are not deleted."
 
 	// Settings window — subscription quota (ux/settings-quota.md).
 	static let settingsGroupQuota = "Subscription quota"
@@ -423,7 +625,8 @@ enum DesktopCopy {
 		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
-		costIncomplete, costIncompleteAttribution, heroCounts,
+		costIncomplete, costIncompleteAttribution, heroCounts, heroCountsUnknownProjects,
+		sourceCoveragePartial, sourceCoverageUnknown, sourceUpdatePending,
 		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,
 		quotaNotRead, quotaNotApplicable, quotaUnavailable,
 		quotaAttributionUnconfirmed, quotaNoWindows, quotaPlan, quotaOfficialResets,
@@ -456,6 +659,24 @@ enum DesktopCopy {
 		sessionsSubTesting, sessionsSubMaintenance, sessionsSubInvestigation,
 		sessionsSubRepair, sessionsSubExploration, sessionsSubBrainstorming,
 		sessionsSubPlanning, sessionsSubagent, sessionsSubWorkflow,
+		sessionScopeTitle, sessionScopeWork, sessionScopeAuxiliary, sessionClassUnknown,
+		sessionScopeNote, sessionScopeUsageOverview,
+		sessionScopeUnknownIncluded, sessionScopeUnknownUnavailable, sessionScopeEmpty,
+		sessionScopePartial, sessionScopeStale, sessionScopeLoading, sessionScopeLoadingFirst,
+		sessionScopeFailed, sessionScopeRetry, sessionScopeUnavailable, sessionScopeUnavailableHint,
+		sessionScopeOverride, sessionScopeSourceUnavailable, sessionScopeInputMismatch,
+		sessionScopeLegacy, sessionScopeLegacyHint, sessionScopeDefaultUnknown,
+		sessionScopeDefaultUnknownHint, sessionScopeSnapshotTime,
+		sessionScopeKnownDuration, sessionScopeMissingDuration, sessionScopeNoMatches,
+		sessionScopeProjectsNote, sessionScopeAnnouncement, sessionOriginBack,
+		sessionReasonDefaultWork, originTUIInference, originExecDefault, sessionOriginEffective, sessionOriginAutomatic, sessionOriginReason,
+		sessionOriginRuleVersion, sessionOriginOverride, sessionOriginOverrideRevision,
+		sessionOriginUserOverrideSuffix, sessionOriginOverrideSuffix,
+		sessionOriginOverrideApplied, sessionOriginOverrideUnmatched, sessionOriginOverrideNone,
+		sessionOriginReadOnly, sessionOriginCopyCommand,
+		sessionOriginCopyFailed, sessionReasonMaintenance, sessionReasonMetadataMissing,
+		sessionReasonTaskChild, sessionReasonConflicting, sessionReasonSourceUnavailable,
+		sessionReasonRuleUnsupported, sessionReasonInputMismatch, sessionReasonUnknown,
 		rhythmTitle, rhythmScope, rhythmActive, rhythmBusiest, rhythmQuietest,
 		rhythmPeakWindow, rhythmHourOfWeek, rhythmActiveNote, rhythmBusiestNote,
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,
@@ -466,7 +687,7 @@ enum DesktopCopy {
 		healthNoticeStateLive, healthNoticeScanLive, healthNoticeLegacy, healthNoticeOwnerUnknown,
 		healthNoticeStale, healthNoticeIncomplete, healthCauseStateLive, healthCauseScanLive,
 		healthEffectStale, healthEffectIncomplete,
-	] + Array(healthCheckNameKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
+	] + Array(healthCheckNameKeys.values) + Array(healthCodeCauseKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
 		noticeMore,
 		warningProviderUnavailable, warningProviderCandidatesUnavailable,
 		warningUsageUnavailable, warningSessionsUnavailable,
@@ -484,12 +705,32 @@ enum DesktopCopy {
 		menuShows, menuSettings, menuAbout, menuQuit,
 		settingsTitle, settingsGroupGeneral, settingsGroupMenuBar,
 		settingsLoginItem, settingsLoginItemNote, settingsLoginItemRefused,
-		settingsLoginItemApproval, settingsPeriodicRefresh,
-		settingsPeriodicRefreshNote, settingsMenuBarValue,
+		settingsLoginItemApproval, settingsAutomaticUpdate,
+		settingsAutomaticUpdateNote, settingsGroupLiveUsage, settingsOTel, settingsOTelHint, settingsOTelPrivacy, settingsOTelViewConfiguration, settingsOTelHideConfiguration, settingsOTelPreviewNote, settingsOTelOff, settingsOTelUnknown, settingsOTelUnknownHint, settingsOTelUnconfigured, settingsOTelSetup, settingsOTelReady, settingsOTelCaptureOnly, settingsOTelCaptureHint, settingsOTelDisconnected, settingsOTelMemoriesOff, settingsOTelMemoriesOffHint, settingsOTelMemoriesStopped, settingsOTelMemoriesStoppedHint, settingsOTelNotCounted, settingsOTelNotCountedHint, settingsOTelConsentTitle, settingsOTelConsentFile, settingsOTelConsentBody, settingsOTelWriteAndOn, settingsOTelSelfConfigure, settingsOTelConflict, settingsOTelReceiverOnly, settingsOTelWritten, settingsOTelRefused, settingsOTelSelfConfigured, settingsOTelRemoved, settingsOTelRestoreIncomplete, settingsOTelUserConfigKept,
+		settingsMenuBarValue,
 		settingsMenuBarValueNote, settingsMenuBarValueCost,
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,
 		settingsMenuBarScopeFollow,
+		originDefaultTitle, originDefaultNote, originDefaultReading, originDefaultReadFailed, originDefaultSaving,
+		originDefaultNotSaved, originDefaultReloaded, originDefaultSaved, originDefaultPublicationPending, originUnknown,
+		originStillUnknown, originConflict, originNoChange, originReplayed, originInvalidRequest, originPermissionWarning,
+		originLockedByManual, originLockedByDefault, originRequestLabel, originActionReadAgain, originActionCheckResult,
+		originActionCheckAgain, originActionRetryOriginal, originActionLoadLatest, originManualTitle, originManage,
+		originOverridesSummaryUnavailable, originOverridesSummaryNone, originOverridesSummaryCount,
+		originOverridesSummaryUnmatched, originManualSaving, originManualClearing, originManualNotSaved,
+		originManualReloaded, originManualSaved, originManualCleared, originManualPublicationPending,
+		originSheetDescription, originSheetCoreUnavailable, originFindTitle, originSessionID, originFind, originFindHelp,
+		originNotFound, originLookupUnavailable, originCardClassification, originCardClassificationLabel,
+		originChoiceAutomatic, originCountsAs, originDetected, originCountsManual, originCountsDetected,
+		originCountsIncludedInWork, originReading, originClassificationUnavailable, originCardNote, originOverridesTitle,
+		originOverridesEmpty, originOverridesUnavailable, originUnmatched, originRemove, originRemoveLabel,
+		originShowLabel, originPage, originPreviousPage, originNextPage, originDone, originDetectionTitle,
+		originDetectionNote, originSourceAvailableVersion, originSourceNotConfigured,
+		originSourceVersionUnsupported, originSourceDisabled,  originSourceConfigUnreadable,
+		originSourceCoreUnavailable, originSourceReasonUnknown, originCodexName, originCodexOwnership, originCodexRecords,
+		originCodexReceiverOff, originCodexNoRecords, originCodexReceiverUnknown, originSourcesUnavailable,
+		 originSourceNoteCore,
 		settingsGroupQuota, settingsQuotaProbe, settingsQuotaProbeHint,
 		settingsQuotaClients, settingsQuotaClientsHint,
 		settingsQuotaInterval, settingsQuotaIntervalHint,
@@ -512,7 +753,9 @@ enum DesktopCopy {
 enum DesktopLocale {
 	static var override: String? {
 		#if DEBUG
-		let identifier = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		// Read the live override without copying the entire process environment
+		// for every formatted value in a native view.
+		let identifier = getenv("AGENTDECK_TEST_LOCALE").map { String(cString: $0) }
 		return identifier == "en" || identifier == "zh-Hans" ? identifier : nil
 		#else
 		return nil
@@ -525,14 +768,19 @@ enum DesktopLocale {
 	}
 
 	static var bundle: Bundle {
-		guard let override,
-			let path = Bundle.main.path(forResource: override, ofType: "lproj"),
-			let localized = Bundle(path: path)
-		else {
-			return .main
-		}
-		return localized
+		guard let override else { return .main }
+		return localizedBundles[override] ?? .main
 	}
+
+	// The shipped resources are immutable; the selected language remains live.
+	private static let localizedBundles: [String: Bundle] = {
+		var bundles = [String: Bundle]()
+		for identifier in ["en", "zh-Hans"] {
+			if let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
+				let bundle = Bundle(path: path) { bundles[identifier] = bundle }
+		}
+		return bundles
+	}()
 }
 
 /// Resolves one catalog key in the active bundle. The key doubles as the `en`
@@ -550,6 +798,60 @@ func t(_ key: String, _ arguments: any CVarArg...) -> String {
 /// Cost strings arrive as decimal text and are formatted without changing the
 /// value; an inexact total keeps the `≈` the hero explains underneath.
 enum DesktopFormat {
+	private static let calendarDayParser = CalendarDayParser()
+
+	// Local midnight of a "yyyy-MM-dd" day in the default timezone, as the
+	// strict en_US_POSIX DateFormatter returned, without its ICU parse (which
+	// clones its formatter on every call and dominated surface rebuilds).
+	// Out-of-range fields are rejected rather than rolled over; other widths
+	// (such as "2026-2-9") keep the DateFormatter. Serialize timezone updates
+	// and reads; the default timezone can change at run time.
+	private final class CalendarDayParser: @unchecked Sendable {
+		private let lock = NSLock()
+		private var calendar: Calendar = {
+			var calendar = Calendar(identifier: .gregorian)
+			calendar.timeZone = NSTimeZone.default
+			return calendar
+		}()
+		private let formatter: DateFormatter = {
+			let formatter = DateFormatter()
+			formatter.locale = Locale(identifier: "en_US_POSIX")
+			formatter.dateFormat = "yyyy-MM-dd"
+			formatter.timeZone = NSTimeZone.default
+			return formatter
+		}()
+
+		func date(from value: String) -> Date? {
+			let digits = Array(value.utf8)
+			guard digits.count == 10, digits[4] == 45, digits[7] == 45 else {
+				lock.lock()
+				defer { lock.unlock() }
+				let timezone = NSTimeZone.default
+				if formatter.timeZone != timezone { formatter.timeZone = timezone }
+				return formatter.date(from: value)
+			}
+			func number(_ range: Range<Int>) -> Int? {
+				var result = 0
+				for index in range {
+					guard (48 ... 57).contains(digits[index]) else { return nil }
+					result = result * 10 + Int(digits[index] - 48)
+				}
+				return result
+			}
+			guard let year = number(0 ..< 4), let month = number(5 ..< 7), let day = number(8 ..< 10),
+				(1 ... 12).contains(month), (1 ... 31).contains(day)
+			else { return nil }
+			lock.lock()
+			defer { lock.unlock() }
+			let timezone = NSTimeZone.default
+			if calendar.timeZone != timezone { calendar.timeZone = timezone }
+			guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+			let parsed = calendar.dateComponents([.year, .month, .day], from: date)
+			guard parsed.year == year, parsed.month == month, parsed.day == day else { return nil }
+			return date
+		}
+	}
+
 	static func cost(_ raw: String?, known: String, approximate: Bool) -> String {
 		let value = raw ?? known
 		guard let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")) else {
@@ -661,15 +963,12 @@ enum DesktopFormat {
 	}
 
 	static func timestamp(_ value: String) -> Date? {
-		let fractional = ISO8601DateFormatter()
-		fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-		if let parsed = fractional.date(from: value) { return parsed }
-		let basic = ISO8601DateFormatter()
-		basic.formatOptions = [.withInternetDateTime]
-		if let parsed = basic.date(from: value) { return parsed }
-		let day = DateFormatter()
-		day.locale = Locale(identifier: "en_US_POSIX")
-		day.dateFormat = "yyyy-MM-dd"
-		return day.date(from: value)
+		// Calendar buckets are dates, not timestamps. Avoid constructing the
+		// timestamp fallback formatters for every day in the rhythm calendar.
+		let isCalendarDay = value.utf8.count == 10 && value.utf8.enumerated().allSatisfy { index, byte in
+			index == 4 || index == 7 ? byte == 45 : (48 ... 57).contains(byte)
+		}
+		if !isCalendarDay, let parsed = DesktopTimestamp.date(from: value) { return parsed }
+		return calendarDayParser.date(from: value)
 	}
 }

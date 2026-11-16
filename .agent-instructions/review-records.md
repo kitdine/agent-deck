@@ -75,7 +75,13 @@ finding in that record must be in one of these states:
 | Closed in the record | The disposition names the finding ID and its resolution, such as `A1-F1 closed:` or `DW-R11-F2 -> repaired in candidate.` |
 | Superseded in the record | The disposition names the original finding ID, why it was superseded, and the replacement finding ID. Follow the replacement to its closure or valid carrier before PASS. |
 | Closed by explicit user decision | Name the finding ID, mark it `CLOSED`, and record the user's decision and its source. Preserve the finding history; do not infer approval or re-raise a declined finding. |
-| Carried elsewhere | `-> open`, **followed on the same finding by a carrier**: a Beads issue ID, or `roadmap.md Backlog: <item>` |
+| Carried elsewhere | `-> open`, **followed on the same finding by a carrier**: a Beads issue ID |
+
+Use Beads for new or newly transferred findings. Historical
+`roadmap.md Backlog: <item>` carriers remain valid provenance; do not rewrite
+completed reviews or create a roadmap entry merely to satisfy this rule.
+When related work resumes, resolve the existing issue or transfer still-open
+work under [Issue intake and roadmap ownership](../docs/documentation-workflow.md#issue-intake-and-roadmap-ownership).
 
 A bare `-> open`, `follow-up`, `后续处理`, or `待定` is **not** a destination.
 A review record retires with its topic; once it is under `docs/archive/`, nobody

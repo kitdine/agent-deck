@@ -28,20 +28,55 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/watch"
 )
 
+var ownershipAcceptanceProcess func() (bool, int)
+
 func TestMain(m *testing.M) {
+	if ownershipAcceptanceProcess != nil {
+		if handled, code := ownershipAcceptanceProcess(); handled {
+			os.Exit(code)
+		}
+	}
+	if physical, err := filepath.EvalSymlinks(os.TempDir()); err == nil {
+		_ = os.Setenv("TMPDIR", physical)
+	}
+	account, err := os.MkdirTemp("", "agentdeck-cli-account-")
+	if err != nil {
+		panic(err)
+	}
+	home, err := os.MkdirTemp("", "agentdeck-cli-home-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("AGENTDECK_ACCEPTANCE_ACCOUNT_HOME", account)
+	platform.SetInstallationResolver(installedCLIFixture{account})
 	doctorRegistrationProbe = func(context.Context, bool) doctor.RegistrationDetails {
 		return doctor.RegistrationDetails{Applicable: false, ApplicabilityReason: "canonical_host_absent"}
 	}
 	machineIdentity = func(context.Context) (string, error) { return "synthetic-machine", nil }
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = store.CloseReadPools()
+	_ = platform.ReleaseStateOwnership()
+	_ = os.RemoveAll(account)
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
+
+type installedCLIFixture struct{ account string }
+
+func (r installedCLIFixture) AccountHome() (string, error) { return r.account, nil }
+func (r installedCLIFixture) Resolve() platform.InstallationIdentity {
+	return platform.InstallationIdentity{Installed: true, Channel: "make"}
 }
 
 func TestRootCommandRegistersGlobalFlags(t *testing.T) {
@@ -1054,8 +1089,13 @@ func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
 			assertReport := func(label string, wantEvents, wantTokens int64) {
 				t.Helper()
 				events, tokens, partial, warnings := runJSON(label == "no-scan")
-				if events != wantEvents || tokens != wantTokens || partial || len(warnings) != 0 {
-					t.Fatalf("%s events=%d tokens=%d partial=%t warnings=%#v; want events=%d tokens=%d partial=false warnings=[]", label, events, tokens, partial, warnings, wantEvents, wantTokens)
+				wantPartial := label == "no-scan"
+				wantWarnings := []string{}
+				if wantPartial {
+					wantWarnings = []string{"source_coverage_unknown"}
+				}
+				if events != wantEvents || tokens != wantTokens || partial != wantPartial || !reflect.DeepEqual(warnings, wantWarnings) {
+					t.Fatalf("%s events=%d tokens=%d partial=%t warnings=%#v; want events=%d tokens=%d partial=%t warnings=%#v", label, events, tokens, partial, warnings, wantEvents, wantTokens, wantPartial, wantWarnings)
 				}
 			}
 			assertReport("no-scan", 1, 10)
@@ -1668,7 +1708,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'derived_snapshot_generation_%'`)
+	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE 'derived_snapshot_generation_%' OR name LIKE 'usage_partition_%')`)
 	if err != nil {
 		database.Close()
 		t.Fatal(err)
@@ -1693,7 +1733,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2383,7 +2423,7 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
+	if want := sessionorigin.WatchFingerprint(epoch, raw); checkpoint != want {
 		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
 	}
 	if err = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
@@ -2393,7 +2433,7 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	bound, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, raw)
-	if err != nil || bound != fmt.Sprintf("v1:%d:%s", epoch, raw) {
+	if err != nil || bound != sessionorigin.WatchFingerprint(epoch, raw) {
 		t.Fatalf("captured checkpoint=%q err=%v", bound, err)
 	}
 	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {
@@ -3065,7 +3105,7 @@ INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('claude',
 		Warnings []string       `json:"warnings"`
 		Data     map[string]any `json:"data"`
 	}
-	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Warnings, []string{"defaulted 5m cache creation TTL"}) || !reflect.DeepEqual(envelope.Data["warnings"], []any{"defaulted 5m cache creation TTL"}) {
+	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Warnings, []string{"defaulted 5m cache creation TTL", "source_coverage_unknown"}) || !reflect.DeepEqual(envelope.Data["warnings"], []any{"defaulted 5m cache creation TTL"}) {
 		t.Fatalf("stats warning JSON = %s, %v", encoded.String(), err)
 	}
 	var text bytes.Buffer

@@ -1,6 +1,6 @@
 ---
 status: active
-updated: 2026-10-03
+updated: 2026-11-07
 ---
 
 # Documentation Workflow
@@ -12,11 +12,13 @@ receipts, and next instructions. This document supplies project-specific
 prerequisites and artifacts without defining a second phase protocol.
 
 Use [Project Status](status.md) for integrated project and release state,
-[Roadmap](roadmap.md) for later planning and backlog, and [Documentation](README.md)
-for stable navigation. [Review Records](../.agent-instructions/review-records.md)
+[Roadmap](roadmap.md) for cross-version direction and planning decisions, and
+[Documentation](README.md) for stable navigation.
+[Review Records](../.agent-instructions/review-records.md)
 owns record locations and metadata; [Evidence](../.agent-instructions/evidence.md)
-owns exact-content-state gates; [Beads](../.agent-instructions/beads.md) owns
-coordination. A review verdict, evidence result, and dispatch status are distinct.
+owns exact-content-state gates; [Beads](../.agent-instructions/beads.md) owns issue
+intake, deferral, and coordination. A review verdict, evidence result, and dispatch
+status are distinct.
 
 ## Naming Convention
 
@@ -31,8 +33,9 @@ coordination. A review verdict, evidence result, and dispatch status are distinc
 - Keep a follow-up inside its unfinished topic when its goal and acceptance
   boundary remain the same. Use a dated `## Follow-Up — YYYY-MM-DD` subsection
   when useful. A distinct goal or acceptance boundary becomes a separate topic.
-- Keep topic-local candidates in that topic's Backlog or Future Feature Ideas;
-  repository-wide candidates belong in `docs/roadmap.md`.
+- Record actionable candidates and deferred follow-ups in Beads. Topic documents
+  may retain design context and link the issue; they need no duplicate backlog.
+  Follow [Issue intake and roadmap ownership](#issue-intake-and-roadmap-ownership).
 
 Use frontmatter appropriate to the document; do not invent historical dates:
 
@@ -56,7 +59,35 @@ version: N            # versioned specifications only
 | `docs/archive/` | Historical topics and supporting records | Preserve history; consult it for provenance, not as the default current authority. |
 | `docs/README.md` | Stable navigation | Update for documentation topology or authority changes. |
 | `docs/status.md` | Integrated project and release state | Update at the authorized integration/version-assembly boundary; do not mirror unmerged topic task progress. |
-| `docs/roadmap.md` | Later direction, backlog, and withdrawals | Update planning decisions; do not mirror review rounds or execution detail. |
+| `docs/roadmap.md` | Cross-version direction, significant tradeoffs, and withdrawal decisions | Update material planning decisions under the ownership rules below. |
+
+### Issue intake and roadmap ownership
+
+Beads is the live queue for issues, actionable candidates, and deferred work.
+The roadmap records cross-version direction and significant planning tradeoffs,
+including why a direction was selected or withdrawn. Approved requirements and
+execution state belong to the owning topic; active release membership belongs
+to the version-contract topic and is projected in `docs/status.md`.
+
+- Recording, deferring, reprioritizing, resuming, or closing an issue does not
+  trigger a roadmap update. Topic phase changes and review findings do not
+  trigger one either. Keep each subject's required records in its own authority.
+- Update the roadmap only when an authorized planning decision changes its
+  direction or rationale. An issue can inform that decision without becoming a
+  second checklist entry. A roadmap update neither starts implementation nor
+  assigns active release membership.
+- Deliver a material roadmap change with the related authorized planning or
+  integration change. Do not create a separate commit or PR merely to mirror
+  issue intake or state. An explicitly requested substantive planning change
+  can have its own delivery scope. Branch preparation and Git delivery retain
+  their separate authorization boundaries; do not edit another checkout to
+  synchronize an issue or topic transition.
+- Retain existing Backlog entries and historical review carriers as provenance,
+  not as a required live mirror. Reconcile an entry during related authorized
+  planning work: check for an existing Beads issue before creating one, retain
+  decisions and origin references, and transfer outstanding work before removing
+  its only carrier. This rule does not require a bulk migration or rewriting
+  completed review history.
 
 ### Status ownership across worktrees
 
@@ -88,8 +119,8 @@ can supersede their pending delivery advice without rewriting the old rounds.
 ### Topic structure
 
 A feature topic owns one coherent behavior change. Active version membership is
-owned by the version-contract topic and projected in `docs/status.md`; later
-version direction and unscheduled planning belong in `docs/roadmap.md`.
+owned by the version-contract topic and projected in `docs/status.md`; cross-version
+direction belongs in `docs/roadmap.md`, and issue intake belongs in Beads.
 See [Branching](../.agent-instructions/branching.md). Changing a proposed release
 assignment does not rename the feature topic or invalidate its review by itself.
 
@@ -237,10 +268,10 @@ retains its Go verification responsibilities.
 
 #### Creating a topic
 
-Record the topic's origin in `requirements.md`: a narrowed roadmap theme, backlog
-candidate, another review's finding, a measured defect requiring a new contract,
-or a direct user request. A repair that restores an existing contract is Lane A
-and follows Fix records instead of creating a topic.
+Record the topic's origin in `requirements.md`: a narrowed roadmap theme, a Beads
+issue or retained planning candidate, another review's finding, a measured defect
+requiring a new contract, or a direct user request. A repair that restores an
+existing contract is Lane A and follows Fix records instead of creating a topic.
 
 Use `设计：<topic>` for a new topic. The Skill's initialization command adapts
 project guidance; it does not create a product topic. Follow its current command
@@ -438,7 +469,8 @@ or that the snapshot is the current workflow contract.
   routing, not every detailed workflow rule.
 - `docs/README.md` contains stable navigation and authority pointers.
 - `docs/status.md` contains integrated project/release state and residual risk;
-  `docs/roadmap.md` contains later planning, backlog, and withdrawals.
+  `docs/roadmap.md` contains cross-version direction and planning decisions;
+  Beads carries live issue intake and deferred work.
 - Detailed rules have one routed owner. Topic status stays in `tasks.md` and
   full review history stays in its review record.
 

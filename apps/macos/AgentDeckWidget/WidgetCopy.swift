@@ -25,6 +25,7 @@ enum WidgetCopy {
 		"Widget storage unavailable", "Open AgentDeck to retry",
 		"Widget data could not be read", "Will retry on the next refresh",
 		"Widget data is from a newer AgentDeck", "Upgrade AgentDeck to refresh",
+		"All usage", "Session scope", "Session scope unavailable", "Work", "Aux", "Auxiliary", "All", "sessions", "Unknown",
 	]
 
 	static func text(_ key: String, bundle: Bundle? = nil) -> String {

@@ -85,7 +85,16 @@
     "Quota window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"额度窗口"}}}},
     "5h window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"5h window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"5 小时窗"}}}},
     "7d window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"7d window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"7 天窗"}}}},
-    "Reset not reported": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reset not reported"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"重置时间未报告"}}}}
+    "Reset not reported": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reset not reported"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"重置时间未报告"}}}},
+    "All usage": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"All usage"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部消耗"}}}},
+    "Session scope": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Session scope"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"会话范围"}}}},
+    "Session scope unavailable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Session scope unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"会话范围不可用"}}}},
+    "Work": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Work"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"工作"}}}},
+    "Aux": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Aux"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"辅助"}}}},
+    "Auxiliary": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Auxiliary"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"辅助"}}}},
+    "All": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"All"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部"}}}},
+    "sessions": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"sessions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"会话"}}}},
+    "Unknown": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unknown"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未知"}}}}
   },
   "version": "1.0"
 }

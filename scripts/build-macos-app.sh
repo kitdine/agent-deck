@@ -22,10 +22,12 @@ configuration=${AGENTDECK_APP_CONFIGURATION:-Debug}
 dist_dir=${AGENTDECK_DIST_DIR:-"$repo_root/dist"}
 build_number=${AGENTDECK_APP_BUILD_NUMBER:-}
 
+# Perf is Release optimization plus the measurement driver; it embeds a locally
+# built helper like Debug and is never packaged.
 case "$configuration" in
-Debug | Release) ;;
+Debug | Release | Perf) ;;
 *)
-  echo "AGENTDECK_APP_CONFIGURATION must be Debug or Release: $configuration" >&2
+  echo "AGENTDECK_APP_CONFIGURATION must be Debug, Release or Perf: $configuration" >&2
   exit 2
   ;;
 esac

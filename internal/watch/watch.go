@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -39,6 +40,7 @@ type Source struct {
 type LockFunc func(context.Context) (release func() error, err error)
 
 type Service struct {
+	StateRoot           string
 	Sources             SourceSet
 	Lock                LockFunc
 	Now                 func() time.Time
@@ -51,6 +53,11 @@ type Service struct {
 type SourceSet []Source
 
 func (s *Service) Poll(ctx context.Context) ([]Event, error) {
+	if s.StateRoot != "" {
+		if err := platform.RevalidateOwnership(s.StateRoot); err != nil {
+			return nil, err
+		}
+	}
 	if s.fingerprints == nil {
 		s.fingerprints = make(map[string]string)
 		for domain, fingerprint := range s.InitialFingerprints {
@@ -85,6 +92,12 @@ func (s *Service) Poll(ctx context.Context) ([]Event, error) {
 	events := make([]Event, 0, len(changed))
 	for _, item := range changed {
 		changes, err := item.source.Scan(ctx)
+		if errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+			// Some domain work committed, but completion is deferred. Leave
+			// its fingerprint unacknowledged so the next poll retries it.
+			events = append(events, s.event("scan_pending", item.source.Domain, changes, false, "source_identity_pending"))
+			continue
+		}
 		if err != nil {
 			if releaseErr := release(); releaseErr != nil {
 				return nil, errors.Join(fmt.Errorf("scan %s: %w", item.source.Domain, err), fmt.Errorf("release scan lock: %w", releaseErr))

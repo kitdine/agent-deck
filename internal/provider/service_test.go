@@ -516,7 +516,11 @@ func TestUseResolvesDefaultConfigAndUniqueManagedBackups(t *testing.T) {
 		}
 	}
 	var recorded int
-	if err := database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM operations WHERE redacted_backup_path LIKE ?", filepath.Join(state, "client-backups", "codex", "%")).Scan(&recorded); err != nil || recorded != 2 {
+	physicalState, err := filepath.EvalSymlinks(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM operations WHERE redacted_backup_path LIKE ?", filepath.Join(physicalState, "client-backups", "codex", "%")).Scan(&recorded); err != nil || recorded != 2 {
 		t.Fatalf("recorded managed backups = %d, %v", recorded, err)
 	}
 }

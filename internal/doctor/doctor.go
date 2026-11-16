@@ -19,6 +19,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
@@ -68,7 +69,16 @@ type Service struct {
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
-	report := Report{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "healthy", Healthy: true, Checks: []Check{}}
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		var refused *platform.ErrStateOwnershipRefused
+		if errors.As(err, &refused) {
+			return RefusedStateReport(full, refused.Reason), nil
+		}
+		return Report{}, err
+	}
+	s.StateRoot = root
+	report := newReport(full)
 	stateInfo, err := os.Stat(s.StateRoot)
 	if errors.Is(err, fs.ErrNotExist) {
 		report.Partial = true
@@ -86,6 +96,9 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	s.checkLock(&report)
 	if refusal, live := hookrefusal.Live(s.StateRoot, store.CurrentSchemaVersion); live {
 		report.add(Check{Name: "hook_deliveries", Status: "warning", Code: "hook_deliveries_dropped", Count: refusal.Count})
+	}
+	if check, ok := managedCommandOwnerCheck(s.Home); ok {
+		report.add(check)
 	}
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
@@ -160,6 +173,11 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 		report.add(Check{Name: "database", Status: "error", Code: "schema_incompatible"})
 	} else if err = s.checkUsage(ctx, database, &report, hasToolCalls); err != nil {
 		report.add(Check{Name: "usage", Status: "error", Code: "schema_incompatible"})
+	}
+	// Known capture gap: Codex Memories runs background requests that only
+	// OTel records, and collection is off. Reported only when it applies.
+	if config, err := telemetry.LoadConfig(s.StateRoot); err == nil && !config.Enabled && telemetry.ReadCodexFacts(s.Home, config.Port).NeedsCollection() {
+		report.add(Check{Name: "telemetry", Status: "warning", Code: telemetry.WarningMemoriesNotCounted, Reason: telemetry.WarningMemoriesNotCounted, Recovery: "agentdeck telemetry enable --write-codex-config"})
 	}
 	sessionHealth, err := session.CheckHealth(ctx, s.StateRoot, full)
 	if err != nil {

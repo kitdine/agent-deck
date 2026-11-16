@@ -1,0 +1,1528 @@
+{
+  "kind": "scan-performance-design-checks-v1",
+  "date": "2026-10-09",
+  "baseline_head": "32df0ae1223796f1e43bbd45a40f1efb9f7ff56e",
+  "method": "Design-author browser verification, source inspection and L0; no independent review",
+  "fixture": "Existing shared synthetic product prototype; no real user transcripts, database or telemetry",
+  "prototype_source_identity": [
+    {
+      "path": "prototype/index.html",
+      "sha256": "a6201105351c1e3148a070cde1b2e4dc315a3a5cd71a06eedb66d3d9a4aa12aa"
+    },
+    {
+      "path": "prototype/package-lock.json",
+      "sha256": "56f872c28922069fb98f32bb1b077bdf0280e594ee7f77e80489853569ae5881"
+    },
+    {
+      "path": "prototype/package.json",
+      "sha256": "d8810459f5e2271850114125fbd3f1b33f02d8a02b6578cf34243c77597cbd4f"
+    },
+    {
+      "path": "prototype/public/agentdeck-ad.png",
+      "sha256": "2ca8d907a414f296bf09dd0f4a27c72f424016243efe04bb142a0120b6b6e6f1"
+    },
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "be1b847e77b16218c5f11bda1702b28d63e24aecef621d748287a275e73529f7"
+    },
+    {
+      "path": "prototype/src/Cli.jsx",
+      "sha256": "c1947824844a503f7da696397840d197cc2985802f62dc821c8853426c401ed7"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "4039d364a8d4f37394b70b32166d166b21cce39bbe28cbcd95082239f6a2a635"
+    },
+    {
+      "path": "prototype/src/ScanProgress.jsx",
+      "sha256": "4fdd922205304af459f440c8bd5e22a5656edb1db5f3255c7760d171b87071bf"
+    },
+    {
+      "path": "prototype/src/ServingSnapshot.jsx",
+      "sha256": "b6702b220ffa72ccfb9b0949dc80fc2f89252ee5e25679cc18c36f74ffd1351d"
+    },
+    {
+      "path": "prototype/src/Settings.jsx",
+      "sha256": "9d4ae7165397595d714815ae967fb9a4b4fc8948f2f0162d7ef73ce824331c7f"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "abd719102d4232067d724099e477ece02fccc2389a356894cb999a047b0250a2"
+    },
+    {
+      "path": "prototype/src/TelemetrySettings.jsx",
+      "sha256": "fbbfdd48e060fa2b086f02ae677350cf80137ca158db6fd0b9a638f87be81024"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+    },
+    {
+      "path": "prototype/src/healthRecovery.js",
+      "sha256": "3600b8b05a6661a1ffc37a65da8641b07e5c217613704e024c8c5c0dbee1c779"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+    },
+    {
+      "path": "prototype/src/main.jsx",
+      "sha256": "82cc1abba90cf3b7d7bbce3f6e5b67f1cccaaed25a4a32ea27e58b9693abaedb"
+    },
+    {
+      "path": "prototype/src/scan-probe.js",
+      "sha256": "ddcdbaecd4d779525a96e3aa740141fd36651c4d2b45f7d90f1eb9c981ba8b01"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "a850b86354a15693a7730d0a87b9dd8214f43631e64bfcdc75d5c6dc0010d1ca"
+    },
+    {
+      "path": "prototype/vite.config.mjs",
+      "sha256": "c4ac0720af7ee64c2960e581501f6203008f29ff4c7ead4271c7f2526acd2482"
+    }
+  ],
+  "build": {
+    "command": "npm run build",
+    "result": "pass",
+    "vite": "6.4.2",
+    "modules": 4588
+  },
+  "state_matrix": {
+    "kind": "browser_state_matrix",
+    "cases": 64,
+    "passed": 64,
+    "failures": [],
+    "samples": [
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "first",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "first",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "first",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "first",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "first",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "first",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "first",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "first",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "invalid",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "memory",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "disk",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "partial",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "failed",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "memory",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "disk",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "partial",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "failed",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "memory",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "disk",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "partial",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "failed",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "memory",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "disk",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "partial",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "failed",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "memory",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "disk",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "partial",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "failed",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "memory",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "disk",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "partial",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "failed",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "memory",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "disk",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "partial",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "failed",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "memory",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "disk",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "rebuilding",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "partial",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "failed",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "zh",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "light",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "dark",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "dark",
+        "width": "280"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "light",
+        "width": "420"
+      },
+      {
+        "errors": [],
+        "lang": "en",
+        "passed": true,
+        "phase": "midnight",
+        "theme": "light",
+        "width": "280"
+      }
+    ]
+  },
+  "interactions": [
+    {
+      "assertions": [
+        {
+          "name": "retry_preserves_data",
+          "passed": true
+        },
+        {
+          "name": "publication_preserves_filters",
+          "passed": true
+        },
+        {
+          "name": "publication_preserves_focus",
+          "passed": true
+        },
+        {
+          "name": "publication_updates_atomically",
+          "passed": true
+        },
+        {
+          "name": "close_detaches_surface",
+          "passed": true
+        },
+        {
+          "name": "reopen_uses_current_publication",
+          "passed": true
+        },
+        {
+          "name": "midnight_today_unavailable",
+          "passed": true
+        },
+        {
+          "name": "midnight_historical_period_available",
+          "passed": true
+        },
+        {
+          "name": "invalid_cache_never_shows_numbers",
+          "passed": true
+        }
+      ],
+      "kind": "browser_interactions",
+      "language": "zh",
+      "passed": true
+    },
+    {
+      "assertions": [
+        {
+          "name": "retry_preserves_data",
+          "passed": true
+        },
+        {
+          "name": "publication_preserves_filters",
+          "passed": true
+        },
+        {
+          "name": "publication_preserves_focus",
+          "passed": true
+        },
+        {
+          "name": "publication_updates_atomically",
+          "passed": true
+        },
+        {
+          "name": "close_detaches_surface",
+          "passed": true
+        },
+        {
+          "name": "reopen_uses_current_publication",
+          "passed": true
+        },
+        {
+          "name": "midnight_today_unavailable",
+          "passed": true
+        },
+        {
+          "name": "midnight_historical_period_available",
+          "passed": true
+        },
+        {
+          "name": "invalid_cache_never_shows_numbers",
+          "passed": true
+        }
+      ],
+      "kind": "browser_interactions",
+      "language": "en",
+      "passed": true
+    }
+  ],
+  "cli": [
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "app"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "absent"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "independent"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "stopped"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "mismatch"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "telemetry"
+    },
+    {
+      "columns": "40",
+      "errors": [],
+      "measured_columns": 40.00216274668829,
+      "passed": true,
+      "scenario": "preview"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "app"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "absent"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "independent"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "stopped"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "mismatch"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "telemetry"
+    },
+    {
+      "columns": "80",
+      "errors": [],
+      "measured_columns": 80.00432549337658,
+      "passed": true,
+      "scenario": "preview"
+    }
+  ],
+  "schema_precedence": [
+    {
+      "passed": true,
+      "scenario": "first"
+    },
+    {
+      "passed": true,
+      "scenario": "disk"
+    }
+  ],
+  "legacy_scan_probe": [
+    {
+      "language": "zh",
+      "failed": [],
+      "passed": 14,
+      "results": [
+        {
+          "name": "unknown totals do not display fictitious count",
+          "pass": true
+        },
+        {
+          "name": "first use shows loading without fabricated data cards",
+          "pass": true
+        },
+        {
+          "name": "source counts represent committed work",
+          "pass": true
+        },
+        {
+          "name": "popover closes independently of worker",
+          "pass": true
+        },
+        {
+          "name": "background advances without reopening popover",
+          "pass": true
+        },
+        {
+          "name": "reopen receives latest phase",
+          "pass": true
+        },
+        {
+          "name": "indexes complete does not publish before statistics",
+          "pass": true
+        },
+        {
+          "name": "completed snapshot published as whole result",
+          "pass": true
+        },
+        {
+          "name": "refresh retains newly obtained prior snapshot",
+          "pass": true
+        },
+        {
+          "name": "failure retains prior data and retry",
+          "pass": true
+        },
+        {
+          "name": "partial outcomes expose independent session failure",
+          "pass": true
+        },
+        {
+          "name": "one atomic stage live region",
+          "pass": true
+        },
+        {
+          "name": "stage updates do not move focus",
+          "pass": true
+        },
+        {
+          "name": "progress text fits narrow card",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "failed": [],
+      "passed": 14,
+      "results": [
+        {
+          "name": "unknown totals do not display fictitious count",
+          "pass": true
+        },
+        {
+          "name": "first use shows loading without fabricated data cards",
+          "pass": true
+        },
+        {
+          "name": "source counts represent committed work",
+          "pass": true
+        },
+        {
+          "name": "popover closes independently of worker",
+          "pass": true
+        },
+        {
+          "name": "background advances without reopening popover",
+          "pass": true
+        },
+        {
+          "name": "reopen receives latest phase",
+          "pass": true
+        },
+        {
+          "name": "indexes complete does not publish before statistics",
+          "pass": true
+        },
+        {
+          "name": "completed snapshot published as whole result",
+          "pass": true
+        },
+        {
+          "name": "refresh retains newly obtained prior snapshot",
+          "pass": true
+        },
+        {
+          "name": "failure retains prior data and retry",
+          "pass": true
+        },
+        {
+          "name": "partial outcomes expose independent session failure",
+          "pass": true
+        },
+        {
+          "name": "one atomic stage live region",
+          "pass": true
+        },
+        {
+          "name": "stage updates do not move focus",
+          "pass": true
+        },
+        {
+          "name": "progress text fits narrow card",
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "a11y": {
+    "scope": ".serving-status, failed state, 280 width, zh/en x dark/light",
+    "samples": [
+      {
+        "url": "http://127.0.0.1:4187/?serving=failed&lang=zh&theme=dark&width=280&tab=usage",
+        "axe_version": "4.12.1",
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      },
+      {
+        "url": "http://127.0.0.1:4187/?serving=failed&lang=zh&theme=light&width=280&tab=usage",
+        "axe_version": "4.12.1",
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      },
+      {
+        "url": "http://127.0.0.1:4187/?serving=failed&lang=en&theme=dark&width=280&tab=usage",
+        "axe_version": "4.12.1",
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      },
+      {
+        "url": "http://127.0.0.1:4187/?serving=failed&lang=en&theme=light&width=280&tab=usage",
+        "axe_version": "4.12.1",
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      }
+    ]
+  },
+  "visual_inspection": {
+    "result": "pass",
+    "images": [
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/disk-zh-dark-420.png",
+        "sha256": "c2e8722d050c948deca0b09fa579430545098e9e871fb73454a2a458063ca70b"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/rebuilding-en-light-280.png",
+        "sha256": "d325cb49fd8dc3920f3cc1f8964ef4f02915f4c837e2e9cf3c8e678d6cbecf76"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/first-zh-dark-280.png",
+        "sha256": "73aaef705f3c704987fde4d06d79c7785229b61f34ebc386651b26fe9fb2d6bd"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/failed-en-dark-280.png",
+        "sha256": "48d90f5d81cc6a9abbbf13b200ec5a16627b750202a49e31d7db6886c3af4c80"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/midnight-zh-light-420.png",
+        "sha256": "e7186fe09d424774713b56dd9cb986eb721756bed16cae48d4db662721f7df50"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/partial-en-light-420.png",
+        "sha256": "0d88cef1668db991ee61a27b999b1d790d753ce0e99caf6d0ee44ed7ca40275c"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/cli-app-en-dark.png",
+        "sha256": "448df09d505d8068e709f082ee8dca6b1182dfb5e154e5c6e901dc91a11f424b"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/cli-telemetry-en-light.png",
+        "sha256": "4d86e1e28fcd33b2c3fe9024ae63eb67f8e127ee63324dde282ec512dab2cb13"
+      },
+      {
+        "path": "docs/topics/scan-performance/ux/prototype/serving/cli-mismatch-en-dark.png",
+        "sha256": "be8e33c21669c826e1b31b6e2eccfda9f726f346cfc38621e5cd6a6698058d11"
+      }
+    ]
+  },
+  "verification_reuse": [
+    "Initial global role=status assertion counted the existing usage-chart readout as a duplicate refresh announcement. It was narrowed to the serving region and header; 48 affected cases rerun, 16 empty-state results reused.",
+    "Midnight is date-window unavailability rather than a storage failure. The 8 midnight cases were rerun after this change; 56 other phase cases were preserved because the guard is false for those phases.",
+    "Two existing schema-precedence cases and both-language interaction/legacy scan tests were checked after the midnight change.",
+    "Final CLI listener-status and monospaced column geometry changes affect only EngineCli and its scoped CSS. All 14 CLI state/column cases and three CLI screenshots were refreshed; menu-bar results reused.",
+    "The private Vite preview served an old transformed source despite updated disk content. Its workspace-owned process was restarted, then HTTP source was checked before collecting affected final cases.",
+    "OTel Settings module, preferences and scroll constraints were added; original serving/CLI code paths remain unchanged outside Settings/telemetry query and use their prior scoped evidence. New Settings cases and a11y checked separately."
+  ],
+  "assertion_programs": {
+    "interactions": "(async () => {\n  const wait = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));\n  const assertions = [];\n  const check = (name, pass) => assertions.push({name, passed:!!pass});\n  const select = document.querySelector('[data-serving-state]');\n  const phase = value => { select.value=value; select.dispatchEvent(new Event('change',{bubbles:true})); };\n  phase('failed'); await wait();\n  const before = document.querySelector('.hero')?.innerText;\n  document.querySelector('[data-serving-retry]').click(); await wait();\n  check('retry_preserves_data', document.querySelector('[data-serving-status]')?.dataset.phase==='rebuilding' && document.querySelector('.hero')?.innerText===before);\n  document.querySelector('.segmented.clients button:nth-child(2)').click();\n  document.querySelector('.segmented.periods button:nth-child(3)').click(); await wait();\n  const focused = document.querySelector('.segmented.clients button:nth-child(2)'); focused.focus();\n  document.querySelector('[data-serving-publish]').click(); await wait();\n  check('publication_preserves_filters', document.querySelector('.segmented.clients [aria-selected=\"true\"]')===focused && document.querySelector('.segmented.periods button:nth-child(3)').getAttribute('aria-selected')==='true');\n  check('publication_preserves_focus',document.activeElement===focused);\n  check('publication_updates_atomically',document.querySelector('[data-serving-status]')?.dataset.phase==='memory' && document.querySelector('.popover')?.dataset.servingSnapshot==='current');\n  phase('rebuilding'); await wait();\n  document.querySelector('.menubar-item').click(); await wait();\n  check('close_detaches_surface',!document.querySelector('.popover'));\n  document.querySelector('[data-serving-publish]').click(); await wait();\n  document.querySelector('.menubar-item').click(); await wait();\n  check('reopen_uses_current_publication',document.querySelector('[data-serving-status]')?.dataset.phase==='memory' && !!document.querySelector('.hero'));\n  phase('midnight'); await wait();\n  check('midnight_today_unavailable',document.querySelector('.hero strong')?.textContent.trim()==='—');\n  document.querySelector('.segmented.periods button:nth-child(2)').click(); await wait();\n  check('midnight_historical_period_available',document.querySelector('.hero strong')?.textContent.trim()!=='—');\n  phase('invalid'); await wait();\n  check('invalid_cache_never_shows_numbers',!document.querySelector('.hero') && document.querySelector('.menubar-item strong')?.textContent==='—');\n  return {kind:'browser_interactions',language:new URLSearchParams(location.search).get('lang'),assertions,passed:assertions.every(x=>x.passed)};\n})()\n",
+    "state_matrix": [
+      "Expected serving phase; one serving live region; no duplicate header refresh announcement",
+      "No hero or icon numbers for first/invalid; usable prior hero for other phases",
+      "Today unavailable at midnight; no storage-failure/Open-AgentDeck copy for that date window",
+      "New banner text/buttons do not overflow or truncate; stage controls stay outside product panel"
+    ],
+    "cli": [
+      "Parse command JSON; stdout/stderr/exit semantics",
+      "capture_only is not counted; listener/config distinction",
+      "No automatic Codex config apply; stop preserves App lease",
+      "Text/JSON fit; content width measured against actual monospace zero-glyph advance for 40/80 columns"
+    ]
+  },
+  "limitations": [
+    "No native icon-to-frame latency, VoiceOver, Dynamic Type, AppKit focus or real engine lifetime evidence.",
+    "A real-corpus isolated mechanism experiment exists; native/full proposed-engine performance and actual OTel producer identity/transport remain unverified.",
+    "Browser a11y is limited to the new status region, not a complete panel audit or native accessibility certification.",
+    "DOM/live-region checks and shared synthetic data do not prove actual cache, database or billing correctness.",
+    "Production Go/Swift, dependencies, user configuration and databases were not changed; no commit, push, installation or release.",
+    "Settings axe CJK hint background has one color-contrast incomplete in each Chinese theme; computed flat-color contrast and visual specimens checked separately. Incomplete was retained."
+  ],
+  "l0": {
+    "result": "pass",
+    "commands": [
+      "bash scripts/check-topic-docs.sh scan-performance",
+      "python3 scripts/check-docs.py",
+      "make check-whitespace",
+      "git diff --check"
+    ],
+    "scope": "Topic document set, changed Markdown links/structure, whitespace and diff hygiene; no semantic review or product CE gate"
+  },
+  "settings": {
+    "cases": [
+      {
+        "assertions": [
+          {
+            "name": "default_off",
+            "passed": true
+          },
+          {
+            "name": "description_present",
+            "passed": true
+          },
+          {
+            "name": "enable_not_configured",
+            "passed": true
+          },
+          {
+            "name": "preview_redacted",
+            "passed": true
+          },
+          {
+            "name": "preview_opt_in",
+            "passed": true
+          },
+          {
+            "name": "stage_outside_product",
+            "passed": true
+          },
+          {
+            "name": "state_waiting",
+            "passed": true
+          },
+          {
+            "name": "state_ready",
+            "passed": true
+          },
+          {
+            "name": "state_capture_only",
+            "passed": true
+          },
+          {
+            "name": "state_disconnected",
+            "passed": true
+          },
+          {
+            "name": "state_paused",
+            "passed": true
+          },
+          {
+            "name": "disable_preserves_data",
+            "passed": true
+          },
+          {
+            "name": "reopen_preserves_switch",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          }
+        ],
+        "lang": "zh",
+        "passed": true,
+        "theme": "dark"
+      },
+      {
+        "assertions": [
+          {
+            "name": "default_off",
+            "passed": true
+          },
+          {
+            "name": "description_present",
+            "passed": true
+          },
+          {
+            "name": "enable_not_configured",
+            "passed": true
+          },
+          {
+            "name": "preview_redacted",
+            "passed": true
+          },
+          {
+            "name": "preview_opt_in",
+            "passed": true
+          },
+          {
+            "name": "stage_outside_product",
+            "passed": true
+          },
+          {
+            "name": "state_waiting",
+            "passed": true
+          },
+          {
+            "name": "state_ready",
+            "passed": true
+          },
+          {
+            "name": "state_capture_only",
+            "passed": true
+          },
+          {
+            "name": "state_disconnected",
+            "passed": true
+          },
+          {
+            "name": "state_paused",
+            "passed": true
+          },
+          {
+            "name": "disable_preserves_data",
+            "passed": true
+          },
+          {
+            "name": "reopen_preserves_switch",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          }
+        ],
+        "lang": "zh",
+        "passed": true,
+        "theme": "light"
+      },
+      {
+        "assertions": [
+          {
+            "name": "default_off",
+            "passed": true
+          },
+          {
+            "name": "description_present",
+            "passed": true
+          },
+          {
+            "name": "enable_not_configured",
+            "passed": true
+          },
+          {
+            "name": "preview_redacted",
+            "passed": true
+          },
+          {
+            "name": "preview_opt_in",
+            "passed": true
+          },
+          {
+            "name": "stage_outside_product",
+            "passed": true
+          },
+          {
+            "name": "state_waiting",
+            "passed": true
+          },
+          {
+            "name": "state_ready",
+            "passed": true
+          },
+          {
+            "name": "state_capture_only",
+            "passed": true
+          },
+          {
+            "name": "state_disconnected",
+            "passed": true
+          },
+          {
+            "name": "state_paused",
+            "passed": true
+          },
+          {
+            "name": "disable_preserves_data",
+            "passed": true
+          },
+          {
+            "name": "reopen_preserves_switch",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          }
+        ],
+        "lang": "en",
+        "passed": true,
+        "theme": "dark"
+      },
+      {
+        "assertions": [
+          {
+            "name": "default_off",
+            "passed": true
+          },
+          {
+            "name": "description_present",
+            "passed": true
+          },
+          {
+            "name": "enable_not_configured",
+            "passed": true
+          },
+          {
+            "name": "preview_redacted",
+            "passed": true
+          },
+          {
+            "name": "preview_opt_in",
+            "passed": true
+          },
+          {
+            "name": "stage_outside_product",
+            "passed": true
+          },
+          {
+            "name": "state_waiting",
+            "passed": true
+          },
+          {
+            "name": "state_ready",
+            "passed": true
+          },
+          {
+            "name": "state_capture_only",
+            "passed": true
+          },
+          {
+            "name": "state_disconnected",
+            "passed": true
+          },
+          {
+            "name": "state_paused",
+            "passed": true
+          },
+          {
+            "name": "disable_preserves_data",
+            "passed": true
+          },
+          {
+            "name": "reopen_preserves_switch",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          },
+          {
+            "name": "no_overflow",
+            "passed": true
+          }
+        ],
+        "lang": "en",
+        "passed": true,
+        "theme": "light"
+      }
+    ],
+    "a11y": [
+      {
+        "success": true,
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 1,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": [
+          {
+            "help": "Elements must meet minimum color contrast ratio thresholds",
+            "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+            "id": "color-contrast",
+            "impact": "serious",
+            "nodeCount": 1,
+            "nodes": [
+              {
+                "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it partially overlaps other elements",
+                "html": "<small id=\"settings-otel-hint\">默认关闭。接收 Codex 的实时用量；不需要设置刷新周期。关闭后保留已采集数据。</small>",
+                "target": [
+                  "#settings-otel-hint"
+                ]
+              }
+            ],
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ]
+          }
+        ]
+      },
+      {
+        "success": true,
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 1,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": [
+          {
+            "help": "Elements must meet minimum color contrast ratio thresholds",
+            "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+            "id": "color-contrast",
+            "impact": "serious",
+            "nodeCount": 1,
+            "nodes": [
+              {
+                "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it partially overlaps other elements",
+                "html": "<small id=\"settings-otel-hint\">默认关闭。接收 Codex 的实时用量；不需要设置刷新周期。关闭后保留已采集数据。</small>",
+                "target": [
+                  "#settings-otel-hint"
+                ]
+              }
+            ],
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ]
+          }
+        ]
+      },
+      {
+        "success": true,
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      },
+      {
+        "success": true,
+        "counts": {
+          "inapplicable": 47,
+          "incomplete": 0,
+          "passes": 12,
+          "violations": 0
+        },
+        "violations": [],
+        "incomplete": []
+      }
+    ],
+    "manual_contrast": [
+      {
+        "background": "rgb(11, 14, 19)",
+        "foreground": "rgb(127, 137, 149)",
+        "method": "Computed static flat Settings background; visual specimens inspected; axe CJK geometry remains incomplete",
+        "passes_4_5": true,
+        "ratio": 5.444028515417816,
+        "theme": "dark"
+      },
+      {
+        "background": "rgb(247, 249, 252)",
+        "foreground": "rgb(103, 111, 123)",
+        "method": "Computed static flat Settings background; visual specimens inspected; axe CJK geometry remains incomplete",
+        "passes_4_5": true,
+        "ratio": 4.813430489679712,
+        "theme": "light"
+      }
+    ],
+    "small_window": {
+      "body_scrolls": true,
+      "stage_reachable": true,
+      "window_fits": true
+    },
+    "scope": "Synthetic Settings only; no real Codex config, token or receiver changes"
+  },
+  "feasibility_result": "docs/topics/scan-performance/ux/prototype/serving/feasibility-results.json",
+  "native_evaluation": {
+    "result": "docs/topics/scan-performance/ux/prototype/serving/native-ab-results.json",
+    "data_preparation": "12 paired samples; all logical projection checks passed",
+    "popover_frame": "not_verified; two invalid UI attempts stopped",
+    "browser_latency": "withdrawn from product performance evidence",
+    "production_code": "unchanged; experimental native edits only in private exported HEAD"
+  },
+  "first_loading_evaluation": {
+    "result": "docs/topics/scan-performance/ux/prototype/serving/first-loading-results.json",
+    "empty_db": "3 paired source-priority pilots; today projection and same-hour extended checks passed",
+    "committed_today": "3 paired read-only window-query pilots; totals matched",
+    "pending_today": "2 backup pairs plus original-state-root check; substantial performance variance unresolved",
+    "native_first_frame": "not_verified; no browser timing used",
+    "specimens": "existing first/partial/memory states illustrate availability; do not execute the staged ingestion"
+  },
+  "round1_repair": {
+    "result": "docs/topics/scan-performance/ux/prototype/serving/repair-checks.json",
+    "assertions": 120,
+    "passed": true,
+    "historical_checks": "Existing pre-repair counts retained as historical observations; changed UI claims are covered by the repair suite",
+    "capture": "17 captures regenerated at 900x1500; synthetic only; no timing",
+    "native_or_producer": "not measured"
+  }
+}

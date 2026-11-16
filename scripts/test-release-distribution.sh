@@ -70,6 +70,7 @@ grep -F 'on_arch_conditional arm: "arm64", intel: "amd64"' "$formula" >/dev/null
 grep -F 'shell_parameter_format: :cobra' "$formula" >/dev/null
 grep -F 'def caveats' "$formula" >/dev/null
 grep -F 'Project-attribution wrappers are optional and only act when a provider' "$formula" >/dev/null
+grep -F '#{opt_bin}/agentdeck install claim' "$formula" >/dev/null
 grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$formula" >/dev/null
 grep -F 'wrappers invoke the real client without starting AgentDeck. When the' "$formula" >/dev/null
 grep -F 'marker exists, each invocation starts one AgentDeck process and performs' "$formula" >/dev/null

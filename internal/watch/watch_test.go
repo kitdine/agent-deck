@@ -11,6 +11,47 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
+func TestPendingScanRetriesWithoutAdvancingItsFingerprint(t *testing.T) {
+	attempts, releases := 0, 0
+	persisted := map[string]string{}
+	service := Service{
+		Sources: SourceSet{
+			{Domain: "session", Snapshot: func(context.Context) (string, error) { return "same", nil }, Scan: func(context.Context) (int, error) {
+				attempts++
+				if attempts == 1 {
+					return 1, store.ErrTelemetrySourceIdentityPending
+				}
+				return 0, nil
+			}},
+			{Domain: "extension", Snapshot: func(context.Context) (string, error) { return "same", nil }, Scan: func(context.Context) (int, error) { return 2, nil }},
+		},
+		Lock: func(context.Context) (func() error, error) {
+			return func() error { releases++; return nil }, nil
+		},
+		PersistFingerprint: func(_ context.Context, domain, value string) error {
+			persisted[domain] = value
+			return nil
+		},
+	}
+	events, err := service.Poll(context.Background())
+	if err != nil || len(events) != 2 {
+		t.Fatalf("pending poll: %#v %v", events, err)
+	}
+	if events[0].Type != "scan_pending" || events[0].Reason != "source_identity_pending" || events[0].Changes != 1 || events[0].Skipped {
+		t.Fatalf("pending event: %+v", events[0])
+	}
+	if _, advanced := persisted["session"]; advanced || persisted["extension"] != "same" {
+		t.Fatalf("fingerprints: %#v", persisted)
+	}
+	events, err = service.Poll(context.Background())
+	if err != nil || len(events) != 1 || events[0].Type != "scan_completed" || attempts != 2 || persisted["session"] != "same" || releases != 2 {
+		t.Fatalf("recovery: %#v %v attempts=%d persisted=%v releases=%d", events, err, attempts, persisted, releases)
+	}
+	if events, err := service.Poll(context.Background()); err != nil || len(events) != 0 || attempts != 2 {
+		t.Fatalf("unchanged after recovery: %#v %v attempts=%d", events, err, attempts)
+	}
+}
+
 func TestPollSkipsUnchangedSourcesWithoutScanning(t *testing.T) {
 	scans := 0
 	service := Service{

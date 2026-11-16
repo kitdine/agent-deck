@@ -139,13 +139,6 @@ struct AttributionPanelModel: Equatable, Sendable {
 	let unpricedIdentifiers: [String]
 }
 
-struct RecentSessionRow: Identifiable, Equatable, Sendable {
-	let id: String
-	let title: String
-	let detail: String
-	let when: String
-}
-
 enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
 	case activity
 	case workflow
@@ -156,7 +149,6 @@ enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable,
 
 enum WorkSignalPresentationState: Equatable, Sendable {
 	case captured
-	case empty
 	case uncaptured
 }
 
@@ -209,13 +201,14 @@ struct WorkSignalPanelModel: Equatable, Sendable {
 	let topMCPText: String
 }
 
+/// The Sessions tab. Every figure in it comes from one session-scope view;
+/// the legacy all-session `sessions` section never feeds it, so an absent
+/// view is shown as legacy rather than as Work.
 struct SessionsPanelModel: Equatable, Sendable {
 	let available: Bool
-	let stats: [StatChip]
-	let workSignals: WorkSignalPanelModel
-	let projects: [ShareRow]
-	let recent: [RecentSessionRow]
-	let emptyCopy: String?
+	let scope: SessionScopePanelModel
+
+	var workSignals: WorkSignalPanelModel { scope.workSignals }
 }
 
 struct RhythmCell: Identifiable, Equatable, Sendable {
@@ -311,6 +304,23 @@ struct HealthDetailModel: Equatable, Sendable {
 	let source: String
 }
 
+/// One hold on the coordinator's publications, released exactly once by
+/// whichever signal comes first.
+@MainActor
+final class PublicationHold {
+	private var coordinator: DesktopRefreshCoordinator?
+
+	init(_ coordinator: DesktopRefreshCoordinator) {
+		coordinator.holdPublications()
+		self.coordinator = coordinator
+	}
+
+	func release() {
+		coordinator?.releasePublications()
+		coordinator = nil
+	}
+}
+
 /// The only place coordinator state becomes presentation values. It owns no
 /// refresh state machine, executes no process, decodes no wire, and never
 /// touches the App Group cache; views read this and compute nothing themselves.
@@ -320,39 +330,135 @@ final class MenuBarViewModel {
 	let coordinator: DesktopRefreshCoordinator
 	let switchController: SwitchController
 	let preferences: DesktopPreferences
+	/// The window's session-scope state; it outlives tab and filter changes.
+	let sessionScope: SessionScopeController
 
 	var selectedClient = "all"
 	var selectedPeriod = "today"
 	var selectedPanel: MenuBarPanel = .quota
+
+	// MARK: Selection intents
+
+	// Controls and the measurement driver change the selection only through
+	// these entry points, so `select.intent` marks the same work for both.
+	// Its dimension count (1 client, 2 period, 3 panel) lets P03 be judged per dimension.
+	func selectClient(_ id: String) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 1))
+		markSelectionPending()
+		selectedClient = id
+	}
+
+	func selectPeriod(_ id: String) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 2))
+		markSelectionPending()
+		selectedPeriod = id
+	}
+
+	func selectPanel(_ panel: MenuBarPanel) {
+		PerfTrace.mark(.selectIntent, PerfCount("dimension", 3))
+		markSelectionPending()
+		selectedPanel = panel
+	}
+
+	private func markSelectionPending() {
+		holdPublicationsUntilSelectionShown()
+		guard PerfTrace.isEnabled else { return }
+		PerfFrameProbe.shared.beginSelection()
+	}
+
+	/// A publication installed between a selection and its frame would replace
+	/// that frame with a full rebuild of the surface. Hold it until the frame
+	/// that shows the selection has reached the display (at most 300 ms).
+	private func holdPublicationsUntilSelectionShown() {
+		let hold = PublicationHold(coordinator)
+		CATransaction.setCompletionBlock {
+			DispatchQueue.main.async {
+				MainActor.assumeIsolated {
+					guard let screen = NSScreen.main else { return hold.release() }
+					// The display link retains its target until it is invalidated.
+					let target = FirstRefreshTarget { DispatchQueue.main.async { MainActor.assumeIsolated { hold.release() } } }
+					screen.displayLink(target: target, selector: #selector(FirstRefreshTarget.tick(_:))).add(to: .main, forMode: .common)
+				}
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { MainActor.assumeIsolated { hold.release() } }
+	}
+
+	/// The identity and hero totals of the data frame this selection renders.
+	var perfDataFrame: PerfDataFrame? {
+		guard PerfTrace.isEnabled, let snapshot, let period = activePeriod else { return nil }
+		let publication = coordinator.servingHeader?.publicationID ?? snapshot.generatedAt
+		var day: Int64 = 0
+		if let date = DesktopFormat.timestamp(snapshot.generatedAt) {
+			let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+			let year: Int = parts.year ?? 0
+			let month: Int = parts.month ?? 0
+			let dayOfMonth: Int = parts.day ?? 0
+			day = Int64(year * 10000 + month * 100 + dayOfMonth)
+		}
+		return PerfDataFrame(
+			key: PerfDataFrame.key(publication: publication, client: selectedClient, period: selectedPeriod, panel: presentedPanel.rawValue),
+			tokens: period.totals.tokens, events: period.totals.events, sessions: period.totals.sessions,
+			client: PerfDataFrame.code(client: selectedClient), period: PerfDataFrame.code(period: period.period),
+			day: day, cost: PerfDataFrame.cost(period.totals), partial: qualifiers.contains(.partial) ? 1 : 0,
+			committed: Int64(coordinator.servingHeader?.usageCoverage.committed ?? 0),
+			sources: Int64(coordinator.servingHeader?.usageCoverage.sources ?? 0),
+			coverageComplete: coordinator.servingHeader?.usageCoverage.state == "complete" ? 1 : 0)
+	}
 	var showsHealthDetail = false
 	private(set) var copiedHealthRowID: String?
 	@ObservationIgnored private var healthCopyGeneration = UUID()
 	var pendingConfirmation: ProviderSwitchTarget?
 	private(set) var collapsedSectionIDs = Set<String>()
 
+	private var dateRevision: UInt64 = 0
 	@ObservationIgnored private let now: () -> Date
 
 	init(
 		coordinator: DesktopRefreshCoordinator,
 		switchController: SwitchController,
 		preferences: DesktopPreferences,
+		sessionScopeReader: (any DesktopSessionScopeReading)? = nil,
 		now: @escaping () -> Date = Date.init
 	) {
 		self.coordinator = coordinator
 		self.switchController = switchController
 		self.preferences = preferences
+		self.sessionScope = SessionScopeController(reader: sessionScopeReader)
 		self.now = now
+	}
+
+	/// Date changes invalidate Observation even when no new publication arrives.
+	func invalidateDate() {
+		dateRevision &+= 1
+	}
+
+	var nextDateInvalidationDelay: TimeInterval {
+		let instant = now()
+		var calendar = Calendar(identifier: .gregorian)
+		let zone = coordinator.servingHeader?.timezone ?? "Local"
+		calendar.timeZone = zone == "Local" ? .current : TimeZone(identifier: zone) ?? .current
+		let start = calendar.startOfDay(for: instant)
+		let next = calendar.date(byAdding: .day, value: 1, to: start)!
+		return max(0.001, next.timeIntervalSince(instant))
 	}
 
 	// MARK: Surface and qualifiers
 
 	var presentation: DesktopPresentationState {
-		DesktopPresentationState.derive(from: coordinator.state, now: now())
+		_ = dateRevision
+		return DesktopPresentationState.derive(from: coordinator.state, now: now())
 	}
 
 	var surface: DesktopPresentationSurface { presentation.surface }
 
-	var qualifiers: [DesktopPresentationQualifier] { presentation.qualifiers }
+	var qualifiers: [DesktopPresentationQualifier] {
+		var values = presentation.qualifiers
+		if coordinator.servingHeader?.freshness == "stale", !values.contains(.stale), !values.contains(.aged) {
+			values.insert(.stale, at: 0)
+		}
+		return values
+	}
 
 	var isRefreshing: Bool {
 		refreshActionState == .running
@@ -569,6 +675,9 @@ final class MenuBarViewModel {
 	/// An unrecognized code is shown verbatim rather than dropped.
 	func warningCopy(_ code: String) -> String {
 		switch code {
+		case "source_coverage_partial": t(DesktopCopy.sourceCoveragePartial)
+		case "source_coverage_unknown": t(DesktopCopy.sourceCoverageUnknown)
+		case "source_update_pending": t(DesktopCopy.sourceUpdatePending)
 		case "provider_unavailable": t(DesktopCopy.warningProviderUnavailable)
 		case "provider_candidates_unavailable": t(DesktopCopy.warningProviderCandidatesUnavailable)
 		case "usage_unavailable": t(DesktopCopy.warningUsageUnavailable)
@@ -586,10 +695,11 @@ final class MenuBarViewModel {
 		guard let snapshot else { return [] }
 		let subtotals = snapshot.usage.presentation.clientSubtotals
 		return snapshot.usage.presentation.scopes.map { scope in
-			let subtotal = subtotals.available
+			let subtotal = isPeriodAvailable(selectedPeriod) && subtotals.available
 				? subtotals.items.first(where: { $0.period == selectedPeriod && $0.client == scope.client })?.value
 				: nil
-			let totals = scope.periods.items.first(where: { $0.period == selectedPeriod })?.totals
+			let totals = isPeriodAvailable(selectedPeriod)
+				? scope.periods.items.first(where: { $0.period == selectedPeriod })?.totals : nil
 			return FilterOption(
 				id: scope.client,
 				label: clientLabel(scope.client),
@@ -599,6 +709,9 @@ final class MenuBarViewModel {
 	}
 
 	var periodOptions: [FilterOption] {
+		if coordinator.servingHeader != nil {
+			return ["today", "7d", "30d"].map { FilterOption(id: $0, label: periodLabel($0), value: nil) }
+		}
 		guard let scope = activeScope else { return [] }
 		return scope.periods.items.map { FilterOption(id: $0.period, label: periodLabel($0.period), value: nil) }
 	}
@@ -625,7 +738,7 @@ final class MenuBarViewModel {
 	private func panelHasUnavailableData(_ panel: MenuBarPanel) -> Bool {
 		guard let snapshot else { return false }
 		if panel == .quota { return !snapshot.subscription.available }
-		guard let scope = activeScope else { return true }
+		guard isPeriodAvailable(selectedPeriod), let scope = activeScope else { return true }
 		switch panel {
 		case .quota: return !snapshot.subscription.available
 		case .usage:
@@ -635,7 +748,7 @@ final class MenuBarViewModel {
 		case .attribution:
 			return !scope.quality.available || !scope.pricing.available
 		case .sessions:
-			return !snapshot.sessions.available || !snapshot.sessions.periods.available
+			return !sessionScopePanelIsReady
 		}
 	}
 
@@ -651,20 +764,30 @@ final class MenuBarViewModel {
 			?? scopes.first
 	}
 
+	func isPeriodAvailable(_ period: String) -> Bool {
+		_ = dateRevision
+		// Historical periods keep their recorded window; today must still name
+		// the installed publication's actual calendar day on every surface.
+		guard period == "today", let header = coordinator.servingHeader else { return true }
+		return header.matchesCurrentDay(now: now())
+	}
+
 	var activePeriod: DesktopUsagePeriodV1? {
-		activeScope?.periods.items.first(where: { $0.period == selectedPeriod })
+		guard isPeriodAvailable(selectedPeriod) else { return nil }
+		return activeScope?.periods.items.first(where: { $0.period == selectedPeriod })
 	}
 
 	// MARK: Hero
 
 	var hero: MenuBarHero? {
 		guard let snapshot, let period = activePeriod else { return nil }
-		let projects = sessionStatistics?.distinctProjects ?? 0
+		let projects = sessionStatistics?.distinctProjects
 		return MenuBarHero(
 			scopeLine: "\(periodLabel(period.period)) · \(DesktopFormat.day(snapshot.generatedAt))",
 			amount: costText(period.totals),
 			tokens: DesktopFormat.tokens(period.totals.tokens),
-			counts: t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64(projects)),
+			counts: projects.map { t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64($0)) }
+				?? t(DesktopCopy.heroCountsUnknownProjects, period.totals.events, period.totals.sessions),
 			costIncomplete: period.totals.pricingComplete
 				? nil
 				: period.totals.unpricedComponents > 0
@@ -834,7 +957,7 @@ final class MenuBarViewModel {
 	// MARK: Attribution panel
 
 	var attributionPanel: AttributionPanelModel {
-		guard let scope = activeScope else {
+		guard isPeriodAvailable(selectedPeriod), let scope = activeScope else {
 			return AttributionPanelModel(
 				qualityAvailable: false, tiers: [], providerGroups: [],
 				pricingAvailable: false, pricingHeadline: "", pricingCoverage: 0, unpricedIdentifiers: []
@@ -884,79 +1007,38 @@ final class MenuBarViewModel {
 	// MARK: Sessions panel
 
 	var sessionStatistics: DesktopSessionsPeriodItemV1? {
-		guard let snapshot, snapshot.sessions.periods.available else { return nil }
+		guard isPeriodAvailable(selectedPeriod), let snapshot, snapshot.sessions.periods.available else { return nil }
 		return snapshot.sessions.periods.items.first(where: { $0.period == selectedPeriod && $0.client == selectedClient })
 	}
 
+	/// The Sessions tab reads only the session-scope view. A today that no
+	/// longer names the installed publication's day is unavailable, as on
+	/// every other surface.
 	var sessionsPanel: SessionsPanelModel {
-		guard let snapshot, snapshot.sessions.available else {
+		guard isPeriodAvailable(selectedPeriod), snapshot != nil else {
 			return SessionsPanelModel(
 				available: false,
-				stats: [],
-				workSignals: workSignalPanel(nil, statistics: nil),
-				projects: [],
-				recent: [],
-				emptyCopy: nil
+				scope: .message(.unavailable, notice: t(DesktopCopy.sessionScopeUnavailable),
+					hint: t(DesktopCopy.sessionScopeUnavailableHint),
+					signals: workSignalPanel(nil, period: selectedPeriod, client: selectedClient))
 			)
 		}
-		let statistics = sessionStatistics
-		let stats: [StatChip] = [
-			StatChip(
-				id: "sessions",
-				label: t(DesktopCopy.sessionsCount),
-				value: statistics.map { DesktopFormat.count(Int64($0.sessions)) } ?? "—",
-				note: nil
-			),
-			StatChip(
-				id: "average",
-				label: t(DesktopCopy.sessionsAverage),
-				value: statistics.map {
-					DesktopFormat.duration($0.sessions > 0 ? $0.totalDurationSeconds / Int64($0.sessions) : 0)
-				} ?? "—",
-				note: nil
-			),
-			StatChip(
-				id: "projects",
-				label: t(DesktopCopy.sessionsProjects),
-				value: statistics.map { DesktopFormat.count(Int64($0.distinctProjects)) } ?? "—",
-				note: nil
-			),
-		]
-		let rows = filteredRecentSessions(snapshot)
-		let projectTotal = max(Int64(1), statistics?.projects.reduce(0) { $0 + $1.durationSeconds } ?? 0)
-		let projects = (statistics?.projects ?? []).map { project -> ShareRow in
-			let fraction = Double(project.durationSeconds) / Double(projectTotal)
-			return ShareRow(
-				id: "project.\(project.project ?? "")",
-				label: project.project ?? t(DesktopCopy.sessionsProjectUnnamed),
-				value: t(DesktopCopy.sessionsProjectCount, Int64(project.sessions)),
-				share: fraction,
-				shareText: DesktopFormat.duration(project.durationSeconds)
-			)
-		}
-		// The row identity is positional on purpose: the wire's session
-		// identifier is a prohibited value and never enters presentation state.
-		let recent = rows.enumerated().map { index, session in
-			RecentSessionRow(
-				id: "session.\(index)",
-				title: session.project ?? t(DesktopCopy.sessionsProjectUnnamed),
-				detail: [clientLabel(session.client), session.model].compactMap(\.self).joined(separator: " · "),
-				when: sessionDuration(session)
-			)
-		}
-		return SessionsPanelModel(
-			available: snapshot.sessions.periods.available,
-			stats: stats,
-			workSignals: workSignalPanel(snapshot.sessions.workSignals, statistics: statistics),
-			projects: projects,
-			recent: recent,
-			emptyCopy: rows.isEmpty ? t(DesktopCopy.sessionsEmpty) : nil
-		)
+		return SessionsPanelModel(available: true, scope: sessionScopePanel)
 	}
 
-	private func workSignalPanel(
+	/// Work signals of one selection. `period` and `client` name the selection
+	/// the signals answer, which is the shown view's own selection; nil signals
+	/// mean no view at all.
+	///
+	/// Each family speaks for itself through its own availability and item.
+	/// The selection's session count never decides it: the session list comes
+	/// from the text index, the signals from usage, and usage with no indexed
+	/// session still belongs to Work. A selection with no listed session can
+	/// therefore still carry real signals.
+	func workSignalPanel(
 		_ signals: DesktopWorkSignalsV1?,
-		statistics: DesktopSessionsPeriodItemV1?
+		period selectedPeriod: String,
+		client selectedClient: String
 	) -> WorkSignalPanelModel {
 		let unavailableSummaries = WorkSignalSection.allCases.map {
 			WorkSignalSummary(id: $0, title: workSignalTitle($0), value: nil)
@@ -966,18 +1048,6 @@ final class MenuBarViewModel {
 				state: .uncaptured,
 				uncapturedSections: Set(WorkSignalSection.allCases),
 				summaries: unavailableSummaries,
-				activityRows: [],
-				workflowMetrics: [],
-				topFileText: "—",
-				toolingRows: [],
-				topMCPText: "—"
-			)
-		}
-		guard (statistics?.sessions ?? 0) > 0 else {
-			return WorkSignalPanelModel(
-				state: .empty,
-				uncapturedSections: [],
-				summaries: [],
 				activityRows: [],
 				workflowMetrics: [],
 				topFileText: "—",
@@ -1180,47 +1250,6 @@ final class MenuBarViewModel {
 		}
 	}
 
-	private func sessionDuration(_ session: DesktopRecentSessionV1) -> String {
-		guard let firstAt = session.firstAt,
-			let lastAt = session.lastAt,
-			let first = DesktopFormat.timestamp(firstAt),
-			let last = DesktopFormat.timestamp(lastAt),
-			last > first
-		else {
-			return "—"
-		}
-		return DesktopFormat.duration(Int64(last.timeIntervalSince(first)))
-	}
-
-	/// Both filters reach the recent list: the client narrows it and the period
-	/// bounds it. These rows are a display list, never the panel's statistics,
-	/// which stay producer-computed.
-	private func filteredRecentSessions(_ snapshot: DesktopSnapshotV1) -> [DesktopRecentSessionV1] {
-		let bounds = periodBounds(snapshot.generatedAt)
-		return snapshot.sessions.items.filter { session in
-			guard selectedClient == "all" || session.client == selectedClient else { return false }
-			guard let bounds else { return true }
-			guard let raw = session.lastAt ?? session.firstAt, let stamp = DesktopFormat.timestamp(raw) else { return false }
-			return stamp >= bounds.start && stamp <= bounds.end
-		}
-	}
-
-	private func periodBounds(_ generatedAt: String) -> (start: Date, end: Date)? {
-		guard let end = DesktopFormat.timestamp(generatedAt) else { return nil }
-		var calendar = Calendar.current
-		calendar.locale = DesktopLocale.current
-		let startOfDay = calendar.startOfDay(for: end)
-		let days: Int
-		switch selectedPeriod {
-		case "today": days = 0
-		case "7d": days = 6
-		case "30d": days = 29
-		default: return nil
-		}
-		guard let start = calendar.date(byAdding: .day, value: -days, to: startOfDay) else { return nil }
-		return (start, end)
-	}
-
 	private func periodWindow(scope: DesktopUsageScopeV1) -> Set<String> {
 		let dates = scope.daily.items.map(\.date).sorted()
 		let count: Int
@@ -1236,7 +1265,21 @@ final class MenuBarViewModel {
 
 	/// Neither filter reaches this block, so it always reads the all-client
 	/// scope and says so in its own heading.
+	/// The rhythm block depends only on the publication and the language, not
+	/// on the selection; every switch re-evaluates the surface, so it is built
+	/// once per publication and language and then reused.
+	@ObservationIgnored private var rhythmCache: (key: String, value: RhythmBlockModel)?
+
 	var rhythmBlock: RhythmBlockModel {
+		let key = [coordinator.servingHeader?.publicationID ?? "", snapshot?.generatedAt ?? "",
+			DesktopLocale.current.identifier].joined(separator: "\u{0}")
+		if let rhythmCache, rhythmCache.key == key { return rhythmCache.value }
+		let value = buildRhythmBlock()
+		rhythmCache = (key, value)
+		return value
+	}
+
+	private func buildRhythmBlock() -> RhythmBlockModel {
 		guard let snapshot,
 			let scope = snapshot.usage.presentation.scopes.first(where: { $0.client == "all" })
 		else {
@@ -1449,6 +1492,7 @@ final class MenuBarViewModel {
 
 	private func healthCause(_ check: DesktopHealthCheckV1) -> String? {
 		if let reason = check.reason, let copy = healthCauseCopy(reason, resource: check.resource) { return copy }
+		if let code = check.code, let key = DesktopCopy.healthCodeCauseKeys[code] { return t(key) }
 		if check.code == "schema_ahead", let stored = check.count, let supported = check.supportedCount {
 			return t(DesktopCopy.schemaSignalCause, Int64(stored), Int64(supported))
 		}
@@ -1568,7 +1612,7 @@ final class MenuBarViewModel {
 	/// The item follows the panel filter only when the preference says so, so a
 	/// filter the user set and then dismissed never silently narrows it.
 	var menuBarText: String? {
-		guard preferences.menuBarValue != .icon else { return nil }
+		guard preferences.menuBarValue != .icon, isPeriodAvailable("today") else { return nil }
 		let client = preferences.menuBarScope == .followPanel ? selectedClient : "all"
 		guard let snapshot else { return nil }
 		let subtotals = snapshot.usage.presentation.clientSubtotals

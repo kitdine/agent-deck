@@ -1,0 +1,488 @@
+{
+  "kind": "scan-performance-review-r1-repair-synthetic-acceptance",
+  "checks": [
+    {
+      "name": "M1-F1 zh/dark/280 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/280 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/280 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/280 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/280 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/420 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/420 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/420 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/420 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/dark/420 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/280 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/280 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/280 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/280 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/280 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/420 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/420 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/420 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/420 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 zh/light/420 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/280 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/280 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/280 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/280 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/280 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/420 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/420 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/420 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/420 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/dark/420 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/280 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/280 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/280 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/280 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/280 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/420 today usage readable and counts unknown",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/420 7d unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/420 30d partial",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/420 sessions unavailable",
+      "passed": true
+    },
+    {
+      "name": "M1-F1 en/light/420 atomic publication preserves choices",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark default off",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark enabled defaults unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark unconfigured",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark waiting",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark ready",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark capture_only",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark disconnected",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark paused",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/dark disabled preserves UI",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light default off",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light enabled defaults unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light unconfigured",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light waiting",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light ready",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light capture_only",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light disconnected",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light paused",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 zh/light disabled preserves UI",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark default off",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark enabled defaults unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark unconfigured",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark waiting",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark ready",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark capture_only",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark disconnected",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark paused",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/dark disabled preserves UI",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light default off",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light enabled defaults unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light unknown",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light unconfigured",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light waiting",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light ready",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light capture_only",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light disconnected",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light paused",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 en/light disabled preserves UI",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/app full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/app JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/absent full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/absent JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/independent full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/independent JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/stopped full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/stopped JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/mismatch full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/mismatch JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/telemetry full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/telemetry JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/telemetry_unknown full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/telemetry_unknown JSON channel",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 40 CLI unknown",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/stored_partial full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/stored_partial JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F1 40 coverage warning",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/preview full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 40/preview JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/app full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/app JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/absent full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/absent JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/independent full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/independent JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/stopped full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/stopped JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/mismatch full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/mismatch JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/telemetry full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/telemetry JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/telemetry_unknown full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/telemetry_unknown JSON channel",
+      "passed": true
+    },
+    {
+      "name": "S1-F1 80 CLI unknown",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/stored_partial full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/stored_partial JSON channel",
+      "passed": true
+    },
+    {
+      "name": "C1-F1 80 coverage warning",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/preview full public JSON",
+      "passed": true
+    },
+    {
+      "name": "C1-F2 80/preview JSON channel",
+      "passed": true
+    }
+  ],
+  "assertions": 120,
+  "all_passed": true,
+  "scope": "Synthetic prototype UI and complete CLI envelopes only; no native performance/producer/runtime acceptance"
+}

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,13 +35,17 @@ import (
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/installation"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/telemetry"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/usagehook"
 	"github.com/kitdine/agent-deck/internal/watch"
@@ -93,20 +98,27 @@ var scanRuntimeForceLocal = scanRuntimeLocalTestMode
 
 type sessionUsageContextKey struct{}
 
+// sessionIndexOpenErrorKey carries the session index open failure of the
+// interactive browser, which reports it inside its terminal owner.
+type sessionIndexOpenErrorKey struct{}
+
 func sessionUsageFromContext(ctx context.Context) (*usage.Service, bool) {
 	service, ok := ctx.Value(sessionUsageContextKey{}).(*usage.Service)
 	return service, ok
 }
 
 type commandOptions struct {
-	stateDir string
-	format   string
-	quiet    bool
-	verbose  bool
-	noColor  bool
-	stdin    io.Reader
-	stdout   io.Writer
-	stderr   io.Writer
+	stateDir          string
+	format            string
+	quiet             bool
+	verbose           bool
+	noColor           bool
+	stdin             io.Reader
+	stdout            io.Writer
+	stderr            io.Writer
+	resolvedStateRoot string
+	stateRootError    error
+	stateRootResolved bool
 }
 
 type inputError struct {
@@ -383,7 +395,73 @@ func (e *inputError) Unwrap() error {
 }
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	platform.SetInstallationResolver(installation.DefaultResolver())
+	stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
+	if os.Getenv(perftrace.EnvOut) != "" && !slices.Contains(os.Args[1:], "watch") {
+		traceReady := make(chan struct{})
+		flushTraceOnTermination(traceReady)
+		stdout, stderr = tracePipeOutputs()
+		perftrace.Start(perfRole(os.Args[1:]))
+		close(traceReady)
+	} else {
+		perftrace.Start(perfRole(os.Args[1:]))
+	}
+	code := execute(os.Args[1:], os.Stdin, stdout, stderr)
+	_ = store.CloseReadPools()
+	_ = perftrace.Close()
+	// Keep the process ownership session through kernel teardown, including
+	// any final background callbacks. os.Exit releases its flock atomically
+	// with process termination; no state access can outlive that release.
+	os.Exit(code)
+}
+
+// Arm before creating the trace file. A startup SIGTERM waits for the recorder
+// before flushing, then retains the original signal termination semantics.
+func flushTraceOnTermination(traceReady <-chan struct{}) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	go func() {
+		received := <-signals
+		<-traceReady
+		_ = perftrace.Close()
+		signal.Reset(received)
+		_ = syscall.Kill(os.Getpid(), received.(syscall.Signal))
+	}()
+}
+
+// Go normally exits immediately on EPIPE from stdout/stderr. During recording,
+// let that write return its error so the recorder can close first. Retrying the
+// failed write after Reset invokes Go's normal SIGPIPE exit (sending SIGPIPE via
+// Kill alone is ignored by Go and cannot preserve the original exit signal).
+func tracePipeOutputs() (io.Writer, io.Writer) {
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
+	return tracePipeWriter{os.Stdout}, tracePipeWriter{os.Stderr}
+}
+
+type tracePipeWriter struct{ file *os.File }
+
+func (w tracePipeWriter) Write(data []byte) (int, error) {
+	n, err := w.file.Write(data)
+	if errors.Is(err, syscall.EPIPE) {
+		_ = perftrace.Close()
+		signal.Reset(syscall.SIGPIPE)
+		return w.file.Write(data)
+	}
+	return n, err
+}
+
+// perfRole names this process in measurement traces: the scan worker is the
+// collector, App helper invocations run under desktop, the rest is CLI.
+func perfRole(args []string) perftrace.Role {
+	for _, arg := range args {
+		switch arg {
+		case "scan-worker":
+			return perftrace.RoleCollector
+		case "desktop":
+			return perftrace.RoleHelper
+		}
+	}
+	return perftrace.RoleCLI
 }
 
 func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -424,6 +502,17 @@ type commandExtensionInventoryErrorDetails struct {
 }
 
 func errorDetails(err error) any {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		return map[string]string{"resource": refused.Resource, "reason": refused.Reason}
+	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		return map[string]string{"reason": installRefused.Reason}
+	}
+	if _, _, details, _, ok := originErrorFields(err); ok {
+		return details
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		return &commandLockErrorDetails{
@@ -463,6 +552,17 @@ func errorDetails(err error) any {
 }
 
 func errorMessage(err error) string {
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		return installRefusalMessage(installRefused.Reason)
+	}
+	if _, message, _, _, ok := originErrorFields(err); ok {
+		return message
+	}
+	var codexConfig *telemetryCodexError
+	if errors.As(err, &codexConfig) {
+		return codexConfig.text
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		switch contention.Resource {
@@ -487,6 +587,16 @@ func errorMessage(err error) string {
 }
 
 func renderCommandErrorText(w io.Writer, err error) {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		renderStateOwnershipRefusal(w, refused)
+		return
+	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		renderInstallRefusal(w, installRefused)
+		return
+	}
 	var contention *store.ErrLockContention
 	if errors.As(err, &contention) {
 		switch contention.Resource {
@@ -567,15 +677,37 @@ func commandOutputName(command *cobra.Command) string {
 	if path == "" {
 		return "agentdeck"
 	}
-	return strings.ReplaceAll(path, " ", ".")
+	name := strings.ReplaceAll(path, " ", ".")
+	// The origin-source group's JSON command names are fixed by the session
+	// classification contract as session.origin_source.<action>.
+	if strings.HasPrefix(name, "session.origin-source") {
+		name = "session.origin_source" + strings.TrimPrefix(name, "session.origin-source")
+	}
+	return name
 }
 
 func errorCode(err error) string {
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		return "state_ownership_refused"
+	}
+	var installRefused *installation.InstallError
+	if errors.As(err, &installRefused) {
+		return "install_claim_refused"
+	}
+	if code, _, _, _, ok := originErrorFields(err); ok {
+		return code
+	}
 	var notFound *errdefs.NotFound
 	var scanDomain *scanruntime.DomainError
 	var syncIncomplete *extension.ErrExtensionSyncIncomplete
 	var inventoryUnreadable *extension.ErrExtensionInventoryUnreadable
+	var codexConfig *telemetryCodexError
 	switch {
+	case errors.As(err, &codexConfig):
+		return codexConfig.code
+	case errors.Is(err, errTelemetryImportUnsupported):
+		return errTelemetryImportUnsupported.Error()
 	case errors.As(err, &syncIncomplete):
 		return "extension_sync_incomplete"
 	case errors.As(err, &inventoryUnreadable):
@@ -627,6 +759,9 @@ func errorCode(err error) string {
 }
 
 func errorExitCode(err error) int {
+	if _, _, _, exit, ok := originErrorFields(err); ok {
+		return exit
+	}
 	if isInputError(err) {
 		return 2
 	}
@@ -725,10 +860,10 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 				return err
 			}
 			commandPath := command.CommandPath()
-			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" {
+			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" && commandPath != "agentdeck desktop bootstrap" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
-			return nil
+			return prepareOwnershipCommand(opts, command)
 		},
 		Args: exactArgs(0),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -749,7 +884,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts), newTelemetryCommand(opts), newInstallCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -1626,14 +1761,21 @@ func (o *commandOptions) stateRoot() (string, error) {
 	if err := o.validateFormat(); err != nil {
 		return "", err
 	}
+	if o.stateRootResolved {
+		return o.resolvedStateRoot, o.stateRootError
+	}
+	o.stateRootResolved = true
 	if o.stateDir != "" {
-		return o.stateDir, nil
+		o.resolvedStateRoot, o.stateRootError = installation.StateRoot(o.stateDir)
+	} else {
+		home, err := userHomeDir()
+		if err != nil {
+			o.stateRootError = err
+		} else {
+			o.resolvedStateRoot, o.stateRootError = installation.StateRootWithHome("", home)
+		}
 	}
-	home, err := userHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return platform.StateRoot("", home), nil
+	return o.resolvedStateRoot, o.stateRootError
 }
 
 func requestScanRound(ctx context.Context, opts *commandOptions, scope scanruntime.Scope) (scanruntime.Result, error) {
@@ -1655,10 +1797,13 @@ func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, sco
 		Executable: scanRuntimeExecutable(),
 		ForceLocal: scanRuntimeForceLocal(),
 	}
+	var result scanruntime.Result
 	if onProgress != nil {
-		return client.RequestWithProgress(ctx, scope, onProgress)
+		result, err = client.RequestWithProgress(ctx, scope, onProgress)
+	} else {
+		result, err = client.Request(ctx, scope)
 	}
-	return client.Request(ctx, scope)
+	return result, err
 }
 
 func scanRuntimeLocalTestMode() bool {
@@ -1734,7 +1879,7 @@ func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.St
 	if after != epoch {
 		return "", errors.New("session index changed while recording checkpoint")
 	}
-	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
+	return sessionorigin.WatchFingerprint(epoch, fingerprint), nil
 }
 
 var discoverSessionInventory = ingest.Discover
@@ -1915,7 +2060,14 @@ func newScanWorkerCommand(opts *commandOptions) *cobra.Command {
 }
 
 func (o *commandOptions) shellStateRoot() string {
-	return o.stateDir
+	// An omitted override stays omitted in generated shell commands, so the
+	// invoked installation selects its own default. Explicit paths were guarded
+	// by the common pre-run and must use the same physical spelling.
+	if o.stateDir == "" {
+		return ""
+	}
+	root, _ := o.stateRoot()
+	return root
 }
 
 func (o *commandOptions) validateFormat() error {
@@ -2556,6 +2708,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		Annotations: map[string]string{humanInteractiveSurfaceOnlyAnnotation: "true"},
 	}
 	var showTokens, showActivity, showInteractive, sessionInteractive bool
+	var interactiveScope sessionScopeFlag
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -2576,21 +2729,34 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				}
 			}()
 			sessions, err := store.OpenSessions(command.Context(), stateDir)
-			if err != nil {
+			switch {
+			case err == nil:
+				defer sessions.Close()
+			case command == cmd && sessionInteractive:
+				// The browser has no previous result yet: it reports the
+				// unreadable index on its exitable error page instead of the
+				// command failing before the terminal owner starts.
+				sessions = nil
+				command.SetContext(context.WithValue(command.Context(), sessionIndexOpenErrorKey{}, err))
+			default:
 				return err
 			}
-			defer sessions.Close()
 			home, err := userHomeDir()
 			if err != nil {
 				return err
 			}
 			if (command.Name() == "show" && (showTokens || showActivity || showInteractive)) || (command == cmd && sessionInteractive) {
 				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
-				if err != nil {
+				switch {
+				case err == nil:
+					defer core.Close()
+					command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
+				case command == cmd && sessionInteractive:
+					// The browser reports an unreadable core on its error page;
+					// without it the detail viewer shows usage as unavailable.
+				default:
 					return err
 				}
-				defer core.Close()
-				command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
 			}
 			if (command.Name() == "show" && showInteractive) || (command == cmd && sessionInteractive) {
 				if releaseErr := lock.Release(); releaseErr != nil {
@@ -2643,12 +2809,30 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if !inputOK || !outputOK {
 				return nil, errors.New("session --interactive requires TTY stdin and stdout")
 			}
-			items, err := session.List(ctx, s.DB)
+			stateRoot, err := opts.stateRoot()
 			if err != nil {
 				return nil, err
 			}
+			reader := openSessionSelectionReader(ctx, stateRoot, s)
+			if s == nil {
+				reader.sessionsErr, _ = ctx.Value(sessionIndexOpenErrorKey{}).(error)
+			}
+			defer reader.Close()
+			initialScope, _, _ := interactiveScope.resolve("text")
+			loadScope := func(ctx context.Context, scope string) (sessionBrowserPage, error) {
+				snapshot, err := reader.selectSessions(ctx, sessionorigin.Selection{Scope: scope}, nil)
+				if err != nil {
+					return sessionBrowserPage{}, &errSessionSelectionUnavailable{scope: scope, err: err}
+				}
+				page := newSessionBrowserPage(scope, snapshot)
+				page.indexEmpty = len(page.items) == 0 && sessionIndexEmpty(ctx, s)
+				return page, nil
+			}
+			// The first read happens inside the browser: it stays cancellable,
+			// and its failure is an exitable error page rather than an error
+			// returned before the terminal owner starts.
 			service, _ := sessionUsageFromContext(ctx)
-			err = runSessionBrowser(ctx, input, output, items, func(metadata session.Metadata) sessionViewerLoad {
+			err = runSessionBrowserLoadingFirst(ctx, input, output, initialScope, loadScope, func(metadata session.Metadata) sessionViewerLoad {
 				return newSessionViewerLoad(ctx, s, metadata, service)
 			}, opts.noColor)
 			if err != nil {
@@ -2658,34 +2842,36 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		})(command, args)
 	}
 	cmd.Flags().BoolVar(&sessionInteractive, "interactive", false, "Browse indexed sessions in the read-only viewer")
+	addSessionScopeFlag(cmd, &interactiveScope)
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
 	var listPage, listLimit, searchPage, searchLimit, showPage, showLimit int
 	var listAll, searchAll, showAll bool
 	var list, search *cobra.Command
+	var listScope, searchScope sessionScopeFlag
 	list = &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		if err := validateOptionalClient(listClient); err != nil {
 			return nil, err
 		}
-		items, err := session.List(ctx, s.DB)
+		scope, source, requested := listScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		out, indexEmpty, err := scopedSessionList(ctx, opts, s, scope, listClient, meta)
 		if err != nil {
 			return nil, err
 		}
-		out := items[:0]
-		for _, item := range items {
-			if listClient == "" || item.Client == listClient {
-				out = append(out, item)
-			}
-		}
 		explicit := list.Flags().Changed("page") || list.Flags().Changed("limit") || list.Flags().Changed("all")
 		if opts.format == "json" && !explicit {
-			return out, nil
+			return withSessionSelection{data: out, meta: meta}, nil
 		}
 		paged, pagination, pageErr := session.Paginate(out, listPage, listLimit, listAll)
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "list", listClient, "", false, false, pagination)}, nil
+		next := scopedNextCommand(sessionNextCommand(opts.stateDir, "list", listClient, "", false, false, pagination), scope, listScope.set)
+		page := sessionScopedListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: next,
+			hint: sessionListHint{meta: meta, indexEmpty: indexEmpty}}
+		return withSessionSelection{data: page, meta: meta}, nil
 	})}
+	addSessionScopeFlag(list, &listScope)
 	list.Flags().StringVar(&listClient, "client", "", "Filter by client")
 	list.Flags().IntVar(&listPage, "page", 1, "Page number")
 	list.Flags().IntVar(&listLimit, "limit", 20, "Rows per page")
@@ -2696,29 +2882,28 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if err := validateOptionalClient(searchClient); err != nil {
 			return nil, err
 		}
-		items, err := session.Search(ctx, s.DB, args[0])
+		if strings.TrimSpace(args[0]) == "" {
+			return nil, errors.New("search query is required")
+		}
+		scope, source, requested := searchScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		out, err := scopedSessionSearch(ctx, opts, s, scope, searchClient, args[0], meta)
 		if err != nil {
 			return nil, err
 		}
-		out := items
-		if searchClient != "" {
-			out = items[:0]
-			for _, item := range items {
-				if item.Client == searchClient {
-					out = append(out, item)
-				}
-			}
-		}
 		explicit := search.Flags().Changed("page") || search.Flags().Changed("limit") || search.Flags().Changed("all")
 		if opts.format == "json" && !explicit {
-			return out, nil
+			return withSessionSelection{data: out, meta: meta}, nil
 		}
 		paged, pagination, pageErr := session.Paginate(out, searchPage, searchLimit, searchAll)
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, false, pagination)}, nil
+		next := scopedNextCommand(sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, false, pagination), scope, searchScope.set)
+		page := sessionScopedSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: next, hint: sessionListHint{meta: meta}}
+		return withSessionSelection{data: page, meta: meta}, nil
 	})}
+	addSessionScopeFlag(search, &searchScope)
 	search.Flags().StringVar(&searchClient, "client", "", "Filter by client")
 	search.Flags().IntVar(&searchPage, "page", 1, "Page number")
 	search.Flags().IntVar(&searchLimit, "limit", 20, "Rows per page")
@@ -2781,11 +2966,15 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			return nil, &inputError{err: pageErr}
 		}
 		result := session.Result{Metadata: metadata, Documents: documents}
-		_, sourceErr := os.Stat(metadata.SourcePath)
+		// A projected OTel source is not a file: never stale, no activity.
+		var sourceErr error
+		if !session.IsTelemetrySource(metadata.SourcePath) {
+			_, sourceErr = os.Stat(metadata.SourcePath)
+		}
 		sourceStale := errors.Is(sourceErr, os.ErrNotExist)
 		activityWarning := ""
 		var activityPagination session.Pagination
-		if showActivity {
+		if showActivity && !session.IsTelemetrySource(metadata.SourcePath) {
 			activityPage, activityErr := activity.ReadDetailsPage(metadata.SourcePath, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
 			if activityErr != nil {
 				activityWarning = "Activity source is unavailable."
@@ -2889,6 +3078,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
 		}},
 		list, search, show, exclude,
+		newSessionClassifyCommand(opts), newSessionScopeCommand(opts), newSessionOriginSourceCommand(opts),
 		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
 			stateRoot, err := opts.stateRoot()
 			if err != nil {
@@ -2923,6 +3113,13 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 					return err
 				}
 				defer core.Close()
+				// The rebuild cleared the index; regenerate the OTel projection.
+				if err := telemetry.ProjectSessionIndex(ctx, core, sessions); err != nil {
+					return err
+				}
+				if _, err := sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home}); err != nil {
+					return err
+				}
 				return core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
 			})
 			if err != nil {
@@ -3243,6 +3440,18 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 				if scanErr != nil {
 					return 0, scanErr
 				}
+				// Numerical ownership may remain pending while readable sessions
+				// are classified. The watcher retries without acknowledging it.
+				_, settleErr := telemetry.SettleAndProject(ctx, database, sessions, time.Now(), usage.New(database, home).PrepareSourceIdentities)
+				if settleErr != nil && !errors.Is(settleErr, store.ErrTelemetrySourceIdentityPending) {
+					return 0, settleErr
+				}
+				if _, err := sessionorigin.Reconcile(ctx, database, sessions, sessionorigin.ReconcileOptions{StateRoot: stateDir, Home: home}); err != nil {
+					return 0, err
+				}
+				if settleErr != nil {
+					return result.Documents + result.Removed, settleErr
+				}
 				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
 				if checkpointErr == nil {
 					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
@@ -3262,6 +3471,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			}})
 		}
 		service := watch.Service{
+			StateRoot:           stateDir,
 			InitialFingerprints: initial,
 			Sources:             filtered,
 			Lock: func(ctx context.Context) (func() error, error) {
@@ -3302,6 +3512,10 @@ func persistWatchFingerprint(ctx context.Context, database *store.Store, domain,
 
 func renderWatchText(w io.Writer, event watch.Event) error {
 	at := renderDisplayTimeWithZone(event.GeneratedAt)
+	if event.Type == "scan_pending" {
+		_, err := fmt.Fprintf(w, "%s %s scan pending (%s). Retrying automatically.\n", at, strings.Title(event.Domain), strings.ReplaceAll(event.Reason, "_", " "))
+		return err
+	}
 	if event.Skipped {
 		_, err := fmt.Fprintf(w, "%s Watch scan skipped: %s.\n", at, strings.ReplaceAll(event.Reason, "_", " "))
 		return err
@@ -3414,6 +3628,10 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{Use: "doctor", Short: "Run read-only diagnostics", Args: exactArgs(0), RunE: func(command *cobra.Command, _ []string) error {
 		stateDir, err := opts.stateRoot()
 		if err != nil {
+			var refused *platform.ErrStateOwnershipRefused
+			if errors.As(err, &refused) {
+				return writeDoctorResult(opts.stdout, opts.format, doctor.RefusedStateReport(full, refused.Reason))
+			}
 			return err
 		}
 		home, err := userHomeDir()
@@ -3813,7 +4031,18 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 					return &inputError{err: err}
 				}
 			}
-			database, _, err := opts.openStore(command.Context())
+			storedOnly, _ := command.Flags().GetBool("no-scan")
+			var database *store.Store
+			var err error
+			if storedOnly {
+				root, rootErr := opts.stateRoot()
+				if rootErr != nil {
+					return rootErr
+				}
+				database, err = store.OpenReadOnly(command.Context(), root)
+			} else {
+				database, _, err = opts.openStore(command.Context())
+			}
 			if err != nil {
 				return err
 			}
@@ -3827,6 +4056,26 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, partial, warnings, err := run(command.Context(), service, database, args)
 			if err != nil {
 				return err
+			}
+			if opts.format == "text" && !statsInteractive && usageScanIncomplete(commandOutputName(command), partial, warnings) {
+				if _, err = fmt.Fprintln(opts.stderr, "Warning: "+usageWarningScanIncomplete); err != nil {
+					return err
+				}
+			}
+			if storedOnly {
+				coverage, err := database.ReadSourceCoverage(command.Context())
+				if err != nil {
+					return err
+				}
+				if code := sourceCoverageWarning(coverage.State); code != "" {
+					partial = true
+					warnings = append(warnings, code)
+					if opts.format == "text" {
+						if _, err = fmt.Fprintf(opts.stderr, "%s: committed source coverage %s; observed through %s\n", code, coverage.State, coverage.ObservedAt); err != nil {
+							return err
+						}
+					}
+				}
 			}
 			renderOptions := newUsageTextRenderOptions(opts.stdout, opts.noColor)
 			if command.Name() == "stats" && command.Flags().Changed("top") {
@@ -3873,7 +4122,8 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel, statsProvider string
 	var statsActivity, statsNoScan bool
 	var statsTop int
-	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+	var statsScope sessionScopeFlag
+	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
 		}
@@ -3904,8 +4154,16 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
 		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: displayTimezoneName(location, now), Location: location, Activity: statsActivity})
+		var meta *sessionSelectionMeta
 		if err == nil && !statsInteractive {
-			signals, signalErr := s.Signals(ctx, usage.SignalOptions{Period: statsPeriod, From: from, To: to, Client: statsClient})
+			// The scope selects only the work-analysis signals; totals,
+			// tokens and costs stay all and are labeled separately.
+			scope, source, requested := statsScope.resolve(opts.format)
+			meta = newSessionSelectionMeta(scope, source, requested)
+			meta.usageScope = sessionorigin.ScopeAll
+			signals, signalErr := scopedSignals(ctx, opts, database, scope, statsClient, usageSelectionWindow(statsPeriod, statsFrom, from, to), meta, func(ctx context.Context, sessions *usage.SessionFilter) (usage.SignalReport, error) {
+				return s.Signals(ctx, usage.SignalOptions{Period: statsPeriod, From: from, To: to, Client: statsClient, Sessions: sessions})
+			})
 			if signalErr != nil {
 				return nil, false, nil, signalErr
 			}
@@ -3913,8 +4171,12 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}
 		warnings := map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil]
 		warnings = append(warnings, data.Warnings...)
-		return data, scanErr != nil, warnings, err
+		if err != nil || meta == nil {
+			return data, scanErr != nil, warnings, err
+		}
+		return withSessionSelection{data: data, meta: meta}, scanErr != nil, warnings, nil
 	})}
+	addSessionScopeFlag(stats, &statsScope)
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
 	stats.Flags().StringVar(&statsFrom, "from", "", "Local start date in YYYY-MM-DD")
 	stats.Flags().StringVar(&statsTo, "to", "", "Inclusive local end date in YYYY-MM-DD")
@@ -3930,7 +4192,8 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	var signalsPeriod, signalsClient, signalsActivity string
 	var signalsKinds []string
 	var signalsSub bool
-	signals := &cobra.Command{Use: "signals", Short: "Show activity, workflow, and tooling signals", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+	var signalsScope sessionScopeFlag
+	signals := &cobra.Command{Use: "signals", Short: "Show activity, workflow, and tooling signals", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
 		if signalsClient != "" && signalsClient != "codex" && signalsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals client must be codex or claude")}
 		}
@@ -3943,12 +4206,20 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, false, nil, err
 		}
-		data, err := s.Signals(ctx, usage.SignalOptions{
-			Period: signalsPeriod, From: from, To: to, Client: signalsClient,
-			Kinds: signalsKinds, Activity: signalsActivity, IncludeSub: signalsSub || signalsActivity != "",
+		scope, source, requested := signalsScope.resolve(opts.format)
+		meta := newSessionSelectionMeta(scope, source, requested)
+		data, err := scopedSignals(ctx, opts, database, scope, signalsClient, usageSelectionWindow(signalsPeriod, "", from, to), meta, func(ctx context.Context, sessions *usage.SessionFilter) (usage.SignalReport, error) {
+			return s.Signals(ctx, usage.SignalOptions{
+				Period: signalsPeriod, From: from, To: to, Client: signalsClient,
+				Kinds: signalsKinds, Activity: signalsActivity, IncludeSub: signalsSub || signalsActivity != "", Sessions: sessions,
+			})
 		})
-		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+		if err != nil {
+			return nil, false, nil, err
+		}
+		return withSessionSelection{data: data, meta: meta}, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], nil
 	})}
+	addSessionScopeFlag(signals, &signalsScope)
 	signals.Flags().StringVar(&signalsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
 	signals.Flags().StringVar(&signalsClient, "client", "", "Filter by codex or claude")
 	signals.Flags().StringSliceVar(&signalsKinds, "kind", nil, "Section: activity, workflow, or tooling; repeat to select more than one")
@@ -4003,6 +4274,16 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}},
 	)
 	return cmd
+}
+
+// usageSelectionWindow is the session-selection time window of a usage
+// report: the already resolved [from, to) range, labeled with its period
+// unless explicit dates replaced it.
+func usageSelectionWindow(period, explicitFrom string, from, to time.Time) sessionorigin.Selection {
+	if explicitFrom != "" {
+		period = ""
+	}
+	return sessionorigin.Selection{Period: period, From: from, To: to}
 }
 
 func resolveUsageRange(ctx context.Context, service *usage.Service, period, fromText, toText string, now time.Time, location *time.Location) (time.Time, time.Time, error) {
@@ -4314,9 +4595,15 @@ func newRunCommand(opts *commandOptions) *cobra.Command {
 }
 
 func writeResult(w io.Writer, format, command string, data any, quiet ...bool) error {
+	data, selection := unwrapSessionSelection(data)
 	data, resource := unwrapTextResource(data)
 	if format == "json" {
-		return json.NewEncoder(w).Encode(output.New(command, data, time.Now()))
+		envelope := output.New(command, data, time.Now())
+		if selection != nil {
+			envelope.SessionSelection = selection
+			envelope.Partial, envelope.Warnings = selection.withCoverage(envelope.Partial, envelope.Warnings)
+		}
+		return json.NewEncoder(w).Encode(envelope)
 	}
 	if format == "ndjson" {
 		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
@@ -4354,6 +4641,12 @@ func writeDoctorResult(w io.Writer, format string, report doctor.Report) error {
 		return err
 	}
 	if report.Partial {
+		for _, check := range report.Checks {
+			if check.Name == "state" && check.Code == "state_ownership_refused" {
+				_, err := fmt.Fprintln(w, "checks_skipped: the requested state directory was refused; no other diagnostics ran")
+				return err
+			}
+		}
 		_, err := fmt.Fprintln(w, "checks_skipped: remaining diagnostics require a readable core database")
 		return err
 	}
@@ -4365,15 +4658,40 @@ func writeEnvelope(w io.Writer, format, command string, data any, partial bool, 
 	return writeUsageEnvelope(w, format, command, data, partial, warnings, quietOutput, usageTextRenderOptions{})
 }
 
+const usageWarningScanIncomplete = "scan_incomplete"
+
+// usageScanIncomplete reports a usage signals or stats result whose
+// pre-report scan failed: the result is partial and holds the last committed
+// data, which text output must say as plainly as the JSON envelope does.
+func usageScanIncomplete(command string, partial bool, warnings []string) bool {
+	return partial && (command == "usage.signals" || command == "usage.stats") && slices.Contains(warnings, usageWarningScanIncomplete)
+}
+
 func writeUsageEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet bool, renderOptions usageTextRenderOptions) error {
+	data, selection := unwrapSessionSelection(data)
 	data, resource := unwrapTextResource(data)
+	partial, warnings = selection.withCoverage(partial, warnings)
 	if format == "json" {
 		if warnings == nil {
 			warnings = []string{}
 		}
 		envelope := output.New(command, data, time.Now())
 		envelope.Partial, envelope.Warnings = partial, warnings
+		if selection != nil {
+			envelope.SessionSelection = selection
+		}
 		return json.NewEncoder(w).Encode(envelope)
+	}
+	if selection != nil {
+		if err := renderUsageSelectionScope(w, selection); err != nil {
+			return err
+		}
+	}
+	if usageScanIncomplete(command, partial, warnings) {
+		// The report below is the last committed state, not this scan's.
+		if _, err := fmt.Fprintln(w, "PARTIAL: "+usageWarningScanIncomplete+"\nShowing last committed data."); err != nil {
+			return err
+		}
 	}
 	if isMutationCommand(command) {
 		if quiet && !partial && len(warnings) == 0 {
@@ -4536,6 +4854,12 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		if !ok {
 			return fmt.Errorf("unexpected provider.list result %T", data)
 		}
+		// The virtual official definition does not make an empty isolated
+		// development state a configured provider inventory. JSON retains the
+		// existing definition contract; installed text output is unchanged.
+		if !platform.CurrentInstallation().Installed && len(value) == 1 && value[0].Definition.BuiltIn && value[0].Definition.CredentialCount == 0 {
+			value = nil
+		}
 		if len(value) == 0 {
 			_, err := fmt.Fprintln(w, "No providers.")
 			return err
@@ -4631,6 +4955,8 @@ func renderCommandText(w io.Writer, command string, data any) error {
 				return err
 			}
 			return renderPagination(w, value.Pagination["sessions"], value.NextCommand)
+		case sessionScopedListPage:
+			return renderScopedSessionList(w, value)
 		default:
 			return fmt.Errorf("unexpected session.list result %T", data)
 		}
@@ -4643,6 +4969,8 @@ func renderCommandText(w io.Writer, command string, data any) error {
 				return err
 			}
 			return renderPagination(w, value.Pagination["search"], value.NextCommand)
+		case sessionScopedSearchPage:
+			return renderScopedSessionSearch(w, value)
 		default:
 			return fmt.Errorf("unexpected session.search result %T", data)
 		}
@@ -5140,6 +5468,9 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 			if err := doctor.WriteRegistrationText(w, check.RegistrationDetails, check.Code); err != nil {
 				return err
 			}
+		}
+		if err := renderOwnershipCheck(w, check); err != nil {
+			return err
 		}
 		if check.Code == store.ErrSchemaAhead.Code {
 			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {

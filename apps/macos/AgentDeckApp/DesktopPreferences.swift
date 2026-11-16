@@ -88,13 +88,15 @@ final class DesktopPreferences {
 
 	private let defaults: UserDefaults
 	@ObservationIgnored private let registrar: any LoginItemRegistering
-	@ObservationIgnored var periodicRefreshDidChange: (@MainActor (Bool) -> Void)?
+	@ObservationIgnored var automaticUpdateDidChange: (@MainActor (Bool) -> Void)?
 
-	/// Off by default: it is background work the user did not ask for.
-	var periodicRefreshEnabled: Bool {
+	/// Event-driven local-data updates. The key is the former periodic-refresh
+	/// preference: a stored value, including an explicit off, is kept; an
+	/// absent value is on, matching the file watching earlier builds always ran.
+	var automaticUpdateEnabled: Bool {
 		didSet {
-			defaults.set(periodicRefreshEnabled, forKey: Key.periodicRefresh)
-			periodicRefreshDidChange?(periodicRefreshEnabled)
+			defaults.set(automaticUpdateEnabled, forKey: Key.periodicRefresh)
+			automaticUpdateDidChange?(automaticUpdateEnabled)
 		}
 	}
 
@@ -143,7 +145,7 @@ final class DesktopPreferences {
 	init(defaults: UserDefaults = .standard, registrar: any LoginItemRegistering = SystemLoginItemRegistrar()) {
 		self.defaults = defaults
 		self.registrar = registrar
-		periodicRefreshEnabled = defaults.bool(forKey: Key.periodicRefresh)
+		automaticUpdateEnabled = defaults.object(forKey: Key.periodicRefresh) as? Bool ?? true
 		quotaProbeEnabled = defaults.bool(forKey: Key.quotaProbeEnabled)
 		quotaProbeInterval = QuotaProbeInterval(rawValue: defaults.integer(forKey: Key.quotaProbeInterval)) ?? .fiveMinutes
 		quotaAlertsEnabled = defaults.bool(forKey: Key.quotaAlertsEnabled)

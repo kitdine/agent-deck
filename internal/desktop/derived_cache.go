@@ -84,11 +84,11 @@ func (s Service) derivedSnapshotCachePath() string {
 func (s Service) derivedSnapshotPayload(ctx context.Context, core *store.Store, now time.Time) (derivedSnapshotCachePayload, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
-	presentation, err := service.Presentation(ctx, now, s.location())
+	presentation, err := service.ProjectedPresentation(ctx, now, s.location())
 	if err != nil {
 		return derivedSnapshotCachePayload{}, err
 	}
-	workSignals, err := s.workSignalsSnapshot(ctx, core, now)
+	workSignals, err := s.workSignalsSnapshotWithProjection(ctx, core, now, true)
 	if err != nil {
 		return derivedSnapshotCachePayload{}, err
 	}
@@ -372,6 +372,11 @@ func cleanupDerivedSnapshotCacheTemps(directory string) error {
 // PublishDerivedSnapshotCache is the worker-only publisher. It never runs from
 // the read-only snapshot path and deliberately does not include session data.
 func (s Service) PublishDerivedSnapshotCache(ctx context.Context, wireVersion int) error {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return err
+	}
+	s.StateRoot = root
 	lock, err := store.AcquireDerivedSnapshotCacheLock(ctx, s.StateRoot, derivedSnapshotCacheLockWait)
 	if err != nil {
 		return err

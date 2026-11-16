@@ -34,7 +34,6 @@ public enum DesktopLogPolicy {
 
 public enum DesktopLogger {
     private static let logger = Logger(subsystem: DesktopLogPolicy.subsystem, category: "desktop")
-
 	public static func recordRefreshStart(id: String, recentLimit: Int) {
 		logger.info("refresh_start id=\(id, privacy: .public) recent_limit=\(recentLimit, privacy: .public)")
 	}

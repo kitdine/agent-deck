@@ -15,6 +15,7 @@
 __pycache__/
 dist/
 apps/macos/build/
+apps/macos/.build/
 apps/macos/.swiftpm/
 .vscode
 .idea

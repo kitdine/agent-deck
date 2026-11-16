@@ -27,7 +27,11 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 			if err != nil {
 				return sessionViewerPage{}, err
 			}
-			_, sourceErr := os.Stat(metadata.SourcePath)
+			// A projected OTel source is not a file and is never stale.
+			var sourceErr error
+			if !session.IsTelemetrySource(metadata.SourcePath) {
+				_, sourceErr = os.Stat(metadata.SourcePath)
+			}
 			return sessionViewerPage{
 				Rows:  sessionViewerDocumentRows(metadata, documents, pagination.Page, pagination.Limit),
 				Empty: "No approved visible documents are indexed for this session.",
@@ -36,6 +40,9 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 				Stale: os.IsNotExist(sourceErr),
 			}, nil
 		case viewerActivity:
+			if session.IsTelemetrySource(metadata.SourcePath) {
+				return sessionViewerPage{Empty: "No safe activity details are available.", Page: page}, nil
+			}
 			result, err := activity.ReadDetailsPage(metadata.SourcePath, metadata.Client, metadata.SessionID, page, limit, false)
 			if err != nil {
 				return sessionViewerPage{

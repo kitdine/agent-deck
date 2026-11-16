@@ -19,7 +19,7 @@ import (
 
 func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "agentdeck")
-	build := exec.Command("go", "build", "-mod=vendor", "-o", binary, ".")
+	build := exec.Command("go", "build", "-mod=vendor", "-tags", "agentdeck_acceptance", "-o", binary, ".")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
 	}
@@ -27,7 +27,7 @@ func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("binary SHA256=%x; go build -mod=vendor -o <isolated-binary> .", sha256.Sum256(contents))
+	t.Logf("binary SHA256=%x; go build -mod=vendor -tags agentdeck_acceptance -o <isolated-binary> .", sha256.Sum256(contents))
 	home := t.TempDir()
 	root := filepath.Join(home, ".agentdeck")
 	ctx := context.Background()

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -56,6 +57,11 @@ type Snapshot struct {
 	// Subscription is architecture.md C11's additive section; WireVersion is
 	// unchanged because an older consumer ignores the key.
 	Subscription SubscriptionSnapshot `json:"subscription"`
+	// SessionScopeView is the auxiliary-session-classification additive view
+	// for the default selection. Sessions above keeps describing every indexed
+	// session; a consumer never reads that as a scoped figure. A publication
+	// without this key predates it, which a consumer shows as legacy.
+	SessionScopeView *SessionScopeView `json:"session_scope_view,omitempty"`
 }
 
 type ProviderSnapshot struct {
@@ -257,6 +263,11 @@ type Result struct {
 }
 
 func (s Service) Build(ctx context.Context, request Request) (Result, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	s.StateRoot = root
 	if err := request.Validate(); err != nil {
 		return Result{}, err
 	}
@@ -292,6 +303,7 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 		}
 	}
 	s.loadSessions(ctx, request.RecentLimit, now, &result)
+	s.loadSessionScopeView(ctx, request.RecentLimit, now, &result)
 	s.loadHealth(ctx, &result)
 	sort.Strings(result.Warnings)
 	return result, nil
@@ -697,6 +709,10 @@ func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now tim
 }
 
 func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now time.Time) (WorkSignalsSnapshot, error) {
+	return s.workSignalsSnapshotWithProjection(ctx, core, now, false)
+}
+
+func (s Service) workSignalsSnapshotWithProjection(ctx context.Context, core *store.Store, now time.Time, projected bool) (WorkSignalsSnapshot, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
 	var options []usage.SignalOptions
@@ -705,7 +721,11 @@ func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now
 			options = append(options, usage.SignalOptions{Period: period.name, From: period.start, To: period.end, Client: client, IncludeSub: true})
 		}
 	}
-	reports, err := service.SignalsBatch(ctx, options)
+	loadReports := service.SignalsBatch
+	if projected {
+		loadReports = service.ProjectedSignalsBatch
+	}
+	reports, err := loadReports(ctx, options)
 	if err != nil {
 		return WorkSignalsSnapshot{}, err
 	}
@@ -719,46 +739,55 @@ func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now
 		for _, client := range []string{"all", "codex", "claude"} {
 			report := reports[reportIndex]
 			reportIndex++
-			if report.Activity != nil && report.Activity.Available {
-				if len(report.Activity.Kinds) != 4 {
-					return WorkSignalsSnapshot{}, errors.New("invalid work signal activity kinds")
-				}
-				for _, kind := range report.Activity.Kinds {
-					if len(kind.Sub) > 4 {
-						return WorkSignalsSnapshot{}, errors.New("invalid work signal activity subcategories")
-					}
-				}
-				snapshot.Activity.Items = append(snapshot.Activity.Items, WorkSignalActivityItem{
-					Period: period.name, Client: client, CostBasis: report.Activity.CostBasis,
-					Kinds: report.Activity.Kinds,
-				})
-			}
-			if report.Workflow != nil && report.Workflow.Available {
-				snapshot.Workflow.Items = append(snapshot.Workflow.Items, WorkSignalWorkflowItem{
-					Period: period.name, Client: client,
-					FirstEditSeconds: report.Workflow.FirstEditSeconds,
-					FilesTouched:     report.Workflow.FilesTouched,
-					Retries:          report.Workflow.Retries,
-					EditsPerSession:  report.Workflow.EditsPerSession,
-					TopFile:          report.Workflow.TopFile,
-					TopFileEdits:     report.Workflow.TopFileEdits,
-				})
-			}
-			if report.Tooling != nil && report.Tooling.Available {
-				if report.Tooling.Groups != len(report.Tooling.Rows) || len(report.Tooling.Rows) > 5 {
-					return WorkSignalsSnapshot{}, errors.New("invalid work signal tooling rows")
-				}
-				snapshot.Tooling.Items = append(snapshot.Tooling.Items, WorkSignalToolingItem{
-					Period: period.name, Client: client,
-					Calls: report.Tooling.Calls, Groups: report.Tooling.Groups,
-					Rows:         report.Tooling.Rows,
-					TopMCPServer: report.Tooling.TopMCPServer,
-					TopMCPCalls:  report.Tooling.TopMCPCalls,
-				})
+			if err := appendWorkSignalReport(&snapshot, period.name, client, report); err != nil {
+				return WorkSignalsSnapshot{}, err
 			}
 		}
 	}
 	return snapshot, nil
+}
+
+// appendWorkSignalReport adds one (period, client) report's available families
+// to a snapshot, rejecting a report whose shape the wire cannot carry.
+func appendWorkSignalReport(snapshot *WorkSignalsSnapshot, period, client string, report usage.SignalReport) error {
+	if report.Activity != nil && report.Activity.Available {
+		if len(report.Activity.Kinds) != 4 {
+			return errors.New("invalid work signal activity kinds")
+		}
+		for _, kind := range report.Activity.Kinds {
+			if len(kind.Sub) > 4 {
+				return errors.New("invalid work signal activity subcategories")
+			}
+		}
+		snapshot.Activity.Items = append(snapshot.Activity.Items, WorkSignalActivityItem{
+			Period: period, Client: client, CostBasis: report.Activity.CostBasis,
+			Kinds: report.Activity.Kinds,
+		})
+	}
+	if report.Workflow != nil && report.Workflow.Available {
+		snapshot.Workflow.Items = append(snapshot.Workflow.Items, WorkSignalWorkflowItem{
+			Period: period, Client: client,
+			FirstEditSeconds: report.Workflow.FirstEditSeconds,
+			FilesTouched:     report.Workflow.FilesTouched,
+			Retries:          report.Workflow.Retries,
+			EditsPerSession:  report.Workflow.EditsPerSession,
+			TopFile:          report.Workflow.TopFile,
+			TopFileEdits:     report.Workflow.TopFileEdits,
+		})
+	}
+	if report.Tooling != nil && report.Tooling.Available {
+		if report.Tooling.Groups != len(report.Tooling.Rows) || len(report.Tooling.Rows) > 5 {
+			return errors.New("invalid work signal tooling rows")
+		}
+		snapshot.Tooling.Items = append(snapshot.Tooling.Items, WorkSignalToolingItem{
+			Period: period, Client: client,
+			Calls: report.Tooling.Calls, Groups: report.Tooling.Groups,
+			Rows:         report.Tooling.Rows,
+			TopMCPServer: report.Tooling.TopMCPServer,
+			TopMCPCalls:  report.Tooling.TopMCPCalls,
+		})
+	}
+	return nil
 }
 
 // sessionsPeriods emits one record for every supported period and client scope,
@@ -879,12 +908,7 @@ func projectLabel(value string) string {
 }
 
 func sessionProjectGroup(value string) (identity, label string) {
-	identity = projectIdentity(value)
-	label = projectLabel(value)
-	if strings.HasPrefix(strings.ToLower(label), "referenced-chatgpt-conversation-") {
-		return "chatgpt-work://referenced-conversation", "ChatGPT Work"
-	}
-	return identity, label
+	return session.ProjectGroup(value)
 }
 
 func (s Service) loadHealth(ctx context.Context, result *Result) {

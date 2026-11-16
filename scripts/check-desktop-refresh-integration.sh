@@ -18,8 +18,11 @@ if rg -n 'Data\(contentsOf:' "$widget"; then
   exit 1
 fi
 test "$(rg -l 'WidgetCenter\.shared\.reloadTimelines\(ofKind:' "$shared" | wc -l | tr -d ' ')" -eq 1
-rg -Fq 'testTenTerminalCyclesHaveOneRequestEachAndNoOverlapReplay' "$repo_root/apps/macos/AgentDeckTests/DesktopRefreshSchedulerTests.swift"
-rg -Fq 'static let fullRefreshInterval: TimeInterval = 60' "$shared/DesktopRefreshScheduler.swift"
+rg -Fq 'testAutomaticUpdatesWatchOnlyWhileEnabledAndNeverSchedulePeriodically' "$repo_root/apps/macos/AgentDeckTests/DesktopRefreshSchedulerTests.swift"
+if rg -n 'fullRefreshInterval|DesktopRefreshScheduler\b|DesktopRefreshSchedulerReason' "$app" "$shared"; then
+  echo "a fixed local-data refresh period remains" >&2
+  exit 1
+fi
 rg -Fq 'static let evaluatorInterval: Duration = .seconds(30)' "$shared/DesktopRefreshScheduler.swift"
 rg -Fq 'static let minimumRefresh: TimeInterval = 3 * 60' "$widget/WidgetTimeline.swift"
 rg -Fq 'static let defaultRefresh: TimeInterval = 4 * 60' "$widget/WidgetTimeline.swift"

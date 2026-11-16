@@ -6,6 +6,10 @@ import { scope } from "./data.js";
 import { catalogs, formatCost, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { ScanStageControls, useScanScenario } from "./ScanProgress.jsx";
+import { AUX_MENUBAR_STATES } from "./AuxiliarySessions.jsx";
+import { SETTINGS_SCENARIOS, initialAuxSettings, auxiliarySettingsTransition } from "./auxiliarySettingsModel.js";
+import { ServingStageControls, useServingScenario } from "./ServingSnapshot.jsx";
+import { TELEMETRY_SCENARIOS, TelemetryStageControls } from "./TelemetrySettings.jsx";
 
 // 菜单栏图标：左键开关 popover，右键或双击弹出原生风格菜单。
 // 设置 / 检查更新 / 关于 / 退出 都在这个菜单里，所以 popover 底部不必再堆入口。
@@ -82,14 +86,31 @@ function MenuBarMenu({ lang, prefs, onPrefs, onSettings, onClose }) {
 export function App() {
   const stage = useStagePrefs();
   const scan = useScanScenario();
+  const serving = useServingScenario();
   const { lang, theme, state, width, quota, refresh, health, anchor } = stage;
   const dict = catalogs[lang];
   const params = new URLSearchParams(window.location.search);
   const [open, setOpen] = useState(true);
   const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState(params.get("settings") === "1");
-  const [prefs, setPrefs] = useState(DEFAULT_PREFS);
+  const [telemetryScenario, setTelemetryScenario] = useState(TELEMETRY_SCENARIOS.includes(params.get("telemetry")) ? params.get("telemetry") : "unknown");
+  const [prefs, setPrefs] = useState(() => ({
+    ...DEFAULT_PREFS,
+    periodicRefresh: serving.enabled ? true : DEFAULT_PREFS.periodicRefresh,
+  }));
   const [client, setClient] = useState("all");
+  const [auxScenario, setAuxScenario] = useState(params.get("auxMenu") || "normal");
+  const auxEnabled = params.has("auxMenu");
+  const auxSettingsEnabled=params.has('auxSettings');
+  const [auxSettingsModel,setAuxSettingsModel]=useState(()=>initialAuxSettings(params.get('auxSettings')||'normal'));
+  const auxDispatch=event=>setAuxSettingsModel(current=>auxiliarySettingsTransition(current,event));
+  // 舞台控件只属于原型：设置窗口关着时在页面顶部，开着时排在窗口上方，不再浮盖在窗口上。
+  const auxStage=auxSettingsEnabled&&<div className="scan-stage-controls as-stage" aria-label="Settings specimen controls">
+    <label>Settings scenario (stage) <select data-as-stage value={auxSettingsModel.scenario} onChange={e=>auxDispatch({type:'scenario',value:e.target.value})}>{SETTINGS_SCENARIOS.map(key=><option key={key}>{key}</option>)}</select></label>
+    {!settings&&<button type="button" data-as-open onClick={()=>setSettings(true)}>Open settings (stage)</button>}
+    <button type="button" data-as-complete disabled={!['loading','saving'].includes(auxSettingsModel.status)} onClick={()=>auxDispatch({type:'complete'})}>Complete pending (stage)</button>
+    <small>Sample IDs: codex/task-01 · claude/old-01 · claude/maint-1</small>
+  </div>;
 
   useEffect(() => {
     const onKey = (event) => {
@@ -109,7 +130,7 @@ export function App() {
   // schema 态下没有可显示的数值，因此标题为空——与「仅图标」偏好逐字节相同。
   // 一个永久条件不能和一个偏好长得一样，所以角标是这一态唯一还看得见的信号。
   const value =
-    (state === "unavailable" || (scan.enabled && !scan.hasSnapshot))
+    (state === "unavailable" || (scan.enabled && !scan.hasSnapshot) || (serving.enabled && !serving.hasSnapshot && !schema))
       ? "—"
       : schema
         ? ""
@@ -120,7 +141,11 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} showAnchor showRefresh showHealth />
-      {scan.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
+      {!settings&&auxStage}
+      {auxEnabled && <label style={{padding:'8px 20px'}}> {lang === 'zh' ? '辅助会话标本状态（舞台）' : 'Auxiliary session scenario (stage)'} <select value={auxScenario} onChange={e=>setAuxScenario(e.target.value)}>{AUX_MENUBAR_STATES.map(value=><option key={value}>{value}</option>)}</select></label>}
+      {scan.enabled && !serving.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
+      {serving.enabled && <ServingStageControls serving={serving} lang={lang} />}
+      {!settings && params.has("telemetry") && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
       <div className="stage-body" data-anchor={anchor}>
         <div className="menubar-strip">
           <div className="menubar-item-wrap">
@@ -155,12 +180,14 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={serving.enabled && ["partial", "mixed"].includes(serving.phase) ? "partial" : state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled && !serving.enabled ? scan : null} serving={serving.enabled ? serving : null} onClientChange={setClient} auxScenario={auxEnabled ? auxScenario : null} auxDefaultPreference={auxSettingsEnabled ? {value:auxSettingsModel.defaultScope,confirmed:auxSettingsModel.defaultConfirmed} : null} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>
           <div onMouseDown={(event) => event.stopPropagation()}>
-            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} />
+            {auxStage}
+            {!auxSettingsEnabled && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
+            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} auxSettings={auxSettingsEnabled ? {model:auxSettingsModel,dispatch:auxDispatch} : null} tabbed={params.get("settingsTabs") !== "0"} initialPane={params.get("settingsPane")} />
           </div>
         </div>
       )}

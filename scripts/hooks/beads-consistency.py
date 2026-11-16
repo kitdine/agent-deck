@@ -88,8 +88,8 @@ FINDING_CLOSED = re.compile(
 FINDING_SUFFIX_GROUP = re.compile(r"\b(?:all|both|are|were)\b|均|都|全部", re.I)
 FINDING_CLAUSE_BREAK = re.compile(r"[.;。；](?:[*_`]+)?\s+")
 FINDING_REFERENCE_CLAUSE = re.compile(r"^(?:see\b|参见)", re.I)
-# A carrier is a Beads issue or a named Backlog item. Nothing else counts,
-# because nothing else is read again after the record is archived.
+# New findings use Beads. Retain named Backlog carriers for historical records;
+# their migration follows documentation-workflow.md, not this syntax check.
 FINDING_CARRIER = re.compile(r"\bad-[a-z0-9][a-z0-9-]*\b|roadmap\.md Backlog:")
 
 AUTHORIZATION_WAIT = re.compile(
@@ -1130,7 +1130,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
                 f"{rel} ends in PASS while {', '.join(stranded)} "
                 f"{'has' if len(stranded) == 1 else 'have'} no carrier. Close "
                 f"the finding by naming its ID in a later round, or give it a "
-                f"Beads issue or a roadmap.md Backlog item on its own bullet. "
+                f"Beads issue ID on its own bullet. "
                 f"A bare `-> open` is not a destination: this record retires "
                 f"with its topic and nobody reads an archived record looking "
                 f"for outstanding work."

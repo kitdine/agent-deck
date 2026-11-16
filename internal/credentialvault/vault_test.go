@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -432,12 +433,16 @@ func TestVaultConcurrentInitializationUsesOneKey(t *testing.T) {
 
 func TestVaultSyncsKeyDirectoryAfterLink(t *testing.T) {
 	root := t.TempDir()
+	physical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	vault := New(root, fixedMachine("machine-a"))
 	var calls int
 	vault.syncStateRoot = func(path string) error {
 		calls++
-		if path != root {
-			t.Errorf("sync state root = %q, want %q", path, root)
+		if path != physical {
+			t.Errorf("sync state root = %q, want physical root %q", path, physical)
 		}
 		if _, err := os.Stat(vault.KeyPath()); err != nil {
 			t.Errorf("directory sync before credential key link: %v", err)

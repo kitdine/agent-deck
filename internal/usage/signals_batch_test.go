@@ -32,17 +32,23 @@ func TestSignalsBatchMatchesIndividualReports(t *testing.T) {
 	options = append(options, SignalOptions{From: from, To: to, Activity: "coding", IncludeSub: true}, SignalOptions{From: from, To: to, Kinds: []string{"tooling"}})
 	verify := func() {
 		t.Helper()
-		got, err := s.SignalsBatch(ctx, options)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, o := range options {
-			want, err := s.Signals(ctx, o)
+		for _, projected := range []bool{false, true} {
+			loadReports := s.SignalsBatch
+			if projected {
+				loadReports = s.ProjectedSignalsBatch
+			}
+			got, err := loadReports(ctx, options)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(got[i], want) {
-				t.Fatalf("option%+v got=%+v want=%+v", o, got[i], want)
+			for i, o := range options {
+				want, err := s.Signals(ctx, o)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got[i], want) {
+					t.Fatalf("option%+v got=%+v want=%+v", o, got[i], want)
+				}
 			}
 		}
 	}

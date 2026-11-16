@@ -2,6 +2,35 @@
 
 产品全部界面的唯一设计真相：菜单栏面板、小组件、设置窗口，以及 CLI 的逐字符输出。
 
+## 数据准备与可选引擎标本（scan-performance）
+
+入口 `?serving=rebuilding`，可见舞台支持 memory、disk、rebuilding、partial、first、failed、
+midnight、invalid；发布按钮只模拟准备好的 publication。已有数据在后台更新时保持可读，
+首次/无效状态不制造数字，midnight 的 today 不复用昨日值。沿用双语、主题与 420/280 宽度。
+`?surface=cli&engine=app` 提供拟新增 engine/telemetry 命令的逐字符标本；旧 scan 标本不变。
+额外常驻引擎是有条件的扩展，不是默认快开方案或已经证明的性能收益；第一阶段复用现有常驻 App 与有限 helper。
+serving 与 scan 同时指定时 serving 优先。默认额度页和全部现有面板仍是原产品界面。
+
+设计见 [menu-bar](../docs/topics/scan-performance/ux/menubar.md)、
+[CLI](../docs/topics/scan-performance/ux/cli.md)，源码/图像身份与检查见
+[manifest](../docs/topics/scan-performance/ux/prototype/serving/manifest.json)。
+合成标本不运行引擎、不修改配置、不接收 OTel、不证明 native 首帧速度或生命周期。
+
+OTel 设置入口 `?serving=rebuilding&settings=1&telemetry=unconfigured`：默认关闭的采集开关、
+连接状态、配置预览与保留已有数据。窗口外舞台支持 waiting/ready/capture_only/disconnected/paused。
+scan-performance 中的本地自动更新按文件事件定义，不要求用户设定周期；额度探测独立。
+真实日志隔离机制实验为 `tools/scan-performance-feasibility.mjs`，其数据仅在授权私有副本中处理；
+它的浏览器 rAF 数字已从产品首屏性能证据中撤回；不据此计算 native 加速比。
+原生隔离实验为 `tools/scan-performance-native-ab.py` 与 `tools/scan-performance-native-input.mjs`。
+数据准备、真实首帧与 OTel 的不同验证边界记录在专题 performance-evaluation.md。
+首次空库当天优先、已有库今天只读和历史待采集today的隔离对照见
+首次加载评估（固定提交 `c6ea1ca` 中
+`docs/topics/scan-performance/performance-evaluation.md` 的“首次加载与已有历史数据的对照”一节；
+2026-10-22 重新设计后已从现行性能评估中删除）。
+对应harness为 `tools/scan-performance-firstload.mjs` / `scan-performance-firstload-patch.py`、
+`scan-performance-db-bootstrap.mjs`、`scan-performance-history-today.mjs`。
+这是引擎数据准备证据，不是原型浏览器或真实popover的首帧证据。
+
 它在 2026-08-20 从 `docs/topics/desktop-app/ux/prototype/interactive-v7/` 移到仓库根，
 因为一份原型是整个产品表面的标本，不是某一个 topic 的资产。`work-signals` 需要同一份
 标本，而在第二个 topic 下再放一份拷贝，等于制造第二个设计真相。
@@ -290,3 +319,110 @@ axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检
 违规都返回 `FAIL`。测试仅覆盖 `.w-note > small`，不代表整个页面无障碍通过。
 使用 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|recovered`
 逐个验证可读数据态。原生 Increase Contrast 另行验收，浏览器结果不替代它。
+
+## 辅助会话 CLI 框架标本（auxiliary-session-classification）
+
+共享 CLI surface 新增 `auxiliary` 页签：`?surface=cli&auxiliary=work`。
+Scenario 控件包含三范围、空态、unknown、详情、覆盖/撤销、partial/stale、加载、
+错误与只读浏览器；Columns 控件为 40/48/80/120。CLI 文本为英文，数据均为合成。
+标本不执行命令，JSON 区为待架构供应的字段需求而非冻结 wire。
+全屏场景增加 Rows（8/10/24/40）与 Selected row（1/8/12）舞台轴，URL 为 auxRows/auxSelected；
+列数低于 48 或行数低于 10 自动显示尺寸拒绝；有效全屏固定行预算并保持选中行和退出帮助可见。
+usage 扫描标本保留 stderr progress、signals scan_incomplete 和 stats --no-scan 的区别。
+设计见 [ux/cli.md](../docs/topics/auxiliary-session-classification/ux/cli.md)。
+
+## 辅助会话菜单栏框架标本（auxiliary-session-classification）
+
+共享 Popover 会话页入口 `?tab=sessions&auxMenu=normal`，舞台选择 normal、empty、unknown、
+partial、stale、loading、failed、unavailable、override；沿用中英、深浅、420/280、client/period。
+`auxDefault=work|auxiliary|all` 模拟已保存默认；窗口内三范围为临时选择，重开恢复默认。
+来源详情只读，复制查询命令不执行命令。failed 的重试仅模拟成功发布；全部数据为合成。
+设计和标本证据见 [ux/menubar.md](../docs/topics/auxiliary-session-classification/ux/menubar.md)。
+构建/preview 后，独立 agent-browser 会话可使用
+`agent-browser eval "$(cat prototype/tools/check-auxiliary-menubar.js)"` 检查范围与交互；
+该脚本在初始 work、all clients、today、会话 tab 上运行，不证明真实查询/原生辅助功能。
+
+## 辅助会话 Settings 标本（2026-11-07 重新设计）
+
+入口 `?settings=1&settingsPane=sessions&auxSettings=normal&auxMenu=normal&tab=sessions`。设置窗口默认按工具栏分页
+（通用、会话、实时用量、额度），「会话」是独立一页；窗口沿用 460 pt；「管理…」打开「手动分类」sheet。舞台控件排在窗口上方（不再浮盖窗口），
+Settings scenario 可选 normal、loading、loadFailed、saving、saveFailed、saveUnknown、receiptMissing、
+conflict、pending、replayed、permissionWarning、三种 source* 与三种 codex*。窗口关着时有 Open settings；
+Complete pending 只模拟后台完成。该参数下不显示遥测舞台控件。
+持久值和在途操作保存在页面的 App 模型里，窗口草稿可以丢弃；刷新页面会重置合成数据，不写真实设置。
+查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 是未匹配的覆盖。
+设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
+检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行（分页窗口每组 121 项），
+模型合同检查为 `node prototype/tools/check-auxiliary-settings-final.mjs`。
+
+分页由用户 2026-11-07 提出，2026-11-08 定为默认。四页依次是通用、会话、实时用量、额度；`settingsPane`
+指定初始页（缺省为通用），同一页面内关窗再开会回到上次停留的页。「会话」页只在带 `auxSettings` 参数时出现。
+`settingsTabs=0` 只用于对照旧的单页长列表，不是产品状态；同一检查脚本在长列表下少跑 8 项分页检查（每组 113 项）。
+scan-performance 的两个历史检查脚本（`scan-performance-repair-check.mjs`、`scan-performance-otel-linkage.mjs`）
+验证的是长列表，因此固定带 `settingsTabs=0`。
+切页只隐藏非当前页、不卸载，各组状态在切页往返后保留；`prototype/tools/check-settings-pane-lifecycle.js`
+从 `?settings=1&settingsPane=live` 运行，分别加无参数、`codexWrite=refused`、`codexRestore=incomplete`、`codexExporter=other`
+四种 Codex 标本（每组共 43 项）。
+
+## 辅助会话 Widget 框架标本
+
+Widgets surface 增加 `?surface=widgets&auxWidget=normal`，仅聚焦现有 Magnitude 三尺寸；
+不传参数仍展示五种 Widget。State 支持 normal/empty/unknown/partial/legacy/defaultUnknown/pending/stale；
+Published scope（`awScope`）与 Saved default（`awDefault`）独立，保存默认不会重标旧快照。
+沿用 widgetRefresh 的 missing/containerUnavailable/readFailed/unsupported，全局读取失败优先。
+设计见 [ux/widget.md](../docs/topics/auxiliary-session-classification/ux/widget.md)；
+`prototype/tools/check-auxiliary-widget.js` 校验三范围聚合、价格不变、尺寸边界及 7/20 桶结构。
+所有新增数据仅为聚合合成值，不模拟真实 WidgetKit 调度或 App Group IO。
+
+CLI auxiliary 的 final-surface 候选已按架构同步：新增 core 覆盖独立撤销、请求回执/冲突、
+持久默认与来源管理；JSON 面板按所选场景展示实际 envelope 示例，未配置场景明确展示兼容默认示例。
+clear 的分类为 not_queried，不伪造自动结果；saveUnknown 指向 --request 读回。
+`node prototype/tools/check-auxiliary-cli-final.mjs` 核对 JSON/回执与未变的全屏帧合同。
+
+菜单栏 auxiliary final-surface 新增 legacy/defaultUnknown/sourceUnavailable/inputMismatch 舞台状态。
+前两态无分类数量；后两态保留 unknown 及有效用户覆盖。来源详情使用明确 --id 和逐参数引用的只读命令，
+规则缺失显示 unavailable，全部时长缺失显示 —。成功时间直接格式化呈现模型 generated_at。
+`prototype/tools/check-auxiliary-menubar.js` 包含最终状态和原框架生命周期检查；不代表真实请求竞态或 native 验收。
+
+Settings auxiliary final-surface 使用独立目标 revision 与 request receipt：clear 先显示 not_queried，
+独立 Find/Read current classification 才更新分类；receiptMissing 保持未知，replayed 保留较新覆盖。
+新增来源三态与 permissionWarning；来源定位仍仅 CLI 管理，不在窗口展示数据根。
+`node prototype/tools/check-auxiliary-settings-final.mjs` 检查内存模型合同；浏览器脚本覆盖最终窗口交互。
+这不执行实际源访问、SQLite、请求发送或 Widget 发布。
+
+### Auxiliary Widget final-surface candidate
+
+`?surface=widgets&auxWidget=normal` 仍为唯一 Widget 标本入口。新增 malformed、selectionMismatch、
+unknownScope 使用同一 unavailable 行；summary decoder 只验证合成聚合，不读真实 App Group。
+`node prototype/tools/check-auxiliary-widget-final.mjs` 检查字段完整性、窗口匹配、计数边界和分区。
+既有浏览器脚本扩展为 11 状态；最终设计与证据见 auxiliary-session-classification/ux/widget.md。
+
+## scan-performance Round 1 修复标本
+
+`?serving=mixed&tab=usage`：today usage已准备、会话/项目未知、7d未准备、30d仅部分；
+舞台发布保留client/period/panel。`?serving=rebuilding&settings=1&telemetry=unknown`：
+接收开关默认off，启用后状态未知，不从静默推出未配置/断连。
+`?surface=cli&engine=stored_partial` / `engine=telemetry_unknown`：覆盖stored-only部分来源与未知producer。
+CLI标本公共envelope及JSON错误stderr已修正。合成检查为`tools/scan-performance-repair-check.mjs`，
+只做文案/状态/交互，不测浏览器性能，不代表native/provider运行验收。
+
+## 安装状态所有权标本（installed-state-ownership）
+
+CLI 页新增 `ownership` 页签，入口为 `?surface=cli&ownership=<state>`。数据来自 `src/ownership.js`，共 13 个状态：
+
+- 未安装提示：`notice`；
+- 普通拒绝：`refused_state`、`refused_client_config`、`revoked`；
+- doctor：`doctor_installed`、`doctor_not_installed`、`doctor_formula_unclaimed`、`doctor_refused`、`doctor_command_owner`；
+- 认领：`claim_ok`、`claim_owned_by_other`、`claim_owner_running`、`claim_not_current_keg`。
+
+每个状态都分开展示 stderr、stdout、退出码和 `--format json`。text 是单一英文的逐字符输出，doctor 部分沿用 `renderDoctorText` 的 `status/mode/warnings/errors` 头部和 `name: status (code)` 行格式；与本主题无关的现有检查做了省略。JSON 中不出现任何路径。
+
+结构检查为 `node tools/installed-state-ownership-check.mjs`，检查内容包括：
+
+- 状态集合完整；
+- envelope 字段齐全，JSON 中没有路径；
+- 退出码与 error 的有无一致，错误首行的格式正确；
+- doctor 文本中包含每个检查对应的行，`installation` 排在第一个；
+- doctor 报告是否为部分报告，由 `state` 检查的短路原因决定：`state_missing`（现有的缺失目录短路）和 `state_ownership_refused` 两种是部分报告，各自以对应的 `checks_skipped:` 行结尾；其余是完整报告，不出现 `checks_skipped`。
+
+这些标本只证明文案、行序、字段、退出码以及输出位置（stdout 或 stderr），不证明守卫、所有权锁、回执或任何运行时行为。设计说明见 [`ux/cli.md`](../docs/topics/installed-state-ownership/ux/cli.md)。
