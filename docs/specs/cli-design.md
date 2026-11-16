@@ -1,7 +1,7 @@
 ---
 status: active
-version: 33
-updated: 2026-10-29
+version: 34
+updated: 2026-11-16
 created: 2026-07-14
 ---
 
@@ -116,6 +116,7 @@ agentdeck scan [--scope usage|session]
 agentdeck watch [--interval <duration>] [--domains usage,session,extension]
 
 agentdeck backup create|list|inspect|restore
+agentdeck install claim [--takeover]
 agentdeck doctor [--full]
 agentdeck state migrate
 agentdeck version
@@ -210,7 +211,8 @@ operations are exposed through narrow store interfaces and tested contracts.
 
 ## Local State
 
-The default state root is:
+The installed owner normally uses `$HOME/.agentdeck`; a program that is not
+the installed owner uses `$HOME/.agentdeck-dev`. Both have the same state layout:
 
 ```text
 ~/.agentdeck/
@@ -223,6 +225,54 @@ The default state root is:
     ├── claude/
     └── portable/
 ```
+
+### Installation ownership and isolated state
+
+Installation identity is not the build version, branch, working directory, or
+an environment flag. The process resolves its executable through symbolic links
+and compares that physical path with the single user receipt at
+`<account>/Library/Application Support/AgentDeck/installation.json`. Here
+`account` comes from the system account database, not `$HOME`. A valid receipt
+names one executable and one channel: `homebrew_cask`, `homebrew_formula`,
+`make`, or `local_app`. Its version-1 fields are `receipt_version`, `executable`,
+`channel`, `installed_at`, and `installation_id`; unknown fields are invalid.
+The receipt is private, atomically written, and not followed through a symlink.
+If the recorded executable no longer exists, the receipt is stale and the reason
+is `receipt_missing`, even when the receipt file itself remains.
+
+| Process | No `--state-dir` | Explicit `--state-dir` |
+| --- | --- | --- |
+| Installed owner | `$HOME/.agentdeck` | Uses the requested directory subject to the state guard |
+| Not installed, no eligible formula renewal | `$HOME/.agentdeck-dev` | Uses an isolated directory; refuses the real state root or any of its descendants |
+| Current formula keg eligible for renewal | Renews before choosing the default, then uses the installed default | Renews when accessing the real root; an explicitly isolated directory does not trigger renewal |
+
+Default-directory selection respects `$HOME`; the protected real root is the
+system account's `.agentdeck`, including its symlink entries, physical target
+and descendants. Physical path resolution also covers aliases and `..` after
+symlinks; it does not lexically clean away a link before resolving it. A
+non-owner is refused before opening, creating, locking, migrating, or reading
+contents beneath that root, including on read-only paths. Unsafe path resolution
+fails closed. There is no environment or flag bypass.
+
+Access to real state requires a shared `ownership.lock` session, with identity
+rechecked under the lock; the lock remains held through all file/database use.
+Receipt changes take the exclusive lock. Each wait is bounded at five seconds:
+state access can return `ownership_busy`, and installation handoff can return
+`owner_running`. Long-running consumers revalidate before each round, close
+handles on ownership loss, and return `state_ownership_refused`. Stop the App,
+watcher, telemetry listener and affected client activity before handing ownership
+to another path or installation method. The existing `state.lock` has a separate
+purpose and does not replace the ownership session.
+
+A non-owner also cannot write AgentDeck-managed client or shell configuration
+within the real account home, regardless of `--state-dir`. Read-only client-log
+and configuration discovery is unchanged: an isolated AgentDeck state root is
+not a sandbox for source logs. All uninstalled processes share the default
+development root; incompatible development schemas can still yield
+`schema_ahead` there. Use a distinct isolated `--state-dir` when needed.
+
+The state layout and installed-process behavior below remain unchanged; this
+ownership boundary does not grant a database downgrade or change schema support.
 
 The root and subdirectories use mode `0700`. SQLite databases, WAL and journal
 sidecars, the credential key file, backups, locks, and temporary files use mode
@@ -263,12 +313,19 @@ ownership and lifecycles:
 ~/.local/bin/agentdeck                 # installed executable by default
 ~/.local/share/agentdeck/              # installation ownership manifest
 ~/.agentdeck/                          # persistent AgentDeck user state
+~/.agentdeck-dev/                      # default state of a non-owner
+<account>/Library/Application Support/AgentDeck/
+    installation.json                 # user installation receipt
+    ownership.lock                    # advisory ownership session lock
 <invocation directory>/                # project context, never owned by AgentDeck
 ~/.codex/ and ~/.claude/               # client state, accessed only by contract
 ```
 
 Uninstall removes only validated installation artifacts. It never removes the
 state root, credential key file, backups, client files, or project files.
+The receipt, ownership lock, installer-private cleanup manifests and retained
+cleanup helpers are installation metadata, not portable state. Backup/restore
+neither exports them nor grants ownership on the destination machine.
 
 ## Build Identity and Installation
 
@@ -320,20 +377,51 @@ BINDIR  defaults to $PREFIX/bin
 DATADIR defaults to $PREFIX/share/agentdeck
 ```
 
-`make install` builds the binary, creates owner-writable destination
-directories, stages the executable in `BINDIR`, sets mode `0755`, verifies its
-SHA-256, and atomically renames it into place. It writes an ownership manifest
-containing the canonical installed path and SHA-256. It refuses an existing
-destination by default. `FORCE=1` explicitly authorizes replacement at that one
-path and refreshes the manifest; it does not authorize changes to any other
-executable or legacy alias. An interrupted install may leave only recognizable
-temporary files or a manifest mismatch that makes uninstall fail closed.
+`make install` builds and stages the binary, sets mode `0755`, and verifies its
+SHA-256. The staged helper takes the exclusive ownership lock, publishes the
+executable and writes the user receipt in one session. The installer also keeps
+its path/hash/completion manifest and an immutable per-installation cleanup
+record. Existing destinations require `FORCE=1`; a different live owner requires
+the separate `TAKEOVER=1` decision. FORCE authorizes replacement only at that
+target and is not ownership takeover. Neither option overrides an active
+ownership session.
 
 `make uninstall` reads the manifest and removes the executable only when the
 requested install path and current SHA-256 both match. A missing, malformed,
-path-mismatched, or hash-mismatched manifest fails closed. It removes the
-manifest but leaves unrecorded installation directories in place. It never uses
-a broad or recursive removal and never touches `~/.agentdeck/`.
+path-mismatched, or hash-mismatched manifest fails closed. Cleanup also compares
+the original installation ID, channel and executable with the receipt under the
+exclusive lock. A superseded installation is skipped, not upgraded into authority
+to remove the newer one. A missing/invalid receipt while the target remains is
+not deletion permission: reinstall through the original method before retrying.
+It removes matching owned artifacts, never the state roots or client files;
+unrecorded installation directories may remain.
+
+`make install-macos-app` similarly publishes the bundle from `MACOS_APP`
+(default `apps/macos/build/DerivedData/Build/Products/Release/AgentDeck.app`),
+with channel `local_app`. `APPDIR` defaults to `/Applications` and `BIN_LINK` to
+`/usr/local/bin/agentdeck`; the latter links to `Contents/Helpers/agentdeck`.
+`make uninstall-macos-app` uses that installation's retained cleanup helper and
+record. Local App publication, matching receipt removal, Widget unregistration
+and target removal remain inside the exclusive ownership session. Missing or
+damaged cleanup material fails closed; scripts do not add an unlocked fallback
+deletion. Use the same installation paths for upgrade and uninstall.
+
+The public `agentdeck install claim [--takeover]` is for Homebrew formula
+installations only. The executable must be in the current opt-selected
+`agentdeck` or `agentdeck-rc` keg. Claim records its physical Cellar path, not the
+mutable opt link, and writes only the receipt, never the state database or client
+configuration. Another still-existing owner requires `--takeover` after its
+sessions stop. Retained old kegs cannot claim.
+
+Formula upgrades renew automatically only when a valid `homebrew_formula`
+receipt names a removed keg in the same Homebrew prefix and formula, and the
+running program is the new opt-selected keg. Renewal rechecks these conditions
+under the exclusive lock. A renewal lock failure refuses this invocation instead
+of silently switching to empty development data. Keeping the old keg, changing
+prefix or switching stable/RC does not renew; make an explicit claim. Existing
+formula users first adopting this contract must claim once because no old
+receipt exists. Registration/unregistration helpers are internal installer
+protocols, not public recovery commands.
 
 Development and automated tests use an isolated temporary `PREFIX`; they do not
 execute install or uninstall against the real user home. Release archives,
@@ -441,6 +529,34 @@ aborts when `agentdeck` or `agentdeck-rc` is present in the Cellar and prints
 the two-command migration. That migration — `brew uninstall agentdeck` then
 `brew install --cask agentdeck-app` — leaves `~/.agentdeck` untouched in either
 direction, and a Cask uninstall removes App-owned artifacts only.
+
+The Cask's postflight registers the installed helper as `homebrew_cask`; it does
+not use takeover or publish files through the helper. Homebrew owns App
+publication, replacement, rollback and deletion outside AgentDeck's ownership
+lock. Same-path, same-channel upgrades are not ownership handoffs: a matching
+path remains installed without comparing binary generations or hashes.
+Postflight still requests the exclusive lock first. Only when it is refused as
+`owner_running`, the channel is `homebrew_cask`, no staged source is supplied,
+and a valid existing receipt already matches that exact executable and channel,
+registration exits `0` without changing the receipt or its ID/time. Otherwise
+normal refusal applies. Successful locked registration writes a fresh ID/time.
+
+The Cask uninstaller quits the App, conditionally unregisters the exact Widget
+path and lets Homebrew remove the App and linked artifacts. It does not
+unregister installation ownership or delete the receipt: the missing helper
+makes that receipt stale, so the next installation needs no takeover. Neither
+formula nor Cask uninstall removes AgentDeck user state.
+
+This contract does **not** guarantee that Cask file replacement waits for all
+old CLI/worker sessions, or that delayed local-App cleanup is safe when mixed
+with same-path Cask replacement. PlugInKit output-format/exit-0 diagnostic
+ambiguity also remains a limitation. On upgrade, persistent postflight failures
+such as `owned_by_other` or a brew HOME/system-account mismatch can make
+Homebrew's rollback remove the old App too; fix the cause and reinstall.
+An old installed Cask's unconditional Widget-unregistration definition can also
+block its first upgrade before the new template takes effect. New templates do
+not retroactively repair that definition; see the manual's
+[Cask troubleshooting](cli-manual.md#cask-故障排查与已知限制).
 
 The Cask update is a pull request into `kitdine/homebrew-tap` writing `Casks/`
 and never `Formula/`, opened only after the DMG it points at is published. It
@@ -2043,6 +2159,16 @@ write action; it holds no state of its own that matters.
   database directly, opens no port, and makes no network request. The Go helper
   and the existing AgentDeck state stay authoritative; everything the app holds
   is a disposable projection of them.
+- **Ownership and state path.** Each refresh obtains the guarded state directory
+  from the embedded helper instead of deriving `$HOME/.agentdeck` or forcing that
+  path through `--state-dir`. Failure is helper-unavailable, not a fallback to
+  real state. Only an App whose helper owns and serves real state holds a shared
+  ownership session through exit, rechecking the helper under the lock and on
+  each round. An uninstalled/DerivedData App uses isolated state and holds no
+  long-lived ownership lock. Debug App/Widget bundle IDs, App Group and preference
+  domain are distinct from Release/Perf. Real simultaneous Debug/installed-App
+  operation was explicitly user-waived for this topic; native/helper and stand-in
+  evidence is not a claim of a real dual-App run.
 - **Menu-bar surface.** Five panels — quota, usage, breakdown, attribution, and
   sessions — plus an unfiltered rhythm block, a notice strip carrying refresh,
   Widget-publication, schema and health detail, and a provider footer. Client
@@ -2218,6 +2344,8 @@ authenticated inside the age stream and re-encrypted for the target machine.
 Normal backups exclude the rebuildable session database. They never include
 original client JSONL, authentication files, attachments, environment data, or
 internal rollback backups.
+Installation receipts, ownership locks, cleanup records and cleanup helper
+copies are likewise excluded; restoring portable data does not claim ownership.
 
 Portable backups also exclude the machine-local derived
 `project-attribution.enabled` negative-gate marker. Its absence immediately
@@ -2378,10 +2506,39 @@ failure that has no more specific classification.
 | `extension_sync_incomplete` | Extension inventory committed, but its scan fingerprint update failed; diagnosis is required before retry. | 1 |
 | `extension_inventory_unreadable` | Extension inventory cannot be diagnosed from an unreadable or malformed core database. | 1 |
 | `schema_ahead` | The database schema version is newer than this binary supports. | 1 |
+| `state_ownership_refused` | The process cannot access the real state root or write real-account managed client configuration. | 1 |
+| `install_claim_refused` | Installation ownership claim, registration or conditional cleanup was refused. | 1 |
 | `unsupported_wire_version` | A desktop request uses an unsupported wire version. | 2 |
 | `invalid_recent_limit` | A desktop request uses an invalid recent-item limit. | 2 |
 | `invalid_argument` | Command syntax, flags, or another user input is invalid. | 2 |
 | `runtime_error` | The failure is not classified by a more specific code. | 1 |
+
+Ownership errors use the existing failure envelope on stderr.
+`state_ownership_refused` has path-free
+`details: {"resource":"state_root","reason":"<reason>"}`, with resource
+`client_config` instead for a refused client-configuration write.
+`install_claim_refused` has `details: {"reason":"<reason>"}`. Reasons include
+`receipt_missing`, `receipt_invalid`, `receipt_other_executable`,
+`executable_unresolved`, `real_root_unresolved`, `state_path_unresolved` and
+`ownership_busy` for access, and `not_current_formula_keg`, `owned_by_other`,
+`owner_running` for public claim. Cleanup can also report receipt
+missing/invalid. Neither error reveals the other owner's executable path.
+Successful `install.claim` data is
+`{"channel":"homebrew_formula","takeover":false}` (or `true` when requested).
+
+Non-owners receive at most one notice per process, only for text output with a
+TTY stderr and without `--quiet`, before command output:
+
+```text
+note: not the installed AgentDeck (<reason>); using isolated state ~/.agentdeck-dev
+```
+
+With an explicit isolated directory the suffix is `using state <directory>`.
+The notice never enters stdout, JSON or NDJSON. Existing version identity stays
+exactly five fields/lines; installation identity is diagnosed by doctor, not
+added to `version`. Ownership-refused Hook/statusline calls remain silent with
+exit `0` and write no refusal record. `hook-refusals.json` remains reserved for
+the existing `schema_ahead` diagnostic, never for installation refusal.
 
 Not-found messages are human-readable and never render database, driver,
 filesystem-path, or errno text. Provider, credential, session, and extension
@@ -2485,6 +2642,28 @@ canonical URL, and SHA-256), distinct unpriced models, source readability,
 usage cursors, incomplete exact runs, session FTS availability, extension
 fingerprints, duplicate IDs, and missing paths.
 
+`installation` is the first check, before `state`. An installed owner reports
+`ok` with its channel in `reason`; a non-owner reports `warning`,
+`code: not_installed` and the identity reason, with formula recovery
+`agentdeck install claim` when applicable. These checks reuse existing check
+fields and disclose no installation path in JSON.
+
+On a normal installed-owner report, `managed_command_owner` checks absolute
+AgentDeck-managed Hook/statusline commands against the current executable.
+Mismatch produces `warning`, `managed_command_owner_mismatch`, the affected
+client and its re-setup command. PATH-based commands report `path_resolved`:
+doctor cannot reproduce the client's runtime PATH, so this is not proof of
+which executable the client will run. Non-owner and short-circuit reports do
+not run this check.
+
+If real-state access is refused, quick/full doctor never inspects the refused
+directory or hands it to later diagnostics. It emits only `installation` and
+`state` (`error`, `state_ownership_refused`, refusal reason), in a successful
+envelope with `partial: true`, `warnings: ["checks_skipped"]`, exit `0`.
+Text ends with `checks_skipped: the requested state directory was refused; no
+other diagnostics ran`. Missing isolated state retains the existing
+`state_missing`/readable-core-required partial-report behavior.
+
 Doctor must remain usable before an upgrade migration has run. It reads the
 stored schema version before domain queries, reports `schema_outdated` with the
 stored version in `count` and the supported version in optional
@@ -2506,7 +2685,7 @@ checks; schema-ahead text also names the upgrade recovery. A successfully
 rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
-Quick and full mode share the schema-state matrix. With this binary supporting
+Quick and full mode share the schema-state matrix. For a binary supporting
 schema 30, schema 12 reports a `schema_outdated` schema check with `count: 12`,
 `supported_count: 30` and recovery command `agentdeck state migrate`. A complete
 supported schema reports an `ok` schema check with `count: 30`; its optional
@@ -2917,6 +3096,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 34 | 2026-11-16 | Reconciles installed-state-ownership: single path/channel receipt, isolated non-owner state and client-write guard, lock-bound access/handoff, formula claim/renewal, local installer conditional cleanup, Homebrew-owned Cask lifecycle and bounded same-path busy registration. Adds the two ownership error codes and doctor checks while preserving installed normal access, version/wire and schema-ahead contracts. Installation metadata is not portable state; Cask/PlugInKit limitations and the explicit A5 real dual-App waiver remain stated. This is a MINOR behavior change, with no release version assigned here. |
 | 31 | 2026-10-04 | Reconciles the delivered v0.6.5 LaunchServices doctor addition: bounded separate host/Widget sources, conservative five-state classification, deterministic local evidence and manual safety guidance, with a path-free desktop health projection. The approved exception permits the new doctor/health checks, codes, optional details and consequent warning counts; other commands, exits, database formats and existing-check semantics remain unchanged. Complete-refresh targets are unchanged; accepted performance limits and unverified Widget causality/recovery remain explicit in the topic record. |
 | 30 | 2026-09-26 | Reconciles the v0.6.0 contract over its five retained integrated areas: schema/Hook failure visibility, bounded snapshot performance, subscription quota and reset reporting, desktop/Widget refresh, and cause-specific health recovery. Future-schema ordinary command refusal uses `schema_ahead` at exit 1; desktop wire v1 adds subscription and health metadata without replacing existing sections; quota remains opt-in and distinguishes unavailable values from zero; refresh keeps coherent snapshots and bounded Widget reads; lock and extension recovery preserve read-only doctor and safe action semantics. Manual VoiceOver for health recovery is user-waived and untested, and other recorded native/performance exceptions remain explicit. Cost transparency is outside v0.6.0 with no replacement version assigned. |
 | 29 | 2026-09-08 | Reconciles schema-version-signal: narrows future core-schema refusal to `schema_ahead` at unchanged ordinary-error exit 1; defines lock-failure probe precedence, stored/supported version pairs and additive `supported_count` at desktop wire v1; makes doctor short-circuit reports partial with `checks_skipped`; documents the bounded silent Hook refusal diagnostic, successful-read-write-open clearing versus upgrade suppression, and App-side schema attribution. No product release version is assigned. |

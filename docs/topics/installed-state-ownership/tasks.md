@@ -47,7 +47,7 @@ updated: 2026-11-15
 | 6. `app-state-location` | [x] | [x] |
 | 7. `debug-app-identity` | [x] | [x] |
 | 8. `ownership-acceptance` | [x] | [x] |
-| 9. `contract-reconciliation` | [ ] | [ ] |
+| 9. `contract-reconciliation` | [x] | [x] |
 
 ### 分解原则与开工条件
 
@@ -923,6 +923,69 @@ Round 2 独立复评 PASS，Task 8 Review 已勾选；完整发现处置、内�
 **输入/输出接口与验收**：消费任务 8 的行为结果与限制，逐项对照 CLI 文本/JSON、安装方式、formula 首次 claim 与自动续登、App 路径、拒绝恢复、真实环境操作员步骤，产出稳定规范、手册和 README。说明回执/所有权锁/清理清单/helper 不属于便携状态；保留已安装兼容和 schema_ahead 契约，不把未执行验收写成支持保证。文档闭环不授权安装、提交、推送或发布。
 
 **验证：L0**。需要 `python3 scripts/check-docs.py`、`bash scripts/check-topic-docs.sh installed-state-ownership`、`make check-whitespace`、`git diff --check`。
+
+#### 开发交接 — 2026-11-16（任务 9）
+
+- 工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`，
+  基线 HEAD `a289f66b567b72ceee248c781717f9eea541f5e5`。Task 8 已在该签名提交中
+  本地交付，提交态门禁 VERIFIED 9/9；需求 cask 修订已单独交付为 `25f3ecd`。
+  上方各次未交付/待前提文字保留历史状态。当前只完成 Task 9 开发，主题与来源缺陷仍开放。
+- 仅修改 `docs/specs/cli-design.md`、`docs/specs/cli-manual.md`、`README.md`
+  及本文件；没有产品代码、测试、配置或其他工作树改动。CLI design 版本升为 34，
+  记录本主题的 MINOR 行为变化，但不指定或发布新的产品版本，不改历史 v0.6.5 发布事实。
+- 稳定契约补齐单回执/四 channel、未安装默认隔离、真实状态与客户端写入守卫、
+  所有权会话、formula 认领与续登、make/本地 App 的锁内发布与条件清理、
+  Cask 的 Homebrew 文件生命周期和同路径占用重登四条件。
+  `state_ownership_refused`、`install_claim_refused`、doctor 两个检查及部分报告与
+  已有 envelope/退出码对照；version 五字段、schema_ahead 和 Hook 静默契约保持。
+- 手册与 README 增加首次 claim、显式 takeover、FORCE 与 TAKEOVER 的区别、
+  本地 App 安装/卸载以及恢复前提；README 正常使用示例改用已安装程序，避免开发程序
+  读空隔离数据或尝试写真实客户端配置。内部登记、清理和状态路径查询不作为用户恢复命令。
+  回执、ownership.lock、私有清理清单及 helper 副本明确排除在便携状态之外。
+- 保留 Cask 同路径文件替换的两项撤回保证、PlugInKit 输出风险、HOME 不一致/持续
+  owned_by_other 导致升级回退失败、旧 Cask 卸载定义可能阻断首次升级等限制。
+  手册的旧 Release App 正常启动后重试仅为未验证的操作员路径，不保证能修复；
+  不建议手工删除 App/回执、修改 Caskroom 或追加注册命令。
+  A5 真实双 App 实测仍标为用户明确豁免，不伪写成实测通过。
+- 四项 L0 命令均通过；本轮仅文档变动，没有重跑 Go、race、原生、真实 brew 或屏障验收，
+  不将文档检查作为新增运行证据。未安装、注册或启动 App，未访问真实状态，
+  未提交、推送或开始评审。
+- CEv1 WorkUnit `installed-state-ownership:contract-reconciliation`，
+  候选 ContentState `installed-state-ownership:contract-reconciliation:dev-20261116`。
+  指纹为 `head=<HEAD>\n` 加按路径排序的 `<path>=<git-blob>\n` 的 SHA-256，
+  范围为三份产出文档、本文件，以及已批准 requirements/architecture/CLI UX/Task 8
+  评审四份输入，共 8 项；不把自身指纹写入本文件。
+  Dev 已完成、Review 未执行，交接独立评审；任务和 Topic 完成边界保持开放。
+
+#### 评审交接 — 2026-11-16（任务 9）
+
+Round 1 独立评审 FAIL，完成门禁 FAILED。Review 保持未勾选，原任务交回修复；完整发现、候选指纹、静态复现与验证边界见[任务评审记录](reviews/contract-reconciliation.md)。仅更新评审/状态记录，未修复候选、构建或安装 App，未提交或推送。任务、Topic 与来源缺陷仍开放。
+
+#### 修复交接 — 2026-11-16（任务 9 / ISO-CR-R1-F1）
+
+- README 与手册的本地 App 示例均改为 `make build-macos-release` 后再
+  `make install-macos-app`，并注明 Release 目标先构建双架构 CLI helper；
+  默认 `build-macos-app` 仍为 Debug，不用于这条 Release 安装链。
+  未改 Makefile、脚本或构建配置，CLI design 的既有候选保持不变。
+- 原命令链的 dry-run 与脚本确认 Debug 构建/Release 安装错配。修复后自动提取两份
+  文档的 Bash 示例，断言 Release 构建紧接本地安装，再执行
+  `make -n build-macos-release install-macos-app`：输出包含 arm64/amd64 CLI 构建、
+  显式 Release 配置，脚本默认输出与 MACOS_APP 安装输入同为
+  `apps/macos/build/DerivedData/Build/Products/Release/AgentDeck.app`。
+  这只证明静态命令/路径一致，不是构建或安装成功的运行证据。
+- 修复映射及验证见[任务评审记录的 Repair 1](reviews/contract-reconciliation.md#repair-1--2026-11-16)。
+  HEAD 仍为 `a289f66b567b72ceee248c781717f9eea541f5e5`，
+  工作区 `agent-deck.installed-state-ownership` / `feature/installed-state-ownership`。
+  CEv1 候选为 `installed-state-ownership:contract-reconciliation:repair-r1-f1-20261116`，
+  沿用 8 项内容清单；独立复评仍未执行，Review 保持未勾选。
+  未执行实际 App 构建、注册、启动或安装，未提交或推送。
+  原 Round 1 FAIL 与广泛文档审查未完成的边界保留，任务、Topic 与来源缺陷仍开放。
+
+#### 复评交接 — 2026-11-16（任务 9）
+
+Round 2 独立复评 PASS，Review 已勾选，Task 9 完成门禁 VERIFIED 5/5；完整发现处置与证据见[任务评审记录](reviews/contract-reconciliation.md)。最终 Topic 证据边界按九项任务的当前验收版本补齐层级，复用已交付任务证据、任务 8 的 A5 明确豁免及当前稳定契约核对，Topic 门禁 VERIFIED；不以子任务状态字符串代替证据查询。
+
+这是主题内容完成检查点，不是 Git 交付或集成完成。任务 9 进入 awaiting_commit，仍待用户授权提交和推送；任务 1–8 的既有交付不重跑。主题与来源缺陷的交付协调保持开放，不执行安装、发布、合并或归档。
 
 ## 覆盖与交接核对
 
