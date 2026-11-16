@@ -816,6 +816,13 @@ explicit impact assessment, with fresh scoped L0 checks. The operator separately
 authorized this document's commit and push on 2026-10-09. Aggregate assembly and
 contract closure remain open.
 
+Installed-state ownership's actual merge `b53f26b6` now has successful main CI
+and real Homebrew runs, both on attempt 1. Its integration gate is VERIFIED 4/4,
+and source Bug `ad-bug-dev-schema-migrates-release-state` is closed at the main
+delivery boundary. All selected member integrations are complete. Aggregate
+combined acceptance, contract delivery, v0.7.0 release and local installation
+remain active under the user's expanded authorization.
+
 ### Current membership review — 2026-11-15
 
 The revised five-member selection and corresponding acceptance/dependency changes
@@ -823,3 +830,126 @@ passed independent [Round 5](reviews/tasks.md#round-5--2026-11-15) re-review aft
 closing all Round 4 findings. Final exact-content evidence and delivery status
 belong to that record. Round 1–4 retain their original content identities and
 verdicts. Aggregate assembly and version closure remain open.
+
+
+### OTel member PR preparation — 2026-11-15
+
+The selected `otel-version-tolerant-metering` source is delivered and pushed at
+`561c8eb088584115373ad914712364e61e0dae5b` (tree
+`711eba23b616c1ba29d15205375457bc1a123cb8`). The earlier uncommitted snapshot
+above remains historical. Three document commits and one complete implementation
+commit follow the operator-approved split; an assembly status projection accompanies
+the member PR. Source document/task/topic gates are VERIFIED at committed content.
+
+Independent integration [Round 4](reviews/assemble.md#round-4--2026-11-15) PASS;
+[PR #66](https://github.com/kitdine/agent-deck/pull/66) targets main at
+`1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692`. GitHub Codex review completed for
+this unchanged source with no findings; the operator explicitly permits reuse
+without another review request. All CI must pass before the authorized merge.
+Actual integration/post-merge evidence, installed-state ownership and final
+combined acceptance remain open; both aggregate Task checkboxes stay unchecked.
+
+
+### OTel member merged — 2026-11-16
+
+[PR #66](https://github.com/kitdine/agent-deck/pull/66) merged at
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b` after both source/PR CI passed and
+same-source Codex review reported no findings. Its target/source parents are
+`1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692` and
+`561c8eb088584115373ad914712364e61e0dae5b`; actual tree
+`711eba23b616c1ba29d15205375457bc1a123cb8` equals the reviewed result.
+Earlier preparation and uncommitted-state descriptions remain historical.
+[Round 4](reviews/assemble.md#round-4--2026-11-15) records the actual merge,
+verified GitHub signature and pending main CI43810012502. The integration gate
+currently has three passing criteria and awaits post-merge CI. Remaining feature
+membership is installed-state-ownership, together with final combined acceptance
+and version closure. Both aggregate task checkboxes remain unchecked.
+
+
+### OTel integration verified — 2026-11-16
+
+Main CI [43810012502](https://github.com/kitdine/agent-deck/actions/runs/43810012502)
+passed all four jobs on actual merge `c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`.
+The OTel member integration WorkUnit is VERIFIED 4/4, with final evidence and
+retained source limitations in [Round 4](reviews/assemble.md#round-4--2026-11-15).
+The source Bug is closed after delivered-source review and exact-merge verification.
+Four selected members are integrated. Installed-state ownership is the remaining
+feature member, followed by aggregate combined acceptance and version closure.
+These contract records are locally synchronized and await their own Git delivery.
+
+### Installed-state ownership integration candidate — 2026-11-16
+
+Source `0ecc3312871649884ebaf21996ee7a4763eca9cb` is reconciled with main
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b` in the source worktree. The complete
+candidate tree is `c0736f1294e173abaafa761fefcea9e178f35763`. Six conflicts and
+new CLI/package/native ownership interactions are resolved and covered by
+targeted acceptance plus Go/native regression checks. Independent OpenCode
+integration review found no new defects. [Round 5](reviews/assemble.md#round-5--2026-11-16)
+records PASS, the exact verification facts and retained A5 waiver.
+
+The source Topic gate is VERIFIED 3/3 at this candidate through explicit
+target-bound reuse and integration checks. SSH-signed source merge
+`f23b8c468273721a6485d1b9a610f4284fcbbe2c` preserves that exact tree and is
+pushed in [PR #67](https://github.com/kitdine/agent-deck/pull/67). Actual member
+integration remains NOT_VERIFIED pending all applicable CI, explicit clean
+GitHub Codex review, actual merge and post-merge evidence. Both aggregate
+checkboxes remain unchecked. Final combined acceptance and version closure
+remain open.
+
+PR #67 subsequently exposed two source review-record formatting issues under
+the complete main-to-PR documentation range. Signed corrections `c70b05c` and
+`d359861` remove a terminal blank line and make an existing verified gate
+explicit. The final full-range document checks pass, and product/test content
+matches the reviewed candidate. New-head CI and GitHub review remain pending.
+
+GitHub Codex review of `d359861` reported three P2 defects, independently
+confirmed by the controller and recorded in [Round 6](reviews/assemble.md#round-6--2026-11-16).
+The current member candidate is FAIL pending repair and independent re-review
+of ISO-INT-R6-F1 through F3. The earlier Round 5 result remains historical.
+PR merge and the aggregate assembly boundary remain open.
+
+Repair and independent [Round 8](reviews/assemble.md#round-8--2026-11-16) now
+close ISO-INT-R6-F1/F2/F3 and the intervening ISO-INT-R7-F1 regression.
+The final six-file repair candidate is `b8f4ef8350737891b30415a8246eba409764b524`.
+Local review is PASS and the source Topic gate is VERIFIED 3/3 at that tree.
+New-head CI, explicit clean GitHub Codex review and actual integration remain
+pending. Earlier failed rounds and their content identities remain historical.
+
+The reviewed repair is pushed as SSH-signed `359d148ebd58f87fe99d63f88a686fb52c6ecc91`
+with the same tree. The three original GitHub threads have repair replies and
+are resolved. New-head CI and an explicit clean Codex review are still required
+before merging PR #67.
+
+Both desktop CI jobs on `359d148` failed the Settings page-round-trip consent
+assertion; the push job also failed provisional ownership-lock release.
+The failures are recorded after Round 8. Source Topic evidence for this exact
+candidate is now FAILED, while the local static review remains scoped to its
+observations. The existing Codex Developer is diagnosing both failures before
+bounded repair. PR integration remains blocked.
+
+The two test-readiness corrections passed independent Claude/Fable
+[Round 9](reviews/assemble.md#round-9--2026-11-16) at tree
+`64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21`. Final-content focused native tests
+passed, and the new-target source Topic gate is VERIFIED 3/3. An unchanged P3
+test synchronization observation is tracked separately as
+`ad-bug-native-ownership-query-test-readiness`. New-head CI, clean GitHub review
+and actual member integration remain pending.
+
+Aggregate preparation now uses required criterion `combined-acceptance-v2` for
+the selected five-member scope. The original pricing criterion remains in CEv1
+as optional with its description, observations and dated disposition preserved.
+Targeted representative-scale and affected native/OTel lifecycle verification
+on current main is in progress. Existing member CI and unchanged scope evidence
+are reused; aggregate completion has not yet been established.
+
+The test correction is pushed as signed `2b3b1d516e23ef94891aa218dd216281807f5ebb`
+with the reviewed `64e7fbf6` tree. PR #67 is running new-head CI; the clean
+GitHub Codex review and actual integration gates remain open.
+
+PR #67 merged on 2026-11-16 as `b53f26b6f626ea9d587ae11822ee24ade89248ab`
+after all ten checks passed and the exact-head Codex summary reported no
+findings or unresolved findings. The merge tree matches the reviewed `64e7fbf6`
+candidate and its GitHub signature is verified. All five selected members now
+have main ancestry. Installed-state integration evidence is 3/4 pending actual
+main CI and real Homebrew results; version-wide combined acceptance and
+contract closure remain open.

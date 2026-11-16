@@ -317,3 +317,439 @@ Task checkpoint：`ad-v0-7-0-contract-assemble`；`v0-7-0-contract:assemble:revi
 已在 Neo4j（`github.com/kitdine/agent-deck`）建立批次集成 WorkUnit `v0-7-0-contract:integration:auxiliary-session-classification`（由 `v0-7-0-contract:assemble` 通过 `contains` 关联）及目标 ContentState `v0-7-0-contract:integration:auxiliary-session-classification:merge:e3ff72eb0db6f54c63ab031544a8a6259b417122`。初始写入将 `ancestry`、`reviewed-result`、`delivery-signature` 记为 `pass`、`postmerge-ci`（`20261114-e3ff72eb:postmerge-ci`）记为 `not_verified`；在 `43586186560` 全部完成后，新增 `v0-7-0-contract:integration:auxiliary-session-classification:evidence:20261114-ci-success`（`outcome: pass`）并通过 `supersedes` 取代 `20261114-e3ff72eb:postmerge-ci`（保留历史节点）。最新 `gate-status.cypher` 实测返回 `VERIFIED`（4/4 通过，`missing_criteria` 与 `unresolved_candidate_impacts` 均为空，`invalidated_evidence` 仅含被取代的 `20261114-e3ff72eb:postmerge-ci`）。
 
 契约工作区 `tasks.md` 与本评审记录已更新为最终核验状态并准备提交推送；`main` 状态页 `docs/status.md` 同步经独立状态 PR 交付。整体 `assemble` 门禁仍为 `NOT_VERIFIED`，任务矩阵复选框保持未勾选，待剩余选定成员（`cost-transparency`）及版本联合验收完成。
+
+
+## Round 4 — 2026-11-15
+
+Verdict: PASS
+Completion gate: NOT_VERIFIED
+
+### OTel member integration scope and identities
+
+本轮仅评估 otel-version-tolerant-metering 成员与当前 main 的集成兼容性，
+不宣称 aggregate assemble 或整个版本完成。用户授权完整成员交付、PR、条件合并；
+此前暂停后已明确恢复，并接受现有源分支状态投影。后续明确：代码未变化时复用
+当前 GitHub 零发现评审，不再因 CI 完成顺序重复触发评审；CI 全绿仍是合并前提。
+
+- Target：main `1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692`，tree
+  `1663024a4ca2d888156add794c986bb59d04fcf3`。
+- Source：feature/otel-version-tolerant-metering
+  `561c8eb088584115373ad914712364e61e0dae5b`，tree
+  `711eba23b616c1ba29d15205375457bc1a123cb8`。
+- Source 从 target 直接派生，内容可以 fast-forward；`git merge-tree --write-tree`
+  得到相同 source tree。实际 GitHub merge commit 的父节点/结果必须在合并后核实。
+- [PR #66](https://github.com/kitdine/agent-deck/pull/66) 已创建；此时未合并。
+  合同分支不进入该 PR，也不创建 contract-wide PR。
+
+### Independent review and evidence reuse
+
+Reviewer：冷上下文 OpenCode / openai/gpt-6-astra，T3 请求及返回配置 variant=medium；
+Worker 自报模型一致，executedModel 字段为空，不伪称后端另行证明了实际模型。
+Method：只读检查集成交互，独立复核最终 73 路径，零 mismatch；主代理另行计算
+相同指纹 `0974dd9fd038596f4229110e9b6bb36fd582bc2d218a236abb07f567a8c8eacc`。
+配方沿用源专题 HEAD1b2faeb 加排序 path=blob 清单；提交只改变内容身份，73 路径不变。
+
+- schema35 迁移、覆盖/evidence 保留、trigger 重装及 Go/Swift 读取兼容一致。
+- scan 消费者释放与 usage 等待、成功分类/发布顺序、session 失败不抑制 usage
+  成功发布的边界一致。
+- JSONL 排他撤销与事实写入同事务；未完整确认身份不晋升，数值归属与用途分类分离。
+- receiver/import/watch 的投影/分类回调、pending 重试和规则 checkpoint 相互兼容。
+- 无新发现。复用 Task1 Round1、Task2 Round3、Task3 Round3 的产品/原生/真实 producer
+  验收；未因集成阶段重跑未变全套。新增 docs/status.md 仅描述交付行为、已接受限制及
+  版本剩余范围，主代理按现有源证据核对，L0 通过，无产品语义变化。
+
+三个设计文档分别提交 e8e4c81/c3d663e/6afcb29；用户明确允许三个交错实现任务作为
+一个完整提交3f66611，避免逆向重造不存在的历史 blob；assemble 状态投影另提交561c8eb。
+所有提交 Conventional subject/body、适用 Codex/Claude trailers 和 SSH 签名已核验。
+远端源分支精确 SHA 一致，源工作树干净，未直接修改 main checkout。
+
+提交态三个 document gates 各4/4，三个 task gates 为4/4、7/7、6/6，topic gate3/3
+全部 VERIFIED。公共提交态 `otel-version-tolerant-metering:state:commit:561c8eb088584115373ad914712364e61e0dae5b`；
+文档分别为 requirements `…:state:bee23fe3f0e2d981`、architecture `…:state:9964cb625fe32174`、
+tasks `…:state:859d0582622cab26`。通过显式 change/preserves 与目标 roll-up 复用；
+75 节点回读一致、171 关系预检通过并写入，各 gate 缺失/失效/未解决影响为空。
+源专题6项 Beads任务已交付关闭；来源 Bug 保留到实际集成边界再处置。
+
+### PR gates and remaining aggregate work
+
+GitHub 已自动完成当前561c8eb评审：
+[零发现回执](https://github.com/kitdine/agent-deck/pull/66#issuecomment-6906409616)，
+[机器摘要](https://github.com/kitdine/agent-deck/pull/66#issuecomment-6906376038)
+标记 completed、has_any_findings=false、has_unresolved_findings=false，绑定精确源 SHA。
+按用户后续明确决定复用，不重新发送同一代码的评审请求。
+Push CI43797708850 和 PR CI43797743871 尚在运行；不得在全绿之前合并。
+
+aggregate WorkUnit `v0-7-0-contract:assemble` 的当前目标
+`v0-7-0-contract:assemble:review-otel-561c8eb` 固定 gate 查询 NOT_VERIFIED，
+缺 membership、integration、combined-acceptance、records。这与本轮兼容性 PASS 独立。
+旧 combined-acceptance 价格措辞仍须按成员决定在 aggregate 边界显式处置。
+installed-state-ownership、实际 OTel merge/postmerge CI 与最终组合验收仍开放。
+已知源限制继续保留：TUI 用途推断、exec Memories 留在 Work、永久未确认身份的
+session-only watch pending；可选 native schema 矩阵未运行，不转述为运行通过。
+
+### Orchestration checkpoint
+
+请求 otel-assemble-e4-integration-r1-20261116 已完成并消费；无运行中 Worker。
+账户 EG 经用户确认为 OpenCode OpenAI-Plus；CLI 切换成功。配额来源是用户截图，
+Session96%、EG Weekly51%（不是汇总54%），非实时 API。最低保留5%，旧截图不能用于
+无限后续派发；下一次需要 Worker 时刷新额度或由用户确认切换，禁止自动切换付费 API。
+当前只等待 GitHub CI。源/任务交付已完成，不重复源码测试，不把等待计为 repair cycle。
+
+
+### PR #66 CI failure — 2026-11-15
+
+Push run43797708850 的 verify/job133070431619 失败；普通 Go 全套通过，
+`-race -p 1 -timeout=20m ./...` 中 CLI 包两项失败：
+`TestRunQuotaCaptureChainsAndPersists` 在 quota_capture_test.go:97 得到空窗口，
+`TestUsageSignalsAndStatsApplySessionScopeOnlyToWorkAnalysis` 在 session_origin_test.go:774
+得到 session.classify generation_unavailable。此观察绑定源561c8eb；尚未认定根因，
+不得用原本地通过证据覆盖新的 CI 失败。批次静态兼容性判断与交付 CI 条件分开保留。
+由既有 Codex 预检 Worker 转为唯一源码/测试诊断者，先定位再做有证据支持的最小修复；
+不直接重跑全套碰运气，不消费过期 EG 额度观察派发新 OpenCode Worker。
+合并保持阻塞，实际修复、验证和新的审阅适用性在后续追加。
+
+
+### CI diagnosis and bounded rerun — 2026-11-15
+
+同 SHA 的 PR run43797743871 全部4项 SUCCESS，包括完整 verify。Codex Worker
+只读诊断未改任何文件；其定向 race 命令为
+`scripts/run-go-test.sh -race -p 1 -timeout 5m ./cmd/agentdeck -run '^(TestRunQuotaCaptureChainsAndPersists|TestUsageSignalsAndStatsApplySessionScopeOnlyToWorkAnalysis)$' -count=5`，
+报告10次通过、包耗时25.820s、无 race。此为 Worker 观察，主代理未重跑该命令。
+主代理直接比较基线与HEAD：quota_capture.go、quota_capture_test.go 和
+store/serving_generation.go 无差异；两条生产路径既有200ms预算的源码已核对。
+Worker另核对失败的session-scope测试函数体未变。
+
+预算耗尽/瞬态存储状态是有源码支持的假设，CI隐藏了底层错误，不能声称已证明
+根因或已修复。成功PR全套与定向重复只说明失败具有运行条件敏感性，不抹去失败。
+未扩大生产scope、增大timeout或弱化断言。主代理基于上述新证据执行一次
+`gh run rerun 43797708850 --failed`；等待该attempt，若再失败不循环重试。
+代码及GitHub零发现评审身份561c8eb不变，合并仍等待全部CI通过。
+
+
+### Actual merge and post-merge verification — 2026-11-16
+
+Push43797708850 attempt2 与 PR43797743871 均 SUCCESS，当前8个检查全部通过。
+同一561c8eb的 Codex 摘要 completed / has_any_findings=false /
+has_unresolved_findings=false，reviewThreads 为空。按用户指令复用已有评审。
+原 push attempt1 的两项 race 失败保留为历史观察，重跑通过未修改产品代码。
+
+执行 `gh pr merge 66 --merge --match-head-commit 561c8eb088584115373ad914712364e61e0dae5b`，
+GitHub确认2026-11-16T05:24:21Z merged，提交
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`。父节点为target
+`1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692`与source
+`561c8eb088584115373ad914712364e61e0dae5b`，tree
+`711eba23b616c1ba29d15205375457bc1a123cb8` 与已评审结果逐字一致。
+GitHub提交签名verified=true、reason=valid；实际subject/body及Codex/Claude trailers已核验。
+本地main由干净1b2faeb fast-forward至实际merge提交，源分支保留。
+
+集成WorkUnit `v0-7-0-contract:integration:otel-version-tolerant-metering`，目标
+`v0-7-0-contract:integration:otel-version-tolerant-metering:merge:c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`。
+10个节点回读一致，16条关系预检通过并写入，query得到NOT_VERIFIED3/4。
+ancestry、reviewed-result、delivery-signature通过，postmerge-ci等待main
+run43810012502的实际结果。主代理正在跟随该独立main流水线输出。
+reviewed-result显式rolls_up已验证源专题三项证据，保留所有接受限制。
+
+
+### Final integration evidence — 2026-11-16
+
+主代理直接查询main run43810012502，attempt1、head
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`，status completed、conclusion success。
+四项完成时间均为2026-11-16 UTC，classify05:24:40、documentation05:25:03、
+desktop05:34:50、verify06:17:28。观察过程的API EOF经恢复后取得完整结果。
+持久运行入口为 https://github.com/kitdine/agent-deck/actions/runs/43810012502 。
+
+新增 evidence `v0-7-0-contract:integration:otel-version-tolerant-metering:evidence:20261116-postmerge-ci-success`，
+绑定上述实际合并ContentState，outcome pass；通过supersedes保留并取代初始pending观察。
+节点payload回读一致，三条关系预检ok并创建。固定gate查询该集成边界 VERIFIED4/4，
+missing与unresolved为空，invalidated仅列出被明确取代的初始postmerge-ci观察。
+本轮开头的Completion gate仍指aggregate assemble，保持NOT_VERIFIED。
+
+OTel成员集成已完成。来源缺陷ad-bug-otel-version-pinned-metering按实际交付关闭，
+源专题文档/任务交付状态保持已完成。既有缺少completed计数的观察继续遵循unmetered
+语义。整体assemble仍待installed-state-ownership与最终组合验收，两个Task复选框保留。
+本轮合同台账及评审更新保存在合同工作树，等待该记录范围的Git交付。
+
+## Round 5 — 2026-11-16
+
+## 📋 installed-state-ownership 批次装配评审
+
+- Verdict: PASS
+- Completion gate: NOT_VERIFIED
+- Reviewer: 独立 OpenCode / openai/gpt-6-astra 提供冷上下文评审材料，Codex 主控制器核对并记录裁决。
+- Method: 双亲差异、六处冲突解决、受影响调用链及既有精确内容验证材料检查。调度配置为 variant high，执行端未独立披露实际 effort。
+- Scope: installed-state-ownership 与当前 main 的集成交互，不关闭 aggregate assemble 或版本发布边界。
+- Reviewed state: 完整暂存树 `c0736f1294e173abaafa761fefcea9e178f35763`，工作树与暂存区一致。源 `0ecc3312871649884ebaf21996ee7a4763eca9cb`，目标 `c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`，基点 `660c81586f4c13e04e66dbc05cde5331bf09acec`。操作为含冲突解决的三方合并。
+
+### 🔴 严重问题 — 必须修复
+
+无新增发现。独立评审未产生 ISO-INT-R1-F* 发现，主控制器核对候选身份、增量路径及关键守卫变化后接受本地集成兼容性结论。
+
+### 🟡 改进建议 — 推荐
+
+无本轮待修复建议。实际 GitHub 交付与版本级组合验收继续按其边界执行。
+
+### 🟢 优点
+
+六处冲突解决保留 main.go 的 origin/ownership 错误映射、desktop 的两个命令面、schema35 verifier、两组原型入口及双方稳定契约内容。CLI 契约顺延为36，保留历史条目。
+
+八个新增 CLI 面纳入默认隔离、显式隔离及真实根拒绝矩阵。source config 与 desktop scope 包入口先守卫并消费规范化根。原生 view、batch、origin 操作先重查 state-location，失败时禁止业务 helper 调用并释放旧共享锁。新增断言覆盖实际读写结果和拒绝行为。
+
+审查 OTel receiver、scan、watch、bootstrap 发布前的重新校验与取消/等待/退出释放，以及 origin 持久化、schema35 和 portable backup。main 的 OTel 投影恢复、配置语义和请求回执处理均保留。
+
+### 📝 总结
+
+本轮本地集成兼容性通过。主控制器确认完整候选树，相对自动合并预览仅14个路径发生冲突解决或集成修复，开发 Worker 的12路径 blob 清单逐项匹配。开发与评审为不同 harness，均已终止且无待运行操作。CLI、native 及 source config 的集成修复由 Codex 实现，OpenCode 本轮只读评审。
+
+#### Evidence
+
+环境为 Go1.27.1 darwin/amd64、Xcode26.4 build17E192。以下为主控制器和独立 Reviewer 直接核对的开发期日志事实，未为阶段变化重跑。
+
+- `scripts/run-go-test.sh ./... -timeout=12m` 通过，30包、1762个顶层PASS，8项显式skip。
+- `scripts/run-go-test.sh -tags agentdeck_acceptance ./cmd/agentdeck -run 'TestOwnership' -timeout=10m` 中276个CLI分支、67个包入口和8个交错场景通过。原聚合因 Reader.Select 未列入结构分类而退出1，保留该失败。补充其已守卫句柄/generation读取分类后，`scripts/run-go-test.sh -tags agentdeck_acceptance ./cmd/agentdeck -run '^TestOwnershipPackageEntrypointInventory$' -timeout=2m` 通过，其他行为内容未变并复用已有结果。
+- `scripts/run-go-test.sh -race -p 1 -timeout=12m ./internal/sessionorigin ./internal/desktop ./internal/scanruntime ./internal/telemetry` 四包通过，235个顶层PASS、2项skip。
+- 临时HOME、临时原生账户和隔离Go helper/flock夹具下的 `swift test --disable-sandbox --package-path apps/macos --scratch-path <temporary-build>` 共176项、零失败。Foundation verifier 对五个标准夹具通过。
+- `make vet check-arm64-size DIST_DIR=<temporary-dist>` 通过，包含双macOS架构构建，arm64为15,989,266字节。prototype安装锁定依赖后构建通过，保留既有chunk-size提示。whitespace及diff检查通过。
+
+未重跑源专题不变的安装、platform、客户端守卫和已接受Homebrew链。A5真实双App运行仍为明确豁免，真实App Group、偏好域和Widget共存没有新增实测。完整hosted App、性能矩阵、L4及真实安装没有新增验收。Cask同路径文件替换、混合安装延迟清理、PlugInKit限制保留。临时日志不作为持久引用。
+
+#### Completion evidence and delivery boundary
+
+源Topic在原交付 `installed-state-ownership:delivery-0ecc3312` 的固定查询为VERIFIED3/3。本轮按14路径影响核对，新增三项目标绑定roll-up并保留原证据观察，当前候选ContentState为 `v0-7-0-contract:integration:installed-state-ownership:candidate:c0736f1294e173abaafa761fefcea9e178f35763`。源Topic在该目标的门禁VERIFIED3/3，missing、invalidated、unresolved均为空。
+
+集成WorkUnit `v0-7-0-contract:integration:installed-state-ownership` 已归入assemble，四项准则为ancestry、reviewed-result、delivery-signature、postmerge-ci。该候选上的集成查询为NOT_VERIFIED0/4，实际main合并及交付证据尚未产生。本轮开头门禁指此集成边界，源Topic通过不替代它。
+
+用户授权本成员交付及条件合并。必须全部适用CI通过后才请求GitHub Codex review，已自动触发时复用同候选明确无问题结果，避免重复请求。仅该结果明确无问题后合并，随后核验实际合并树、签名与main CI。aggregate assemble还需最终组合验收和合同收尾，复选框保持未完成。
+
+#### Orchestration checkpoint
+
+authority_epoch3，controller `b91c996e-ae2f-401c-bded-83ce073b660f`。Codex/gpt-6-astra high开发完成，OpenCode/openai/gpt-6-astra评审请求 `iso-assemble-e3-review-r1-opencode-20261116` 完成。调度确认high，执行端实际effort未披露。额度未知，未切换账户或付费渠道。Antigravity已由用户加入可用harness并经能力目录确认，本轮没有派发。修复/复评循环0/3。父控制器拥有Git、记录、Beads及CE写入。
+
+### Member delivery and PR — 2026-11-16
+
+源分支已签名提交并推送 `f23b8c468273721a6485d1b9a610f4284fcbbe2c`。实际双亲依次为源0ecc331和main c270d473，tree仍为本轮已评审c0736f12。主控制器核对实际commit对象的非空英文Conventional subject、解释正文、Codex/Claude/OpenCode trailers和SSH签名，`git verify-commit`通过，Hook后工作区干净。相对自动合并预览只有本轮14路径变化。
+
+[PR #67](https://github.com/kitdine/agent-deck/pull/67) 以该源提交为head、c270d473为base。
+Push CI43826008123、PR CI43826055482以及两次真实Homebrew运行43826008288/43826055455均已开始，当前尚未全部完成。创建时无评论或review，尚未发送Codex请求。等待全部CI通过，并检查是否自动触发同候选review，再按用户条件处理。此源提交准备不等于实际main合并，集成四项准则及aggregate边界继续开放。
+
+### PR documentation gate correction — 2026-11-16
+
+PR CI43826055482 的 desktop job133160310119 实际通过原生测试、App构建、sandbox、refresh及distribution检查，最终因 `DOCUMENTATION_RESULT=failure` 退出。documentation job133160137262 在完整main c270d473至源f23b8c4范围执行 `git diff --check`，发现 `reviews/state-root-guard.md:124` 末尾空行。相对源HEAD的增量检查此前未覆盖该完整PR范围，故漏检。失败记录保留于 https://github.com/kitdine/agent-deck/actions/runs/43826055482 。
+
+主控制器删除该单一空行，签名提交 `c70b05cb7b628de39852d78f47470808607c3868`。随后完整 `python3 scripts/check-docs.py --base c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b --head HEAD` 又发现 app-state-location Round2 的门禁字段只有文末指引。全量检查本PR新增评审记录确认仅该处格式问题。重新查询其历史ContentState `installed-state-ownership:app-state-location:review-r2-20261110`，仍VERIFIED7/7且missing/invalidated/unresolved为空，遂把字段展开为原文已记录的VERIFIED，并加日期说明。
+
+第二项签名提交 `d359861a8736a0140c0fe287b66668bc5a516108` 已推送PR67，tree `4222e97fe001a5849b1409cd52b298b289236af2`。两个commit的正文/trailer/SSH签名及改动范围均核验。最终完整PR文档检查exit0，全部新增评审记录结构、whitespace和diff检查通过。相对f23b8c4只有上述两份评审记录变化，产品、测试、依赖和配置逐树相同，本轮本地兼容性结论及运行验证可复用。此为记录格式修复，无新增产品评审发现。新head的GitHub CI/review仍待完成，旧失败不标为通过。
+
+## Round 6 — 2026-11-16
+
+## 📋 PR #67 Codex review 发现核验
+
+- Verdict: FAIL
+- Completion gate: FAILED
+- Reviewer: GitHub Codex review 提供独立发现，Codex主控制器逐项核对当前源码。
+- Method: 精确review评论、工作区CodeGraph及未覆盖区段源码核验。三项均存在明确控制流或路径语义证据，未重复广泛测试。
+- Scope: 客户端写入路径、原生receiver monitor生命周期、扫描receipt恢复错误退出。
+- Reviewed state: `d359861a8736a0140c0fe287b66668bc5a516108`，tree `4222e97fe001a5849b1409cd52b298b289236af2`。本轮取代Round5对当前交付候选的就绪判断，保留其原观察历史。
+
+### 🔴 严重问题 — 必须修复
+
+**ISO-INT-R6-F1 — P2，open。** `internal/platform/client_guard.go:82` 在完整路径以物理遍历核对后，使用 `filepath.Dir(path)` 对尚未解析的父路径词法清理。若 `/tmp/a/link` 指向 `/tmp/b/child`，`/tmp/a/link/../config.toml` 的检查目标为 `/tmp/b/config.toml`，返回写入位置却为 `/tmp/a/config.toml`。provider配置读写可能使用不同目标，导致失败或覆盖另一个配置。修复应不清理地拆出最终名称，再按同一物理遍历语义解析父目录，覆盖真实调用入口及不同目标不被修改的回归。[原评论](https://github.com/kitdine/agent-deck/pull/67#discussion_r4583704108)
+
+**ISO-INT-R6-F2 — P2，open。** `TelemetrySettingsController.swift:406-429` 的refresh在await stateRoot之前清空旧monitor，两个重叠调用都可经过此处，恢复后各自创建monitor，后一次赋值覆盖前一个而不停止其stream。`DesktopSourceChangeMonitor` 使用passUnretained回调且没有停止stream的deinit，后续事件可能访问已释放对象。修复须串行/合并刷新或拒绝陈旧解析，确保每个被替换monitor都停止，并确定性覆盖重叠、乱序返回、失败与stop。[原评论](https://github.com/kitdine/agent-deck/pull/67#discussion_r4583704112)
+
+**ISO-INT-R6-F3 — P2，open。** `scanruntime.go:530-544` 的退出清理遍历全部worker.rounds等待done。recoverReceipts先把CLI round插入映射，最后才launch；在中途持久化后续App-only终态或其他校验失败时提前返回，已插入但未launch的round永不关闭done，导致worker退出挂起并持续持有扫描/ownership锁。修复应仅等待实际启动的工作，或正确完成未启动对象，覆盖部分恢复失败、退出返回及锁释放，同时保留正常已启动轮次的取消/等待保证。[原评论](https://github.com/kitdine/agent-deck/pull/67#discussion_r4583704121)
+
+### 🟡 改进建议 — 推荐
+
+无额外范围建议。三项均属于本批次当前内容的缺陷，必须修复并复评后才可交付。
+
+### 🟢 优点
+
+已核对三项评论均绑定当前d359861，机器摘要completed且has_any_findings/has_unresolved_findings均为true。CI是否通过与这些发现的关闭分别核验。
+
+### 📝 总结
+
+三个发现均未关闭，当前候选FAIL，合并阻塞。原验证结果保留其覆盖范围，不能证明这些遗漏场景正确。授权修复/复评循环第1轮启动，最多3轮。继续复用Codex/gpt-6-astra high Developer，父控制器负责记录、Git及CE，后续独立复评使用新冷上下文Worker。用户既定全部CI通过及GitHub明确无问题的条件继续有效。A5既有豁免保留。
+
+精确集成ContentState `v0-7-0-contract:integration:installed-state-ownership:review:d359861-r6` 绑定当前commit/tree。新增失败观察 `v0-7-0-contract:integration:installed-state-ownership:evidence:20261116-r6-findings`，两个节点回读一致、两条关系预检通过，固定门禁查询FAILED，reviewed-result存在适用失败，其余实际交付准则仍未完成。原候选的观察保留，不覆盖历史事实。
+
+### Repair 1 — 2026-11-16
+
+Codex/gpt-6-astra high在d359861上完成三项修复并交接。完整暂存树 `8c94ae382f778b9ab4fe2c342629e08b5741649b`，父控制器逐项核对六文件blob与工作树，清单SHA256 `12c8d9f8673d2fd97717a02385763d4c4eebbda50c36aa867bb4854e8056d564`。范围为client_guard.go、scanruntime.go、TelemetrySettingsController.swift及各自回归测试。无运行中测试或helper，修复未提交。
+
+- F1实现使用filepath.Split保留父路径中的symlink/..物理遍历。真实CLI回归修复前出现命令成功但物理目标未更新，修复后目标更新且另一配置字节不变。
+- F2以refresh代次在两个await后拒绝过期结果，过期调用不能装monitor、写status或启动listener，stop清理并使在途调用失效。两项确定性宿主测试修复前8个断言失败；修复后15项控制器宿主测试及两阶段Settings重启检查通过，未故意触发真实use-after-free。
+- F3区分登记round与已launch工作，退出只等待已启动round。两项部分恢复错误在修复前挂起，修复后返回预期错误、扫描锁可重获，调用者可关闭进程级ownership会话。已启动轮次的取消/等待控制通过。
+
+验证环境为Go1.27.1 darwin/amd64、Xcode26.4 build17E192。临时HOME及隔离状态下，定向F1/F3、原客户端守卫及恢复控制通过；`scripts/run-go-test.sh -p 1 ./... -timeout=12m`全量通过。race使用cmd/agentdeck、internal/platform、internal/provider、internal/scanruntime四包，过滤新回归和既有provider/恢复/入场所有权测试，全部通过。`make vet check-whitespace`和diff检查通过。原生绿色验证在原隔离harness基础上仅筛选TelemetrySettingsControllerTests，保留真实helper、账户隔离、重启及清理。首轮筛选未覆盖env xcodebuild而跑了完整宿主套件，其中失败仅为F2的上述断言，保留该诊断范围。日志经主控制器检查，临时路径不作为持久引用。
+
+三项实现已修复，发现的最终关闭待新冷上下文独立复评。Round6的FAIL/FAILED保持原候选历史，修复候选不自签PASS。A5豁免不变，新候选CI和GitHubreview仍须完成。独立复评派发 `iso-assemble-e3-rereview-r7-opencode-20261116`，OpenCode/openai/gpt-6-astra variant high，额度未知，父控制器拥有正式裁决和证据写入。累计修复/复评循环1/3。
+
+## Round 7 — 2026-11-16
+
+## 📋 PR #67 三项修复独立复评
+
+- Verdict: FAIL
+- Completion gate: FAILED
+- Reviewer: 新冷上下文OpenCode/openai/gpt-6-astra，父控制器核对发现和原修复差异。调度high，执行端未披露实际effort。
+- Method: 六文件精确内容、消费者调用链、既有红绿日志及内存Swift确定性交错探针。未重复广泛套件。
+- Scope: ISO-INT-R6-F1至F3及修复引入的相邻行为。
+- Reviewed state: 基线d359861，完整候选tree `8c94ae382f778b9ab4fe2c342629e08b5741649b`，六文件manifest `12c8d9f8673d2fd97717a02385763d4c4eebbda50c36aa867bb4854e8056d564`。复评者核对工作树/index/tree一致。
+
+### 🔴 严重问题 — 必须修复
+
+**ISO-INT-R7-F1 — P2，open。** `TelemetrySettingsController.swift:377-384` 的enable末次refresh返回false后仍读取旧status。首次刷新留下listener=failed，settle刷新等待status时另一load开始；旧请求running被代次检查丢弃后，enable继续按缓存failed执行disableTelemetryReceiver，可能关闭接收偏好并移除managed配置。父控制器核对refresh返回值与调用者控制流，确认可达。独立内存Swift探针对原样controller使用隔离transport/monitor展示桩，基线disable=0且status=running，修复候选disable=1且status=failed，均exit0。修复应仅以当前接受的刷新结果决定失败回滚，过期及stop后的调用停止该副作用，并覆盖suspended-status的enable/load/stop交错。
+
+### 🟡 改进建议 — 推荐
+
+无额外范围建议。
+
+### 🟢 优点
+
+- ISO-INT-R6-F1 closed：filepath.Split保持物理父路径，空父目录由walker从cwd解析，最终symlink保护及替换入口语义保留。CLI红绿回归与既有guard测试适用。
+- ISO-INT-R6-F2 closed：两次await后验证代次，原monitor覆盖泄漏路径已阻断，stop使在途刷新失效。新的enable消费者回归由R7-F1独立跟踪。
+- ISO-INT-R6-F3 closed：launch标记与等待快照使用同一server.mu，锁外等待；恢复前置失败不会等待未启动对象，正常及predecessor/pending工作仍被等待。两项错误恢复、锁重获及取消控制均有适用证据。
+
+### 📝 总结
+
+原三发现关闭，新增一项本修复引入回归，故当前候选FAIL。复用30包/1765项Go PASS、8skip，定向8项/3包、race16项/4包、控制器15项和重启2项的原验证。Swift探针只证明控制器交错，不证明真实FSEvent/UAF或双App。A5豁免保留，原d359861的10项CI通过不覆盖后续修复内容。
+
+复评Worker已终止且无待运行操作。其报告披露曾读取workflow入口但未建立正式路由，以及调用git write-tree生成派生对象/cache-tree；没有编辑候选内容、记录或CE。后续派发再次约束无Git写入。父控制器处理这一小范围消费者修复及对应回归，累计修复/复评循环进入2/3，随后以新冷上下文独立复评。
+
+父控制器在实际隔离App宿主中新增两个确定性测试，分别覆盖enable/load的悬挂status交错和enable/stop，均观察到disable调用从预期0变为1，共3个断言失败，17项控制器测试运行exit65。该复现补强独立内存探针。CEv1目标 `v0-7-0-contract:integration:installed-state-ownership:review:8c94ae38-r7` 绑定原复评树，新增R7失败观察、节点回读和关系预检通过，固定集成门禁查询FAILED。
+
+### Repair 2 — 2026-11-16
+
+父控制器在enable的settle后将末次 `await refresh()` 改为 `guard await refresh() else { return }`，使过期及stop后的刷新在读取旧失败状态和调用disable之前返回。新增两个基于受控status continuation的宿主回归，对enable/load乱序及enable/stop分别断言disable次数为0，并确认最新running状态和停止后的listener/isApplying。修复前3断言失败，修复后17项控制器宿主测试0失败，Settings重启两阶段分别1/1通过，原有效失败回滚测试继续通过。使用既有临时限定harness，保持真实App宿主、临时HOME/helper/账户隔离和清理，未安装或注册真实App。
+
+完整修复候选tree `b8f4ef8350737891b30415a8246eba409764b524`，基线仍d359861，总范围仍6个文件。相对Round7只改变上述Swift生产行与两个回归及其受控transport。Go、依赖和配置未变化，复用Repair1全量Go、定向race和vet。whitespace、工作区/暂存区diff检查通过，工作树与index一致。全部执行进程已结束。R7-F1实现已修复，独立关闭待新冷上下文OpenCode复评 `iso-assemble-e3-rereview-r8-opencode-20261116`，不提前更改本轮FAIL/FAILED。循环2/3，authority_epoch3，GitHubreview与新CI继续作为交付条件。
+
+## Round 8 — 2026-11-16
+
+## 📋 过期刷新修复关闭复评
+
+- Verdict: PASS
+- Completion gate: NOT_VERIFIED
+- Reviewer: 新冷上下文OpenCode/openai/gpt-6-astra提供关闭建议，父控制器核对精确内容和证据后记录。调度variant high，执行端实际effort未知。
+- Method: 工作区CodeGraph、消费者源码、两候选树差异及红绿宿主日志直接检查，复用未变Go验证。
+- Scope: R7-F1及enable/load/stop消费者，复核R6-F1至F3关闭状态。
+- Reviewed state: HEAD d359861，tree `b8f4ef8350737891b30415a8246eba409764b524`。Reviewer和父控制器分别用只读diff确认暂存内容等于该树、工作树等于暂存区，共六路径。相对8c94ae38仅控制器一行及测试/helper变化。
+
+### 🔴 严重问题 — 必须修复
+
+无新增发现。
+
+### 🟡 改进建议 — 推荐
+
+无。
+
+### 🟢 优点
+
+- ISO-INT-R6-F1 closed：物理父路径修复与消费者未变，CLI回归及原guard证据继续适用。
+- ISO-INT-R6-F2 closed：monitor代次检查及stop失效逻辑保留，宿主交错测试继续通过。
+- ISO-INT-R6-F3 closed：实际launch标记与退出等待未变，部分恢复、锁重获、正常取消等待及race证据适用。
+- ISO-INT-R7-F1 closed：enable末次refresh返回false即退出，不能读取陈旧失败状态或调用disable。有效当前刷新接受failed时仍正常回滚；提前返回执行defer释放isApplying。App启停、Settings重开、monitor回调及共享enable入口未发现新回归。
+
+### 📝 总结
+
+全部四项发现关闭，独立复评及主控制器接受当前候选。直接核验实际宿主红运行17项/3断言失败，绿运行17/17，以及两阶段Settings重启各1/1。两个新增测试使用受控continuation固定enable/load及enable/stop交错并断言disable调用次数。未改变的Go30包1765PASS8skip、定向3包8PASS、race4包16PASS及vet按Repair1复用。本轮没有重复套件。临时日志仅诊断，A5双App豁免及未新增真实UAF、安装、App Group/Widget共存和L4证据的边界保留。
+
+CEv1目标 `v0-7-0-contract:integration:installed-state-ownership:candidate:b8f4ef8350737891b30415a8246eba409764b524` 新增三项源Topic目标绑定roll-up，包含本次回归/复评及未变部分的明确复用说明。4节点回读一致、9关系预检通过并写入。源Topic门禁VERIFIED3/3，missing/invalidated/unresolved为空。实际集成边界固定查询NOT_VERIFIED0/4，尚待新提交CI、GitHub明确无问题、main合并及其签名/CI，所以开头门禁保持未完成。R6/R7失败观察留在原内容态。
+
+请求 `iso-assemble-e3-rereview-r8-opencode-20261116` 已消费，Worker completed、无待运行操作，未修改内容或Git。累计循环2/3。准备只提交六个修复文件，贡献者Codex开发Worker和父控制器；OpenCode为只读review，不新增本次内容署名。PR67保持watch，尚未发布新候选review请求。
+
+### Repair delivery — 2026-11-16
+
+六文件修复已签名提交并推送 `359d148ebd58f87fe99d63f88a686fb52c6ecc91`，parent d359861，tree仍为已复评b8f4ef83。主控制器核对实际commit对象的subject/body/Codex trailer、SSH签名与exact tree，工作区干净。GitHub确认PR67 head为该提交，新push/PR检查运行中。
+
+原三个GitHub线程已分别回复修复和回归依据，并经resolveReviewThread返回isResolved=true。回复为discussion_r4584172561、discussion_r4584172982、discussion_r4584173576。此线程处置不替代新head Codex review。只有全部适用CI成功，且新head没有已自动触发的review时才发送请求；等待明确无问题的结果后再merge。原d359861的review findings仍为历史事实，不能把“Completed”当成无发现。
+
+Beads aggregate保持in_review，实际integration仍未完成，来源Bug保持开放。合同工作树保留本轮及先前OTel的未提交台账，产品交付位于源分支PR67。当前无Worker在运行，等待GitHub watch唤醒；authority_epoch3，循环2/3。
+
+### Native CI failure on repaired head — 2026-11-16
+
+实际359d148的[PR run43843086673](https://github.com/kitdine/agent-deck/actions/runs/43843086673) desktop/job133219347074和[push run43843080341](https://github.com/kitdine/agent-deck/actions/runs/43843080341) desktop/job133216808798均失败。父控制器读取两个job原始日志，两者均在 SettingsWindowPaneTests.testARoundTripThroughAnotherPageKeepsWhatStillNeedsActingOn 的 SessionOriginSettingsControllerTests.swift:1646/1648 得到nil，预期TelemetryConsent.conflict。push另有 EmbeddedHelperRunnerTests.testCloseReleasesProvisionalLockBeforeRecheckReturns:909 的XCTAssertTrue失败。documentation和cask通过，verify观察时仍运行。
+
+整窗测试先show触发自动load，再手动await load并立即toggle。最新代次策略可能使手动load在自动load尚未接受status时返回，是否是fixture前置条件问题须经确定性复现和消费者契约核对。临时锁断言单独诊断，不能推定为同因或偶发。未盲目重跑CI。复用原Codex/gpt-6-astra high Worker作唯一产品/测试诊断修复者，请求 `iso-assemble-e3-ci-pane-repair-20261116`，父控制器继续持有Git/记录/CE。若需要候选修改，进入第3/3修复复评循环。
+
+本地静态兼容性裁决保留其范围，运行验收失败单列。对已存在b8f4ef83候选ContentState追加 `v0-7-0-contract:integration:installed-state-ownership:evidence:359d148-ci-native-fail`，绑定cross-surface-acceptance。节点回读一致、两关系预检通过，源Topic固定查询FAILED。此前该目标的通过观察不删除，不再将当前源Topic门禁称为VERIFIED。实际集成和合并继续阻塞，等待诊断、候选验证及独立复评。
+
+### Repair 3 — 2026-11-16
+
+原Codex/gpt-6-astra high Developer完成两项测试就绪修复。整窗测试的show自动load可取代显式load，测试绕过真实UI的switchEnabled直接toggle时status尚未就绪，受控宿主交错复现nil consent。将conflict/refused的fixture加载移到show之前，原往返页面及冲突/拒绝提示断言保留。provisional lock失败为固定1000次yield尚未观察到复核就绪，受控暂停复现就绪断言失败而后续真实flock行为通过；以安装复核continuation后触发XCTestExpectation取代yield计数，保留锁占用、close后释放及cancelled断言。
+
+仅修改 `SessionOriginSettingsControllerTests.swift` 和 `EmbeddedHelperRunnerTests.swift`。基线359d148，完整暂存tree `64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21`，父控制器核对两文件blob及工作树/index一致。最终清单SHA256 `ff0a8db0b6c327515a2471e9788ece8c80bc38730f238041e9bb09fd6dc54436`，最后仅展开helper测试初始化语句，运行证据按相同语义复用。产品、Go、依赖与配置未变。
+
+限定宿主helper35项、pane7项通过。最终 `HOME=<temporary-home> GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod bash scripts/test-macos-app.sh` exit0，Shared176、App244、Widget59全部通过。主套件3skip中，两项Settings重启随后各1/1通过，SchemaSignalNativeMatrix为原有skip。主控制器直接检查日志的测试总数和TEST SUCCEEDED，完整harness清理完成，无待运行操作。whitespace及diff检查通过。工具链macOS26.7.3、Xcode26.4 build17E192、Go1.27.1，原CI使用Xcode26.6及Go1.26.0，该差异保留到新CI验证。
+
+路由按用户最新决定更新至authority_epoch4，保留完成中的epoch3修复交接有效性。新冷上下文独立复评请求 `iso-assemble-e4-rereview-r9-claude-20261116`，Claude/Fable5.2 medium，针对两份测试同步条件与断言保真。此前Claude报告的02:20重置已过去，当前额度未知，通过实际派发验证，不视为仍耗尽。Antigravity为可用候选。当前循环3/3，候选未提交，源Topic新目标门禁和正式复评仍待处理。
+
+## Round 9 — 2026-11-16
+
+## 📋 原生 CI 测试就绪修复复评
+
+- Verdict: PASS
+- Completion gate: VERIFIED
+- Reviewer: 独立Claude/Fable5.2，父控制器核对并记录正式结论。T3确认实际模型claude-fable-5-2，配置effort medium，Worker端未独立披露effort。
+- Method: 精确树/两文件差异、UI及锁调用路径、红绿日志、最终blob聚焦宿主复跑。
+- Scope: 两项CI失败的测试前置条件与同步修复，产品代码和此前修复未变。
+- Reviewed state: HEAD359d148，完整暂存tree `64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21`，最终清单SHA256 `ff0a8db0b6c327515a2471e9788ece8c80bc38730f238041e9bb09fd6dc54436`。Reviewer和父控制器分别确认index/working tree匹配及两文件边界。
+
+### 🔴 严重问题 — 必须修复
+
+无当前修复引入或未关闭的发现。原R6-F1/F2/F3和R7-F1的产品及回归内容逐字节未变，关闭结论保留。
+
+### 🟡 改进建议 — 推荐
+
+**ISO-INT-R9-F1 — P3，既有未修改测试同步隐患 → open，Beads `ad-bug-native-ownership-query-test-readiness`。** `EmbeddedHelperRunnerTests.swift:843-848` 的 `testClosingWhileQueryIsInFlightCannotReacquireOwnership` 仍用1000次yield判断SuspendedOwnershipQuery就绪；调度延迟可先耗尽轮询，早到的finish可能错过尚未安装的continuation。父控制器直接核对该代码及未变范围，该用例在已读CI和本轮复跑均通过，未声称已观察到故障。与本轮修复的provisional held-recheck属于不同未修改用例，独立登记测试就绪改进，不扩大当前两项CI修复。载体记录建议的受控延迟回归及明确queryStarted同步，尚未选择lane或启动实现。
+
+### 🟢 优点
+
+整窗测试在show前建立fixture，避免被show的自动load取代后直接绕过真实UI switchEnabled调用toggle。conflict设置前无await，迟到的单值状态读取不修改consent/result。refused前置状态也真实成立，原断言、页面往返和读取次数检查保留。
+
+provisional expectation在descriptor.install(fd)后的第二次query内、continuation已安装之后同步fulfill。每次调用仅fulfill一次，actor串行保证finish不能先于安装。5秒看门狗没有替代持锁/close后释放/cancelled的真实flock断言，超时路径仍通过close使工作返回。账户夹具保持隔离。
+
+### 📝 总结
+
+接受当前测试修复，P3观察已落入独立载体。最终helper blob晚于原full-native日志，父方的格式等价复用说明缺少此前blob产物对照；Reviewer针对该具体证据缺口，用同一隔离focused-hosted.sh对最终内容补跑一次。exit0，helper35/35、pane7/7，两阶段Settings重启分别成功，目标用例通过，夹具清理且无待运行操作。父控制器直接检查该新日志。原完整套件Shared176/App244/Widget59结果仍按未变范围复用，不称为最终blob重新跑过全量。主套件3skip中的两项重启已单独执行，SchemaSignalNativeMatrix仍为既有skip。
+
+本地Xcode26.4/Go1.27.1与CI Xcode26.6/Go1.26.0的差异由新CI承担。A5真实双App豁免保留，未新增安装、App Group/Widget共存或L4验收。临时日志仅作诊断，事实写入本记录。
+
+新ContentState `v0-7-0-contract:integration:installed-state-ownership:candidate:64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21` 绑定完整候选，三项源Topic目标roll-up分别记录本次最终测试和未变部分的复用范围。4节点回读一致，9关系预检并写入，源Topic查询VERIFIED3/3，missing/invalidated/unresolved为空。旧359d148的CI失败继续绑定原状态。实际集成目标查询NOT_VERIFIED0/4，须等待新提交CI、GitHub明确无问题及实际merge/签名/postmergeCI。
+
+Claude复评请求已完成并消费，无待运行操作，Git/内容/正式记录均未修改。唯一运行副作用是忽略的build产物及临时日志。编排authority_epoch4，循环3/3。准备仅交付两份测试文件，实际内容贡献者为Codex，Claude为只读review。PR67仍watch，未发送新head review请求。
+
+### Test correction delivery — 2026-11-16
+
+两份测试文件已提交并推送 `2b3b1d516e23ef94891aa218dd216281807f5ebb`，parent359d148，tree仍为已复评64e7fbf6。主控制器核对实际对象的英文Conventional subject、解释正文、Codex trailer和SSH签名；tree比较exit0、工作区干净。GitHub确认PR67 head精确相同，新的两次classify排队、两次cask运行中。保持现有watch，等待全部push/PR适用检查完成。只有同head没有已有review时，才在全绿后发送Codex请求；仍须明确无问题才能merge。P3独立载体与A5边界保持，旧CI失败不重写为成功。
+
+### CI passed and GitHub review requested — 2026-11-16
+
+主控制器确认当前2b3b1d5的10项检查全部completed/SUCCESS，包含push CI43850516668、PR CI43850525726以及cask43850516569/43850525630。现有Codex摘要仍绑定旧d359861，当前head无已有请求或运行，因此在全绿后发送一次 `@codex review`，回读确认2026-11-16T11:53:34Z创建的[请求6915669147](https://github.com/kitdine/agent-deck/pull/67#issuecomment-6915669147)。等待精确当前head明确无问题及无未解决线程，再执行已授权合并。没有把旧review的Completed解释成新候选通过。
+
+### Actual merge and final CI — 2026-11-16
+
+Codex机器摘要6911759581于11:59:02Z完成，commit_sha精确为2b3b1d5，has_any_findings=false、has_unresolved_findings=false。[评论6915782652](https://github.com/kitdine/agent-deck/pull/67#issuecomment-6915782652)亦确认该提交未发现主要问题。主控制器再次核对10项CI成功、三个thread已解决、head/base未变化、MERGEABLE/CLEAN，执行锁定head的 `gh pr merge 67 --merge --match-head-commit 2b3b1d516e23ef94891aa218dd216281807f5ebb`，采用明确的Conventional subject和解释正文。
+
+GitHub确认PR67于2026-11-16T12:00:12Z合并为 `b53f26b6f626ea9d587ae11822ee24ade89248ab`，双亲为main `c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b` 和source `2b3b1d516e23ef94891aa218dd216281807f5ebb`。实际tree `64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21` 与已复评树完全一致。API签名verified=true/reason=valid，实际正文及Codex/Claude/OpenCode trailers已核对。干净本地main从c270d473 fast-forward至实际merge，源分支保留。
+
+实际ContentState为 `v0-7-0-contract:integration:installed-state-ownership:merge:b53f26b6f626ea9d587ae11822ee24ade89248ab`。5节点回读一致、11关系预检写入，集成门禁NOT_VERIFIED3/4，ancestry、reviewed-result、delivery-signature已满足，reviewed-result明确rolls_up源64e7三项证据。postmerge-ci等待[main CI43862652758](https://github.com/kitdine/agent-deck/actions/runs/43862652758)和[真实Homebrew43862652735](https://github.com/kitdine/agent-deck/actions/runs/43862652735)，原pending观察保留。
+
+后续只有两条固定main流水线的结果核对，派发 `iso-assemble-e4-postmerge-ci-sol-20261116` 使用Codex/gpt-6.1-sol low作只读等待与结果回收，依据为机械、可直接核验的工作。额度未知、默认服务层。父控制器承担最终CE、Beads和合同记录。aggregate仍有版本级组合验收和合同收尾，不能因全部成员已合并而勾选两个Task。P3载体与A5豁免继续保留。
+
+### Final member integration evidence — 2026-11-16
+
+父控制器直接读取main CI43862652758与真实Homebrew43862652735，均completed/success、attempt1、head `b53f26b6f626ea9d587ae11822ee24ade89248ab`。运行更新时间分别为12:58:43Z和12:06:52Z。Sol/gpt-6.1-sol low结果回收任务已completed，两个等待进程exit0，无待运行操作，未重跑或修改仓库。
+
+新增实际目标绑定证据 `v0-7-0-contract:integration:installed-state-ownership:evidence:b53f26b6:postmerge-ci-success`，节点回读一致、3关系预检通过并写入，以supersedes保留并取代同目标pending观察。固定集成门禁VERIFIED4/4，missing和unresolved为空，invalidated只列明确被替代的旧pending观察。integration WorkUnit经允许的生命周期更新至completed，delivered_commit及completed_state_id回读匹配实际main提交。
+
+来源缺陷 `ad-bug-dev-schema-migrates-release-state` 按实现/main交付边界关闭，closed回读确认。新用户已授权v0.7.0发布、Beads/文档清理和本地安装，这些后续边界仍未完成。aggregate assemble继续等待版本级组合验收、记录交付和合同收尾；保持两项Task复选框未完成。本轮开头的完成门禁现在指本成员实际integration4/4，不能推广成aggregate或Release已通过。A5豁免、cask限制和P3独立载体保留。
+
+### Aggregate acceptance preparation — 2026-11-16
+
+用户授权扩展至v0.7.0正式发布、Beads/过期内容整理及本地安装。Argon只读预检中混入非规范CE类型、未实现的所有权绕过环境变量/命令及未经核对的证据ID，父控制器不采用这些建议。后续Hydrogen只读核对以实际源码、CEv1及测量契约为准，确认版本级组合验收存在受影响范围缺口。
+
+新原生state-location子进程与ownership锁改变restore/snapshot等测量前提，scan/OTel复核和来源归约也增加组合路径。当前 `performance-evaluation.md` 明确2026-10-27用户选择无数值门，旧数据只用于对照，不能虚构阈值或用全量unit/CI结果代替代表性规模和产品时钟测量。已派发 `v070-release-e6-combined-verification-opus-20261116`，Claude/Opus5.5配置medium，在b53f26b6及隔离冻结语料上核实受影响P01-first/P02/P04/P10/P11、no-op/append、全量/增量身份，以及必要OTel/辅助筛选/守卫和生命周期组合。实际条件和命令由现有测量工具核对，原功能证据按未变范围复用。Worker只运行隔离验证和临时产物，父控制器保留源码、正式记录、Git及CE写权。
+
+父控制器依据本文件当前任务契约和2026-11-15已批准成员决定，完成CEv1当前准则选择的行政处置：旧 `v0-7-0-contract:assemble:combined-acceptance` 保留原description/owner及历史观察，required改为false，并记录original_required=true、决定日期/依据和替代ID。新增 `v0-7-0-contract:assemble:combined-acceptance-v2` required=true及requires关系，内容覆盖现选五成员组合。两个节点回读一致，关系预检通过并写入，当前4项required与1项历史optional均确认。没有把旧pricing措辞套用新范围通过证据，aggregate尚未签发完成结论。
+
+Beads整理已直接核对并关闭已交付的辅助会话专题载体和长扫描超时来源缺陷，两项实际合并门禁重新查询均VERIFIED。另按现行OTel requirements第102行/tasks第18行明确替代epoch5跨仓库分解的决定，关闭producer-identity-v1、identity-ownership-readmission、cross-producer-acceptance三个旧协调任务，清除其中陈旧assignee。原控制器确认completed且无运行或待办操作，旧设计/证据保持历史。活跃P3测试等待隐患保留，尚未删除工作树、分支或用户数据。
