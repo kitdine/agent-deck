@@ -373,7 +373,7 @@ authority. Record partial assembly without ticking the aggregate Task complete.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `assemble` | [x] | [x] |
-| 2. `v0-7-0-contract` | [ ] | [ ] |
+| 2. `v0-7-0-contract` | [x] | [x] |
 
 These are contract-topic tasks for review. Create their implementation dispatch
 only after this matrix is approved and applicable evidence/checkpoint conditions
@@ -977,3 +977,92 @@ current combined correctness and the project records are covered with the
 limitations recorded in assembly Round 12. The Review cell is checked.
 Final evidence and signed delivery are owned by that round and the Beads
 checkpoint. Task 2 proceeds after the committed Task 1 checkpoint.
+
+
+### Task 2 implementation evidence — 2026-11-16
+
+Contract/manual revision 37 and roadmap withdrawal reconciliation are prepared;
+Task 2 remains in progress, without an independent verdict or delivery claim.
+The historical roadmap anchor is preserved for existing review links.
+
+Private-copy upgrade validation used exact HEAD
+`67fee8e071ef3a3298ce0942f201612c98c29562`, tree
+`c8e46b9d27e4693c03c650ddfb0dc4f7bb624538`, exported with `git archive` and built
+with Go 1.27.1, `-mod=vendor -trimpath`. CLI SHA-256:
+`068402199480ffe816523dc9e432aa2fe6d5ff09501eb76cde63b8bc50e6d104`.
+The controller inspected the saved invariant comparison, migration response and
+doctor check summaries directly; this is verification input, not review PASS.
+
+Python SQLite read-only online backups captured sessions at
+17:40:34.594–17:41:00.188 UTC and core at 17:41:00.295–17:41:21.228 UTC.
+These are individually consistent snapshots, not one cross-database atomic
+backup. Private HOME, explicit fixture state root, denied network and sandbox
+read/write confinement prevented source-log access and live-state migration.
+Only the private key and three telemetry configuration/token files accompanied
+the databases; no runtime receipts, locks or source logs were copied.
+
+`doctor` observed actual core schema 34; `state migrate` returned
+`migrated:true` and schema 35. Both copied databases passed SQLite quick_check
+before and after. Full doctor authenticated all 14 credential ciphertexts and
+reported schema, integrity, key, credential, usage, price and session checks ok.
+Source-read checks were deliberately denied (2,876 usage and session sources);
+configuration drift, stale extension inventory and unknown LaunchServices reflect
+the isolated environment. Six unpriced models were reported only in full mode;
+no before/after claim is made for that check.
+
+Core invariant JSON has 50 entries: 43 unchanged and seven changed entries
+(including the scalar schema-version observation); all 14 session entries are
+unchanged. The existing-column source-file projection also remains unchanged;
+schema 35 adds nullable thread identity. Preserved inputs include provider and
+credential rows, all ciphertext bytes, settings, origin preferences/overrides,
+exclusions, 19,282 usage events with unchanged token columns, and 2,912 session
+metadata rows. Usage-event full-row digest:
+`34ee96a034c480e82c8bb81545868e4c02a48ed35f6583e2f6f9a6a0cf19084b`.
+Session metadata digest:
+`715dbc45cb9d956ac520ae9ecb10c71a0ebdf2837106cc1182df8b46b1a4424e`.
+Protected source key/configuration hashes, sizes and permissions match after
+normalizing the before-file timestamp header; no live database byte-equality
+claim is made while Hooks continue writing.
+
+Expected derived changes are schema metadata, three generation/derived metadata
+rows, cached session origins (2,876 to zero), and 2,876 queued session
+invalidations. Without a subsequent scan, the copied sessions report unknown
+origins. The stable contract now states this transient behavior. Real-source
+replay was not executed; current parser/readmission tests and aggregate fixture
+acceptance retain their original scope. This machine validates 34→35; stable
+30→35 relies on existing migration regression coverage. Installed-channel
+upgrade, final-SHA release preflight and publication remain later boundaries.
+
+The verification worker used Claude Opus 5.5, requested medium effort; no
+background work remains. Private diagnostic copies remain locally restricted
+pending controller inspection and cleanup; they are not durable references.
+
+
+### Task 2 review handoff — 2026-11-16
+
+Stable contract revision 37, manual upgrade behavior, roadmap withdrawals and
+entry/version pointers are reconciled. Four integrated member topics retire as
+whole directories with reviews and byte-identical non-Markdown specimens.
+Historical scan-performance Review gaps and all accepted limits remain explicit;
+retirement does not create a new semantic review of historical fixes.
+
+Independent retirement assessment (Gemini 4 Hydrogen, medium) found no concrete
+contract inaccuracies. Controller queried all four named source Topic states:
+scan-performance 3/3, auxiliary classification 2/2, OTel 3/3 and installed
+ownership 3/3 VERIFIED, without missing criteria or unresolved impacts. Actual
+integration evidence remains the Task 1 roll-up authority. The archived tasks
+carry dated retirement reconciliations rather than rewriting historical reports.
+
+The topic-document checker now recognizes relative links from an archived topic
+back through `topics/<name>/ux/`; four focused cases preserve own-topic surface
+requirements while excluding cross-topic references. Full document structural
+checks, the four archive document-set checks, whitespace and diff checks pass.
+Task 2 Dev is ready; final independent review, exact-state Task/Topic gates and
+Git delivery remain pending. The version contract itself stays active until its
+own completed lifecycle boundary. No publication or local installation is claimed.
+
+
+### Task 2 review checkpoint — 2026-11-16
+
+Task 2 独立评审通过；最终证据门禁及交付状态见
+[合同评审记录](reviews/v0-7-0-contract.md)。发布、安装与版本主题最终归档仍为各自边界。

@@ -75,7 +75,7 @@ development starts.
 | --- | --- | --- |
 | `v0.6.0` | Trusted usage and subscription visibility | The five feature areas selected above; subscription quota includes Codex reset-count information. |
 | `v0.6.5` | Concentrated defect repair | Nineteen unique Bugs, prioritised P1/P2/P3; one issue/PR per repair, local independent and GitHub Codex review, then one aggregate release. Feature candidates remain separate. |
-| `v0.7.0` (proposed) | Scan performance, pricing redesign and work sessions | Long-scan performance, models.dev pricing and subscription credits estimates, auxiliary-session isolation, and Codex work-signal repair; proposed on 2026-10-08, with pricing scope open for redesign. |
+| `v0.7.0` | Reliable local scanning, work analysis and state ownership | Current selection belongs to the version contract. The 2026-11-15 decision withdraws pricing redesign and OpenCode product support from this version; both remain future work without a replacement version. |
 | `v0.8.0` | Boundary consolidation and Linux | Versioned client adapter contract, Linux machine identity, de-darwin PTY tests, Linux CI matrix and release artifacts. |
 | `v0.9.0` | Observability completion | Extension enabled state, cross-client duplication and drift, source authenticity, structured session search filters, wrapper health probing, richer desktop session window. |
 | `v1.0.0` | Multi-device and trust | Device dimension, backup merge import, read-only aggregation views, CLI archive signing and notarization. |
@@ -266,7 +266,17 @@ mirror its progress. Use the rules only after their required review and delivery
 Parallel issue work remains a separately authorized choice.
 
 
-## v0.7.0 — Scan performance, pricing redesign and work sessions (proposed)
+<a id="v070--scan-performance-pricing-redesign-and-work-sessions-proposed"></a>
+
+## v0.7.0 — Direction and historical planning
+
+The 2026-11-15 operator decision removes pricing redesign and OpenCode product
+support from v0.7.0, without cancelling their retained future work or assigning
+a replacement version. The version contract owns the current membership;
+this roadmap does not duplicate it. The following 2026-10-08 intake is retained
+as historical planning, not the current release scope.
+
+### Historical 2026-10-08 proposal
 
 On 2026-10-08 the operator requested a task design for four areas after stable
 v0.6.5. This is planning intake, not an approved implementation matrix or a

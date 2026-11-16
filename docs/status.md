@@ -31,7 +31,9 @@ The contract branch also contains independently reviewed release-validation
 corrections for crash-recovery inventory attempts (0041ac0) and performance
 fixture state-root binding (3a1a9d5). Their main delivery will accompany the
 final contract PR. Aggregate acceptance review has passed with its recorded
-coverage limits, and contract reconciliation is next. The published stable
+coverage limits. The four integrated feature topics are retained in the
+[archive](archive/README.md); the version contract remains active through its
+closure and delivery boundary. The published stable
 release remains v0.6.5 while v0.7.0 proceeds
 through contract closure, exact-SHA preflight and publication.
 

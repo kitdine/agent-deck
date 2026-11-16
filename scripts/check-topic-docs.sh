@@ -112,8 +112,9 @@ for selected in "$@"; do
 	# A cross-topic reference such as ../other-topic/ux/menubar.md names a surface
 	# that other topic owns and declares. Matching it here would demand a matrix
 	# row for a document this topic does not have and must not claim, so those
-	# paths are removed before the surfaces of this topic are collected.
-	surfaces="$(sed -E 's#(\.\./)+[a-z0-9-]+/ux/[a-z0-9-]+\.md##g' \
+	# paths are removed before the surfaces of this topic are collected. Archived
+	# topics can also cross back through topics/<name>/ to an active topic.
+	surfaces="$(sed -E 's#(\.\./)+(topics/)?[a-z0-9-]+/ux/[a-z0-9-]+\.md##g' \
 		"$topic_path"/*.md "$topic_path"/ux/*.md 2>/dev/null |
 		grep -ohE 'ux/[a-z0-9-]+\.md' | sort -u || true)"
 	while IFS= read -r surface; do

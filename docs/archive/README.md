@@ -5,7 +5,20 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-10-07
+Last updated: 2026-11-16
+
+## 2026-11-16 retirement: v0.7.0 integrated members
+
+- [scan-performance](topics/scan-performance/tasks.md): integrated at `6fff208ac852b191c0a62df1f5be34c937601cfe`; topic acceptance and exact-merge integration evidence retained.
+- [auxiliary-session-classification](topics/auxiliary-session-classification/tasks.md): integrated at `e3ff72eb0db6f54c63ab031544a8a6259b417122`; topic acceptance and exact-merge integration evidence retained.
+- [otel-version-tolerant-metering](topics/otel-version-tolerant-metering/tasks.md): integrated at `c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`; topic acceptance and exact-merge integration evidence retained.
+- [installed-state-ownership](topics/installed-state-ownership/tasks.md): integrated at `b53f26b6f626ea9d587ae11822ee24ade89248ab`; topic acceptance and exact-merge integration evidence retained.
+
+All review history and accepted limits travel with each topic. Scan-performance
+keeps the historical unchecked re-review cells under the operator disposition;
+archival does not manufacture new review passes. A5 and distribution limitations
+remain explicit. Version-contract closure, publication and installation are
+separate boundaries.
 
 ## 2026-10-07 retirement: v0.6.5 version contract
 

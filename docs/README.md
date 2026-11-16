@@ -36,7 +36,7 @@ changes.
 | [Roadmap](roadmap.md) | Active | Cross-version direction, significant tradeoffs, and withdrawal decisions; retained intake is historical provenance. |
 | [Beads](../.agent-instructions/beads.md) | Active | Issue intake, deferral, dispatch, dependency readiness, and handoff. |
 | [Product Prototype](../prototype/README.md) | Active | The design truth for every user-visible surface: menu-bar panel, widgets, settings, and CLI output. A document that disagrees with it is repaired. |
-| [CLI Design](specs/cli-design.md) | Active, version 32 | System, persistence, security, compatibility, and distribution contracts. |
+| [CLI Design](specs/cli-design.md) | Active, version 37 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Documentation Workflow](documentation-workflow.md) | Active | Documentation naming, topic structure, lifecycle, readiness matrices, size policy, and status vocabulary. |
 | [Brand Asset Provenance](legal/brand-assets.md) | Active | Generation history, derivative chain, canonical hashes, and the boundary between recorded provenance and unresolved trademark/legal review. |
