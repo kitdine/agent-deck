@@ -950,3 +950,31 @@ Task checkpoint：`ad-installed-state-ownership-installer-receipts`，content_st
 推送建议：通常门禁 VERIFIED 后推送，当前缺项为推送后的 real-brew；按任务 5 例外，可另行授权将已核验的提交正常推送到 `origin/feature/installed-state-ownership` 并回填同一提交的 CI 结果，门禁 VERIFIED 前不关闭任务。
 
 按上述例外，Beads 转 awaiting_commit；复评 PASS 保留，Task、Topic 与来源缺陷均保持开放。下一项前提是授权本候选的提交、推送和 real-brew CI 回填。后续复用本轮仍适用的本地证据，阶段或交付身份变化本身不触发重复验证。
+
+### 授权交付与 CI 结果回填 — 2026-11-15（提交 98c0398）
+
+用户授权 architecture、tasks.md、installer-receipts 分别提交并推送，随后回填对应 CI。三个独立提交均已核验实际消息、Claude/Codex 两个贡献 trailer、SSH ED25519 签名、父链、树与文件范围。
+
+| 提交 | 范围 | 树 |
+| --- | --- | --- |
+| `54c0b47a882c3673d6cf9a1cfcacf6026d83bd04` | architecture.md 与其评审记录，2 路径 | `57db8eb689d0963cc6066953152ef36ea6182fab` |
+| `1a97846eb8273740124e7f1383acdda914e8b347` | 独立设计快照 tasks.md 与其评审记录，2 路径 | `72b377debb08e2e28bd150ba56f6e8c81627c1ec` |
+| `98c039821563dd2d2842a091c55eabf723bca2df` | Task 5 的 8 个实现/测试路径及本记录、tasks.md 状态交接，共 10 路径 | `3de470535fb57061d7010d3484c069ffd535e226` |
+
+任务分解提交的 tasks.md blob 为 `c927aa71ddba6f2026d3fa83e98fef59b6ff24be`，与 Round 18 评审态完全一致。第三个提交中 48 个非状态范围输入与 Round 8 逐 blob 一致，仅 tasks.md 的当前交付摘要和 HEAD 变化；未重跑未变化的产品验证。三个提交一次正常推送，远端 `origin/feature/installed-state-ownership` 已读回为完整 SHA `98c039821563dd2d2842a091c55eabf723bca2df`，推送后工作区干净。
+
+文档交付态 `installed-state-ownership:architecture:delivery-20261115-54c0b47`、`installed-state-ownership:tasks:delivery-20261115-1a97846` 均通过明确复用得到 VERIFIED，两个文档任务已交付。Task 5 提交态为 `installed-state-ownership:installer-receipts:delivery-20261115-98c0398`，沿用 acceptance-v3；提交范围指纹 `d6720abc237bff3d7d1086ee0f8cca3c9ecb3ba17594bbef40146c88541d7f40`。推送前的七项本地证据按该不可变提交显式 roll-up，real-brew 当时缺失，遵循任务既有取证时序例外。
+
+**真实 Homebrew 回归成功。** [run 43717087573](https://github.com/kitdine/agent-deck/actions/runs/43717087573)，job `132820844739`，精确 SHA 为上述 `98c0398`。GitHub 托管 `macos-26-arm64`，Go `1.26.0 darwin/arm64`。Job 从 `13:04:39Z` 至 `13:09:49Z`，真实安装步骤从 `13:07:40Z` 至 `13:09:42Z`。
+
+- 21 项夹具测试通过，25.581 秒；App/widget 构建通过。
+- lifecycle 的安装、正常升级及卸载后过期回执接管通过。
+- 占用期间升级摘要为 `brew exit 0; unchanged line present: True; owner_running reported 0 time(s); receipt changed: False; version: 1.2.4; Caskroom: ['1.2.4']`。同一场景继续断言会话在 brew 结束时仍存活、升级后身份为已安装；停止会话后再次登记生成新 ID，后续卸载成功。
+- other-owner 的有效其他拥有者拒绝/回滚与迁移提示、home-mismatch 的先行沙箱对照和真实拒写/回滚均运行到并通过。脚本最终输出 `Cask real Homebrew regression: PASS`。
+- 这些结果覆盖当前五类隔离 runner 场景。存量旧 cask 的首次升级、真实用户 `/Applications` 与已登记扩展注销仍按各自原有范围处理。
+
+**常规 CI 全部成功。** [run 43717087654](https://github.com/kitdine/agent-deck/actions/runs/43717087654)，同一精确 SHA；classify、documentation、verify、desktop 四个 job 均 success。verify job `132821019106` 于 `13:44:15Z` 完成；desktop job `132821019109` 于 `13:13:31Z` 完成，包含 Swift 测试、App 构建、小组件边界、刷新契约及隔离分发检查。整个工作流于 `13:44:16Z` 完成，成功结论已读取。
+
+real-brew 通过事实已追加到该提交态，固定门禁返回 **VERIFIED 8/8**，无缺失准则、失效证据或未决候选影响。常规 CI 的最终成功一并登记为提交态 validation 的补充证据。Round 8 原候选的 PASS/7-of-8 历史事实保留；本节记录交付与推送后取证结果。
+
+Task 5 的授权交付与证据边界已满足。主题仍有任务 8、9 等后续义务，Topic 与来源缺陷保持开放。必要检查事实已直接写入本节和 CEv1，CI 链接仅供定位，不依赖临时日志留存。本节及 tasks.md 的 CI 回填记录上述已交付提交的验证结果。

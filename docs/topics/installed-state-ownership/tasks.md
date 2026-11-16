@@ -10,7 +10,7 @@ updated: 2026-11-15
 
 ## Documents
 
-2026-11-15 架构最新修订在[架构评审](reviews/architecture.md) Round 16 独立复评 PASS，Review 已勾选，精确内容态及证据门禁见该轮记录。下文 Round 14 及其提交为历史内容态。任务分解已按该修订同步任务 5 的条款，并在[任务分解评审](reviews/tasks.md) Round 18 独立评审 PASS；精确内容态及证据门禁见该轮记录。Round 17 的 PASS 属于历史内容态。任务 5 的四条件放行已在[任务评审](reviews/installer-receipts.md) Round 8 复评 PASS，Dev 与 Review 已勾选；本地七项准则通过，门禁仅缺推送后的 real-brew。用户已授权架构、任务分解与任务 5 分别提交后推送，并回填对应 CI。
+2026-11-15 架构 Round 16、任务分解 Round 18 和任务 5 Round 8 的通过候选已分别提交为 `54c0b47`、`1a97846`、`98c0398`，并推送至主题分支。架构及任务分解的提交态门禁均 VERIFIED；任务 5 的 real-brew 与常规 CI 全部成功，提交态门禁 VERIFIED 8/8，授权交付完成。精确提交、CI 结果及范围见[任务评审交付回填](reviews/installer-receipts.md#授权交付与-ci-结果回填--2026-11-15提交-98c0398)。下文各次设计、开发及 CI 交接保留其历史内容态；任务 8、9 与需求文本修订继续按各自边界推进。
 
 | Document | Draft | Review |
 | --- | --- | --- |
