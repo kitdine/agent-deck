@@ -150,11 +150,21 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		return
 	}
 	defer sessions.Close()
+	accepted := false
+	for _, db := range []*store.Store{core, sessions} {
+		exists, err := db.AbandonRoundInventories(ctx, r.id)
+		if err != nil {
+			fail(err)
+			return
+		}
+		accepted = accepted || exists
+	}
+	r.inventoryID = roundInventoryID(r.id, accepted)
 	for _, domain := range []struct {
 		db      *store.Store
 		session bool
 	}{{core, false}, {sessions, true}} {
-		if err = acceptDomainInventory(ctx, domain.db, r.id, sources, domain.session, started); err != nil {
+		if err = acceptDomainInventory(ctx, domain.db, r.inventoryID, sources, domain.session, started); err != nil {
 			fail(err)
 			return
 		}
@@ -179,8 +189,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	if len(fullInventory.Added)+len(fullInventory.Appended)+len(fullInventory.Mutated)+len(fullInventory.Removed) == 0 {
 		unchanged, checkErr := session.PreparedSourcesUnchanged(ctx, sessions.DB, r.home, sources)
 		if checkErr != nil {
-			finishDomainInventory(core, r.id, checkErr)
-			finishDomainInventory(sessions, r.id, checkErr)
+			finishDomainInventory(core, r.inventoryID, checkErr)
+			finishDomainInventory(sessions, r.inventoryID, checkErr)
 			fail(checkErr)
 			return
 		}
@@ -212,7 +222,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		batchService := usage.New(core, r.home)
 		batchService.PreparedSources = batch
 		batchService.Coordinator = coordinator
-		batchService.CoverageInventoryID = r.id
+		batchService.CoverageInventoryID = r.inventoryID
 		batchService.CoverageBatch = true
 		// Planning discovers differences using the full accepted set. Only this
 		// batch's plans must be sealed before its shared reader can start.
@@ -248,7 +258,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 			defer wait.Done()
 			defer coordinator.ConsumerDone(ingest.ConsumerSession)
 			defer perftrace.Span(perftrace.ScanSession)()
-			batchScan, sessionErr = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: batch, Coordinator: coordinator, CoverageInventoryID: r.id, Batch: true})
+			batchScan, sessionErr = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: batch, Coordinator: coordinator, CoverageInventoryID: r.inventoryID, Batch: true})
 		}()
 		wait.Wait()
 		coordinator.Close()
@@ -269,8 +279,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		scan.Documents += batchScan.Documents
 		scan.Skipped += batchScan.Skipped
 		if metadataOnly {
-			if err = finishUsageInventory(ctx, core, service, r.id); err == nil {
-				err = finishAcceptedInventory(ctx, sessions, r.id)
+			if err = finishUsageInventory(ctx, core, service, r.inventoryID); err == nil {
+				err = finishAcceptedInventory(ctx, sessions, r.inventoryID)
 			}
 			if err != nil {
 				break
@@ -295,14 +305,14 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	if err == nil {
 		finishSession := perftrace.Span(perftrace.ScanSession)
-		_, err = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, CoverageInventoryID: r.id})
+		_, err = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, CoverageInventoryID: r.inventoryID})
 		finishSession()
 	}
 	if err == nil && !metadataOnly {
-		err = finishUsageInventory(ctx, core, service, r.id)
+		err = finishUsageInventory(ctx, core, service, r.inventoryID)
 	}
 	if err == nil && !metadataOnly {
-		err = finishAcceptedInventory(ctx, sessions, r.id)
+		err = finishAcceptedInventory(ctx, sessions, r.inventoryID)
 	}
 	if err == nil || errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
 		// Source identities were prepared when the usage inventory finished;
@@ -310,8 +320,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		err = errors.Join(err, r.settleAndClassify(ctx, stateRoot, core, sessions, service))
 	}
 	if err != nil {
-		finishDomainInventory(core, r.id, err)
-		finishDomainInventory(sessions, r.id, err)
+		finishDomainInventory(core, r.inventoryID, err)
+		finishDomainInventory(sessions, r.inventoryID, err)
 		fail(err)
 		return
 	}

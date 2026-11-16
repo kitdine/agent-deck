@@ -107,6 +107,49 @@ func (s *Store) switchCoverageHead(ctx context.Context, id string) error {
 	return err
 }
 
+// AbandonRoundInventories pauses the inventories that earlier executions of
+// one scan round accepted and never finished because their worker stopped. A
+// round's acceptances use the round id itself or roundID+"."+suffix. The
+// caller holds the state root's scan lock while it replays the round, so no
+// execution of that round is still running; inventories of other rounds,
+// including another acceptance's pending staging, are never touched. Paused
+// attempts follow ordinary reclamation once a newer inventory finishes.
+//
+// It reports whether any inventory of the round exists, finished or not: the
+// replay must then accept under a new attempt id, because inventory ids are
+// unique and the existing coverage rows remain until reclaimed.
+func (s *Store) AbandonRoundInventories(ctx context.Context, roundID string) (bool, error) {
+	if s.readOnly || roundID == "" {
+		return false, errors.New("invalid round inventory abandonment")
+	}
+	const round = `(inventory_id=? OR substr(inventory_id,1,?)=?)`
+	args := []any{roundID, len(roundID) + 1, roundID + "."}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET state='paused' WHERE state='pending' AND `+round, args...)
+	if err != nil {
+		return false, err
+	}
+	paused, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if paused > 0 {
+		// A paused head is terminal coverage, as in FinishInventory.
+		if _, err = tx.ExecContext(ctx, `UPDATE serving_generation SET revision=revision+1 WHERE singleton=1`); err != nil {
+			return false, err
+		}
+	}
+	var exists bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_runs WHERE `+round+`)`, args...).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, tx.Commit()
+}
+
 // discardInventory removes one staged inventory that never became the head.
 func (s *Store) discardInventory(ctx context.Context, id string) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
