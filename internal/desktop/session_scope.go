@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/sessionorigin"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -129,6 +130,11 @@ func (s Service) SessionScopeView(ctx context.Context, request SessionScopeReque
 	if err := request.Validate(); err != nil {
 		return SessionScopeView{}, err
 	}
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return SessionScopeView{}, err
+	}
+	s.StateRoot = root
 	now := s.now().UTC()
 	if !request.AsOf.IsZero() {
 		now = request.AsOf.UTC()
@@ -170,6 +176,11 @@ func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequ
 	if err := request.Validate(); err != nil {
 		return SessionScopeBatch{}, err
 	}
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return SessionScopeBatch{}, err
+	}
+	s.StateRoot = root
 	now := s.now().UTC()
 	if !request.AsOf.IsZero() {
 		now = request.AsOf.UTC()

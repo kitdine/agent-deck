@@ -1628,8 +1628,8 @@ final class SettingsWindowPaneTests: XCTestCase {
 		let refusing = StubTelemetryTransport(statuses: [telemetryStatus(enabled: false)], enableResult: { _ in nil })
 		let refusedTelemetry = makeTelemetrySettingsController(transport: refusing)
 		let refusedWindow = makeWindow(telemetry: refusedTelemetry)
-		refusedWindow.show(pane: .liveUsage)
 		await refusedTelemetry.load()
+		refusedWindow.show(pane: .liveUsage)
 		await refusedTelemetry.toggle(true)
 		await refusedTelemetry.writeAndEnable()
 		let refusal = try XCTUnwrap(refusedTelemetry.failureRow)
@@ -1640,8 +1640,10 @@ final class SettingsWindowPaneTests: XCTestCase {
 		let conflicting = StubTelemetryTransport(statuses: [telemetryStatus(enabled: false, exporter: "other")])
 		let conflictTelemetry = makeTelemetrySettingsController(transport: conflicting)
 		let conflictWindow = makeWindow(telemetry: conflictTelemetry)
-		conflictWindow.show(pane: .liveUsage)
+		// Establish the fixture before show() starts its automatic refresh.
+		// Awaiting a superseded load does not make the latest status ready.
 		await conflictTelemetry.load()
+		conflictWindow.show(pane: .liveUsage)
 		await conflictTelemetry.toggle(true)
 		XCTAssertEqual(conflictTelemetry.consent, .conflict)
 		await roundTrip(conflictWindow, from: .liveUsage)

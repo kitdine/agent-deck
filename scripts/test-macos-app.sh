@@ -16,7 +16,7 @@ if xcodebuild -version >/dev/null 2>&1; then
 	test_helper="$repo_root/apps/macos/build/DerivedData/Build/Products/Debug/AgentDeck.app/Contents/Helpers/agentdeck"
 
 	isolation_pids() {
-		ps -axo pid=,command= | awk -v helper="$test_helper" '$2 == helper { print $1 }'
+		ps -axo pid=,command= | awk -v helper="$test_helper" -v fixture="$test_root/AgentDeck.app/Contents/Helpers/agentdeck" -v driver="$test_root/native-driver" '$2 == helper || $2 == fixture || $2 == driver { print $1 }'
 	}
 	baseline_pids=" $(isolation_pids | tr '\n' ' ') "
 	new_isolation_pids() {
@@ -46,6 +46,13 @@ if xcodebuild -version >/dev/null 2>&1; then
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
 
+  export GOCACHE=${GOCACHE:-/private/tmp/agent-deck-go-build}
+  # Build a separate acceptance-only helper; never replace the product helper.
+  mkdir -p "$test_root/account" "$test_root/AgentDeck.app/Contents/Helpers"
+  (cd "$repo_root" && go build -mod=vendor -tags agentdeck_acceptance -o "$test_root/AgentDeck.app/Contents/Helpers/agentdeck" ./cmd/agentdeck)
+  (cd "$repo_root" && bash scripts/run-go-test.sh ./internal/installation -c -o "$test_root/native-driver")
+  env AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" AGENTDECK_NATIVE_FIXTURE_ACTION=register \
+    bash "$repo_root/scripts/run-go-test.sh" ./internal/installation -run '^TestNativeOwnershipFixture$'
   bash "$repo_root/scripts/build-macos-app.sh"
 	set +e
 	env \
@@ -53,6 +60,8 @@ if xcodebuild -version >/dev/null 2>&1; then
 		CFFIXED_USER_HOME="$test_home" \
 		AGENTDECK_TEST_HOME="$test_home" \
 		TEST_RUNNER_AGENTDECK_TEST_HOME="$test_home" \
+        AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" \
+        TEST_RUNNER_AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" \
 		xcodebuild \
     -project "$repo_root/apps/macos/AgentDeck.xcodeproj" \
     -scheme AgentDeck \

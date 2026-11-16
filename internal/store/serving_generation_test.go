@@ -82,8 +82,15 @@ func TestServingGenerationRejectsMissingAndUnsafeState(t *testing.T) {
 	if err := os.Symlink(root, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadServingGeneration(ctx, link); err == nil {
-		t.Fatal("symlink state accepted")
+	// State-root aliases are resolved by the ownership guard. SQLite files
+	// themselves retain their independent private, no-symlink checks.
+	direct, err := ReadServingGeneration(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliased, err := ReadServingGeneration(ctx, link)
+	if err != nil || aliased != direct {
+		t.Fatalf("physical state identity = %+v, %v; want %+v", aliased, err, direct)
 	}
 }
 

@@ -70,6 +70,7 @@ func buildTemplate(agentdeck, home, tz, out string) (templateManifest, error) {
 	defer os.RemoveAll(state)
 	command := exec.Command(agentdeck, "--state-dir", state, "--format", "json", "scan")
 	command.Env = []string{"HOME=" + home, "TZ=" + tz, "PATH=/usr/bin:/bin", "LANG=en_US_POSIX", "LC_ALL=en_US_POSIX"}
+	addTestCLIEnvironment(command, command.Path)
 	if output, err := command.CombinedOutput(); err != nil {
 		return templateManifest{}, fmt.Errorf("product scan failed: %v (%d bytes of output)", err, len(output))
 	}

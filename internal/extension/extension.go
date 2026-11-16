@@ -17,6 +17,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -325,6 +326,10 @@ func DoctorFromStateRoot(ctx context.Context, stateRoot, home, workdir string) (
 }
 
 func DoctorFromStateRootWithDiscoverer(ctx context.Context, stateRoot, home, workdir string, discoverer ExtensionDiscoverer) (DoctorReport, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return DoctorReport{}, err
+	}
 	if discoverer == nil {
 		discoverer = DefaultDiscoverer
 	}

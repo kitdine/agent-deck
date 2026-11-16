@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 const ServingStorageVersion = 1
@@ -113,6 +115,10 @@ type ServingGenerationReader struct {
 }
 
 func OpenServingGenerationReader(ctx context.Context, stateRoot string) (*ServingGenerationReader, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	success := false
 	defer func() {
@@ -120,10 +126,7 @@ func OpenServingGenerationReader(ctx context.Context, stateRoot string) (*Servin
 			cancel()
 		}
 	}()
-	root, err := filepath.Abs(stateRoot)
-	if err != nil {
-		return nil, err
-	}
+	root := stateRoot
 	rootInfo, err := privateServingPath(root, true)
 	if err != nil {
 		return nil, err

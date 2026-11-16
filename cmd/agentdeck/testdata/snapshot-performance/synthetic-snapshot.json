@@ -7423,6 +7423,11 @@
       "errors": 0,
       "checks": [
         {
+          "name": "installation",
+          "status": "ok",
+          "reason": "make"
+        },
+        {
           "name": "state_permissions",
           "status": "ok"
         },
@@ -7432,6 +7437,10 @@
         },
         {
           "name": "scan_lock",
+          "status": "ok"
+        },
+        {
+          "name": "managed_command_owner",
           "status": "ok"
         },
         {

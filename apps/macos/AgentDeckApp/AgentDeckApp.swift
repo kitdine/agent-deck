@@ -105,6 +105,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private var wakeObserver: NSObjectProtocol?
 	private var acceptanceWindow: NSWindow?
 	private let sourceHome: URL
+	private let helperRunner: EmbeddedHelperRunner
 	private var sourceMonitor: DesktopSourceChangeMonitor?
 	private var automaticUpdates: DesktopAutomaticUpdates?
 	#if AGENTDECK_PERF
@@ -200,6 +201,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		self.periodicDriver = periodicDriver
 		self.automaticRefreshEnabled = automaticRefreshEnabled
 		self.sourceHome = sourceHome
+		self.helperRunner = runner
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		self.quotaSettings = quotaSettings
@@ -214,10 +216,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 				}
 			),
 			// With no listener running, nothing else notices `telemetry enable`.
-			configurationURLs: [
-				sourceHome.appendingPathComponent(".codex/config.toml"),
-				sourceHome.appendingPathComponent(".agentdeck/telemetry/receiver.json")
-			]
+			configurationURLs: [sourceHome.appendingPathComponent(".codex/config.toml")],
+			stateRoot: { [runner] in try await runner.resolveStateRoot() }
 		)
 		self.telemetrySettings = telemetrySettings
 		model = MenuBarViewModel(
@@ -323,6 +323,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	}
 
 		func applicationWillTerminate(_ notification: Notification) {
+			helperRunner.closeOwnershipSession()
 			preferences.automaticUpdateDidChange = nil
 			automaticUpdates?.stop()
 			refreshCoordinator.stopAppWork()

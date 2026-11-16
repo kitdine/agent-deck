@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -60,6 +61,10 @@ type CoverageInterval struct {
 // listener's self-description, the Codex configuration facts and stored
 // observations. It never starts a listener and never reads the token.
 func ReadStatus(ctx context.Context, stateRoot, home string, open func() (*store.Store, error)) (Status, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return Status{}, err
+	}
 	config, err := LoadConfig(stateRoot)
 	if err != nil {
 		return Status{}, err

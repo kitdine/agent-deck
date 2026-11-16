@@ -86,19 +86,10 @@ if [[ $(uname -m) == arm64 ]]; then
   grep -E '"build_time":"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"' \
     <<<"$identity" >/dev/null
 
-  install_home="$temporary/home"
-  install_prefix="$temporary/prefix"
-  mkdir -p "$install_home"
-  HOME="$install_home" PREFIX="$install_prefix" \
-    BINDIR="$install_prefix/bin" DATADIR="$install_prefix/share/agentdeck" \
-    COMPLETION_SHELL=none bash scripts/manage-install.sh install "$native_binary" >/dev/null
-  installed_identity=$("$install_prefix/bin/agentdeck" --format json version)
-  grep -F "\"version\":\"$version\"" <<<"$installed_identity" >/dev/null
-  grep -F "\"commit\":\"$commit\"" <<<"$installed_identity" >/dev/null
-  HOME="$install_home" PREFIX="$install_prefix" \
-    BINDIR="$install_prefix/bin" DATADIR="$install_prefix/share/agentdeck" \
-    bash scripts/manage-install.sh uninstall >/dev/null
-  test ! -e "$install_prefix/bin/agentdeck"
+  # No install smoke here: installing registers the program in the real
+  # account's ownership receipt, and a release binary cannot be redirected to
+  # a temporary account. scripts/test-install.sh covers the installer with an
+  # agentdeck_acceptance build of the same source.
 fi
 
 printf 'verified release artifacts %s for %s (%s, %s)\n' \

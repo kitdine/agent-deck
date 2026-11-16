@@ -569,6 +569,11 @@
               },
               {
                 "name": "string",
+                "reason": "string",
+                "status": "string"
+              },
+              {
+                "name": "string",
                 "status": "string"
               }
             ],
@@ -1067,6 +1072,11 @@
             {
               "count": "number",
               "name": "string",
+              "status": "string"
+            },
+            {
+              "name": "string",
+              "reason": "string",
               "status": "string"
             },
             {

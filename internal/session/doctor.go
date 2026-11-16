@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 type Health struct {
@@ -27,6 +29,10 @@ type Health struct {
 // SQLITE_BUSY -- callers such as agentdeck doctor treat that as a hard
 // error -- instead of retrying briefly.
 func CheckHealth(ctx context.Context, stateRoot string, full bool) (Health, error) {
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return Health{}, err
+	}
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return Health{Integrity: "not_requested"}, nil

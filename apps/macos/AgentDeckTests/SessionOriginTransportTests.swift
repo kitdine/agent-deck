@@ -34,8 +34,9 @@ final class SessionOriginTransportTests: XCTestCase {
 		XCTAssertEqual(read, .value(DesktopSessionScopeDefaultV1(confirmed: true, value: .all, revision: 3, reason: nil)))
 		let invocations = await process.recordedInvocations()
 		let invocation = try XCTUnwrap(invocations.first)
-		XCTAssertEqual(Array(invocation.arguments.prefix(2)), ["--state-dir", "/tmp/isolated-home/.agentdeck"], "the explicit isolated state root, never an implied one")
-		XCTAssertEqual(Array(invocation.arguments.dropFirst(2)), SessionOriginCommand.readDefaultScope())
+		XCTAssertEqual(invocation.arguments, SessionOriginCommand.readDefaultScope(), "the helper selects its guarded root; HOME is not a state override")
+		let allInvocations = await process.recordedInvocations(includingStateLocation: true)
+		XCTAssertEqual(allInvocations.first?.arguments, ["desktop", "state-location", "--format", "json"])
 	}
 
 	func testCommittedReceiptsDecodeTheGoShapesAndMustNameTheRequestedOperation() {

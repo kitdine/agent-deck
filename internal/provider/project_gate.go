@@ -24,6 +24,11 @@ func ProjectAttributionGatePath(stateRoot string) string {
 }
 
 func (s Service) ProjectAttributionGateStatus(ctx context.Context) (ProjectAttributionGateStatus, error) {
+	root, err := platform.GuardStateRoot(s.StateRoot)
+	if err != nil {
+		return ProjectAttributionGateStatus{}, err
+	}
+	s.StateRoot = root
 	required, err := s.projectAttributionGateRequired(ctx)
 	if err != nil {
 		return ProjectAttributionGateStatus{}, err
@@ -53,12 +58,17 @@ func (s Service) ProjectAttributionGateStatus(ctx context.Context) (ProjectAttri
 }
 
 func (s Service) RefreshProjectAttributionGate(ctx context.Context) error {
-	required, err := s.projectAttributionGateRequired(ctx)
+	if s.StateRoot == "" {
+		return errors.New("state directory is unavailable")
+	}
+	root, err := platform.GuardStateRoot(s.StateRoot)
 	if err != nil {
 		return err
 	}
-	if s.StateRoot == "" {
-		return errors.New("state directory is unavailable")
+	s.StateRoot = root
+	required, err := s.projectAttributionGateRequired(ctx)
+	if err != nil {
+		return err
 	}
 	path := ProjectAttributionGatePath(s.StateRoot)
 	if !required {

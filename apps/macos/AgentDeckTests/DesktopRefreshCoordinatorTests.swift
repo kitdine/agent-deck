@@ -1640,7 +1640,10 @@ private final class HeldBootstrapProcess: EmbeddedHelperProcess, @unchecked Send
 		waiting?.resume()
 	}
 
-	func run(executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+	func run(executableURL _: URL, arguments: [String], environment: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+		if arguments == ["desktop", "state-location", "--format", "json"] {
+			return try fixtureStateLocation(root: (environment["HOME"] ?? "/tmp/isolated-home") + "/.agentdeck-dev")
+		}
 		countStart()
 		throw HelperExecutionError.launchFailed
 	}

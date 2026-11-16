@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 type Shell string
@@ -139,6 +141,10 @@ func (m *Manager) Setup(request Request) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	writes, err := guardTargets(targets)
+	if err != nil {
+		return Summary{}, err
+	}
 	summary := Summary{Results: make([]Result, 0, len(targets))}
 	for _, target := range targets {
 		if !target.selected {
@@ -149,7 +155,7 @@ func (m *Manager) Setup(request Request) (Summary, error) {
 			})
 			continue
 		}
-		outcome, setupErr := m.setupFile(target.path, target.shell)
+		outcome, setupErr := m.setupFile(writes[target.path], target.shell)
 		result := Result{Shell: target.shell, Path: target.path, Outcome: outcome}
 		if setupErr != nil {
 			result.Outcome = OutcomeFailed
@@ -169,6 +175,10 @@ func (m *Manager) SetupIfUnconfigured(request Request) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	writes, err := guardTargets(targets)
+	if err != nil {
+		return Summary{}, err
+	}
 	summary := Summary{Results: make([]Result, 0, len(targets))}
 	changes := make([]*preparedSetupChange, 0, len(targets))
 	currentBlockPresent := false
@@ -180,7 +190,9 @@ func (m *Manager) SetupIfUnconfigured(request Request) (Summary, error) {
 			summary.Results = append(summary.Results, result)
 			continue
 		}
-		change, outcome, prepareErr := m.prepareSetupChange(target, len(summary.Results))
+		physical := target
+		physical.path = writes[target.path]
+		change, outcome, prepareErr := m.prepareSetupChange(physical, len(summary.Results))
 		result.Outcome = outcome
 		if prepareErr != nil {
 			result.Outcome = OutcomeFailed
@@ -446,6 +458,10 @@ func (m *Manager) Remove(request Request) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	writes, err := guardTargets(targets)
+	if err != nil {
+		return Summary{}, err
+	}
 	summary := Summary{Results: make([]Result, 0, len(targets))}
 	for _, target := range targets {
 		if !target.selected {
@@ -456,7 +472,7 @@ func (m *Manager) Remove(request Request) (Summary, error) {
 			})
 			continue
 		}
-		outcome, removeErr := m.removeFile(target.path, target.shell)
+		outcome, removeErr := m.removeFile(writes[target.path], target.shell)
 		result := Result{Shell: target.shell, Path: target.path, Outcome: outcome}
 		if removeErr != nil {
 			result.Outcome = OutcomeFailed
@@ -465,6 +481,25 @@ func (m *Manager) Remove(request Request) (Summary, error) {
 		summary.Results = append(summary.Results, result)
 	}
 	return summary, nil
+}
+
+// guardTargets runs the client-configuration guard for every selected target
+// before any directory, temporary file, backup or replacement is created. It
+// returns the physical path each write must use; results keep the requested
+// path for display.
+func guardTargets(targets []target) (map[string]string, error) {
+	writes := make(map[string]string, len(targets))
+	for _, target := range targets {
+		if !target.selected {
+			continue
+		}
+		physical, err := platform.GuardClientWrite(target.path)
+		if err != nil {
+			return nil, err
+		}
+		writes[target.path] = physical
+	}
+	return writes, nil
 }
 
 type target struct {

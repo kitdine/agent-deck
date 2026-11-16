@@ -56,6 +56,7 @@ make build
 | `agentdeck doctor` | Run quick or full read-only diagnostics with actionable recovery guidance. |
 | `agentdeck run` | Associate an exact Codex or Claude subprocess execution with its usage record. |
 | `agentdeck version` | Report version, commit, build time, and Go runtime identity for diagnostics. |
+| `agentdeck install claim` | In this source tree, explicitly select the current Homebrew formula keg as the state owner. |
 
 Native extension enable and disable remain read-only unless an adapter exposes
 an unambiguous native toggle. Portable restore only targets an absent or empty
@@ -92,6 +93,24 @@ dist/agentdeck_darwin_arm64
 dist/agentdeck_darwin_amd64
 ```
 
+### Installed State Versus Development State
+
+The ownership workflow below describes this source tree and the next release
+that includes it; it does not assert that the historical `v0.6.5` release above
+already provides these commands.
+
+Only the executable named by the user installation receipt owns real AgentDeck
+state. Installed owners normally use `~/.agentdeck`; `go run`, a bare `dist`
+binary, and an uninstalled App normally use `~/.agentdeck-dev`. Use an explicit
+isolated `--state-dir` for separate development data. It cannot bypass the guard
+on the real account's `.agentdeck`, including symlinks and subpaths, or authorize
+writes to real Codex/Claude or shell configuration. Read-only client-log discovery
+is unchanged: state isolation is not a sandbox for source logs.
+
+Installation identity comes from the system account's receipt, not `$HOME`, a
+build version or an environment switch. Do not copy/edit that receipt to make a
+development binary installed. Use one of the supported installation methods.
+
 ## Install With Homebrew
 
 Install the latest versioned macOS release from the AgentDeck tap:
@@ -100,6 +119,22 @@ Install the latest versioned macOS release from the AgentDeck tap:
 brew install kitdine/tap/agentdeck
 agentdeck version
 ```
+
+For a formula version containing this ownership workflow, claim the selected
+installation once before using real state, including the first upgrade from a
+version with no receipt:
+
+```bash
+$(brew --prefix)/opt/agentdeck/bin/agentdeck install claim
+```
+
+Use `opt/agentdeck-rc` for the RC formula. Later upgrades renew automatically
+only within the same prefix/formula when the recorded old keg has been removed
+and the new keg is the current opt target. Retained old kegs, another prefix or
+a stable/RC switch require an explicit choice. If another live installation owns
+state, stop its App/watch/telemetry and affected client sessions first, then use
+`install claim --takeover` on the chosen current keg. Claim only records ownership;
+it does not migrate data or rewrite client configuration.
 
 The stable formula installs bash, zsh, and fish completion scripts in
 Homebrew's standard completion directories without editing shell rc files.
@@ -116,6 +151,21 @@ The Cask includes the CLI and completions. Install one AgentDeck channel at a
 time. To switch from the RC desktop channel, uninstall `agentdeck-app-rc`
 without `--zap`, then install `agentdeck-app`; keep a private recovery backup.
 Homebrew does not remove AgentDeck's user state under `~/.agentdeck/`.
+Cask postflight registers its embedded helper. Uninstall leaves the receipt in
+place; once the helper path is gone the receipt is stale (`receipt_missing`) and
+the next installation needs no takeover. Do not add takeover flags to a Cask
+operation: keep the other owner, or uninstall it through its original method and
+retry Homebrew.
+
+Same-path Cask upgrades manage files through Homebrew, outside AgentDeck's lock.
+Busy postflight registration succeeds without rewriting an already matching
+Cask receipt; it does not promise that no old CLI/worker session survives file
+replacement. Persistent ownership/HOME failures during upgrade can remove the
+old App when rollback also fails. Old installed Cask definitions can still block
+a first upgrade at `remove: no plugin at …`; new templates do not retroactively
+repair them. See [Cask troubleshooting and limits](docs/specs/cli-manual.md#cask-故障排查与已知限制)
+before attempting recovery; do not manually delete receipts/App bundles or assume
+`--force` bypasses these failures.
 
 After a release-candidate tap PR is merged, opt into that channel with:
 
@@ -232,6 +282,18 @@ make install FORCE=1
 agentdeck version
 ```
 
+`FORCE=1` only permits replacement at the target path. Changing from another
+still-existing owner additionally requires an explicit takeover after stopping
+its sessions:
+
+```bash
+make install FORCE=1 TAKEOVER=1
+```
+
+Neither option bypasses an active ownership lock. A five-second
+`owner_running` refusal means stop the original App/watch/telemetry and pause
+affected clients before retrying, not remove the lock file.
+
 For a forced upgrade, the manifest hash first proves that the installed file is
 unchanged, then the installer verifies that both executables implement the
 AgentDeck version contract. It prints the old and new build identities and
@@ -250,38 +312,76 @@ closed if an owned artifact or block changed and never deletes the rc file,
 `~/.agentdeck/`, encrypted credentials, client configuration, or backups.
 Empty installation directories may remain because they are not manifest-owned
 artifacts and uninstall does not claim ownership of them.
+Cleanup also checks the original installation ID against the current receipt
+under the exclusive ownership lock. It skips superseded installs rather than
+deleting their replacements. If the receipt or cleanup record is damaged while
+the target remains, reinstall through the original method before retrying
+uninstall; do not remove the receipt to force cleanup.
+
+### Install a Locally Built App
+
+Build the Release App, then explicitly install it and its embedded CLI:
+
+```bash
+make build-macos-release
+make install-macos-app
+```
+
+The Release target first builds both CLI architectures and then builds the
+Release bundle consumed by the default `MACOS_APP`. `make build-macos-app`
+defaults to Debug and is not the build step for this Release installation chain.
+
+`MACOS_APP` defaults to the Release bundle under
+`apps/macos/build/DerivedData/Build/Products/Release`. `APPDIR` defaults to
+`/Applications` and `BIN_LINK` to `/usr/local/bin/agentdeck`. For user-writable
+locations, set `APPDIR="$HOME/Applications"` and
+`BIN_LINK="$HOME/.local/bin/agentdeck"`; keep the same paths for later operations.
+For an explicitly chosen replacement/takeover after the old sessions stop:
+
+```bash
+make install-macos-app FORCE=1 TAKEOVER=1
+make uninstall-macos-app
+```
+
+This installer publishes the bundle and records its helper as `local_app` under
+the ownership lock. A bare App copied or launched from DerivedData is not an
+installed owner. Debug's bundle IDs, App Group and preferences are separate from
+Release; actual simultaneous Debug/installed-App operation was user-waived in
+the topic acceptance, not newly tested.
 
 ## Quick Start
 
-Start with read-only diagnostics and command discovery:
+After installation (and formula claim where required), start with read-only
+diagnostics and command discovery. These examples use the installed command,
+not the isolated development binary:
 
 ```bash
-./dist/agentdeck doctor
-./dist/agentdeck provider --help
-./dist/agentdeck usage --help
+agentdeck doctor
+agentdeck provider --help
+agentdeck usage --help
 ```
 
 Scan and inspect local usage and sessions:
 
 ```bash
-./dist/agentdeck usage scan
-./dist/agentdeck usage summary
-./dist/agentdeck session scan
-./dist/agentdeck session search "project name"
+agentdeck usage scan
+agentdeck usage summary
+agentdeck session scan
+agentdeck session search "project name"
 ```
 
 Discover local extensions:
 
 ```bash
-./dist/agentdeck extension scan
-./dist/agentdeck extension list
+agentdeck extension scan
+agentdeck extension list
 ```
 
 Use JSON for automation or NDJSON for the foreground watcher:
 
 ```bash
-./dist/agentdeck --format json provider list
-./dist/agentdeck --format ndjson watch
+agentdeck --format json provider list
+agentdeck --format ndjson watch
 ```
 
 Run `agentdeck <command> --help` before a state-changing operation to inspect
@@ -337,9 +437,9 @@ and `provider show` without a database record or AgentDeck credential. It
 reuses each client's existing vendor login state:
 
 ```bash
-./dist/agentdeck provider show official
-./dist/agentdeck provider use official
-./dist/agentdeck provider use official --client claude
+agentdeck provider show official
+agentdeck provider use official
+agentdeck provider use official --client claude
 ```
 
 AgentDeck sets `[model_providers.custom].name = "official"` and removes the
@@ -356,8 +456,8 @@ terminal echo, generates the complete `work-default-ref`, stores authenticated
 ciphertext in SQLite, and binds the same credential to both clients:
 
 ```bash
-./dist/agentdeck provider add work --endpoint https://api.example.com --clients codex,claude
-./dist/agentdeck provider show work
+agentdeck provider add work --endpoint https://api.example.com --clients codex,claude
+agentdeck provider show work
 ```
 
 `--credential` is the only credential shorthand flag; it is not a reference.
@@ -366,7 +466,7 @@ AgentDeck always generates `<provider>-<credential>-ref`, including the
 again for an existing provider adds a missing named credential:
 
 ```bash
-./dist/agentdeck provider add work --credential codex --endpoint https://api.example.com/v1 --clients codex --multiplier 0.4
+agentdeck provider add work --credential codex --endpoint https://api.example.com/v1 --clients codex --multiplier 0.4
 ```
 
 Endpoint, multiplier, and client bindings belong to each credential. A final
@@ -388,9 +488,9 @@ Selecting a provider requires only its name and client. AgentDeck resolves
 unique redacted backup under the active AgentDeck state directory:
 
 ```bash
-./dist/agentdeck provider use work --client codex
-./dist/agentdeck credential add work --credential personal --endpoint https://api.example.com --clients codex
-./dist/agentdeck provider use work --client codex --credential personal
+agentdeck provider use work --client codex
+agentdeck credential add work --credential personal --endpoint https://api.example.com --clients codex
+agentdeck provider use work --client codex --credential personal
 ```
 
 Only a completed provider-use operation becomes active attribution. Deleting a
@@ -400,7 +500,7 @@ ciphertext while retaining immutable historical usage snapshots.
 For a non-standard client installation, override only the configuration path:
 
 ```bash
-./dist/agentdeck provider use work --client codex --config-path /custom/codex/config.toml
+agentdeck provider use work --client codex --config-path /custom/codex/config.toml
 ```
 
 Managed backups use
@@ -413,7 +513,8 @@ client configuration.
 
 ## Local Data and Privacy
 
-By default, AgentDeck uses `~/.agentdeck/` as its persistent state directory:
+The installed owner normally uses `~/.agentdeck/` as its persistent state
+directory; a non-owner uses `~/.agentdeck-dev/` with the same layout:
 
 ```text
 ~/.agentdeck/
@@ -426,6 +527,20 @@ By default, AgentDeck uses `~/.agentdeck/` as its persistent state directory:
 Use `--state-dir <path>` for isolated state. AgentDeck keeps the caller's
 current directory as project context for extension discovery; it does not use
 the installation directory or change into `~/.agentdeck/` while running.
+The receipt and `ownership.lock` live separately under the system account's
+`Library/Application Support/AgentDeck/`. They, installer-private cleanup
+records and retained helper copies are not portable state and are not included
+in backups. Restoring data does not install or claim the destination executable.
+
+If a source build appears to have no data, check `agentdeck doctor` using the
+intended installed command before changing anything. `not_installed` explains
+the isolated root; `receipt_missing` also covers a removed recorded executable.
+Do not point a non-owner at real state to bypass this distinction. After a
+takeover, `managed_command_owner_mismatch` can identify an old absolute-path
+Hook/statusline command; re-run the indicated setup through the current owner.
+An ownership-refused doctor report is partial and exits `0`; ordinary
+`state_ownership_refused` commands exit `1`. Quiet Hook/statusline refusal stays
+silent and writes no ownership-refusal log.
 
 - Within AgentDeck state, custom provider credential values exist persistently
   only as authenticated ciphertext in SQLite; `credential.key` is never included

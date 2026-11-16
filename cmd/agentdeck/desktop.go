@@ -16,6 +16,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 )
 
@@ -148,7 +149,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
 	}
-	command.AddCommand(snapshot, refreshIndexes, newDesktopSessionScopeCommand(opts), newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts))
+	command.AddCommand(snapshot, refreshIndexes, newDesktopSessionScopeCommand(opts), newDesktopBootstrapCommand(opts), newDesktopQuotaRefreshCommand(opts), newDesktopQuotaSettingsCommand(opts), newDesktopQuotaStatusLineCommand(opts), newDesktopQuotaAlertsCommand(opts), newDesktopStateLocationCommand(opts))
 	return command
 }
 
@@ -262,6 +263,11 @@ func newDesktopBootstrapCommand(opts *commandOptions) *cobra.Command {
 		var outputErr error
 		emit := func(kind string, value any) {
 			if outputErr != nil {
+				return
+			}
+			if err := platform.RevalidateOwnership(root); err != nil {
+				outputErr = err
+				cancel()
 				return
 			}
 			outputErr = encoder.Encode(desktopBootstrapEvent{SchemaVersion: 2, Command: "desktop.bootstrap", Type: kind, Data: value})

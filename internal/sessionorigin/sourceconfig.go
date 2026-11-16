@@ -43,6 +43,10 @@ func sourceConfigPath(stateRoot string) string {
 // is an error, which callers report as unreadable rather than unconfigured.
 func LoadSourceConfig(stateRoot string) (SourceConfig, error) {
 	var config SourceConfig
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return config, err
+	}
 	data, err := os.ReadFile(sourceConfigPath(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
 		return config, nil
@@ -70,6 +74,10 @@ func (c SourceConfig) validate() error {
 // file) and atomically.
 func SaveSourceConfig(stateRoot string, config SourceConfig) error {
 	if err := config.validate(); err != nil {
+		return err
+	}
+	stateRoot, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
 		return err
 	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
