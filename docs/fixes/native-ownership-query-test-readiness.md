@@ -6,7 +6,7 @@ created: 2026-11-17
 # 缺陷：原生 ownership query 测试靠固定 yield 次数判断就绪
 
 载体 `ad-bug-native-ownership-query-test-readiness`；v0.7.5；Lane A，test-only。
-工作区 `agent-deck.fix.native-ownership-query-test-readiness`；分支 `fix/native-ownership-query-test-readiness`。没有 Git 交付或安装授权。
+工作区 `agent-deck.fix.native-ownership-query-test-readiness`；分支 `fix/native-ownership-query-test-readiness`。用户随后明确授权评审和门禁通过后分别提交、推送 origin、创建 PR，并要求 Codex review；不包含 merge、release、deploy 或安装。下文未授权/未提交的早期表述保留为当时的检查点，当前交付状态见末尾补记。
 
 ## 现象
 
@@ -47,6 +47,10 @@ created: 2026-11-17
 
 ## Review — Round 1
 
+完成门禁：VERIFIED
+
+格式补记（2026-11-17）：对应本轮精确候选 `c33cc05fd0abfd567cde610fa6f356081b75e87364209bc2dfc99e5b8baa7d44` 已查询的 3/3 结果；保留测试范围、独立裁决与未运行项，不追溯声称评审者查询了 CEv1。
+
 方法：冷上下文 Codex/gpt-6.1-sol，requested reasoningEffort=medium，独立只读代码/测试评审。主控核对源变更、Developer 原始测试结果、Reviewer 对 HEAD/两个 blob 的独立核对及其终态无待执行子操作后记录正式结论。
 
 ### 📋 独立代码与测试评审
@@ -81,3 +85,9 @@ Task checkpoint：`fix:native-ownership-query-test-readiness`，候选如上；�
 
 CEv1 对 `fix:native-ownership-query-test-readiness:state:c33cc05fd0abfd567cde610fa6f356081b75e87364209bc2dfc99e5b8baa7d44` 查询为 **VERIFIED 3/3**：受控延迟就绪、相关原生回归与独立评审均有目标绑定证据。
 Beads 进入 awaiting_commit；代码与本记录仍未提交，未推送、安装或发布。提交建议为该单任务边界，推送仍须另行授权。原 Bug 不因本地验收被关闭。
+
+## 交付与 CI 格式补记 — 2026-11-17
+
+已签名提交 `7ff4185e8cd28c80ea7175e5f2586ef607217fa0` 已推送 origin 并创建 [PR #71](https://github.com/kitdine/agent-deck/pull/71)；其提交态 gate 为 VERIFIED 3/3。原 Bug 保持 in_review，等待远端 Actions 与 Codex review。
+
+首轮 CI 的 `python3 scripts/check-docs.py --base 4ac56db32e13c4e925b648c620ba76fc588a7781 --head 7ff4185e8cd28c80ea7175e5f2586ef607217fa0` 报本轮缺可解析的完成门禁字段。本文补齐唯一的规范字段，并同步新的交付授权；唯一 Swift 测试文件与 Package.swift 均不变，不重跑未变产品验证。文档修正通过同一 L0 后另作追加提交，不改写原提交。
