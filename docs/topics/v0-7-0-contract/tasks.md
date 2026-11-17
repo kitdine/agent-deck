@@ -1,0 +1,1068 @@
+---
+status: active
+created: 2026-10-08
+updated: 2026-11-15
+---
+
+# v0.7.0 Contract — Tasks
+
+Target: `v0.7.0`, covering scan performance, auxiliary-session isolation,
+Codex work-signal compatibility and recovery, installed-state ownership, and
+version-tolerant OTel metering with automatic classification. Pricing redesign
+and OpenCode product support are excluded by the
+[2026-11-15 membership decision](#membership-change--2026-11-15).
+Origin: the operator's 2026-10-08 four-theme proposal and subsequent explicit
+request to design this version contract. The intake is recorded in
+[Roadmap](../../roadmap.md#v070--scan-performance-pricing-redesign-and-work-sessions-proposed)
+and Beads epic `ad-v070-iteration`.
+
+Input is sufficient for version membership and coordination design. This draft
+is ready for independent review; it does not assert that feature requirements,
+implementation decomposition, Bug lanes, or product acceptance have passed.
+Feature decisions remain with their owning topics. This plan grants no Git
+delivery, assembly, publication, installation, or release authority.
+
+## Documents
+
+| Document | Draft | Review |
+| --- | --- | --- |
+| tasks.md | [x] | [x] |
+| requirements.md | n/a | n/a |
+| architecture.md | n/a | n/a |
+| `ux/` | n/a | n/a |
+
+This version-contract topic requires only `tasks.md`, under
+[Documentation Workflow](../../documentation-workflow.md#topic-structure).
+Requirements, UX and architecture belong to the feature topics; a Lane A Bug
+uses its own fix record. The reviewer ratifies this document set. Create
+`reviews/tasks.md` only when review occurs, and later integration/closure
+records only when those tasks are reviewed.
+
+This file owns unmerged contract execution status. Beads owns dispatch and
+handoff; CEv1 owns exact-content evidence. The inherited
+[Project Status](../../status.md) describes integrated state and is updated
+with an authorized integration or version-closure change, not this design phase.
+
+## Working context and baseline
+
+- Workspace ID: `v0-7-0-contract`; branch: `feature/v0-7-0-contract`.
+  Resolve the path through its local workflow binding and live worktree inventory.
+- Creation base: local `main`
+  `32df0ae1223796f1e43bbd45a40f1efb9f7ff56e`. At entry, the locally recorded
+  `origin/main` had the same identity; no fresh remote-ref query was performed.
+- Published compatibility baseline: peeled `v0.6.5` commit
+  `819bd4365aef59242a6a38034c379931548d4671`. The newer creation base includes
+  project governance and housekeeping. It is provenance, not a permanently
+  frozen target for later integration.
+- New iteration feature/fix work starts from verified current `main` and targets
+  `main` through authorized PRs. Explicit maintenance of an older supported
+  release line follows [Branching](../../../.agent-instructions/branching.md)
+  separately; this contract creates no `release/v0.7.x` branch.
+- The contract branch carries planning and contract records. It is not an
+  intermediate tree into which feature code is merged. Each future topic needs
+  its own valid workspace entry before implementation.
+
+Historical v0.6.0 subscription-plan carriers `ad-v070` / `ad-v070-plan` are
+superseded records, not this iteration's dispatch or approval. Preserve their
+history and use `ad-v070-iteration` for this plan's coordination.
+
+## Feature registration — 2026-10-09 (historical; withdrawn 2026-11-15)
+
+The following registration is historical. OpenCode V2 product support is no
+longer selected or registered for `v0.7.0`; `ad-opencode-support` retains its
+unversioned planning history. Project Hook/Skill support is unaffected.
+
+The operator proposed `opencode-support` for `v0.7.0`. This is a version-local
+feature registration only: feature design and development have not started.
+Do not create `docs/topics/opencode-support/`, a feature branch/worktree,
+requirements/UX/architecture/decomposition documents, or implementation dispatch
+from this registration. The existing planning reference is `ad-opencode-support`;
+this entry grants no task claim or phase authorization.
+
+| Proposed feature | Target version | Recorded intent | State |
+| --- | --- | --- | --- |
+| OpenCode V2 support (`opencode-support`) | `v0.7.0` | Read project/session/provider/model/token usage and investigate ChatGPT account quota. Keep local usage, estimated reference cost and shared account quota distinct. | Registered only; no feature design or development |
+
+API versus offline access, credentials/account isolation, token/cache semantics,
+duplicate accounting, worktree attribution, affected surfaces and acceptance
+remain decisions for a separately authorized feature design. No real credential
+access, service change, provider/login management, extension inventory, backup,
+Antigravity/Linux/multi-device support, or Git delivery is authorized here.
+Project Hook/Skill adaptation is already separate tooling work, not evidence
+that this proposed product feature is implemented.
+
+The four previously reviewed selected areas below are not silently replaced or
+expanded by this candidate registration. Historical review records retain their
+original content identities. The registration and current contract document
+passed independent [Round 3](reviews/tasks.md#round-3--2026-10-09) re-review;
+the Documents review checkbox refers to this document only, not feature design
+or development. Formal membership changes follow this contract's existing
+authorization and review boundary.
+
+## Membership change — 2026-11-15
+
+The operator explicitly removed pricing-system redesign and subscription
+estimates (`cost-transparency`, carrier `ad-cost-transparency`) and OpenCode V2
+product support (`opencode-support`, carrier `ad-opencode-support`) from
+`v0.7.0`, and added `installed-state-ownership` and
+`otel-version-tolerant-metering`. The removed work remains unversioned future
+work; its intake and issue history are preserved, without new feature work.
+
+This decision supersedes the earlier selection and remaining-member statements
+in historical review rounds and integration batches below. It does not undo
+integrated code or erase evidence. Existing Codex, scan-performance and auxiliary
+integration results retain their original scope; neither new topic is integrated.
+Their own task reviews, required evidence, delivery and final integration review
+remain prerequisites, not consequences of membership.
+
+This material change returns the document to independent review. It authorizes
+contract and planning synchronization, not product implementation, branch
+refresh, commit, push, PR, merge, installation or release. Per the operator's explicit workspace boundary, this revision changes only
+the contract worktree. Global `docs/status.md` / `docs/roadmap.md` projections
+remain at their integrated baseline and will be reconciled at authorized
+integration/version closure. Their older intake does not override this explicit
+membership decision. No main modification or branch merge is implied.
+
+## Selected membership
+
+The following five areas are the current selected membership.
+Membership approval does not establish feature readiness. A blocked or unfinished
+member remains selected until the operator explicitly changes membership.
+Material additions, removals, deferrals or independently shippable slices return
+this contract to review; readiness or elapsed time cannot silently reduce scope.
+
+| Selected area | Existing planning carrier | Owning work and current readiness |
+| --- | --- | --- |
+| Long scans, incremental cost and waiting behavior | `ad-bug-menubar-long-scan-timeout` | `scan-performance` integrated through PR #61; see the recorded batch below for exact evidence and retained acceptance limits. |
+| Auxiliary-session identity and work-view isolation | `ad-auxiliary-session-classification` | `auxiliary-session-classification` integrated through PR #64; see the recorded batch below. The new OTel member changes classification/ownership interactions and requires fresh integration assessment of those changes. |
+| Codex Activity/Workflow/Tooling compatibility and historical recovery | `ad-bug-codex-work-signals-missing` | Confirmed Lane A fix delivered to `main` by [PR #58](https://github.com/kitdine/agent-deck/pull/58), merge `b450704bc43807487a51a777a90dc4f8793d30dc`. Current/legacy, direct/nested, string/block content and targeted Version 7 recovery passed independent review and exact merge-state CEv1 VERIFIED 5/5. Real-history resource cost and installed native surfaces remain joint acceptance with `scan-performance`; the area remains selected. |
+| Installed-state ownership | `ad-bug-dev-schema-migrates-release-state` | Existing topic `installed-state-ownership`, workspace/branch `feature/installed-state-ownership`; Tasks 1–7 reviewed, final ownership acceptance and stable-contract reconciliation remain open. Required requirements-text revision and accepted installation-method limits remain owned by that topic. Not integrated or certified batch-ready. |
+| Version-tolerant OTel metering and automatic classification | `ad-bug-otel-version-pinned-metering` | Existing topic `otel-version-tolerant-metering`, workspace/branch `feature/otel-version-tolerant-metering`; Documents and Tasks reviewed locally, awaiting authorized delivery. Uncommitted topic evidence does not certify a merge. Not integrated or certified batch-ready. |
+
+Readiness above is the 2026-11-15 planning snapshot. Each owning workspace's
+`docs/topics/<topic>/tasks.md`, review records and live Beads dispatch govern
+subsequent progress. Resolve exact delivered content and gates at assembly. Do not duplicate origin Bugs merely
+to represent design stages, current-message support and historical replay.
+The already-delivered canonical session ID/project-attribution repair remains
+separate from auxiliary filtering and is not silently reopened by this version.
+
+### Scan performance and work-signal recovery
+
+The long-scan carrier records a historical 5,071-file scan with 111,699 imported
+usage events and `total_ms=1540148`; usage/session processing ultimately completed.
+Menu-bar requests timed out at about 120 seconds during running or queued scans.
+Later completed rounds took about 10.3 and 9.1 seconds. These are recorded incident
+observations, not measurements made by this design or approved latency budgets.
+Parser-version changes and locking remain hypotheses for the expensive reread.
+
+Before performance implementation, the feature design must establish a
+reproducible baseline and numerical budgets for first import, forced/parser-version
+rebuild, unchanged scan, one-file append and queued requests. Record input size
+and content identity, hardware/toolchain, repeated p50/p95, CPU, peak memory,
+bytes read and queue wait, separating discovery, parsing, SQL and publication.
+The baseline should represent the observed scale and include larger inputs.
+Use isolated fixtures or sanitized copies, never a rebuild of live user stores.
+
+The work-signal Bug records a controlled comparison: with the same one usage
+event and one edit, a current `response_item/message(role=user)` envelope produced
+no classified signal and unavailable summaries; the legacy
+`event_msg/user_message` envelope produced a classified activity, a two-second
+first edit and one tool call. This is prior diagnostic evidence, not a repair PASS.
+The repair must cover envelopes before/after turn context, append boundaries,
+duplicate envelopes, injected context versus real user input, pending turns and
+source ownership; retain the distinction between zero and unavailable.
+
+Historical recovery stays within that Bug: define targeted, idempotent replay or
+version invalidation for affected sources. Preserve original event identities,
+token totals, session identity, credentials, providers, exclusions and logs.
+Prove second-scan stability and unaffected-source skipping. Its resource cost
+must fit the approved scan budgets and the performance topic's acceptance.
+Do not fix an unavailable work signal by changing prices or auxiliary filters.
+
+The bounded repair above is now integrated. Its Version 8 replay mechanism,
+second-scan stability, original event/token/source/run ownership and CLI/desktop
+producer agreement were verified on isolated persisted fixtures. The complete
+failure, repair, archive and reopening history is retained in the
+[delivered fix record](https://github.com/kitdine/agent-deck/blob/b450704bc43807487a51a777a90dc4f8793d30dc/docs/archive/fixes/codex-work-signals-missing.md).
+This integration does not certify real-user history scale, numerical scan budgets
+or installed native UI; those remain part of the selected combined acceptance.
+
+### Pricing redesign intake (historical; excluded from v0.7.0)
+
+The following 2026-10-08 intake is preserved for deferred, unversioned
+`ad-cost-transparency`. It is not a requirement, dependency or acceptance
+condition for the current version.
+
+The owning topic must re-open requirements discovery before implementation
+decomposition. The operator's four minimum requirements are:
+
+1. Rebuild pricing around **models.dev**, validating model coverage, GPT pricing
+   tiers, schema, versions/effective dates and the request evidence needed to
+   select a tier. A data-source replacement alone does not satisfy acceptance.
+2. Add **subscription credits estimates** for subscription analysis and monetary
+   estimates. Define sources, applicable plans/models, calculation rules,
+   uncertainty and money/credits relationships. Distinguish estimates from
+   actual subscription debits, client-reported quota and invoices.
+3. Resolve **auto-code-review** calculation. Preserve the observed/user-supplied
+   name; historical `codex-auto-review` / `gpt-5.4` mappings are investigation
+   inputs until evidence establishes identity and applicable rates.
+4. Handle **A/B-rollout models** in pricing and presentation. Preserve observed
+   model IDs; distinguish display labels, proven aliases, experimental IDs,
+   supported rates and explicit unknown/fallback results.
+
+These are a minimum intake, not a closed feature list or a fixed number of work
+packages. The design must also disposition amount semantics, input/cached-input/
+output rates, tier evidence, source freshness, historical repricing and snapshots,
+privacy, upgrade/rollback and affected CLI/native/subscription surfaces. Legacy
+`272K` and rate examples are hypotheses. LiteLLM is migration-comparison input,
+not the target system. Context Efficiency is undecided and must receive an
+explicit feature-design disposition before decomposition.
+
+No effort estimate, schema, new command, hard model mapping or package count is
+approved here. Inability to obtain a required authoritative rate or credits
+source must produce a documented unknown/blocked acceptance item, not invented
+precision or an implicit reduction of the selected pricing scope.
+
+### Auxiliary-session isolation
+
+The operator selected default isolation of auxiliary work from work-session
+counts, project counts and durations, with a switch to inspect/include it.
+Retain complete underlying usage and cost; filtering must be reversible and
+must not delete raw inputs or canonical session records.
+
+The feature design must decide classification evidence and provenance, unknown
+origin handling, overrides and their persistence, switch placement, and CLI/
+menu-bar/Widget/settings applicability. A directory name alone cannot establish
+auxiliary identity. Classification must preserve canonical identity and remain
+stable across duplicate sources, replay and late metadata. Work, auxiliary and
+all views must reconcile under the reviewed unknown policy. Explain scope
+differences between work KPIs and total usage/cost rather than forcing unlike
+time/event measures to match. OTel/JSONL duplicate-metering and automatic
+classification interactions belong to `otel-version-tolerant-metering`.
+
+### Installed-state ownership
+
+Non-installed processes must not open, migrate or write the real installed state.
+Installation identity, state/client-config guards, receipts, diagnostics, App
+state location and Debug identity follow the owning topic's reviewed contracts.
+Preserve its installation-method-specific limits; do not claim stronger cask
+atomicity or cleanup guarantees than its approved scope. Task 8 owns combined
+ownership acceptance; the requirements-text revision and its independent review
+belong to the topic's document flow and are prerequisites to Task 8's final
+conclusion. Task 9 reconciles the then-current stable product contract. Source defects remain open
+until their actual delivery boundary is satisfied.
+
+### OTel version-tolerant metering
+
+Admit supported OTel shapes independently of exact Codex version allowlists,
+re-admit eligible historical observations without double counting JSONL-owned
+threads, and apply the reviewed built-in classification rules automatically.
+Preserve event/token identity, user overrides and incomplete/conflict diagnostics.
+Use the AgentDeck-only design, not its superseded cross-repository proposal.
+Its changes to scan publication, auxiliary classification, schema migration and
+native/CLI presentation require cross-member integration assessment. Retain the
+owning topic's inference limits and real-versus-synthetic acceptance boundaries.
+
+## Dependencies and acceptance
+
+The roadmap's original P1/W1/W2/P2/C0/A1/A2/V1 labels are historical intake,
+not current implementation-task IDs. In particular, C0 pricing work no longer
+blocks this version. Owning topics retain their approved decomposition.
+
+| Dependency | Gate before dependent work |
+| --- | --- |
+| Scan baseline → historical replay and performance implementation | `scan-performance` independently approves representative measurements and numerical resource/latency budgets before applying performance changes. |
+| Current-message compatibility → historical signal recovery | The Bug's bounded regression contract passes before acceptance of its historical recovery; final delivery covers both or receives an explicit membership/slicing decision. |
+| Historical recovery → final scan acceptance | The performance topic includes recovery/reparse costs and correctness, not only steady-state no-op timing. |
+| Auxiliary identity → work-view consistency | Reviewed classification/unknown/override contracts precede aggregate filtering; signal semantics and complete usage/cost preservation apply; classification changes from OTel require integration review. |
+| Installed-state completion → its batch | Finish required requirements reconciliation, ownership acceptance and stable-contract tasks; resolve source-topic review/evidence and authorized delivery before assembly. |
+| OTel delivery → its batch | Deliver reviewed content under separate authorization and bind/reuse evidence for that committed content; assess changed scan-performance and auxiliary-session contracts at integration. |
+| Shared schema and product contract → each new-member batch | Resolve actual source/target identities, migrations and `cli-design.md` versions against then-current main. The older installed-state base and OTel schema/spec changes require explicit compatibility assessment; do not freeze speculative version numbers or assume a merge order. Any necessary branch refresh needs separate authorization. |
+| All selected deliveries → version closure | Selected members have delivered, independently reviewed results and applicable exact-target evidence, or explicit operator-approved membership dispositions. |
+
+Each member's design owns exact files, fixtures, affected surfaces and numerical
+criteria. Initial verification routing, under
+[Project Rules](../../../.agent-instructions/project-rules.md#testing-and-verification--测试与验证):
+
+- Scan/waiting and historical replay: L3 for concurrency, cancellation, persisted
+  migration and bounded resource behavior, including affected race/vet/native
+  checks. A healthy scan beyond the old request timeout must not be displayed
+  as failed solely because the requester stopped waiting.
+- Current Codex message compatibility: L2 isolated JSONL-to-SQLite regressions,
+  usage/activity/session/desktop consumers and Go core regression. Historical
+  replay raises the affected path to L3.
+- Auxiliary classification and OTel metering: L2 for parser/output/persistence
+  contracts; L3 for migration, historical re-admission, JSONL/OTel metering
+  ownership revocation and
+  privacy-sensitive inputs. Verify CLI/native behavior at the claimed layer.
+- Installed-state ownership: L3 for guarded state access, receipts, concurrent
+  installation paths and isolated App identity. Preserve required real-install
+  acceptance from its owning topic; this planning change does not execute it.
+- Contract documents: L0. Release artifact and installation acceptance: L4 only
+  at a separately authorized release boundary.
+
+Use `scripts/run-go-test.sh` for Go verification. Reuse valid exact-content
+evidence; the level table is not an unconditional full-suite checklist. Browser
+specimens prove design states, not native runtime acceptance.
+
+Exclude pricing redesign/subscription estimates, OpenCode product support,
+Antigravity support, Linux, automatic updating, multi-device work,
+invoice reconciliation and unrelated runtime/OS recovery from this selection.
+New product decisions stay in their owning topics and receive their required
+reviews. v0.6.x native/performance/accessibility exceptions remain historical;
+none silently waives v0.7.0 acceptance.
+
+## Entry conditions and incremental assembly
+
+Contract membership can be reviewed while selected features are still being
+designed. After this document passes review and its applicable evidence gate,
+the document task may be committed and pushed to `feature/v0-7-0-contract`
+under explicit authorization. This preserves the reviewed plan on its branch;
+it does not create an early contract-document PR or merge the contract into
+`main`. Contract-wide PR creation and merge must wait until both `assemble`
+and `v0-7-0-contract` have completed independent review and their applicable
+evidence gates are VERIFIED. PR creation and merge still require explicit
+authorization at that boundary.
+
+Accept whole coherent, completed topics/fixes in incremental batches. For each:
+resolve live source/target commits and trees, reviewed matrices and records,
+actual delivered scope, origin-Bug disposition and exact-state evidence. Compare
+overlapping contracts, persisted state, configuration, classification, metering
+ownership, installation ownership and scan/replay assumptions. Classify the actual merge through Branching; no
+textual conflict is not proof of compatibility.
+
+Feature/fix PRs target `main` directly under `assemble`; they are distinct from
+the final contract-wide PR. Keep this contract's batch ledger and integration
+review in the contract workspace until its final delivery boundary. A member PR
+may carry its own product/compatibility records and the integrated status
+projection, but must not use those records to deliver the contract branch early.
+Preserve ancestry and accepted limitations. No feature is first merged into the
+contract branch. Any base refresh, PR, merge or delivery requires its own explicit
+authority. Record partial assembly without ticking the aggregate Task complete.
+
+## Tasks
+
+### Recorded integration batch — 2026-10-09
+
+- Member: complete bounded Lane A repair `fix:codex-work-signals-missing`,
+  original Bug `ad-bug-codex-work-signals-missing`, PR #58.
+- Source: `fix/codex-work-signals-missing` at
+  `b07848fe920dcaa2d93f9d11e4e92188f6ee6261`, tree
+  `bc1e7612f5c844fc9634ac1a2060831c01e38f49`.
+- Actual target before merge: `main` at
+  `ecd2bd1076498db042df32ab7f9d6c8f88ae1c06`, tree
+  `5f05e187243e94806c30ed67b509ba84f3b53915`. Main advanced from the original
+  base through PR #59's OpenCode hook integration before PR #58 landed.
+- Result: merge `b450704bc43807487a51a777a90dc4f8793d30dc`, tree
+  `f31e51805a2c4fe83bc921035ce1579f6afc75f6`; clean three-way merge with the
+  actual target/source as its two parents, preserving ancestry.
+- Interactions: the concurrent base changed hooks/runtime registration and
+  governance, with no overlap in the six Go production/test blobs, archived
+  carrier or three dependency blobs. The actual merged repair blobs match the
+  independently reviewed source; Codex parsing, projections and ownership
+  contracts are unchanged by that concurrent integration.
+- Evidence: final GitHub code review found no major issues, both recorded
+  threads are resolved, PR/push CI passed, and immutable main-merge ContentState
+  `fix:codex-work-signals-missing:commit:b450704bc43807487a51a777a90dc4f8793d30dc`
+  is VERIFIED 5/5 through explicit impact assessment and target-bound reuse.
+- Progress: this is partial assembly. The other three selected areas and the
+  joint scale/native/combined acceptance remain open. Both aggregate Task
+  checkboxes below remain unchecked; no contract-wide PR or version closure is
+  implied. The contract checkout remains on its planning branch.
+
+| Task | Dev | Review |
+| --- | --- | --- |
+| 1. `assemble` | [x] | [x] |
+| 2. `v0-7-0-contract` | [x] | [x] |
+
+These are contract-topic tasks for review. Create their implementation dispatch
+only after this matrix is approved and applicable evidence/checkpoint conditions
+are satisfied. The present document task is not either implementation task.
+
+### Pending scan-performance batch — 2026-10-31
+
+Implementation has started under dispatch `ad-v0-7-0-contract-assemble` and
+CEv1 WorkUnit `v0-7-0-contract:assemble`. This is batch preparation, not an
+integration result or an independent review. Both aggregate checkboxes remain
+unchecked. The recorded Codex batch above remains integrated.
+
+- Source: `feature/scan-performance` at
+  `3e07c892f34d775e60919774f49ae7c85afb755f`, tree
+  `f0121cb98e5f44a8025409fc9d2815cf134940b6`; the remote source ref matches.
+  All eight source task Dev/Review rows are checked. The delivered topic gate
+  for `scan-perf-delivered-3e07c89-state` was queried on 2026-10-31 and is
+  VERIFIED for all-task-gates, cross-task-acceptance and user-performance-acceptance,
+  with no missing, invalidated or unresolved evidence. Source document wording
+  that still says awaiting delivery is historical; the committed-target gate
+  records this signed topic-branch delivery, not main integration.
+- Intended target: remote `main` at
+  `d78c34583bf34175512c31765d4d4358b8049664`. Local `main` remains at
+  `b450704bc43807487a51a777a90dc4f8793d30dc`; it must not substitute for the
+  remote target. `git ls-remote` confirmed both refs; GitHub compare confirmed
+  common base `b450704bc43807487a51a777a90dc4f8793d30dc`, with 41 source-side
+  commits and two target-side commits.
+- Target-only changes are MIT `LICENSE` and license notices in `README.md`
+  and `README_zh.md` (PR #60). The source changes none of these three paths.
+  This rules out same-file overlap for the current target delta; it does not
+  certify a merge result. The expected operation is a three-way merge, with
+  actual conflict status, result commit/tree and independent integration review
+  still pending. No source code is merged into the contract branch.
+- Reuse the exact delivered source evidence for unchanged product behavior.
+  Preserve its accepted P04/RSS tradeoffs and exclusions: installed Widget/manual
+  UI and L4 release acceptance are not established by the source acceptance.
+  The isolated acceptance preference restoration limitation remains recorded in
+  the source Task 8 record. Do not repeat performance sampling merely for assembly.
+- The operator authorized member PR creation on 2026-10-31, explicitly excluding
+  merge. [PR #61](https://github.com/kitdine/agent-deck/pull/61) is open from
+  `feature/scan-performance` to `main`; its returned head/base identities match
+  the source/target above. No merge has occurred. Before integration, obtain
+  explicit merge authorization, revalidate identities, and inspect the result.
+  Preserve the target's license files, the complete reviewed source, and existing
+  dirty work in other workspaces. Reconcile integrated status at the authorized
+  integration boundary; record the independent result review in
+  `reviews/assemble.md` when that review occurs. PR creation adds no merge,
+  commit, push, release or installation authority.
+- Remaining membership: pricing redesign is still deferred; auxiliary-session
+  isolation has reviewed design documents but all nine implementation rows remain
+  unchecked. Their delivery and final combined acceptance remain required.
+  OpenCode remains the registration described above, without a membership change.
+
+The reviewed contract-document prerequisite was independently queried at delivered
+state `c51da1d19b814ebfe7588e30ceb5ba68b3665981eedf85f49593cc6986cd5fc9`:
+VERIFIED 3/3. That historical document evidence is not relabeled for this new
+batch record. The aggregate assemble gate stays open until its full criteria are
+met; readiness of one member cannot close the task or version contract.
+
+### Scan-performance batch review — 2026-11-01
+
+The preparation identities above remain historical. The current source is
+`d0bd36ea63bd65da21d5a3c6d18bca351cdc8e70` (tree
+`7d4b1e210b7b9c2e322c2b54b1b8bffd51161cd6`); target remains
+`d78c34583bf34175512c31765d4d4358b8049664`. GitHub's pre-merge candidate is
+`8be912c12e1c20ab4bb2b907dda7ac6ceef271ee`, tree
+`b4211bf442304e85c2dfbd4bdc480bff1ca77150`, with those exact target/source
+parents. [Assembly Round 1](reviews/assemble.md#round-1--2026-11-01) passes
+this batch's integration compatibility review only. Both aggregate matrix
+checkboxes remain unchecked; the other members and combined acceptance remain.
+
+The operator explicitly stopped further PR Code Review/P2 repair iterations on
+2026-11-01, then requested continuation of assembly review. This removes that
+additional review-loop prerequisite; it does not manufacture source acceptance,
+waive selected membership or authorize merge. The current eight CI checks pass.
+The older no-major-issues receipt covers `fa8fe4e3`, not this source's later
+publication-retry repair. That distinction remains in the batch review.
+
+The aggregate assemble evidence gate remains NOT_VERIFIED. PR #61 is open and
+unmerged; merging requires explicit authorization. After an authorized merge,
+verify the actual resulting identity, reconcile the batch's integration evidence
+and integrated status, and continue the remaining selected membership. This
+batch review does not close assemble or authorize a contract-wide PR.
+
+### Scan-performance batch merged — 2026-11-01
+
+Under explicit operator authorization, PR #61 merged into remote `main` at
+`6fff208ac852b191c0a62df1f5be34c937601cfe` on 2026-11-01 15:25:39 UTC.
+Its parents are target `d78c34583bf34175512c31765d4d4358b8049664` and source
+`d0bd36ea63bd65da21d5a3c6d18bca351cdc8e70`; tree
+`b4211bf442304e85c2dfbd4bdc480bff1ca77150` exactly matches the reviewed
+candidate. The pre-merge OPEN statements above are historical.
+
+Post-merge reconciliation is recorded in [Assembly Round 1](reviews/assemble.md#round-1--2026-11-01).
+GitHub verifies the server-created merge's PGP signature as valid. The operator
+explicitly rejected the agent's SSH-only blocking interpretation for this GitHub
+PR merge and instructed correction; no signature exception or rewrite is needed.
+Post-merge CI run `41321169520` was running at initial reconciliation;
+on 2026-11-03 all four jobs were verified successful and exact-merge evidence
+was appended. The erroneous signature blocker is superseded by that scope
+correction and the verified GitHub signature. The exact-merge integration gate
+is VERIFIED 4/4, with no missing criteria or unresolved candidate impacts; no
+aggregate task or source acceptance is newly certified. Local record updates
+are not committed or pushed by the merge authorization. No history is rewritten.
+
+### Pending auxiliary-session-classification batch — 2026-11-13
+
+Batch preparation under dispatch `ad-v0-7-0-contract-assemble` (claude-code),
+not an integration result or independent review. Both aggregate checkboxes
+remain unchecked; the Codex and scan-performance batches above remain integrated.
+
+- Source: `feature/auxiliary-session-classification` at
+  `f39f86aa1212de2c674667ee343f09c50dc11236`, tree
+  `b1c9df4e54d832aa60fdc4547fe2d69a489935ae`; the remote ref matches. All nine
+  source task Dev/Review rows and all seven document Review rows are checked.
+  Task 9 passed its Round 4 re-review; its committed tree equals the reviewed
+  candidate fingerprint `024b6820…`.
+- Intended target: remote `main` at `90535085723f013cb8b24d83f83015e7d60d53b0`,
+  tree `5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`. Merge base
+  `660c81586f4c13e04e66dbc05cde5331bf09acec`; 29 source-side and two
+  target-side commits.
+- Target-side changes since the base are governance only: `AGENTS.md`,
+  four `.agent-instructions/` files, `docs/README.md`,
+  `docs/documentation-workflow.md`, `docs/roadmap.md` and
+  `scripts/hooks/beads-consistency.py` (PR #62 status, PR #63 issue-intake
+  ownership). The only same-file overlap is `docs/roadmap.md`: the target
+  rewrites the header and adds a Backlog preface; the source adds one Backlog
+  entry dated 2026-11-03 for `ad-codex-memory-source-linkage`. `git merge-tree`
+  produces tree `c4729f6bb74355b1fd5c21b253c81ee857f1135b` without conflicts.
+  The entry predates the 2026-11-07 ownership change and has a Beads carrier,
+  so it fits the preface's retained-intake rule. A clean textual merge is not
+  proof of compatibility; the integration review uses the actual result.
+- Member closure is incomplete, so this batch is not ready for integration
+  review:
+  - Stable contracts are not reconciled. Source `docs/specs/cli-design.md` and
+    `cli-manual.md` contain none of the topic's command or output contracts
+    (`session origin-source`, session scope views and flags, origin reason
+    codes). The topic's Task 9 assigns this reconciliation to topic closure.
+  - No topic-level CEv1 WorkUnit `auxiliary-session-classification` exists;
+    WorkUnits `…:durability` and `…:integrated-acceptance` have not reached
+    their committed lifecycle state. The scan-performance batch had a VERIFIED
+    delivered topic gate before its PR.
+  - Operator decision 2026-11-13: the member closes in its own topic. The
+    specs reconciliation and topic gate are completed and reviewed in the
+    `auxiliary-session-classification` workspace and delivered on its feature
+    branch, as scan-performance did; they are not moved to contract Task 2.
+    This batch resumes from the resulting source commit, whose identities
+    replace the source line above.
+- Remaining membership: pricing redesign remains deferred; OpenCode remains a
+  registration only. Final combined acceptance remains required.
+
+No PR, merge, commit or push has been performed for this batch.
+
+### Auxiliary-session-classification batch resumed — 2026-11-14
+
+Batch preparation resumed under dispatch `ad-v0-7-0-contract-assemble`
+(claude-code) and CEv1 WorkUnit `v0-7-0-contract:assemble`. This supersedes the
+source identities and the member-closure finding of the pending record above;
+it is not an integration result or an independent review. Both aggregate
+checkboxes remain unchecked.
+
+- Source: `feature/auxiliary-session-classification` at
+  `855a811ad7b93298236c212ebd13ed4fcf2d58dc`, tree
+  `dd2da688951d969aef165444bb767aa696b38e95`; `git ls-remote` returns the same
+  commit. All seven document rows and all nine task Dev/Review rows are checked.
+  Since the pending record the source gained five commits: the animation
+  diagnostic `6a3532b`, the documentation link-checker fix `da0a901`, the
+  stable-spec reconciliation `298bd6b`, the animation test repair `74964a2`
+  and the Round 6 review record `855a811`. CI run 43558290460 on `855a811`
+  succeeded for classify, documentation, desktop and verify.
+- Member closure, resolved in the source topic as the operator decided:
+  - Stable contracts: `docs/specs/cli-design.md` (version 34) and
+    `cli-manual.md` now carry the topic's command, scope, reason-code and DTO
+    contracts; the source's Round 5 review passed that reconciliation.
+  - Review: source Task 9 Round 6 passed at `74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a`.
+    `855a811` adds only that review record and the topic status over `74964a2`.
+  - Evidence: a direct graph read on 2026-11-14 found passing observations
+    bound to ContentState
+    `auxiliary-session-classification:integrated-acceptance:commit-74964a2a0a8a4bad`
+    for all nine `integrated-acceptance` criteria and both topic criteria
+    (`cross-task-acceptance`, `stable-contract-reconciliation`). The source
+    record reports the Task gate VERIFIED 9/9 and the Topic gate VERIFIED 2/2
+    for that target with no invalidated or unresolved evidence; this read did
+    not re-derive the invalidation analysis. The topic WorkUnit now exists.
+- Intended target: remote `main`, unchanged at
+  `90535085723f013cb8b24d83f83015e7d60d53b0`, tree
+  `5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`. Merge base
+  `660c81586f4c13e04e66dbc05cde5331bf09acec`; 34 source-side and two
+  target-side commits. Neither ref is an ancestor of the other, so the
+  operation is a three-way merge.
+- Candidate result: `git merge-tree --write-tree` yields tree
+  `29940cefbc6274ac4e014f04e72c24d24ba7ef26` without textual conflicts. The
+  only same-file overlap is still `docs/roadmap.md`, as analysed above; the
+  result keeps the target's header and Backlog preface and the source's
+  `ad-codex-memory-source-linkage` entry. The target-side delta remains the nine
+  governance paths listed above; the source changes 223 paths.
+- Interactions for the integration review, beyond the roadmap overlap:
+  the source changes `scripts/check-docs.py` and its contract test while the
+  target changes `docs/documentation-workflow.md`, `docs/README.md` and
+  `scripts/hooks/beads-consistency.py`. On an export of the candidate tree,
+  `python3 scripts/check-docs.py`, `make check-ci-docs-tools` (93 tests) and
+  `make check-opencode-hooks` pass. This is L0 for records and tooling; no
+  product check was rerun, because the target delta touches no product path.
+  The source's Go, native and performance evidence is reused for unchanged
+  product behavior.
+- Accepted limitations carried from the source: the Settings page-switch test
+  asserts that an animated resize is requested, not that intermediate frames
+  are drawn, because hosted macOS 15 runners have Reduce Motion on; Round 6
+  reuses the earlier native intermediate-height observation rather than a new
+  CI frame observation. One local `make test-macos-app` run set on a slow host
+  left `SwitchFlowTests.testConfirmationUsesExactlyTheResolvedOption` failing
+  while CI passed it; it was not diagnosed. Keyboard and accessibility
+  acceptance stay excluded by the operator's earlier decision.
+- Residual record state, not changed here: the CEv1 lifecycle attribute of
+  WorkUnits `…:durability` and the topic unit still reads `in_progress`, and
+  the source topic is not archived.
+- Not performed: no PR exists for the source branch, and no merge, commit or
+  push was made for this batch. PR creation and merge each need their own
+  explicit authorization. Following the scan-performance batch, the batch's
+  integration WorkUnit and its ancestry, signature, reviewed-result and
+  post-merge CI evidence are recorded at the actual merge, and the integrated
+  `docs/status.md` projection lands at that boundary.
+- Remaining membership: pricing redesign remains deferred; OpenCode remains a
+  registration only. Final combined acceptance remains required.
+
+### Auxiliary-session-classification batch review — 2026-11-14
+
+Independent integration review Round 2 PASS for source `855a811` and target
+`9053508`, candidate tree `29940cefbc6274ac4e014f04e72c24d24ba7ef26`.
+The full report, evidence reuse boundaries and remaining prerequisites are in
+[Assembly Round 2](reviews/assemble.md#round-2--2026-11-14).
+This is a batch compatibility verdict, not aggregate completion: both assemble
+checkboxes remain unchecked and its required gate remains NOT_VERIFIED.
+The member PR and actual merge/result evidence are still pending; pricing
+membership/delivery and final combined acceptance remain open. The contract
+workspace binding is `v0-7-0-contract`. No commit, push, PR, merge or release was
+performed by this review; the inherited batch preparation edits are preserved.
+
+### Auxiliary-session-classification member PR — 2026-11-14
+
+The operator separately authorized creation of [PR #64](https://github.com/kitdine/agent-deck/pull/64),
+`feature/auxiliary-session-classification` → `main`, without merging.
+GitHub confirmed OPEN/unmerged at source `855a811ad7b93298236c212ebd13ed4fcf2d58dc`
+and base `90535085723f013cb8b24d83f83015e7d60d53b0`, matching Round 2.
+The PR preserves the source acceptance limits and distinguishes prior product CI
+from the latest documents-only run. PR checks and actual integration remain pending;
+aggregate assemble stays in_review, with both task checkboxes unchecked.
+This ledger update is local and uncommitted; no merge, release or contract-wide PR
+was performed or authorized.
+
+### Auxiliary-session-classification PR review and pre-merge batch review — 2026-11-14
+
+Following PR #64 creation, two authorized review-repair commits landed on
+`feature/auxiliary-session-classification` to resolve three P2 `@codex review`
+findings: `a2b01a3cbab249d88cbca57f24c04ea9fa279cf1` (preserving complete
+coverage across helper-classified desktop summary rows in
+`internal/desktop/session_scope.go` and preserving non-interactive exit status
+when `sessions --fix` leaves unrepairable items in `cmd/agentdeck/main.go`, with
+regression tests) and `0feb0c6d8965b6037de4c7e04bee839b96039dd0` (defaulting
+blank `session_origin` when loading incremental snapshot rows from pre-v13
+databases in `internal/scanruntime/serving.go`, with regression test).
+All three review threads (`PRRT_kwDOTe7lus63ZnYu`, `PRRT_kwDOTe7lus63ZnYv`,
+`PRRT_kwDOTe7lus63awJD`) are resolved; full product CI runs `43572725411`
+(`push`) and `43572728514` (`pull_request`) passed all 8 jobs (`classify`,
+`documentation`, `verify`, `desktop`), and Round 2 `@codex review`
+(`IC_kwDOTe7lus8AAAABmcUAqA`) completed on `0feb0c6d89` with zero findings.
+
+Independent integration review Round 3 PASS for updated source
+`0feb0c6d8965b6037de4c7e04bee839b96039dd0` (tree
+`5eb8c6f0a737935b24cebb4016a44749ff7d67e4`), target `main`
+`90535085723f013cb8b24d83f83015e7d60d53b0` (tree
+`5b9e0c027f1324c25f571ce32bf1d72bd4d40ba6`), merge base
+`660c81586f4c13e04e66dbc05cde5331bf09acec` (36 source commits, 2 target commits),
+and GitHub's clean pre-merge candidate commit
+`4d8c54dd0125481f2d5dbbb514973e68f6195cba` (tree
+`8bc3398976468058299173b93b363155f0ce6d8c`, matching local
+`git merge-tree --write-tree`). The full report, evidence reuse boundaries,
+source CEv1 state (`74964a2a0a8a4bade0ba6c1cea25e8d0f4d6667a` plus PR repair
+verification on `0feb0c6d8965b6037de4c7e04bee839b96039dd0`), and remaining
+prerequisites are in [Assembly Round 3](reviews/assemble.md#round-3--2026-11-14).
+This remains a pre-merge batch compatibility verdict, not aggregate completion:
+both assemble checkboxes stay unchecked and its required gate stays
+`NOT_VERIFIED` until explicit merge authorization, actual merge/post-merge CI
+and signature verification, remaining selected members (`cost-transparency`),
+and final combined acceptance complete.
+
+### Auxiliary-session-classification batch merged — 2026-11-14
+
+Under explicit operator authorization (`merge`), [PR #64](https://github.com/kitdine/agent-deck/pull/64)
+merged into remote `main` at `e3ff72eb0db6f54c63ab031544a8a6259b417122` on
+2026-11-14 10:37:43 UTC using a merge commit without deleting
+`feature/auxiliary-session-classification`. Its parents are target
+`90535085723f013cb8b24d83f83015e7d60d53b0` and reviewed source
+`0feb0c6d8965b6037de4c7e04bee839b96039dd0`; actual merge tree
+`8bc3398976468058299173b93b363155f0ce6d8c` exactly matches the Round 3 reviewed
+candidate tree. The earlier pre-merge OPEN statements above remain historical.
+
+Post-merge reconciliation is recorded in
+[Assembly Round 3](reviews/assemble.md#round-3--2026-11-14). GitHub verifies the
+server-created merge commit's PGP signature as `verified: true, reason: valid`
+with non-empty Conventional Commit subject/body and `Claude`/`Codex`/`Antigravity`
+trailers, satisfying the established operator signature-scope disposition for
+GitHub PR merges. Batch integration WorkUnit
+`v0-7-0-contract:integration:auxiliary-session-classification` is recorded in
+CEv1 against `e3ff72eb0db6f54c63ab031544a8a6259b417122`: `ancestry`,
+`reviewed-result`, and `delivery-signature` are `pass`, while `postmerge-ci` was initially recorded as `not_verified` (`NOT_VERIFIED` 3/4) while
+post-merge CI run `43586186560` was `in_progress`, and was then superseded via
+`20261114-ci-success` (`outcome: pass`, `supersedes` -> `20261114-e3ff72eb:postmerge-ci`)
+after run `43586186560` completed with `conclusion: success` across all 4 jobs
+(`classify` 10:38:00Z, `documentation` 10:38:23Z, `desktop` 10:48:30Z,
+`verify` 11:30:11Z UTC). `gate-status.cypher` now returns `VERIFIED` (4/4;
+`missing_criteria: []`, `unresolved_candidate_impacts: []`). Pre-merge source/PR
+CI runs (`43572725411`, `43572728514`) remain distinct pre-merge evidence. Aggregate
+`assemble` checkboxes remain unchecked pending `cost-transparency` and final
+combined acceptance. No history was rewritten.
+
+### Membership disposition — 2026-11-15
+
+The current remaining members are `installed-state-ownership` and
+`otel-version-tolerant-metering`, plus final combined acceptance. Earlier batch
+statements naming pricing as remaining are historical and superseded by the
+membership decision above. Both aggregate task checkboxes remain unchecked;
+this document revision does not establish aggregate assembly completion.
+
+The existing CEv1 criterion `v0-7-0-contract:assemble:combined-acceptance`
+still names historical pricing scope. Before binding aggregate evidence, resolve
+a new criterion identity for the revised combined acceptance and explicitly
+disposition the old requirement under this operator decision using the supported
+provider lifecycle. Preserve the historical criterion/evidence; do not overwrite
+its description or satisfy its obsolete pricing wording with new-scope evidence.
+The aggregate gate remains open until that declaration and actual acceptance
+are resolved; this document revision does not perform or certify either.
+
+### 1. `assemble`
+
+**Prerequisites:** reviewed contract membership with VERIFIED document evidence,
+recorded by an authorized commit on the contract branch, and at least one whole
+selected member with independently reviewed delivery and applicable evidence.
+An earlier contract PR or merge into `main` is not a prerequisite.
+Remaining selected members may still be unfinished; partial batches are allowed.
+
+**Result:** all selected members are integrated into `main` with verified
+interactions and preserved ancestry, or explicitly dispositioned by an operator
+membership decision. Mere diagnosis, plan delivery or a Beads closure is not a
+delivered fix.
+
+**Files/boundary:** selected members' reviewed files, the integrated primary
+contract and affected manual, this `tasks.md`, `reviews/assemble.md`, and the
+integrated `docs/status.md` projection when that batch lands. Do not create a
+second global progress log or include unrelated feature work.
+
+For each batch, record immutable source/target/result identities, actual merge
+class, interactions/conflicts, review and CEv1 references, accepted limitations
+and remaining members. Integration review uses the actual result; source review
+does not substitute for it. Resolve member, integration and aggregate gates at
+their real boundaries, retaining missing/failed evidence as such.
+
+**Verification:** L0 for records; select product L2/L3 checks for changed
+interactions and uncovered criteria, reusing unaffected valid evidence. Final
+combined acceptance covers representative scale with signal replay, auxiliary
+filters, OTel re-admission, JSONL/OTel metering ownership and installed-state
+guards together,
+full/incremental agreement, no-op/append bounds,
+queued/cancelled/failed scans, restart safety and preserved event/token identity.
+Numerical budgets come from the reviewed owning feature, not this draft.
+
+### 2. `v0-7-0-contract`
+
+**Depends on:** complete selected assembly/dispositions and its independent
+review and VERIFIED evidence, with member integrations delivered to `main` and
+the aggregate assembly records committed on the contract branch under explicit
+authorization. This does not require an earlier contract-wide PR or merge.
+
+**Result:** integrated behavior, version-level documentation and compatibility
+claims agree; the contract completion gate is resolved for the actual content.
+
+**Files/boundary:** `docs/specs/cli-design.md`, affected
+`docs/specs/cli-manual.md`, this topic's `tasks.md` and
+`reviews/v0-7-0-contract.md`, integrated `docs/status.md`, `docs/roadmap.md`
+(only the explicit pricing/OpenCode withdrawal and version-direction reconciliation,
+without a second membership list), necessary
+`docs/README.md` / archive-index pointers, and member-topic retirement metadata
+only at the authorized lifecycle boundary.
+
+Reconcile the then-current primary contract and add one consistent version-history
+entry/frontmatter revision. State new fields/defaults, command/output compatibility,
+installation-ownership refusals, OTel admission/classification defaults,
+actual schema compatibility, historical replay and normal-upgrade behavior. Preserve databases, event/token identity,
+providers, credentials, exclusions, source logs and user settings. Identify any
+intentional changed default or recomputed derived value explicitly.
+
+Verify protected-data and normal-upgrade claims on isolated copies and the
+authorized native acceptance route. Missing supported fields remain unavailable
+with a reason. Preserve independent member acceptance and all current residual risks.
+
+**Verification:** L0 contract/link/version consistency plus exact-state contract
+completion evidence, reusing valid feature/integration checks. Select additional
+product verification only for concrete changed assumptions or uncovered criteria.
+Release readiness requires separately authorized exact-SHA L4 preflight, artifact
+identity, distribution/normal-upgrade and operator acceptance. Contract PASS does
+not authorize or replace tagging, signing/notarization, publication or installation.
+
+## Design handoff
+
+Only `tasks.md` is authored by this phase. Its Draft is ready and Review remains
+unchecked at the Design handoff; both implementation tasks are unstarted. The document carrier is
+`ad-v0-7-0-contract-doc-tasks-design`; other selected carriers retain their own
+status, ownership and histories. No feature implementation dispatch is created.
+
+Review this document against the current roadmap/intake, owning feature boundaries,
+primary product contract, Branching and Documentation Workflow. Verify the scoped
+document set and L0 checks. The reviewed-document WorkUnit is logically
+`v0-7-0-contract:tasks.md`; resolve its canonical CEv1 ID and required criteria at
+review entry. Bind the final candidate with the established document recipe:
+SHA-256 of `head=<HEAD-SHA>;document=<Git-blob-ID>`. Include any newly required
+dependencies in its declared state; this document has no rendered specimen.
+Draft readiness is not a review PASS, a verified document gate, topic completion
+or release acceptance.
+
+## Review status
+
+The historical [Round 1](reviews/tasks.md#round-1--2026-10-08) and document
+delivery at `a170d5547a650fb7fd05231cfbd01fd15ca40906` remain recorded. The
+operator's 2026-10-08 correction of the contract PR/merge boundary passed
+independent [Round 2](reviews/tasks.md#round-2--2026-10-09) re-review.
+`assemble` now records the Codex repair as its first partial integration batch;
+`v0-7-0-contract` closure is unstarted. Current evidence and finding
+disposition belong to the review record. Document commits/pushes may precede
+assembly; the contract-wide PR/merge waits for both implementation tasks to
+pass review and their applicable evidence gates.
+
+### Integration status synchronization — 2026-10-09
+
+This update records the delivered Codex member and partial assembly facts only.
+It preserves the reviewed membership, acceptance boundaries, document set and
+contract-wide PR/merge policy; historical Round 2 evidence retains its original
+content identity and the delivered document task stays closed. Exact candidate
+evidence reuses the unchanged scope and document-set decisions through an
+explicit impact assessment, with fresh scoped L0 checks. The operator separately
+authorized this document's commit and push on 2026-10-09. Aggregate assembly and
+contract closure remain open.
+
+Installed-state ownership's actual merge `b53f26b6` now has successful main CI
+and real Homebrew runs, both on attempt 1. Its integration gate is VERIFIED 4/4,
+and source Bug `ad-bug-dev-schema-migrates-release-state` is closed at the main
+delivery boundary. All selected member integrations are complete. Aggregate
+combined acceptance, contract delivery, v0.7.0 release and local installation
+remain active under the user's expanded authorization.
+
+### Current membership review — 2026-11-15
+
+The revised five-member selection and corresponding acceptance/dependency changes
+passed independent [Round 5](reviews/tasks.md#round-5--2026-11-15) re-review after
+closing all Round 4 findings. Final exact-content evidence and delivery status
+belong to that record. Round 1–4 retain their original content identities and
+verdicts. Aggregate assembly and version closure remain open.
+
+
+### OTel member PR preparation — 2026-11-15
+
+The selected `otel-version-tolerant-metering` source is delivered and pushed at
+`561c8eb088584115373ad914712364e61e0dae5b` (tree
+`711eba23b616c1ba29d15205375457bc1a123cb8`). The earlier uncommitted snapshot
+above remains historical. Three document commits and one complete implementation
+commit follow the operator-approved split; an assembly status projection accompanies
+the member PR. Source document/task/topic gates are VERIFIED at committed content.
+
+Independent integration [Round 4](reviews/assemble.md#round-4--2026-11-15) PASS;
+[PR #66](https://github.com/kitdine/agent-deck/pull/66) targets main at
+`1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692`. GitHub Codex review completed for
+this unchanged source with no findings; the operator explicitly permits reuse
+without another review request. All CI must pass before the authorized merge.
+Actual integration/post-merge evidence, installed-state ownership and final
+combined acceptance remain open; both aggregate Task checkboxes stay unchecked.
+
+
+### OTel member merged — 2026-11-16
+
+[PR #66](https://github.com/kitdine/agent-deck/pull/66) merged at
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b` after both source/PR CI passed and
+same-source Codex review reported no findings. Its target/source parents are
+`1b2faeb93a222cf5d2c0b04ec11c5bfa20ff4692` and
+`561c8eb088584115373ad914712364e61e0dae5b`; actual tree
+`711eba23b616c1ba29d15205375457bc1a123cb8` equals the reviewed result.
+Earlier preparation and uncommitted-state descriptions remain historical.
+[Round 4](reviews/assemble.md#round-4--2026-11-15) records the actual merge,
+verified GitHub signature and pending main CI43810012502. The integration gate
+currently has three passing criteria and awaits post-merge CI. Remaining feature
+membership is installed-state-ownership, together with final combined acceptance
+and version closure. Both aggregate task checkboxes remain unchecked.
+
+
+### OTel integration verified — 2026-11-16
+
+Main CI [43810012502](https://github.com/kitdine/agent-deck/actions/runs/43810012502)
+passed all four jobs on actual merge `c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b`.
+The OTel member integration WorkUnit is VERIFIED 4/4, with final evidence and
+retained source limitations in [Round 4](reviews/assemble.md#round-4--2026-11-15).
+The source Bug is closed after delivered-source review and exact-merge verification.
+Four selected members are integrated. Installed-state ownership is the remaining
+feature member, followed by aggregate combined acceptance and version closure.
+These contract records are locally synchronized and await their own Git delivery.
+
+### Installed-state ownership integration candidate — 2026-11-16
+
+Source `0ecc3312871649884ebaf21996ee7a4763eca9cb` is reconciled with main
+`c270d473cbc22b5b7aee4ad00fbbbc9f02aa893b` in the source worktree. The complete
+candidate tree is `c0736f1294e173abaafa761fefcea9e178f35763`. Six conflicts and
+new CLI/package/native ownership interactions are resolved and covered by
+targeted acceptance plus Go/native regression checks. Independent OpenCode
+integration review found no new defects. [Round 5](reviews/assemble.md#round-5--2026-11-16)
+records PASS, the exact verification facts and retained A5 waiver.
+
+The source Topic gate is VERIFIED 3/3 at this candidate through explicit
+target-bound reuse and integration checks. SSH-signed source merge
+`f23b8c468273721a6485d1b9a610f4284fcbbe2c` preserves that exact tree and is
+pushed in [PR #67](https://github.com/kitdine/agent-deck/pull/67). Actual member
+integration remains NOT_VERIFIED pending all applicable CI, explicit clean
+GitHub Codex review, actual merge and post-merge evidence. Both aggregate
+checkboxes remain unchecked. Final combined acceptance and version closure
+remain open.
+
+PR #67 subsequently exposed two source review-record formatting issues under
+the complete main-to-PR documentation range. Signed corrections `c70b05c` and
+`d359861` remove a terminal blank line and make an existing verified gate
+explicit. The final full-range document checks pass, and product/test content
+matches the reviewed candidate. New-head CI and GitHub review remain pending.
+
+GitHub Codex review of `d359861` reported three P2 defects, independently
+confirmed by the controller and recorded in [Round 6](reviews/assemble.md#round-6--2026-11-16).
+The current member candidate is FAIL pending repair and independent re-review
+of ISO-INT-R6-F1 through F3. The earlier Round 5 result remains historical.
+PR merge and the aggregate assembly boundary remain open.
+
+Repair and independent [Round 8](reviews/assemble.md#round-8--2026-11-16) now
+close ISO-INT-R6-F1/F2/F3 and the intervening ISO-INT-R7-F1 regression.
+The final six-file repair candidate is `b8f4ef8350737891b30415a8246eba409764b524`.
+Local review is PASS and the source Topic gate is VERIFIED 3/3 at that tree.
+New-head CI, explicit clean GitHub Codex review and actual integration remain
+pending. Earlier failed rounds and their content identities remain historical.
+
+The reviewed repair is pushed as SSH-signed `359d148ebd58f87fe99d63f88a686fb52c6ecc91`
+with the same tree. The three original GitHub threads have repair replies and
+are resolved. New-head CI and an explicit clean Codex review are still required
+before merging PR #67.
+
+Both desktop CI jobs on `359d148` failed the Settings page-round-trip consent
+assertion; the push job also failed provisional ownership-lock release.
+The failures are recorded after Round 8. Source Topic evidence for this exact
+candidate is now FAILED, while the local static review remains scoped to its
+observations. The existing Codex Developer is diagnosing both failures before
+bounded repair. PR integration remains blocked.
+
+The two test-readiness corrections passed independent Claude/Fable
+[Round 9](reviews/assemble.md#round-9--2026-11-16) at tree
+`64e7fbf6e4f1e2d5d181aef5d09255babc4e2a21`. Final-content focused native tests
+passed, and the new-target source Topic gate is VERIFIED 3/3. An unchanged P3
+test synchronization observation is tracked separately as
+`ad-bug-native-ownership-query-test-readiness`. New-head CI, clean GitHub review
+and actual member integration remain pending.
+
+Aggregate preparation now uses required criterion `combined-acceptance-v2` for
+the selected five-member scope. The original pricing criterion remains in CEv1
+as optional with its description, observations and dated disposition preserved.
+Targeted representative-scale and affected native/OTel lifecycle verification
+on current main is in progress. Existing member CI and unchanged scope evidence
+are reused; aggregate completion has not yet been established.
+
+The test correction is pushed as signed `2b3b1d516e23ef94891aa218dd216281807f5ebb`
+with the reviewed `64e7fbf6` tree. PR #67 is running new-head CI; the clean
+GitHub Codex review and actual integration gates remain open.
+
+PR #67 merged on 2026-11-16 as `b53f26b6f626ea9d587ae11822ee24ade89248ab`
+after all ten checks passed and the exact-head Codex summary reported no
+findings or unresolved findings. The merge tree matches the reviewed `64e7fbf6`
+candidate and its GitHub signature is verified. All five selected members now
+have main ancestry. Installed-state integration evidence is 3/4 pending actual
+main CI and real Homebrew results; version-wide combined acceptance and
+contract closure remain open.
+
+### Aggregate development handoff — 2026-11-16
+
+All five selected member integrations are verified at their actual main merges.
+Current release-candidate correctness checks cover representative frozen JSONL,
+controlled nonempty auxiliary and OTel overlays, full/incremental identity,
+no-op/append bounds, queue/cancel/restart behavior and installed-state guards.
+Two reviewed release-validation corrections are committed on the contract
+branch. The project status projection now identifies both delivered members
+and candidate corrections. Detailed scope, provenance and measurement limits
+are in the assembly record.
+
+Task 1 development is ready for aggregate independent review. Its Review cell
+and completion gate remain open until that review and the final target-bound
+evidence roll-up complete. Task 2 follows the committed Task 1 checkpoint.
+
+### Aggregate review checkpoint — 2026-11-16
+
+Independent aggregate review accepted Task 1 at staged tree
+a353fa5c3929de39cbc5409005a23be2d2b504e7. Membership, actual member integrations,
+current combined correctness and the project records are covered with the
+limitations recorded in assembly Round 12. The Review cell is checked.
+Final evidence and signed delivery are owned by that round and the Beads
+checkpoint. Task 2 proceeds after the committed Task 1 checkpoint.
+
+
+### Task 2 implementation evidence — 2026-11-16
+
+Contract/manual revision 37 and roadmap withdrawal reconciliation are prepared;
+Task 2 remains in progress, without an independent verdict or delivery claim.
+The historical roadmap anchor is preserved for existing review links.
+
+Private-copy upgrade validation used exact HEAD
+`67fee8e071ef3a3298ce0942f201612c98c29562`, tree
+`c8e46b9d27e4693c03c650ddfb0dc4f7bb624538`, exported with `git archive` and built
+with Go 1.27.1, `-mod=vendor -trimpath`. CLI SHA-256:
+`068402199480ffe816523dc9e432aa2fe6d5ff09501eb76cde63b8bc50e6d104`.
+The controller inspected the saved invariant comparison, migration response and
+doctor check summaries directly; this is verification input, not review PASS.
+
+Python SQLite read-only online backups captured sessions at
+17:40:34.594–17:41:00.188 UTC and core at 17:41:00.295–17:41:21.228 UTC.
+These are individually consistent snapshots, not one cross-database atomic
+backup. Private HOME, explicit fixture state root, denied network and sandbox
+read/write confinement prevented source-log access and live-state migration.
+Only the private key and three telemetry configuration/token files accompanied
+the databases; no runtime receipts, locks or source logs were copied.
+
+`doctor` observed actual core schema 34; `state migrate` returned
+`migrated:true` and schema 35. Both copied databases passed SQLite quick_check
+before and after. Full doctor authenticated all 14 credential ciphertexts and
+reported schema, integrity, key, credential, usage, price and session checks ok.
+Source-read checks were deliberately denied (2,876 usage and session sources);
+configuration drift, stale extension inventory and unknown LaunchServices reflect
+the isolated environment. Six unpriced models were reported only in full mode;
+no before/after claim is made for that check.
+
+Core invariant JSON has 50 entries: 43 unchanged and seven changed entries
+(including the scalar schema-version observation); all 14 session entries are
+unchanged. The existing-column source-file projection also remains unchanged;
+schema 35 adds nullable thread identity. Preserved inputs include provider and
+credential rows, all ciphertext bytes, settings, origin preferences/overrides,
+exclusions, 19,282 usage events with unchanged token columns, and 2,912 session
+metadata rows. Usage-event full-row digest:
+`34ee96a034c480e82c8bb81545868e4c02a48ed35f6583e2f6f9a6a0cf19084b`.
+Session metadata digest:
+`715dbc45cb9d956ac520ae9ecb10c71a0ebdf2837106cc1182df8b46b1a4424e`.
+Protected source key/configuration hashes, sizes and permissions match after
+normalizing the before-file timestamp header; no live database byte-equality
+claim is made while Hooks continue writing.
+
+Expected derived changes are schema metadata, three generation/derived metadata
+rows, cached session origins (2,876 to zero), and 2,876 queued session
+invalidations. Without a subsequent scan, the copied sessions report unknown
+origins. The stable contract now states this transient behavior. Real-source
+replay was not executed; current parser/readmission tests and aggregate fixture
+acceptance retain their original scope. This machine validates 34→35; stable
+30→35 relies on existing migration regression coverage. Installed-channel
+upgrade, final-SHA release preflight and publication remain later boundaries.
+
+The verification worker used Claude Opus 5.5, requested medium effort; no
+background work remains. Private diagnostic copies remain locally restricted
+pending controller inspection and cleanup; they are not durable references.
+
+
+### Task 2 review handoff — 2026-11-16
+
+Stable contract revision 37, manual upgrade behavior, roadmap withdrawals and
+entry/version pointers are reconciled. Four integrated member topics retire as
+whole directories with reviews and byte-identical non-Markdown specimens.
+Historical scan-performance Review gaps and all accepted limits remain explicit;
+retirement does not create a new semantic review of historical fixes.
+
+Independent retirement assessment (Gemini 4 Hydrogen, medium) found no concrete
+contract inaccuracies. Controller queried all four named source Topic states:
+scan-performance 3/3, auxiliary classification 2/2, OTel 3/3 and installed
+ownership 3/3 VERIFIED, without missing criteria or unresolved impacts. Actual
+integration evidence remains the Task 1 roll-up authority. The archived tasks
+carry dated retirement reconciliations rather than rewriting historical reports.
+
+The topic-document checker now recognizes relative links from an archived topic
+back through `topics/<name>/ux/`; four focused cases preserve own-topic surface
+requirements while excluding cross-topic references. Full document structural
+checks, the four archive document-set checks, whitespace and diff checks pass.
+Task 2 Dev is ready; final independent review, exact-state Task/Topic gates and
+Git delivery remain pending. The version contract itself stays active until its
+own completed lifecycle boundary. No publication or local installation is claimed.
+
+
+### Task 2 review checkpoint — 2026-11-16
+
+Task 2 独立评审通过；最终证据门禁及交付状态见
+[合同评审记录](reviews/v0-7-0-contract.md)。发布、安装与版本主题最终归档仍为各自边界。

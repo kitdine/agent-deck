@@ -676,7 +676,10 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
   version 5 重读既有 sources；schema v21 以 pending/classified、source ownership、
   message/intent reduction 和最终 category shape 重建 signals 表，并加入 bounded
   command reductions，parser version 6 再次重读 version-5 sources 完成分类回填。
-  Work Signals 交付后的 core database schema 为 v21。
+  Work Signals 当时交付的 core database schema 为 v21；v0.7.0 的 core schema 为 35。
+  Usage parser 8 在下一次正常扫描重放旧 Codex source，恢复缺失的工作信号；已为
+  parser 7 的 Claude source 不因这次 Codex 专属升级重读。派生工作分析可能补齐历史，
+  原有事件身份和 token 事实仍保留。
 - Stats 对范围事件只做一次索引扫描，并分别批量加载价格层与 metadata-only provider
   timeline；run multiplier、session attribution、历史 provider snapshot 和有效价格
   在内存中一次聚合，不按 event 追加 SQL，也不读取 credential value。
@@ -1185,11 +1188,11 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 30 的二进制为例：
-旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=30` 和可复制的
-`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=30`；声明受支持版本
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 35 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=35` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=35`；声明受支持版本
 却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
-`database` check，`code=schema_ahead`、`count=99`、`supported_count=30`，没有
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=35`，没有
 `recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
 
 缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，
@@ -1197,6 +1200,17 @@ Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 30 �
 `0`；普通读写命令因 `schema_ahead` 拒绝时退出 `1`。已有元数据损坏处理不改成
 未来版本错误。Text 和 JSON 都不输出原始 SQL、SQLite 查询或驱动错误。
 `state migrate` 的 text 成功信息明确确认完成，JSON 返回 `migrated: true`。
+普通命令首次以可写方式打开旧 core 库时也会自动按顺序迁移；并非只能手动迁移。
+Schema 35 会清空旧会话分类缓存并使相关派生投影失效；下一次正常扫描重新分类前，
+既有会话可能暂时显示 `unknown`。保存的分类偏好和人工覆盖不会被清除。
+已发布 v0.6.5 支持 core schema 30，v0.7.0 支持 35；可重建的 sessions 索引单独按列检查，
+不能将 35 当作它的版本。降级二进制不会降级数据库，恢复时使用兼容版本或已验证的升级前备份。
+
+正常 telemetry settle 会按当前接纳规则，每批最多重新评估 2,000 条以前因 producer
+不受支持而保留的 capture-only observation；有 conversation 的记录再进入归属结算，
+缺失 conversation 的仍不计量。该过程保留 observation 身份，并继续遵守 JSONL 优先归属。
+旧安装升级到 v0.7.0 时，安装渠道必须先登记 ownership；Cask postflight 负责登记。
+未登记的非 owner 遵循隔离开发状态根和客户端写入拒绝规则，不会自动接管真实状态。
 
 ### 安装与状态访问诊断
 

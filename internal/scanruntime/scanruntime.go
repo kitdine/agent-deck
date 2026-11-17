@@ -942,6 +942,11 @@ type round struct {
 	onTerminal  func(Result) error
 	launched    bool // protected by server.mu; registration alone is not launch
 
+	// inventoryID is the source coverage acceptance of the current execution:
+	// the round id, or a new attempt id when a replay finds an earlier
+	// acceptance of the round (see roundInventoryID).
+	inventoryID string
+
 	done               chan struct{}
 	usageDone          chan struct{}
 	sessionDone        chan struct{}
@@ -1101,11 +1106,19 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if sessionsErr == nil {
 		defer sessions.Close()
 	}
+	var coreAccepted, sessionsAccepted bool
 	if coreErr == nil {
-		coreErr = acceptDomainInventory(ctx, core, r.id, sources, false, started)
+		coreAccepted, coreErr = core.AbandonRoundInventories(ctx, r.id)
 	}
 	if sessionsErr == nil {
-		sessionsErr = acceptDomainInventory(ctx, sessions, r.id, sources, true, started)
+		sessionsAccepted, sessionsErr = sessions.AbandonRoundInventories(ctx, r.id)
+	}
+	r.inventoryID = roundInventoryID(r.id, coreAccepted || sessionsAccepted)
+	if coreErr == nil {
+		coreErr = acceptDomainInventory(ctx, core, r.inventoryID, sources, false, started)
+	}
+	if sessionsErr == nil {
+		sessionsErr = acceptDomainInventory(ctx, sessions, r.inventoryID, sources, true, started)
 	}
 
 	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: r.metrics})
@@ -1115,7 +1128,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	usagePlanErr := coreErr
 	if coreErr == nil {
 		usageService = usage.New(core, r.home)
-		usageService.CoverageInventoryID = r.id
+		usageService.CoverageInventoryID = r.inventoryID
 		usageService.PreparedSources = sources
 		usageService.Coordinator = coordinator
 		usageInventory, usagePlanErr = usageService.PlanForCoordinator(ctx, coordinator)
@@ -1173,16 +1186,16 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			changes, err := usageService.ScanInventory(ctx, usageInventory)
 			duration := time.Since(started).Milliseconds()
 			if err != nil {
-				finishDomainInventory(core, r.id, err)
+				finishDomainInventory(core, r.inventoryID, err)
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
-			if err = finishUsageInventory(ctx, core, usageService, r.id); err != nil {
+			if err = finishUsageInventory(ctx, core, usageService, r.inventoryID); err != nil {
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
 			if _, err := core.SettleTelemetry(ctx, time.Now(), telemetry.SettleAfter); err != nil {
-				finishDomainInventory(core, r.id, err)
+				finishDomainInventory(core, r.inventoryID, err)
 				r.setUsage(failedUsage(err, duration))
 				return
 			}
@@ -1220,14 +1233,14 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			// Ends when the scan returns, before the wait for usage below.
 			finishSession := perftrace.Span(perftrace.ScanSession)
 			started := time.Now()
-			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}, CoverageInventoryID: r.id})
+			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}, CoverageInventoryID: r.inventoryID})
 			finishSession()
 			if err != nil {
-				finishDomainInventory(sessions, r.id, err)
+				finishDomainInventory(sessions, r.inventoryID, err)
 				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 				return
 			}
-			if err = finishAcceptedInventory(ctx, sessions, r.id); err != nil {
+			if err = finishAcceptedInventory(ctx, sessions, r.inventoryID); err != nil {
 				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 				return
 			}
@@ -1844,6 +1857,17 @@ func writeOwnerMetadata(path, stateID, nonce string) error {
 		return err
 	}
 	return nil
+}
+
+// roundInventoryID names one execution's coverage acceptance. A round's first
+// execution accepts under its own id. A replay of a round whose earlier worker
+// stopped after accepting needs a new attempt id: inventory ids are unique and
+// the earlier acceptance stays until reclaimed. The receipt keeps the round id.
+func roundInventoryID(roundID string, accepted bool) string {
+	if !accepted {
+		return roundID
+	}
+	return roundID + "." + newID()
 }
 
 func newID() string {

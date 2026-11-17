@@ -1,6 +1,6 @@
 ---
 status: active
-version: 36
+version: 37
 updated: 2026-11-16
 created: 2026-07-14
 ---
@@ -1561,7 +1561,13 @@ source ownership, and the final activity category fields; it also adds the
 bounded command-read and command-hint reductions used by workflow and
 cross-scan classification. Parser version 6 re-reads version-5 sources so an
 upgraded database backfills classifications instead of showing empty signals.
-The current core database schema after this work is v21.
+The core database schema at that historical boundary was v21.
+
+Usage parser version 8 restores current Codex work-signal envelopes and replays
+older Codex source projections on the next normal scan. Claude sources already
+at parser version 7 remain current; this Codex-only upgrade does not force their
+replay. Derived Activity/Workflow/Tooling values may change as missing history
+is recovered; usage event identity and token facts remain authoritative.
 
 When an event-owning source disappears, its events remain temporarily orphaned
 until the same scan can re-home matching stable keys. Recovery combines each
@@ -2564,8 +2570,12 @@ original lock error. The probe includes committed WAL data via a private copy
 without creating or modifying source database sidecars, honors cancellation,
 and is not added to successful opens.
 
-Migrations are explicit and ordered. Known older schemas migrate
-transactionally. Schemas newer than this binary supports are rejected as
+Migrations are defined explicitly and applied in order. A normal writable
+core open automatically migrates known older schemas transactionally;
+`state migrate` is also available to request migration directly. Doctor remains
+read-only and never migrates. The v0.7.0 core schema is 35 (released v0.6.5
+supported 30). The separately rebuildable session index has its own
+column-based migration checks; 35 is not its schema version. Schemas newer than this binary supports are rejected as
 `schema_ahead`, with their stored and supported versions and an upgrade hint.
 Migration or rebuild failure preserves the last usable database. The v6-to-v7 provider selection
 backfill associates a selection only with a completed `provider.use` whose
@@ -2850,13 +2860,13 @@ rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
 Quick and full mode share the schema-state matrix. For a binary supporting
-schema 30, schema 12 reports a `schema_outdated` schema check with `count: 12`,
-`supported_count: 30` and recovery command `agentdeck state migrate`. A complete
-supported schema reports an `ok` schema check with `count: 30`; its optional
+schema 35, schema 12 reports a `schema_outdated` schema check with `count: 12`,
+`supported_count: 35` and recovery command `agentdeck state migrate`. A complete
+supported schema reports an `ok` schema check with `count: 35`; its optional
 `supported_count` is omitted. A database claiming the supported version but
 missing `usage_tool_calls` reports `schema_incompatible`. A future schema, for
 example 99, reports a `database` check with code `schema_ahead`, `count: 99`,
-`supported_count: 30`, and no recovery command, in a partial report. These
+`supported_count: 35`, and no recovery command, in a partial report. These
 numbers describe stored/binary support, not product release versions. Text and
 JSON never expose raw SQL, SQLite query text, or driver errors. A successful
 explicit migration has normal text output and JSON `migrated: true`, and
@@ -3252,6 +3262,33 @@ ciphertext remains readable and is never rewritten automatically. Unsupported
 sealed versions fail closed as `credential_key_version_unsupported`, and a
 version-2 row is unreadable by `v0.2.x` until rewritten by a compatible build.
 
+### v0.7.0 upgrade compatibility
+
+The selected v0.7.0 behavior combines bounded scan/serving snapshots, recovered
+Codex work signals, auxiliary-session classification, version-tolerant OTel
+admission, and installed-state ownership. Pricing redesign and OpenCode product
+support are outside this release. Existing command and desktop wire versions
+remain unchanged; additive fields and ownership refusals follow their contracts
+above. Accepted native and distribution limitations remain in the owning records.
+
+During normal telemetry settlement, previously unsupported `capture_only`
+observations newly admitted by the current producer rules are reconsidered in
+batches of at most 2,000. Observations with a conversation enter ordinary pending
+ownership settlement; missing-conversation observations remain capture-only.
+Schema 35 clears cached session-origin classifications and invalidates their
+derived projections. Before the next normal scan reclassifies them, existing
+sessions can report `unknown`; saved preferences and overrides are preserved.
+Observation keys, counts and timestamps are retained. Re-admission does not
+bypass JSONL ownership or count both sources for the same conversation.
+
+Upgrading from a pre-receipt installation requires the chosen installation
+channel to register ownership before normal access to installed state. The Cask
+postflight performs registration; an unregistered non-owner otherwise follows
+the isolated development-root and client-write refusal rules. Preserve the
+same-path Cask/local-App replacement limitations described above. Downgrading a
+binary does not downgrade a migrated database: use a compatible binary or a
+verified pre-upgrade recovery backup, never delete user state to clear refusal.
+
 ## Changelog
 
 Every entry is a change to the contract this document defines, not a record of
@@ -3260,6 +3297,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 37 | 2026-11-16 | Reconciles the v0.7.0 five-member contract, including scan/serving snapshots and version-tolerant OTel behavior whose earlier document revisions had no changelog rows. Clarifies core schema 35 versus the separate session index, automatic writable-open migration, Codex-only parser-8 replay, bounded OTel re-admission and pre-receipt installation registration. Pricing redesign and OpenCode support remain excluded; historical rows and accepted limits are preserved. Publication is a separate release boundary. |
 | 36 | 2026-11-16 | Reconciles installed-state-ownership: single path/channel receipt, isolated non-owner state and client-write guard, lock-bound access/handoff, formula claim/renewal, local installer conditional cleanup, Homebrew-owned Cask lifecycle and bounded same-path busy registration. Adds the two ownership error codes and doctor checks while preserving installed normal access, version/wire and schema-ahead contracts. Installation metadata is not portable state; Cask/PlugInKit limitations and the explicit A5 real dual-App waiver remain stated. This is a MINOR behavior change, with no release version assigned here. |
 | 34 | 2026-11-13 | Reconciles auxiliary-session-classification (core schema 34): work/auxiliary/unknown session classification from two maintenance rules with a closed `reason_code` enum; `--session-scope` on session list/search/interactive, `usage signals`, and the `usage stats` analysis blocks (text default `work`, JSON default `all`); `session classify`, `session scope get|set`, and `session origin-source set|disable|status`; CAS/idempotent override writes with `origin_*` error codes; additive `session_selection`, element `origin`, desktop wire-v1 `session_scope_view`, `desktop session-scope`, and the App Group `session_scope_summary`; portable backup keeps only defaults and overrides and restores overrides unmatched. Usage, tokens, costs, and consumption totals are unchanged. |
 | 31 | 2026-10-04 | Reconciles the delivered v0.6.5 LaunchServices doctor addition: bounded separate host/Widget sources, conservative five-state classification, deterministic local evidence and manual safety guidance, with a path-free desktop health projection. The approved exception permits the new doctor/health checks, codes, optional details and consequent warning counts; other commands, exits, database formats and existing-check semantics remain unchanged. Complete-refresh targets are unchanged; accepted performance limits and unverified Widget causality/recovery remain explicit in the topic record. |

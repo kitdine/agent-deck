@@ -63,6 +63,10 @@ func TestBatchTemplateStartIsANoOpAndBindsTheSourceTree(t *testing.T) {
 	if batch.WorkingCopy.Days != 4 || batch.WorkingCopy.Files != 400 || batch.Template.CoreSHA256 == "" {
 		t.Fatalf("batch = %+v", batch)
 	}
+	cfg := runConfig{Agentdeck: batch.Agentdeck, TZ: batch.TZ, Batch: batch}
+	if err := bindStateRoot(&cfg, false); err != nil {
+		t.Fatal(err)
+	}
 
 	noop := func() map[string]int64 {
 		t.Helper()

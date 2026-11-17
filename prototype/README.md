@@ -11,9 +11,9 @@ midnight、invalid；发布按钮只模拟准备好的 publication。已有数�
 额外常驻引擎是有条件的扩展，不是默认快开方案或已经证明的性能收益；第一阶段复用现有常驻 App 与有限 helper。
 serving 与 scan 同时指定时 serving 优先。默认额度页和全部现有面板仍是原产品界面。
 
-设计见 [menu-bar](../docs/topics/scan-performance/ux/menubar.md)、
-[CLI](../docs/topics/scan-performance/ux/cli.md)，源码/图像身份与检查见
-[manifest](../docs/topics/scan-performance/ux/prototype/serving/manifest.json)。
+设计见 [menu-bar](../docs/archive/topics/scan-performance/ux/menubar.md)、
+[CLI](../docs/archive/topics/scan-performance/ux/cli.md)，源码/图像身份与检查见
+[manifest](../docs/archive/topics/scan-performance/ux/prototype/serving/manifest.json)。
 合成标本不运行引擎、不修改配置、不接收 OTel、不证明 native 首帧速度或生命周期。
 
 OTel 设置入口 `?serving=rebuilding&settings=1&telemetry=unconfigured`：默认关闭的采集开关、
@@ -329,7 +329,7 @@ Scenario 控件包含三范围、空态、unknown、详情、覆盖/撤销、par
 全屏场景增加 Rows（8/10/24/40）与 Selected row（1/8/12）舞台轴，URL 为 auxRows/auxSelected；
 列数低于 48 或行数低于 10 自动显示尺寸拒绝；有效全屏固定行预算并保持选中行和退出帮助可见。
 usage 扫描标本保留 stderr progress、signals scan_incomplete 和 stats --no-scan 的区别。
-设计见 [ux/cli.md](../docs/topics/auxiliary-session-classification/ux/cli.md)。
+设计见 [ux/cli.md](../docs/archive/topics/auxiliary-session-classification/ux/cli.md)。
 
 ## 辅助会话菜单栏框架标本（auxiliary-session-classification）
 
@@ -337,7 +337,7 @@ usage 扫描标本保留 stderr progress、signals scan_incomplete 和 stats --n
 partial、stale、loading、failed、unavailable、override；沿用中英、深浅、420/280、client/period。
 `auxDefault=work|auxiliary|all` 模拟已保存默认；窗口内三范围为临时选择，重开恢复默认。
 来源详情只读，复制查询命令不执行命令。failed 的重试仅模拟成功发布；全部数据为合成。
-设计和标本证据见 [ux/menubar.md](../docs/topics/auxiliary-session-classification/ux/menubar.md)。
+设计和标本证据见 [ux/menubar.md](../docs/archive/topics/auxiliary-session-classification/ux/menubar.md)。
 构建/preview 后，独立 agent-browser 会话可使用
 `agent-browser eval "$(cat prototype/tools/check-auxiliary-menubar.js)"` 检查范围与交互；
 该脚本在初始 work、all clients、today、会话 tab 上运行，不证明真实查询/原生辅助功能。
@@ -351,7 +351,7 @@ conflict、pending、replayed、permissionWarning、三种 source* 与三种 cod
 Complete pending 只模拟后台完成。该参数下不显示遥测舞台控件。
 持久值和在途操作保存在页面的 App 模型里，窗口草稿可以丢弃；刷新页面会重置合成数据，不写真实设置。
 查询样例为 codex/task-01、claude/old-01、claude/maint-1；codex/archived-1 是未匹配的覆盖。
-设计见 [ux/settings.md](../docs/topics/auxiliary-session-classification/ux/settings.md)。
+设计见 [ux/settings.md](../docs/archive/topics/auxiliary-session-classification/ux/settings.md)。
 检查脚本 `prototype/tools/check-auxiliary-settings.js` 从上述 normal 入口运行（分页窗口每组 121 项），
 模型合同检查为 `node prototype/tools/check-auxiliary-settings-final.mjs`。
 
@@ -370,7 +370,7 @@ Widgets surface 增加 `?surface=widgets&auxWidget=normal`，仅聚焦现有 Mag
 不传参数仍展示五种 Widget。State 支持 normal/empty/unknown/partial/legacy/defaultUnknown/pending/stale；
 Published scope（`awScope`）与 Saved default（`awDefault`）独立，保存默认不会重标旧快照。
 沿用 widgetRefresh 的 missing/containerUnavailable/readFailed/unsupported，全局读取失败优先。
-设计见 [ux/widget.md](../docs/topics/auxiliary-session-classification/ux/widget.md)；
+设计见 [ux/widget.md](../docs/archive/topics/auxiliary-session-classification/ux/widget.md)；
 `prototype/tools/check-auxiliary-widget.js` 校验三范围聚合、价格不变、尺寸边界及 7/20 桶结构。
 所有新增数据仅为聚合合成值，不模拟真实 WidgetKit 调度或 App Group IO。
 
@@ -425,4 +425,4 @@ CLI 页新增 `ownership` 页签，入口为 `?surface=cli&ownership=<state>`。
 - doctor 文本中包含每个检查对应的行，`installation` 排在第一个；
 - doctor 报告是否为部分报告，由 `state` 检查的短路原因决定：`state_missing`（现有的缺失目录短路）和 `state_ownership_refused` 两种是部分报告，各自以对应的 `checks_skipped:` 行结尾；其余是完整报告，不出现 `checks_skipped`。
 
-这些标本只证明文案、行序、字段、退出码以及输出位置（stdout 或 stderr），不证明守卫、所有权锁、回执或任何运行时行为。设计说明见 [`ux/cli.md`](../docs/topics/installed-state-ownership/ux/cli.md)。
+这些标本只证明文案、行序、字段、退出码以及输出位置（stdout 或 stderr），不证明守卫、所有权锁、回执或任何运行时行为。设计说明见 [`ux/cli.md`](../docs/archive/topics/installed-state-ownership/ux/cli.md)。
