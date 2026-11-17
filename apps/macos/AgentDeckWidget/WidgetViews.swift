@@ -51,6 +51,30 @@ enum WidgetAccessibility {
 		)
 	}
 
+	static func topModel(
+		period: DesktopUsagePeriodV1,
+		top: DesktopPresentationModelV1,
+		display: DesktopPresentationModelDisplay
+	) -> WidgetAccessibilityDescriptor {
+		metric(
+			label: "\(WidgetCopy.text("Top model")): \(display.text)",
+			values: [
+				WidgetFormat.share(top.share),
+				"\(WidgetFormat.tokens(top.value.tokens)) \(WidgetCopy.text("of")) \(WidgetFormat.tokens(period.totals.tokens)) \(WidgetCopy.text("Tokens"))",
+			]
+		)
+	}
+
+	static func modelRow(
+		item: DesktopPresentationModelV1,
+		display: DesktopPresentationModelDisplay
+	) -> WidgetAccessibilityDescriptor {
+		metric(
+			label: display.text,
+			values: [WidgetFormat.tokens(item.value.tokens), item.share.map { WidgetFormat.share($0) }]
+		)
+	}
+
 	static func trend(
 		items: [DesktopUsageDailyItemV1],
 		label: String = WidgetCopy.text("Usage trend")
@@ -912,13 +936,29 @@ private struct CompositionWidgetView: View {
 	}
 
 	private func small(period: DesktopUsagePeriodV1, top: DesktopPresentationModelV1) -> some View {
-		VStack(alignment: .leading, spacing: 0) {
+		let topDisplay = model.modelDisplay(top)
+		return VStack(alignment: .leading, spacing: 0) {
 			Eyebrow(WidgetCopy.text("Top model"))
-			Text(top.model)
+			if let clientLabel = topDisplay.clientLabel, !clientLabel.isEmpty {
+				HStack(spacing: 0) {
+					Text(topDisplay.model)
+						.lineLimit(1)
+						.truncationMode(.middle)
+					Text(" · \(clientLabel)")
+						.lineLimit(1)
+						.layoutPriority(1)
+				}
 				.font(.system(size: 13, weight: .semibold))
-				.lineLimit(1)
-				.minimumScaleFactor(0.75)
 				.padding(.top, 3)
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel(topDisplay.text)
+			} else {
+				Text(topDisplay.model)
+					.font(.system(size: 13, weight: .semibold))
+					.lineLimit(1)
+					.minimumScaleFactor(0.75)
+					.padding(.top, 3)
+			}
 			Text(WidgetFormat.share(top.share))
 				.font(.system(size: 25, weight: .semibold, design: .rounded))
 				.foregroundStyle(WidgetPalette.model(1))
@@ -931,25 +971,13 @@ private struct CompositionWidgetView: View {
 				.lineLimit(1)
 				.padding(.top, 5)
 		}
-		.widgetAccessibility(WidgetAccessibility.metric(
-			label: "\(WidgetCopy.text("Top model")): \(top.model)",
-			values: [
-				WidgetFormat.share(top.share),
-				"\(WidgetFormat.tokens(top.value.tokens)) \(WidgetCopy.text("of")) \(WidgetFormat.tokens(period.totals.tokens)) \(WidgetCopy.text("Tokens"))",
-			]
-		))
+		.widgetAccessibility(WidgetAccessibility.topModel(period: period, top: top, display: topDisplay))
 	}
 
 	private func modelList(_ period: DesktopUsagePeriodV1) -> some View {
 		VStack(alignment: .leading, spacing: 4) {
 			ForEach(Array(period.models.prefix(4).enumerated()), id: \.element.id) { index, item in
-				ShareMetricRow(
-					label: item.model,
-					value: WidgetFormat.tokens(item.value.tokens),
-					share: item.share,
-					tone: WidgetPalette.model(index),
-					showsDot: true
-				)
+				ShareMetricRow(model: item, display: model.modelDisplay(item), tone: WidgetPalette.model(index))
 			}
 		}
 	}
@@ -1418,31 +1446,64 @@ private struct DateAxis: View {
 
 private struct ShareMetricRow: View {
 	let label: String
+	var truncatablePrefix: String? = nil
+	var preservedSuffix: String? = nil
 	let value: String
 	let share: String?
 	let tone: Color
 	var showsDot = false
+	var accessibility: WidgetAccessibilityDescriptor? = nil
 
 	var body: some View {
 		VStack(spacing: 2) {
 			HStack(alignment: .firstTextBaseline, spacing: 6) {
 				HStack(spacing: 5) {
 					if showsDot { Circle().fill(tone).frame(width: 6, height: 6) }
-					Text(label).lineLimit(1)
+					if let truncatablePrefix, let preservedSuffix {
+						HStack(spacing: 0) {
+							Text(truncatablePrefix)
+								.lineLimit(1)
+								.truncationMode(.middle)
+							Text(preservedSuffix)
+								.lineLimit(1)
+								.layoutPriority(1)
+						}
+					} else {
+						Text(label).lineLimit(1)
+					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
-				Text(value).foregroundStyle(.secondary).lineLimit(1)
+				Text(value).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
 				Text(WidgetFormat.share(share))
 					.fontWeight(.semibold)
 					.frame(width: 42, alignment: .trailing)
+					.layoutPriority(1)
 			}
 			.font(.system(size: 10))
 			if share != nil { ShareTrack(share: share, tone: tone) }
 		}
-		.widgetAccessibility(WidgetAccessibility.metric(
+		.widgetAccessibility(accessibility ?? WidgetAccessibility.metric(
 			label: label,
 			values: [value, share.map { WidgetFormat.share($0) }]
 		))
+	}
+}
+
+extension ShareMetricRow {
+	/// A composition model row. Its visible label, the client suffix kept
+	/// clear of truncation and its accessibility description all derive from
+	/// the same display, so the client distinction cannot drift between them.
+	init(model item: DesktopPresentationModelV1, display: DesktopPresentationModelDisplay, tone: Color) {
+		self.init(
+			label: display.text,
+			truncatablePrefix: display.clientLabel == nil ? nil : display.model,
+			preservedSuffix: display.clientLabel.map { " · \($0)" },
+			value: WidgetFormat.tokens(item.value.tokens),
+			share: item.share,
+			tone: tone,
+			showsDot: true,
+			accessibility: WidgetAccessibility.modelRow(item: item, display: display)
+		)
 	}
 }
 

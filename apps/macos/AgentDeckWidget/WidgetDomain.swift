@@ -177,6 +177,10 @@ struct WidgetSurfaceModel {
 		return scope?.periods.items.first { $0.period == requested.rawValue }
 	}
 
+	func modelDisplay(_ item: DesktopPresentationModelV1) -> DesktopPresentationModelDisplay {
+		item.display(inScope: entry.client.rawValue)
+	}
+
 	/// The session row of this entry's actual client and period. Only an
 	/// accepted summary for exactly that client and period is shown; a legacy
 	/// file, an invalid or unavailable summary, a missing, duplicated or

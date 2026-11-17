@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Vision
 import WidgetKit
 import XCTest
 
@@ -1372,6 +1373,133 @@ extension WidgetPresentationTests {
 				XCTAssertFalse(bytes.contains("\"unknown_count\":null"), "\(name) round \(round)")
 			}
 		}
+	}
+
+	@MainActor
+	func testCompositionWidgetDistinguishesSameNamedModelsAcrossClientsAndFamilies() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let longModel = "gpt-6-luna-enterprise-reasoning-preview-2026-11-17-long"
+		let snapshot = try snapshotWithModels(base, modelsByScopeAndPeriod: [
+			"all": [
+				"today": [
+					(client: "codex", model: longModel, tokens: 600, share: "60.00"),
+					(client: "claude", model: longModel, tokens: 400, share: "40.00"),
+				],
+				"30d": [
+					(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+			],
+			"codex": [
+				"today": [(client: nil, model: longModel, tokens: 600, share: "100.00")],
+				"30d": [(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+			],
+			"claude": [
+				"today": [(client: nil, model: longModel, tokens: 400, share: "100.00")],
+				"30d": [(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+			],
+		])
+		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+
+		func ocrLines(entry: AgentDeckWidgetEntry, family: WidgetFamily) throws -> [String] {
+			let size = WidgetLayoutContract.canvas(family)
+			let content = AgentDeckWidgetView(entry: entry, familyOverride: family, reduceMotionOverride: true)
+				.environment(\.colorScheme, .dark)
+				.frame(width: size.width, height: size.height)
+				.background(Color(red: 0.071, green: 0.082, blue: 0.110))
+			let hosting = NSHostingView(rootView: content)
+			hosting.frame = NSRect(origin: .zero, size: size)
+			hosting.layoutSubtreeIfNeeded()
+			hosting.displayIfNeeded()
+			let scale = 2
+			let bitmap = try XCTUnwrap(NSBitmapImageRep(
+				bitmapDataPlanes: nil,
+				pixelsWide: Int(size.width) * scale,
+				pixelsHigh: Int(size.height) * scale,
+				bitsPerSample: 8,
+				samplesPerPixel: 4,
+				hasAlpha: true,
+				isPlanar: false,
+				colorSpaceName: .deviceRGB,
+				bytesPerRow: 0,
+				bitsPerPixel: 0
+			))
+			bitmap.size = size
+			hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+			let cgImage = try XCTUnwrap(bitmap.cgImage)
+			let request = VNRecognizeTextRequest()
+			request.recognitionLevel = .accurate
+			request.usesLanguageCorrection = false
+			let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+			try handler.perform([request])
+			return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+		}
+
+		func matchesModelPrefix(_ line: String) -> Bool {
+			line.contains("gpt-6-luna") || line.contains("gpt-b-luna") || line.contains("gpt-6") || line.contains("gpt-b")
+		}
+
+		let smallAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .today, isPlaceholder: false)
+		let smallAllModel = WidgetSurfaceModel(entry: smallAll, now: generated)
+		let smallTop = try XCTUnwrap(smallAllModel.period?.models.first)
+		let smallTopAX = WidgetAccessibility.topModel(
+			period: try XCTUnwrap(smallAllModel.period),
+			top: smallTop,
+			display: smallAllModel.modelDisplay(smallTop)
+		)
+		XCTAssertEqual(smallTopAX.label, "\(WidgetCopy.text("Top model")): \(longModel) · Codex")
+		let smallAllLines = try ocrLines(entry: smallAll, family: .systemSmall)
+		XCTAssertTrue(smallAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "small all must render client without truncating it away: \(smallAllLines)")
+
+		let mediumAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .today, isPlaceholder: false)
+		let mediumAllModel = WidgetSurfaceModel(entry: mediumAll, now: generated)
+		let mediumRows = try XCTUnwrap(mediumAllModel.period?.models)
+		XCTAssertEqual(
+			mediumRows.map { WidgetAccessibility.modelRow(item: $0, display: mediumAllModel.modelDisplay($0)).label },
+			["\(longModel) · Codex", "\(longModel) · Claude"]
+		)
+		let mediumAllLines = try ocrLines(entry: mediumAll, family: .systemMedium)
+		XCTAssertTrue(mediumAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "medium all must render Codex row: \(mediumAllLines)")
+		XCTAssertTrue(mediumAllLines.contains { matchesModelPrefix($0) && $0.contains("Claude") }, "medium all must render Claude row: \(mediumAllLines)")
+
+		let largeAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .thirtyDays, isPlaceholder: false)
+		let largeAllModel = WidgetSurfaceModel(entry: largeAll, now: generated)
+		let largeRows = try XCTUnwrap(largeAllModel.period?.models)
+		XCTAssertEqual(
+			largeRows.map { WidgetAccessibility.modelRow(item: $0, display: largeAllModel.modelDisplay($0)).label },
+			["gpt-6-luna · Claude", "gpt-6-luna · Codex"]
+		)
+		let largeAllLines = try ocrLines(entry: largeAll, family: .systemLarge)
+		XCTAssertTrue(largeAllLines.contains { matchesModelPrefix($0) && $0.contains("Claude") }, "large all must distinguish Claude row: \(largeAllLines)")
+		XCTAssertTrue(largeAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "large all must distinguish Codex row: \(largeAllLines)")
+
+		let smallCodex = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .codex, period: .today, isPlaceholder: false)
+		let smallCodexModel = WidgetSurfaceModel(entry: smallCodex, now: generated)
+		let smallCodexTop = try XCTUnwrap(smallCodexModel.period?.models.first)
+		XCTAssertEqual(
+			WidgetAccessibility.topModel(
+				period: try XCTUnwrap(smallCodexModel.period),
+				top: smallCodexTop,
+				display: smallCodexModel.modelDisplay(smallCodexTop)
+			).label,
+			"\(WidgetCopy.text("Top model")): \(longModel)"
+		)
+		let smallCodexLines = try ocrLines(entry: smallCodex, family: .systemSmall)
+		XCTAssertTrue(smallCodexLines.contains { matchesModelPrefix($0) && !$0.contains("Codex") }, "small single client omits suffix: \(smallCodexLines)")
+
+		let mediumClaude = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .claude, period: .today, isPlaceholder: false)
+		let mediumClaudeModel = WidgetSurfaceModel(entry: mediumClaude, now: generated)
+		let mediumClaudeTop = try XCTUnwrap(mediumClaudeModel.period?.models.first)
+		XCTAssertEqual(
+			WidgetAccessibility.modelRow(item: mediumClaudeTop, display: mediumClaudeModel.modelDisplay(mediumClaudeTop)).label,
+			longModel
+		)
+		let mediumClaudeLines = try ocrLines(entry: mediumClaude, family: .systemMedium)
+		XCTAssertTrue(mediumClaudeLines.contains { matchesModelPrefix($0) && !$0.contains("Claude") }, "medium single client omits suffix: \(mediumClaudeLines)")
+
+		let largeCodex = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .codex, period: .thirtyDays, isPlaceholder: false)
+		let largeCodexLines = try ocrLines(entry: largeCodex, family: .systemLarge)
+		XCTAssertTrue(largeCodexLines.contains { matchesModelPrefix($0) && !$0.contains("Codex") }, "large single client omits suffix: \(largeCodexLines)")
 	}
 
 	// MARK: Token mix exclusivity (widget-composition)

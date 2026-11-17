@@ -49,6 +49,7 @@ import {
   relativeTime,
 } from "./i18n.js";
 import { HEALTH_RECOVERY } from "./healthRecovery.js";
+import { ModelLabel, modelKey } from "./ModelLabel.jsx";
 
 // 额度排在第一位，并且是默认页：一个被排到首位却不是默认打开的 tab，等于
 // 用位置说它最重要、又用默认值说它不是。
@@ -386,9 +387,9 @@ function BreakdownPanel({ view, lang, state }) {
         </div>
         {shown.map((model) => (
           <Row
-            key={model.model}
+            key={modelKey(model)}
             dot
-            label={model.model}
+            label={<ModelLabel model={model} scopeClient={view.client} lang={lang} />}
             value={formatTokens(model.tokens)}
             share={model.share}
             tone={model.tone}

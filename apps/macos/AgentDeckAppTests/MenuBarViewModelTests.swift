@@ -1221,6 +1221,84 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 	}
 
+	func testAllScopeAnnotatesSameNamedModelsAcrossClientsAndPreservesSingleClientSemantics() async {
+		let allScope = WireFixture.scope(
+			client: "all",
+			tokensByPeriod: ["today": 1_000, "7d": 1_200, "30d": 1_200],
+			modelsByPeriod: [
+				"today": [
+					.init(client: "codex", model: "gpt-6-luna", tokens: 600, share: "60.00"),
+					.init(client: "claude", model: "gpt-6-luna", tokens: 400, share: "40.00"),
+				],
+				"7d": [
+					.init(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					.init(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+				"30d": [
+					.init(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					.init(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+			]
+		)
+		let codexScope = WireFixture.scope(
+			client: "codex",
+			tokensByPeriod: ["today": 600, "7d": 300, "30d": 300],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: "gpt-6-luna", tokens: 600, share: "100.00")],
+				"7d": [.init(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+				"30d": [.init(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+			]
+		)
+		let claudeScope = WireFixture.scope(
+			client: "claude",
+			tokensByPeriod: ["today": 400, "7d": 900, "30d": 900],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: "gpt-6-luna", tokens: 400, share: "100.00")],
+				"7d": [.init(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+				"30d": [.init(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+			]
+		)
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope(scopes: [allScope, codexScope, claudeScope])))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+
+		model.selectedClient = "all"
+		model.selectedPeriod = "today"
+		let todayAll = model.breakdownPanel.models
+		XCTAssertEqual(todayAll.map(\.label), ["gpt-6-luna · Codex", "gpt-6-luna · Claude"])
+		XCTAssertEqual(todayAll.map(\.modelName), ["gpt-6-luna", "gpt-6-luna"])
+		XCTAssertEqual(todayAll.map(\.clientLabel), ["Codex", "Claude"])
+		XCTAssertEqual(todayAll.map(\.value), [DesktopFormat.tokens(600), DesktopFormat.tokens(400)])
+		XCTAssertEqual(todayAll.map(\.shareText), [DesktopFormat.percent("60.00"), DesktopFormat.percent("40.00")])
+		XCTAssertEqual(Set(todayAll.map(\.id)).count, 2)
+
+		model.selectedPeriod = "7d"
+		let weekAll = model.breakdownPanel.models
+		XCTAssertEqual(weekAll.map(\.label), ["gpt-6-luna · Claude", "gpt-6-luna · Codex"])
+		XCTAssertEqual(weekAll.map(\.value), [DesktopFormat.tokens(900), DesktopFormat.tokens(300)])
+		XCTAssertEqual(weekAll.map(\.shareText), [DesktopFormat.percent("75.00"), DesktopFormat.percent("25.00")])
+		XCTAssertEqual(todayAll[0].id, weekAll[1].id, "Codex model row keeps stable identity across rank changes")
+		XCTAssertEqual(todayAll[1].id, weekAll[0].id, "Claude model row keeps stable identity across rank changes")
+
+		model.selectedPeriod = "today"
+		model.selectedClient = "codex"
+		let todayCodex = model.breakdownPanel.models
+		XCTAssertEqual(todayCodex.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(todayCodex.map(\.clientLabel), [nil])
+		XCTAssertEqual(todayCodex.map(\.value), [DesktopFormat.tokens(600)])
+		XCTAssertEqual(todayCodex.map(\.shareText), [DesktopFormat.percent("100.00")])
+
+		model.selectedClient = "claude"
+		let todayClaude = model.breakdownPanel.models
+		XCTAssertEqual(todayClaude.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(todayClaude.map(\.value), [DesktopFormat.tokens(400)])
+		XCTAssertEqual(todayClaude.map(\.shareText), [DesktopFormat.percent("100.00")])
+
+		model.selectedPeriod = "30d"
+		XCTAssertEqual(model.breakdownPanel.models.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(model.breakdownPanel.models.map(\.value), [DesktopFormat.tokens(900)])
+	}
+
 	// MARK: Token mix exclusivity
 
 	private struct MixParts {

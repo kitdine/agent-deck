@@ -272,3 +272,74 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 		t.Fatalf("all scope = %#v, want the measured total", all)
 	}
 }
+
+func TestPresentationSeparatesSameModelAcrossClientsInAllScopeAndOmitsClientInSingleScope(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if _, err = database.Exec(ctx, `
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
+ ('codex','codex-today','2026-08-13T08:00:00Z','2026-08-13T08:00:00Z'),
+ ('claude','claude-today','2026-08-13T09:00:00Z','2026-08-13T09:00:00Z'),
+ ('claude','claude-week','2026-08-10T09:00:00Z','2026-08-10T09:00:00Z');
+INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES
+ ('e-codex-today','codex','codex-today','e1','2026-08-13T08:00:00Z','gpt-6-luna',100,20,'fixture',0),
+ ('e-claude-today','claude','claude-today','e2','2026-08-13T09:00:00Z','gpt-6-luna',60,20,'fixture',1),
+ ('e-claude-week','claude','claude-week','e3','2026-08-10T09:00:00Z','gpt-6-luna',180,20,'fixture',2)`); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	service := New(database, "")
+	service.Now = func() time.Time { return now }
+	report, err := service.Presentation(ctx, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	all := report.Scopes[0]
+	if all.Client != "all" {
+		t.Fatalf("first scope = %q, want all", all.Client)
+	}
+	todayAll := all.Periods.Items[0].Models
+	if len(todayAll) != 2 {
+		t.Fatalf("all today models = %#v, want 2 separated rows", todayAll)
+	}
+	if todayAll[0].Client != "codex" || todayAll[0].Model != "gpt-6-luna" || todayAll[0].Value.Tokens != 120 || todayAll[0].Share == nil || *todayAll[0].Share != "60.00" {
+		t.Fatalf("all today models[0] = %#v", todayAll[0])
+	}
+	if todayAll[1].Client != "claude" || todayAll[1].Model != "gpt-6-luna" || todayAll[1].Value.Tokens != 80 || todayAll[1].Share == nil || *todayAll[1].Share != "40.00" {
+		t.Fatalf("all today models[1] = %#v", todayAll[1])
+	}
+
+	weekAll := all.Periods.Items[1].Models
+	if len(weekAll) != 2 {
+		t.Fatalf("all 7d models = %#v, want 2 separated rows", weekAll)
+	}
+	if weekAll[0].Client != "claude" || weekAll[0].Model != "gpt-6-luna" || weekAll[0].Value.Tokens != 280 || weekAll[0].Share == nil || *weekAll[0].Share != "70.00" {
+		t.Fatalf("all 7d models[0] = %#v", weekAll[0])
+	}
+	if weekAll[1].Client != "codex" || weekAll[1].Model != "gpt-6-luna" || weekAll[1].Value.Tokens != 120 || weekAll[1].Share == nil || *weekAll[1].Share != "30.00" {
+		t.Fatalf("all 7d models[1] = %#v", weekAll[1])
+	}
+
+	codex := report.Scopes[1]
+	if codex.Client != "codex" || len(codex.Periods.Items[0].Models) != 1 {
+		t.Fatalf("codex today models = %#v", codex.Periods.Items[0].Models)
+	}
+	if codex.Periods.Items[0].Models[0].Client != "" || codex.Periods.Items[0].Models[0].Model != "gpt-6-luna" || codex.Periods.Items[0].Models[0].Value.Tokens != 120 {
+		t.Fatalf("codex single-scope model = %#v, want empty client", codex.Periods.Items[0].Models[0])
+	}
+
+	claude := report.Scopes[2]
+	if claude.Client != "claude" || len(claude.Periods.Items[0].Models) != 1 {
+		t.Fatalf("claude today models = %#v", claude.Periods.Items[0].Models)
+	}
+	if claude.Periods.Items[0].Models[0].Client != "" || claude.Periods.Items[0].Models[0].Model != "gpt-6-luna" || claude.Periods.Items[0].Models[0].Value.Tokens != 80 {
+		t.Fatalf("claude single-scope model = %#v, want empty client", claude.Periods.Items[0].Models[0])
+	}
+}
