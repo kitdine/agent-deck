@@ -1501,4 +1501,111 @@ extension WidgetPresentationTests {
 		let largeCodexLines = try ocrLines(entry: largeCodex, family: .systemLarge)
 		XCTAssertTrue(largeCodexLines.contains { matchesModelPrefix($0) && !$0.contains("Codex") }, "large single client omits suffix: \(largeCodexLines)")
 	}
+
+	// MARK: Token mix exclusivity (widget-composition)
+
+	// Synthetic client split of the bug sample, consistent with the producer's
+	// eventTokenTotal (Codex = input + output); only `all` raw totals are the sample's.
+	private var codexParts: WidgetTokenParts { (181_000_000, 180_000_000, 1_000_000, 175_907_008, 1_000_000) }
+	private var claudeParts: WidgetTokenParts { (259_850_572, 1_601_130, 964_562, 256_182_542, 1_102_338) }
+	private var allParts: WidgetTokenParts { (440_850_572, 181_601_130, 1_964_562, 432_089_550, 2_102_338) }
+
+	private func mixItems(
+		_ snapshot: WidgetDesktopSnapshotV1, client: WidgetClient, period: WidgetPeriod
+	) throws -> [TokenComponent] {
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .composition, client: client, period: period, isPlaceholder: false
+		)
+		return try XCTUnwrap(TokenComponent.items(for: WidgetSurfaceModel(entry: entry, now: entry.date)))
+	}
+
+	private func assertWidgetMix(_ items: [TokenComponent], _ expected: [Int64], file: StaticString = #filePath, line: UInt = #line) {
+		XCTAssertEqual(items.map(\.id), ["input", "output", "cache-read", "cache-write"], file: file, line: line)
+		XCTAssertEqual(items.map(\.value), expected, file: file, line: line)
+		let total = expected.reduce(0, +)
+		XCTAssertEqual(items.map { $0.share }, expected.map { WidgetFormat.percentage($0, total: total) }, file: file, line: line)
+		if total > 0 {
+			XCTAssertEqual(items.map { WidgetFormat.decimal($0.share) }.reduce(0, +), 100, accuracy: 0.05, file: file, line: line)
+		}
+	}
+
+	func testWidgetTokenMixIsExclusiveForMixedCodexOnlyAndClaudeScopes() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["30d": allParts], "codex": ["30d": codexParts], "claude": ["30d": claudeParts],
+		])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [3_092_992, 1_000_000, 175_907_008, 1_000_000])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [1_601_130, 964_562, 256_182_542, 1_102_338])
+		XCTAssertEqual(try mixItems(snapshot, client: .all, period: .thirtyDays).map(\.value).reduce(0, +), 440_850_572)
+	}
+
+	func testWidgetTokenMixHandlesZeroAndCacheHeavyCodexWithoutNegativeSlices() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let zero: WidgetTokenParts = (0, 0, 0, 0, 0)
+		let heavy: WidgetTokenParts = (9_100, 9_000, 100, 9_000, 0)
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["today": zero, "7d": heavy], "codex": ["today": zero, "7d": heavy],
+		])
+		let zeroItems = try mixItems(snapshot, client: .all, period: .today)
+		XCTAssertEqual(zeroItems.map(\.value), [0, 0, 0, 0])
+		XCTAssertEqual(zeroItems.map(\.share), [nil, nil, nil, nil])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .sevenDays), [0, 100, 9_000, 0])
+	}
+
+	func testWidgetTokenMixFollowsThePeriodAndNeverBorrowsAnotherPeriodOverlap() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let plain: WidgetTokenParts = (10, 10, 0, 0, 0)
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["7d": allParts, "30d": plain], "codex": ["7d": codexParts, "30d": plain],
+		])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .sevenDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [10, 0, 0, 0])
+	}
+
+	func testWidgetTokenMixWithoutAUsableCodexScopeDerivesOverlapFromTheTotal() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithoutClient(snapshotWithTokenParts(base, ["all": ["30d": allParts]]), client: "codex")
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+	}
+
+	func testWidgetCodexCacheWriteConservesProducerTotalAcrossScopeAvailability() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let codex: WidgetTokenParts = (11, 10, 1, 4, 2)
+		let claude: WidgetTokenParts = (17, 3, 2, 5, 7)
+		let all: WidgetTokenParts = (28, 13, 3, 9, 9)
+		let snapshot = try snapshotWithTokenParts(base, ["all": ["30d": all], "codex": ["30d": codex], "claude": ["30d": claude]])
+		let variants = [
+			("codex available", snapshot),
+			("codex missing", try snapshotWithoutClient(snapshot, client: "codex")),
+			("codex unavailable", try snapshotWithUnavailablePeriods(snapshot, client: "codex")),
+		]
+		for (name, variant) in variants {
+			let items = try mixItems(variant, client: .all, period: .thirtyDays)
+			XCTAssertEqual(items.map(\.value), [7, 3, 9, 9], name)
+			assertWidgetMix(items, [7, 3, 9, 9])
+		}
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [4, 1, 4, 2])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [3, 2, 5, 7])
+	}
+
+	func testWidgetMixedCodexAnomalyIsIndependentOfCodexScopeAvailability() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["30d": (28, 13, 3, 13, 11)], "codex": ["30d": (11, 10, 1, 8, 4)], "claude": ["30d": (17, 3, 2, 5, 7)],
+		])
+		let variants = [
+			("codex available", snapshot),
+			("codex missing", try snapshotWithoutClient(snapshot, client: "codex")),
+			("codex unavailable", try snapshotWithUnavailablePeriods(snapshot, client: "codex")),
+		]
+		for (name, variant) in variants {
+			let items = try mixItems(variant, client: .all, period: .thirtyDays)
+			XCTAssertEqual(items.map(\.value), [1, 3, 13, 11], name)
+			assertWidgetMix(items, [1, 3, 13, 11])
+		}
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [0, 1, 8, 4])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [3, 2, 5, 7])
+	}
 }

@@ -921,13 +921,14 @@ final class MenuBarViewModel {
 				shareText: DesktopFormat.percent(model.share)
 			)
 		}
-		let totals = period.totals
-		let mixTotal = max(1, totals.inputTokens + totals.outputTokens + totals.cachedReadTokens + totals.cacheWriteTokens)
+		// Shared projection keeps the four slices exclusive (see DesktopTokenMix).
+		let exclusive = DesktopTokenMix(scope: scope, period: period)
+		let mixTotal = max(1, exclusive.total)
 		let components: [(String, String, Int64)] = [
-			("input", t(DesktopCopy.tokenInput), totals.inputTokens),
-			("output", t(DesktopCopy.tokenOutput), totals.outputTokens),
-			("cache-read", t(DesktopCopy.tokenCacheRead), totals.cachedReadTokens),
-			("cache-write", t(DesktopCopy.tokenCacheWrite), totals.cacheWriteTokens),
+			("input", t(DesktopCopy.tokenInput), exclusive.input),
+			("output", t(DesktopCopy.tokenOutput), exclusive.output),
+			("cache-read", t(DesktopCopy.tokenCacheRead), exclusive.cacheRead),
+			("cache-write", t(DesktopCopy.tokenCacheWrite), exclusive.cacheWrite),
 		]
 		let mix = components.map { identifier, label, value in
 			let fraction = Double(value) / Double(mixTotal)

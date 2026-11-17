@@ -2691,6 +2691,80 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	}
 }
 
+func TestWatchMidRoundCancellationExitsCleanly(t *testing.T) {
+	t.Run("cancelled during session snapshot", func(t *testing.T) {
+		root := t.TempDir()
+		state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		oldHome := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = oldHome })
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		origDiscover := discoverSessionInventory
+		discoverSessionInventory = func(string) ([]ingest.Source, error) {
+			cancel()
+			return nil, ctx.Err()
+		}
+		t.Cleanup(func() { discoverSessionInventory = origDiscover })
+
+		var output bytes.Buffer
+		command := newRootCommand(bytes.NewReader(nil), &output)
+		command.SetContext(ctx)
+		command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "session", "--interval", "10ms"})
+		if err := command.Execute(); err != nil {
+			t.Fatalf("watch mid-round cancellation error = %v, want nil", err)
+		}
+		if output.Len() != 0 {
+			t.Fatalf("unexpected watch output after mid-round cancellation: %s", output.String())
+		}
+	})
+
+	t.Run("cancelled during extension fingerprint persist", func(t *testing.T) {
+		root := t.TempDir()
+		state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		oldHome := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = oldHome })
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		origPersist := extensionScanFingerprintPersist
+		extensionScanFingerprintPersist = func(context.Context, *store.Store, string) error {
+			cancel()
+			return ctx.Err()
+		}
+		t.Cleanup(func() { extensionScanFingerprintPersist = origPersist })
+
+		var output bytes.Buffer
+		command := newRootCommand(bytes.NewReader(nil), &output)
+		command.SetContext(ctx)
+		command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "extension", "--interval", "10ms"})
+		if err := command.Execute(); err != nil {
+			t.Fatalf("watch mid-round cancellation error = %v, want nil", err)
+		}
+		if output.Len() != 0 {
+			t.Fatalf("unexpected watch output after mid-round cancellation: %s", output.String())
+		}
+		core, err := store.OpenReadOnly(context.Background(), state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer core.Close()
+		if _, found, err := core.Setting(context.Background(), "watch.fingerprint.extension"); err != nil || found {
+			t.Fatalf("extension fingerprint persisted after cancellation: found=%t err=%v", found, err)
+		}
+	})
+}
+
 func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) {
 	at := time.Date(2026, 7, 21, 1, 2, 3, 0, time.UTC)
 	assertOutput := func(t *testing.T, event watch.Event, label string, wantChanges int) {

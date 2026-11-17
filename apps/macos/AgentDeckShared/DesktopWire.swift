@@ -412,6 +412,34 @@ public struct DesktopUsagePeriodV1: Codable, Equatable, Sendable, Identifiable {
 	}
 }
 
+/// Mutually exclusive token slices of one scope and period. The producer's
+/// representative total counts Codex cached input and cache-write input inside
+/// input (Codex total = input + output) while Claude counts all four, so the
+/// four raw slices exceed the total by exactly the Codex overlap. The overlap
+/// is read from the selected period's own totals, never from another scope,
+/// and is bounded by input; Claude cache is independent.
+/// Projection only: never encoded or persisted.
+public struct DesktopTokenMix: Equatable, Sendable {
+	public let input: Int64
+	public let output: Int64
+	public let cacheRead: Int64
+	public let cacheWrite: Int64
+	public var total: Int64 { input + output + cacheRead + cacheWrite }
+
+	/// - Parameters:
+	///   - scope: the selected scope that owns `period`.
+	///   - period: the selected period of that same scope.
+	public init(scope: DesktopUsageScopeV1, period: DesktopUsagePeriodV1) {
+		let totals = period.totals
+		let raw = totals.inputTokens + totals.outputTokens + totals.cachedReadTokens + totals.cacheWriteTokens
+		let overlap = scope.client == "all" || scope.client == "codex" ? max(0, raw - totals.tokens) : 0
+		input = totals.inputTokens - min(overlap, totals.inputTokens)
+		output = totals.outputTokens
+		cacheRead = totals.cachedReadTokens
+		cacheWrite = totals.cacheWriteTokens
+	}
+}
+
 public struct DesktopPresentationTotalsV1: Codable, Equatable, Sendable {
 	public let tokens: Int64
 	public let inputTokens: Int64
