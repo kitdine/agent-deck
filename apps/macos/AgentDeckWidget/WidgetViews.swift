@@ -955,7 +955,7 @@ private struct CompositionWidgetView: View {
 	}
 
 	private func large(_ period: DesktopUsagePeriodV1) -> some View {
-		let components = TokenComponent.items(period.totals)
+		let components = TokenComponent.items(for: model) ?? []
 		return VStack(alignment: .leading, spacing: 0) {
 			Eyebrow(WidgetCopy.text("Models"))
 			modelList(period).padding(.top, 2)
@@ -1502,19 +1502,26 @@ private struct SectionDivider: View {
 	}
 }
 
-private struct TokenComponent: Identifiable {
+struct TokenComponent: Identifiable {
 	let id: String
 	let label: String
 	let value: Int64
 	let share: String?
 	let color: Color
 
-	static func items(_ totals: DesktopPresentationTotalsV1) -> [TokenComponent] {
+	/// Exclusive components of this surface's own client scope and period;
+	/// no other entry's or scope's figures are borrowed.
+	static func items(for model: WidgetSurfaceModel) -> [TokenComponent]? {
+		guard let scope = model.scope, let period = model.period else { return nil }
+		return items(DesktopTokenMix(scope: scope, period: period))
+	}
+
+	static func items(_ mix: DesktopTokenMix) -> [TokenComponent] {
 		let values: [(String, String, Int64)] = [
-			("input", "Input", totals.inputTokens),
-			("output", "Output", totals.outputTokens),
-			("cache-read", "Cache read", totals.cachedReadTokens),
-			("cache-write", "Cache write", totals.cacheWriteTokens),
+			("input", "Input", mix.input),
+			("output", "Output", mix.output),
+			("cache-read", "Cache read", mix.cacheRead),
+			("cache-write", "Cache write", mix.cacheWrite),
 		]
 		let total = values.reduce(Int64(0)) { $0 + $1.2 }
 		return values.enumerated().map { index, item in
