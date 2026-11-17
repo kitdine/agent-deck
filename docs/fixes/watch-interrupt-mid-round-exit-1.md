@@ -7,7 +7,7 @@ created: 2026-11-17
 
 协调载体：`ad-bug-watch-interrupt-mid-round-exit-1`；版本：v0.7.5；Lane A。
 工作区：`agent-deck.fix.watch-interrupt-mid-round-exit-1`，分支 `fix/watch-interrupt-mid-round-exit-1`。
-用户已授权自动开发、独立评审与修复；交付上限 none，未授权 Git 提交、推送、集成或安装。
+用户已授权自动开发、独立评审与修复，随后明确授权评审和门禁通过后分别提交、推送 origin、创建 PR，并要求 Codex review；不包含 merge、release、deploy 或安装。下文未授权/未提交的早期表述保留为当时的检查点，当前交付状态见末尾补记。
 
 ## 现象
 
@@ -60,6 +60,10 @@ watch 在轮间收到调用者取消时正常结束；取消落在 Snapshot、Sc
 
 ## Review — Round 1
 
+完成门禁：NOT_VERIFIED
+
+格式补记（2026-11-17）：此值来自本次对该轮候选 `aa6274fac20bdce0d2591ef62a483c88a8c2560cd6cbe323d294918a524388fe` 的 CEv1 回查；不追溯声称原评审当时已经查询，也不改变原 FAIL。
+
 日期：2026-11-17。独立来源：Claude harness，Sonnet 5.5，requested effort=high；冷上下文只读评审。主控核对了实际生产错误传播与候选 blob，裁决由主控记录。
 
 ### 📋 评审报告
@@ -108,6 +112,10 @@ cmd 测试仍为 `192bf15b6a2d29e8e75e4346414e6ff0e1d291a6`。
 主控直接观察 wrapper 的真实退出码与完成输出。F1 已实现修正，仍等待独立复评；F2 的既有事件契约边界一并交复评核对。没有提交、推送或真实状态变更。
 
 ## Review — Round 2
+
+完成门禁：NOT_VERIFIED
+
+格式补记（2026-11-17）：此值来自本次对该轮候选 `ebea8021051e46f87d32a76ea96511dff3f202c08a58330600b24fdcf2db0264` 的 CEv1 回查，缺独立评审通过证据；不改变原 FAIL。
 
 方法：冷上下文 Claude/Sonnet 5.5，requested effort=high；只读检查及仓库外 overlay 对照。主控核对生产路径与原有整轮返回语义；正式结论如下。
 
@@ -161,6 +169,10 @@ cmd/main_test.go 未变，仍为 `192bf15b6a2d29e8e75e4346414e6ff0e1d291a6`。
 
 ## Review — Round 3
 
+完成门禁：VERIFIED
+
+格式补记（2026-11-17）：对应本轮最终代码候选 `0278da19870d20983c92f7126464649fc1ddef83f5fc57bcae0e956b0c6bb0f0` 已查询的 4/4 结果；保留独立评审、信号范围与全部历史发现处置。
+
 方法：独立冷上下文 Claude/Sonnet 5.5，requested effort=high；只读源检查、仓库外 overlay 变异探针与定向 race/命令回归。主控核对返回的候选身份、终态无子操作、实际命令结果与下列关闭依据后记录正式结论。
 
 ### 📋 最终复评报告
@@ -198,3 +210,9 @@ CEv1 最终目标 `fix:watch-interrupt-mid-round-exit-1:state:0278da19870d20983c
 本 A 修复无 containing topic gate。Task 保持 awaiting_commit；没有 Git 提交、推送、集成或安装，也未关闭原 Bug。
 提交建议：冻结的三个 Go 文件及本 fix 记录，需另获授权并核对物料贡献、英文 Conventional subject/body、Codex trailer 与 SSH 签名。推送建议：尚无授权或远端交付动作，不把本地 PASS 视为可自动推送。
 最终代码物料来源：Antigravity 的初版实现、Codex 的两轮有界修复与本记录；Claude 仅提供独立评审，不作为代码作者推断。
+
+## 交付与 CI 格式补记 — 2026-11-17
+
+已签名提交 `e6ed24bc9e171a356de2fe09ee9f80e49a543b4a` 已推送 origin 并创建 [PR #70](https://github.com/kitdine/agent-deck/pull/70)；其提交态 gate 为 VERIFIED 4/4。原 Bug 保持 in_review，等待远端 Actions 与 Codex review，不因本地验收关闭。
+
+首轮 CI 的 `python3 scripts/check-docs.py --base 4ac56db32e13c4e925b648c620ba76fc588a7781 --head e6ed24bc9e171a356de2fe09ee9f80e49a543b4a` 报三轮记录均缺可解析的完成门禁字段。本文按实际候选回查补齐每轮唯一字段，并同步新的交付授权；未改变三个代码/测试文件、历史裁决、发现或运行时行为。该文档修正需通过同一文档 L0 后另作追加提交，不改写原提交。
