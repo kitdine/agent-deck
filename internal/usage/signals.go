@@ -61,7 +61,18 @@ func upsertWorkSignalTx(ctx context.Context, tx *sql.Tx, signal turnSignal, path
 // Tool ownership may differ from signal ownership, so the join deliberately
 // uses client/session/turn rather than restricting tool.source_path.
 const sourceTurnShapesSQL = `
-WITH shapes AS MATERIALIZED (
+WITH assistant_turns AS MATERIALIZED (
+ -- One pass over the usage events of the sessions this source owns. A
+ -- correlated per-turn EXISTS would re-walk the whole session through the
+ -- (client,session_id) index for every owned turn: O(turns x session events).
+ -- GROUP BY rather than DISTINCT lets SQLite index the materialized set for
+ -- the per-turn lookup below instead of rescanning it.
+ SELECT e.client,e.session_id,e.turn_index
+ FROM (SELECT DISTINCT client,session_id FROM usage_work_signals WHERE source_path=?1) s
+ CROSS JOIN usage_events e ON e.client=s.client AND e.session_id=s.session_id
+ WHERE e.turn_index IS NOT NULL
+ GROUP BY e.client,e.session_id,e.turn_index
+), shapes AS MATERIALIZED (
  SELECT a.client,a.session_id,a.turn_index,
         1 AS any_call,
         MAX(a.tool_kind='edit') AS edited,
@@ -77,14 +88,15 @@ WITH shapes AS MATERIALIZED (
  GROUP BY a.client,a.session_id,a.turn_index
 )
 SELECT w.client,w.session_id,w.turn_index,w.message_class,w.intent_sub,
-       EXISTS(SELECT 1 FROM usage_events e
-              WHERE e.client=w.client AND e.session_id=w.session_id AND e.turn_index=w.turn_index),
+       t.turn_index IS NOT NULL,
        COALESCE(a.any_call,0),COALESCE(a.edited,0),COALESCE(a.read_call,0),
        COALESCE(a.delegated,0),COALESCE(a.workflow,0),COALESCE(a.planned,0),
        COALESCE(a.testing,0),COALESCE(a.chore,0)
 FROM usage_work_signals w
 LEFT JOIN shapes a
  ON a.client=w.client AND a.session_id=w.session_id AND a.turn_index=w.turn_index
+LEFT JOIN assistant_turns t
+ ON t.client=w.client AND t.session_id=w.session_id AND t.turn_index=w.turn_index
 WHERE w.source_path=?1`
 
 func classifySourceTurns(ctx context.Context, tx *sql.Tx, path string) error {
