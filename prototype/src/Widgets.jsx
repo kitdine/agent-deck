@@ -4,6 +4,7 @@ import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck, War
 import { meta, quota, quotaMeta, rhythm, scope } from "./data.js";
 import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
+import { ModelLabel, modelKey } from "./ModelLabel.jsx";
 
 // 尺寸按真机比例：small 正方，medium 与 small 同高、约两倍宽，large 与 medium 同宽、约 2.2 倍高。
 // large 不再是横跨整行的宽条——那个比例真机上不存在，会让人高估它能放下的内容。
@@ -286,7 +287,9 @@ function Composition({ size, lang }) {
     return (
       <Frame kind="composition" size={size} lang={lang} scopeText={scopeText} Icon={ChartPieSlice}>
         <span className="w-eyebrow">{dict.widgets.topModel}</span>
-        <strong className="w-model">{top.model}</strong>
+        <strong className="w-model">
+          <ModelLabel model={top} scopeClient={view.client} lang={lang} />
+        </strong>
         <strong className="w-headline model-b">{formatShare(top.share, lang)}</strong>
         <div className="w-track">
           <i className="tone-model-b" style={{ width: `${top.share}%` }} />
@@ -301,7 +304,7 @@ function Composition({ size, lang }) {
       <Frame kind="composition" size={size} lang={lang} scopeText={scopeText} Icon={ChartPieSlice}>
         <div className="w-list">
           {view.models.slice(0, 4).map((model) => (
-            <WRow key={model.model} dot label={model.model} value={formatTokens(model.tokens)} share={model.share} tone={model.tone} lang={lang} />
+            <WRow key={modelKey(model)} dot label={<ModelLabel model={model} scopeClient={view.client} lang={lang} />} value={formatTokens(model.tokens)} share={model.share} tone={model.tone} lang={lang} />
           ))}
         </div>
       </Frame>
@@ -313,7 +316,7 @@ function Composition({ size, lang }) {
       <span className="w-eyebrow">{dict.breakdown.models}</span>
       <div className="w-list">
         {view.models.slice(0, 4).map((model) => (
-          <WRow key={model.model} dot label={model.model} value={formatTokens(model.tokens)} share={model.share} tone={model.tone} lang={lang} />
+          <WRow key={modelKey(model)} dot label={<ModelLabel model={model} scopeClient={view.client} lang={lang} />} value={formatTokens(model.tokens)} share={model.share} tone={model.tone} lang={lang} />
         ))}
       </div>
       <div className="w-divider">

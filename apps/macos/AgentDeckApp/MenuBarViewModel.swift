@@ -102,6 +102,8 @@ struct TrendBucket: Identifiable, Equatable, Sendable {
 struct ShareRow: Identifiable, Equatable, Sendable {
 	let id: String
 	let label: String
+	var modelName: String? = nil
+	var clientLabel: String? = nil
 	let value: String
 	let share: Double
 	let shareText: String
@@ -903,10 +905,17 @@ final class MenuBarViewModel {
 		guard let snapshot, let scope = activeScope, let period = activePeriod, scope.periods.available else {
 			return BreakdownPanelModel(available: false, models: [], modelsEmptyCopy: nil, tokenMix: [], clientRows: [])
 		}
-		let models = period.models.prefix(12).enumerated().map { index, model in
-			ShareRow(
-				id: "model.\(index).\(model.model)",
-				label: model.model,
+		var seenModelIDs = [String: Int]()
+		let models = period.models.prefix(12).map { model -> ShareRow in
+			let occurrence = seenModelIDs[model.id, default: 0]
+			seenModelIDs[model.id] = occurrence + 1
+			let rowID = occurrence == 0 ? "model.\(model.id)" : "model.\(model.id)#\(occurrence)"
+			let display = model.display(inScope: scope.client)
+			return ShareRow(
+				id: rowID,
+				label: display.text,
+				modelName: display.model,
+				clientLabel: display.clientLabel,
 				value: DesktopFormat.tokens(model.value.tokens),
 				share: shareFraction(model.share),
 				shareText: DesktopFormat.percent(model.share)
@@ -1681,9 +1690,7 @@ final class MenuBarViewModel {
 	func clientLabel(_ value: String) -> String {
 		switch value {
 		case "all": t(DesktopCopy.clientAll)
-		case "codex": "Codex"
-		case "claude": "Claude"
-		default: value
+		default: DesktopPresentationModelV1.clientDisplayLabel(value)
 		}
 	}
 

@@ -1824,12 +1824,35 @@ a:focus-visible {
 }
 
 .w-model {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
   margin-top: 3px;
   font-size: 13px;
   font-weight: 620;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Model labels: the name truncates first; the all-clients suffix stays visible. */
+.data-row span.model-name,
+.w-row span.model-name,
+.w-model .model-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-row span.model-client,
+.w-row span.model-client,
+.w-model .model-client {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+  white-space: nowrap;
 }
 
 .w-hero {

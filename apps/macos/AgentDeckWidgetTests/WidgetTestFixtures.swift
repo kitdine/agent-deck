@@ -177,4 +177,53 @@ func snapshotWithPricedToday(_ snapshot: WidgetDesktopSnapshotV1, client: String
 	)
 }
 
+func snapshotWithModels(
+	_ snapshot: WidgetDesktopSnapshotV1,
+	modelsByScopeAndPeriod: [String: [String: [(client: String?, model: String, tokens: Int64, share: String)]]]
+) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var usage = try XCTUnwrap(object["usage"] as? [String: Any])
+	var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+	var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+	for scopeIndex in scopes.indices {
+		guard let client = scopes[scopeIndex]["client"] as? String,
+			let byPeriod = modelsByScopeAndPeriod[client]
+		else { continue }
+		var periods = try XCTUnwrap(scopes[scopeIndex]["periods"] as? [String: Any])
+		var items = try XCTUnwrap(periods["items"] as? [[String: Any]])
+		for periodIndex in items.indices {
+			guard let periodName = items[periodIndex]["period"] as? String,
+				let entries = byPeriod[periodName]
+			else { continue }
+			let totalTokens = entries.reduce(Int64(0)) { $0 + $1.tokens }
+			if var totals = items[periodIndex]["totals"] as? [String: Any] {
+				totals["tokens"] = totalTokens
+				items[periodIndex]["totals"] = totals
+			}
+			items[periodIndex]["models"] = entries.map { entry in
+				[
+					"client": entry.client ?? NSNull(),
+					"model": entry.model,
+					"value": [
+						"tokens": entry.tokens,
+						"events": Int64(1),
+						"provider_cost": String(format: "%.6f", Double(entry.tokens) / 1_000),
+						"cost_incomplete": false,
+					] as [String: Any],
+					"share": entry.share,
+				] as [String: Any]
+			}
+		}
+		periods["items"] = items
+		scopes[scopeIndex]["periods"] = periods
+	}
+	presentation["scopes"] = scopes
+	usage["presentation"] = presentation
+	object["usage"] = usage
+	return try JSONDecoder().decode(
+		WidgetDesktopSnapshotV1.self,
+		from: JSONSerialization.data(withJSONObject: object)
+	)
+}
+
 private final class WidgetFixtureBundleMarker {}

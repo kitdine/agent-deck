@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Vision
 import XCTest
 @testable import AgentDeck
 @testable import AgentDeckShared
@@ -621,6 +622,105 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertEqual(BreakdownPalette.tokenTone(id: "output"), .series(1))
 		XCTAssertEqual(BreakdownPalette.tokenTone(id: "cache-read"), .series(2))
 		XCTAssertEqual(BreakdownPalette.tokenTone(id: "cache-write"), .warning)
+	}
+
+	func testBreakdownPanelViewShowsDistinguishableModelClientLabelsAndAccessibility() async throws {
+		let longModel = "gpt-6-luna-enterprise-reasoning-preview-2026-11-17-long-name-variant"
+		let allScope = WireFixture.scope(
+			client: "all",
+			tokensByPeriod: ["today": 1_000, "7d": 1_000, "30d": 1_000],
+			modelsByPeriod: [
+				"today": [
+					.init(client: "codex", model: longModel, tokens: 600, share: "60.00"),
+					.init(client: "claude", model: longModel, tokens: 400, share: "40.00"),
+				],
+			]
+		)
+		let codexScope = WireFixture.scope(
+			client: "codex",
+			tokensByPeriod: ["today": 600, "7d": 600, "30d": 600],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: longModel, tokens: 600, share: "100.00")],
+			]
+		)
+		let claudeScope = WireFixture.scope(
+			client: "claude",
+			tokensByPeriod: ["today": 400, "7d": 400, "30d": 400],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: longModel, tokens: 400, share: "100.00")],
+			]
+		)
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope(scopes: [allScope, codexScope, claudeScope])))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+
+		func ocrLines(for view: some View, width: CGFloat) throws -> [String] {
+			let size = NSSize(width: width, height: 340)
+			let hosting = NSHostingView(rootView: view.frame(width: width).background(Color.black))
+			hosting.frame = NSRect(origin: .zero, size: size)
+			hosting.layoutSubtreeIfNeeded()
+			hosting.displayIfNeeded()
+			let scale = 2
+			let bitmap = try XCTUnwrap(NSBitmapImageRep(
+				bitmapDataPlanes: nil,
+				pixelsWide: Int(size.width) * scale,
+				pixelsHigh: Int(size.height) * scale,
+				bitsPerSample: 8,
+				samplesPerPixel: 4,
+				hasAlpha: true,
+				isPlanar: false,
+				colorSpaceName: .deviceRGB,
+				bytesPerRow: 0,
+				bitsPerPixel: 0
+			))
+			bitmap.size = size
+			hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+			let cgImage = try XCTUnwrap(bitmap.cgImage)
+			let request = VNRecognizeTextRequest()
+			request.recognitionLevel = .accurate
+			request.usesLanguageCorrection = false
+			let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+			try handler.perform([request])
+			return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+		}
+
+		model.selectedClient = "all"
+		model.selectedPeriod = "today"
+		let allPanel = BreakdownPanelModel(
+			available: model.breakdownPanel.available,
+			models: model.breakdownPanel.models,
+			modelsEmptyCopy: model.breakdownPanel.modelsEmptyCopy,
+			tokenMix: model.breakdownPanel.tokenMix,
+			clientRows: []
+		)
+		let allLines = try ocrLines(
+			for: BreakdownPanelView(panel: allPanel)
+				.environment(\.colorScheme, .dark)
+				.environment(\.dynamicTypeSize, .accessibility3),
+			width: 280
+		)
+		XCTAssertTrue(
+			allLines.contains { $0.contains("gpt-6-lu") && ($0.contains("variant") || $0.contains("varlant")) && $0.contains("Codex") },
+			"expected Codex-tagged model row with client suffix preserved in \(allLines)"
+		)
+		XCTAssertTrue(
+			allLines.contains { $0.contains("gpt-6-lu") && ($0.contains("variant") || $0.contains("varlant")) && $0.contains("Claude") },
+			"expected Claude-tagged model row with client suffix preserved in \(allLines)"
+		)
+
+		model.selectedClient = "codex"
+		let codexPanel = BreakdownPanelModel(
+			available: model.breakdownPanel.available,
+			models: model.breakdownPanel.models,
+			modelsEmptyCopy: model.breakdownPanel.modelsEmptyCopy,
+			tokenMix: model.breakdownPanel.tokenMix,
+			clientRows: []
+		)
+		let codexLines = try ocrLines(
+			for: BreakdownPanelView(panel: codexPanel).environment(\.colorScheme, .dark),
+			width: 280
+		)
+		XCTAssertTrue(codexLines.contains { $0.contains("gpt-6-luna") && !$0.contains("Codex") }, "single-client should omit suffix: \(codexLines)")
 	}
 
 	func testRhythmHoverClearsOnlyTheCellThatActuallyExited() {

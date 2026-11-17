@@ -60,14 +60,30 @@ enum WireFixture {
 		]
 	}
 
+	struct ModelFixture {
+		let client: String?
+		let model: String
+		let tokens: Int64
+		let share: String
+	}
+
 	static func period(
 		_ name: String,
 		tokens: Int64,
 		pricingComplete: Bool = true,
 		unpricedComponents: Int = 0,
-		models: [String] = ["gpt-5"]
+		models: [String] = ["gpt-5"],
+		modelEntries: [ModelFixture]? = nil
 	) -> [String: Any] {
-		[
+		let encodedModels = (modelEntries ?? models.map { ModelFixture(client: nil, model: $0, tokens: tokens, share: "100.00") }).map { entry in
+			[
+				"client": entry.client ?? NSNull(),
+				"model": entry.model,
+				"value": displayValue(tokens: entry.tokens),
+				"share": entry.share,
+			] as [String: Any]
+		}
+		return [
 			"period": name,
 			"totals": totals(
 				tokens: tokens,
@@ -79,9 +95,7 @@ enum WireFixture {
 			"average_per_day": ["tokens": "\(tokens).00", "provider_cost": "1.000000", "known_provider_cost": "1.000000"],
 			"peak": ["date": "2026-08-13", "totals": totals(tokens: tokens)],
 			"cache_hit_share": "66.10",
-			"models": models.map { name in
-				["client": NSNull(), "model": name, "value": displayValue(tokens: tokens), "share": "100.00"] as [String: Any]
-			},
+			"models": encodedModels,
 		]
 	}
 
@@ -95,7 +109,8 @@ enum WireFixture {
 		hourlyAvailable: Bool = true,
 		throughHour: Int = 23,
 		periodsAvailable: Bool = true,
-		unpricedIdentifiers: [String: [String]] = [:]
+		unpricedIdentifiers: [String: [String]] = [:],
+		modelsByPeriod: [String: [ModelFixture]] = [:]
 	) -> [String: Any] {
 		precondition((0 ... 23).contains(throughHour))
 		let order = ["today", "7d", "30d"]
@@ -117,7 +132,7 @@ enum WireFixture {
 			"client": client,
 			"periods": [
 				"available": periodsAvailable,
-				"items": order.map { period($0, tokens: tokensByPeriod[$0] ?? 0) },
+				"items": order.map { period($0, tokens: tokensByPeriod[$0] ?? 0, modelEntries: modelsByPeriod[$0]) },
 			],
 			"daily": [
 				"available": dailyAvailable,

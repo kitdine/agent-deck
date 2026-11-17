@@ -870,4 +870,42 @@ final class DesktopWireTests: XCTestCase {
             XCTAssertFalse(jsonStr.contains(sensitive), "Health check wire payload contains sensitive string '\(sensitive)'")
         }
     }
+
+	func testPresentationModelDisplayAnnotatesClientOnlyInAllScope() throws {
+		let json = Data(#"""
+		[
+			{"client":"codex","model":"gpt-6-luna","value":{"tokens":600,"events":1,"provider_cost":"0.600000","cost_incomplete":false},"share":"60.00"},
+			{"client":"claude","model":"gpt-6-luna","value":{"tokens":400,"events":1,"provider_cost":"0.400000","cost_incomplete":false},"share":"40.00"},
+			{"model":"gpt-5","value":{"tokens":100,"events":1,"provider_cost":"0.100000","cost_incomplete":false},"share":"100.00"}
+		]
+		"""#.utf8)
+		let models = try JSONDecoder().decode([DesktopPresentationModelV1].self, from: json)
+		XCTAssertEqual(Set(models.map(\.id)).count, 3)
+
+		XCTAssertEqual(models[0].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: "Codex"))
+		XCTAssertEqual(models[0].display(inScope: "all").text, "gpt-6-luna · Codex")
+		XCTAssertEqual(models[1].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: "Claude"))
+		XCTAssertEqual(models[1].display(inScope: "all").text, "gpt-6-luna · Claude")
+		XCTAssertEqual(models[2].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-5", clientLabel: nil))
+		XCTAssertEqual(models[2].display(inScope: "all").text, "gpt-5")
+
+		XCTAssertEqual(models[0].display(inScope: "codex"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: nil))
+		XCTAssertEqual(models[0].display(inScope: "codex").text, "gpt-6-luna")
+		XCTAssertEqual(models[1].display(inScope: "claude"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: nil))
+		XCTAssertEqual(models[1].display(inScope: "claude").text, "gpt-6-luna")
+	}
+
+	func testPresentationModelDisplayShowsUnknownClientsAsReported() throws {
+		let json = Data(#"""
+		[
+			{"client":"opencode","model":"x","value":{"tokens":1,"events":1,"provider_cost":"0.000001","cost_incomplete":false},"share":"50.00"},
+			{"client":"gemini-cli","model":"x","value":{"tokens":1,"events":1,"provider_cost":"0.000001","cost_incomplete":false},"share":"50.00"}
+		]
+		"""#.utf8)
+		let models = try JSONDecoder().decode([DesktopPresentationModelV1].self, from: json)
+		XCTAssertEqual(models.map { $0.display(inScope: "all").text }, ["x · opencode", "x · gemini-cli"])
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("codex"), "Codex")
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("claude"), "Claude")
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("opencode"), "opencode")
+	}
 }

@@ -482,12 +482,46 @@ public struct DesktopPresentationPeakV1: Codable, Equatable, Sendable {
 	public let totals: DesktopPresentationTotalsV1
 }
 
+public struct DesktopPresentationModelDisplay: Equatable, Sendable {
+	public let model: String
+	public let clientLabel: String?
+
+	public var text: String {
+		guard let clientLabel, !clientLabel.isEmpty else { return model }
+		return "\(model) · \(clientLabel)"
+	}
+}
+
 public struct DesktopPresentationModelV1: Codable, Equatable, Sendable, Identifiable {
 	public var id: String { [client ?? "", model].joined(separator: "\u{0}") }
 	public let client: String?
 	public let model: String
 	public let value: DesktopPresentationValueV1
 	public let share: String?
+
+	public func display(inScope scopeClient: String) -> DesktopPresentationModelDisplay {
+		let suffix: String?
+		if scopeClient == "all",
+			let rawClient = client?.trimmingCharacters(in: .whitespacesAndNewlines),
+			!rawClient.isEmpty,
+			rawClient != "all"
+		{
+			suffix = Self.clientDisplayLabel(rawClient)
+		} else {
+			suffix = nil
+		}
+		return DesktopPresentationModelDisplay(model: model, clientLabel: suffix)
+	}
+
+	/// The display name of a concrete client value. Known clients use their
+	/// product names; any other value is shown as reported.
+	public static func clientDisplayLabel(_ raw: String) -> String {
+		switch raw {
+		case "codex": "Codex"
+		case "claude": "Claude"
+		default: raw
+		}
+	}
 
 	enum CodingKeys: String, CodingKey {
 		case client, model, value, totals, share

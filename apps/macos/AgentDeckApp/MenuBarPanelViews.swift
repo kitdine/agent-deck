@@ -489,7 +489,7 @@ private struct BreakdownModelsCard: View {
 				ForEach(Array(shown.enumerated()), id: \.element.id) { index, row in
 					BreakdownModelRow(
 						row: row,
-						tone: BreakdownPalette.modelTone(label: row.label, fallbackIndex: index)
+						tone: BreakdownPalette.modelTone(label: row.modelName ?? row.label, fallbackIndex: index)
 					)
 				}
 			}
@@ -513,17 +513,33 @@ private struct BreakdownModelRow: View {
 			HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
 				HStack(spacing: 6) {
 					Circle().fill(tone.color).frame(width: 7, height: 7)
-					Text(row.label).lineLimit(1).truncationMode(.middle)
+					if let modelName = row.modelName, let clientLabel = row.clientLabel, !clientLabel.isEmpty {
+						HStack(spacing: 0) {
+							Text(modelName)
+								.lineLimit(1)
+								.truncationMode(.middle)
+							Text(" · \(clientLabel)")
+								.lineLimit(1)
+								.layoutPriority(1)
+						}
+						.accessibilityElement(children: .ignore)
+						.accessibilityLabel(row.label)
+					} else {
+						Text(row.label).lineLimit(1).truncationMode(.middle)
+					}
 				}
 				Spacer(minLength: MenuBarGeometry.betweenRows)
 				Text(row.value)
 					.foregroundStyle(DesktopVisualTheme.muted)
 					.fontWeight(.medium)
 					.monospacedDigit()
+					.lineLimit(1)
+					.layoutPriority(1)
 				Text(row.shareText)
 					.fontWeight(.semibold)
 					.monospacedDigit()
 					.frame(width: 52, alignment: .trailing)
+					.layoutPriority(1)
 			}
 			.font(.caption)
 			GeometryReader { geometry in
