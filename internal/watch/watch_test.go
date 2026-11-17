@@ -3,6 +3,7 @@ package watch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -383,6 +384,290 @@ func TestRunStopsOnEmitError(t *testing.T) {
 	}
 	if snapshots != 1 || scans != 1 || emits != 1 {
 		t.Fatalf("calls after emit failure: snapshots=%d scans=%d emits=%d, want 1 each", snapshots, scans, emits)
+	}
+}
+
+func TestRunStopsCleanlyOnMidRoundCancellation(t *testing.T) {
+	tests := []struct {
+		name               string
+		cancelIn           string
+		returnContextError bool
+	}{
+		{name: "snapshot returns context error", cancelIn: "snapshot", returnContextError: true},
+		{name: "snapshot ignores context", cancelIn: "snapshot", returnContextError: false},
+		{name: "lock returns context error", cancelIn: "lock", returnContextError: true},
+		{name: "scan returns context error", cancelIn: "scan", returnContextError: true},
+		{name: "scan ignores context", cancelIn: "scan", returnContextError: false},
+		{name: "post-scan fingerprint returns context error", cancelIn: "post_scan", returnContextError: true},
+		{name: "post-scan fingerprint ignores context", cancelIn: "post_scan", returnContextError: false},
+		{name: "persist fingerprint returns context error", cancelIn: "persist", returnContextError: true},
+		{name: "persist fingerprint ignores context", cancelIn: "persist", returnContextError: false},
+		{name: "release after completed round", cancelIn: "release"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			lock := newWatchTestLock(t, nil)
+			lockCalls, scans, postScans, persists, emits := 0, 0, 0, 0, 0
+			persisted := map[string]string{}
+
+			service := Service{
+				Sources: SourceSet{{
+					Domain: "session",
+					Snapshot: func(ctx context.Context) (string, error) {
+						if test.cancelIn == "snapshot" {
+							cancel()
+							if test.returnContextError {
+								return "", ctx.Err()
+							}
+						}
+						return "changed", nil
+					},
+					Scan: func(ctx context.Context) (int, error) {
+						lock.assertHeld("Scan")
+						scans++
+						if test.cancelIn == "scan" {
+							cancel()
+							if test.returnContextError {
+								return 0, ctx.Err()
+							}
+						}
+						return 1, nil
+					},
+					PostScanFingerprint: func(ctx context.Context, captured string) (string, error) {
+						lock.assertHeld("PostScanFingerprint")
+						postScans++
+						if test.cancelIn == "post_scan" {
+							cancel()
+							if test.returnContextError {
+								return "", ctx.Err()
+							}
+						}
+						return captured + "-post", nil
+					},
+				}},
+				Lock: func(ctx context.Context) (func() error, error) {
+					lockCalls++
+					if test.cancelIn == "lock" && lockCalls == 1 {
+						cancel()
+						return nil, ctx.Err()
+					}
+					release, err := lock.acquire(ctx)
+					if err != nil {
+						return nil, err
+					}
+					return func() error {
+						err := release()
+						if test.cancelIn == "release" {
+							cancel()
+						}
+						return err
+					}, nil
+				},
+				PersistFingerprint: func(ctx context.Context, domain, value string) error {
+					lock.assertHeld("PersistFingerprint")
+					persists++
+					if test.cancelIn == "persist" {
+						cancel()
+						if test.returnContextError {
+							return ctx.Err()
+						}
+					}
+					persisted[domain] = value
+					return nil
+				},
+			}
+
+			err := service.Run(ctx, time.Hour, func(Event) error {
+				emits++
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Run error = %v, want nil on mid-round cancellation", err)
+			}
+			completed := (test.cancelIn == "persist" && !test.returnContextError) || test.cancelIn == "release"
+			wantEmits := 0
+			if completed {
+				wantEmits = 1
+				if persisted["session"] != "changed-post" || service.fingerprints["session"] != "changed-post" {
+					t.Fatalf("completed fingerprints = %v / %v, want changed-post", persisted, service.fingerprints)
+				}
+			}
+			if emits != wantEmits {
+				t.Fatalf("emits = %d, want %d; completed=%t", emits, wantEmits, completed)
+			}
+			if test.cancelIn == "snapshot" || test.cancelIn == "lock" {
+				if scans != 0 || postScans != 0 || persists != 0 {
+					t.Fatalf("unexpected work after %s cancellation: scans=%d postScans=%d persists=%d", test.cancelIn, scans, postScans, persists)
+				}
+				if lock.acquired != 0 || lock.released != 0 || lock.held {
+					t.Fatalf("unexpected lock activity: acquired=%d held=%t released=%d", lock.acquired, lock.held, lock.released)
+				}
+			} else {
+				lock.assertLifecycle()
+				if test.cancelIn == "scan" && (postScans != 0 || persists != 0) {
+					t.Fatalf("unexpected post-scan/persist after scan cancellation: postScans=%d persists=%d", postScans, persists)
+				}
+				if test.cancelIn == "post_scan" && persists != 0 {
+					t.Fatalf("unexpected persist after post-scan cancellation: persists=%d", persists)
+				}
+			}
+			if !completed {
+				if len(persisted) != 0 || len(service.fingerprints) != 0 {
+					t.Fatalf("fingerprints updated after cancellation: persisted=%v inMemory=%v", persisted, service.fingerprints)
+				}
+			}
+			// A subsequent uncancelled Poll must still see the source as unacknowledged
+			// unless PersistFingerprint already committed on disk before cancellation.
+			if !completed {
+				events, pollErr := service.Poll(context.Background())
+				if pollErr != nil || len(events) != 1 || events[0].Type != "scan_completed" {
+					t.Fatalf("follow-up Poll = %#v, %v, want 1 scan_completed event", events, pollErr)
+				}
+			}
+		})
+	}
+}
+
+func TestRunPreservesErrorsWhenCancelledMidRound(t *testing.T) {
+	independentErr := errors.New("independent scan failure")
+	releaseErr := errors.New("release lock failure")
+	emitErr := errors.New("emit failure")
+
+	t.Run("independent scan error preserved even when ctx cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		lock := newWatchTestLock(t, nil)
+		service := Service{
+			Sources: SourceSet{{
+				Domain:   "session",
+				Snapshot: func(context.Context) (string, error) { return "changed", nil },
+				Scan: func(context.Context) (int, error) {
+					cancel()
+					return 0, independentErr
+				},
+			}},
+			Lock: lock.acquire,
+		}
+		err := service.Run(ctx, time.Hour, func(Event) error {
+			t.Fatal("emit should not be called")
+			return nil
+		})
+		if !errors.Is(err, independentErr) {
+			t.Fatalf("Run error = %v, want %v", err, independentErr)
+		}
+		lock.assertLifecycle()
+	})
+
+	t.Run("lock release failure preserved on mid-round cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		lock := newWatchTestLock(t, releaseErr)
+		service := Service{
+			Sources: SourceSet{{
+				Domain:   "session",
+				Snapshot: func(context.Context) (string, error) { return "changed", nil },
+				Scan: func(ctx context.Context) (int, error) {
+					cancel()
+					return 0, ctx.Err()
+				},
+			}},
+			Lock: lock.acquire,
+		}
+		err := service.Run(ctx, time.Hour, func(Event) error {
+			t.Fatal("emit should not be called")
+			return nil
+		})
+		if !errors.Is(err, releaseErr) {
+			t.Fatalf("Run error = %v, want release error %v", err, releaseErr)
+		}
+		lock.assertLifecycle()
+	})
+
+	t.Run("emit error preserved even when ctx cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		lock := newWatchTestLock(t, nil)
+		service := Service{
+			Sources: SourceSet{{
+				Domain:   "usage",
+				Snapshot: func(context.Context) (string, error) { return "changed", nil },
+				Scan:     func(context.Context) (int, error) { return 1, nil },
+			}},
+			Lock: lock.acquire,
+		}
+		err := service.Run(ctx, time.Hour, func(Event) error {
+			cancel()
+			return emitErr
+		})
+		if !errors.Is(err, emitErr) {
+			t.Fatalf("Run error = %v, want emit error %v", err, emitErr)
+		}
+		lock.assertLifecycle()
+	})
+}
+
+func TestRunPreservesWrappedCancellationAndIndependentErrors(t *testing.T) {
+	for _, stage := range []string{"snapshot", "scan", "post_scan", "persist"} {
+		for _, shape := range []string{"join", "multi_wrap", "wrapped_join"} {
+			t.Run(stage+"/"+shape, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				independent := errors.New("independent operation failure")
+				fail := func() error {
+					cancel()
+					switch shape {
+					case "join":
+						return errors.Join(independent, ctx.Err())
+					case "multi_wrap":
+						return fmt.Errorf("%w: %w", independent, ctx.Err())
+					default:
+						return fmt.Errorf("operation: %w", errors.Join(independent, ctx.Err()))
+					}
+				}
+				lock := newWatchTestLock(t, nil)
+				service := Service{
+					Sources: SourceSet{{
+						Domain: "session",
+						Snapshot: func(context.Context) (string, error) {
+							if stage == "snapshot" {
+								return "", fail()
+							}
+							return "changed", nil
+						},
+						Scan: func(context.Context) (int, error) {
+							if stage == "scan" {
+								return 0, fail()
+							}
+							return 1, nil
+						},
+						PostScanFingerprint: func(context.Context, string) (string, error) {
+							if stage == "post_scan" {
+								return "", fail()
+							}
+							return "complete", nil
+						},
+					}},
+					Lock: lock.acquire,
+					PersistFingerprint: func(context.Context, string, string) error {
+						if stage == "persist" {
+							return fail()
+						}
+						return nil
+					},
+				}
+				err := service.Run(ctx, time.Hour, func(Event) error { t.Fatal("unexpected completion event"); return nil })
+				if !errors.Is(err, independent) || !errors.Is(err, context.Canceled) {
+					t.Fatalf("Run error = %v, want both independent failure and cancellation", err)
+				}
+				if stage != "snapshot" {
+					lock.assertLifecycle()
+				}
+			})
+		}
 	}
 }
 
