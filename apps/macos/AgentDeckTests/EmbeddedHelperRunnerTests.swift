@@ -827,27 +827,48 @@ extension EmbeddedHelperRunnerTests {
 
 private actor SuspendedOwnershipQuery {
     private var continuation: CheckedContinuation<NativeStateLocation, Never>?
-    var waiting: Bool { continuation != nil }
+    private var released: NativeStateLocation?
+    private let installed: @Sendable () -> Void
+    init(installed: @escaping @Sendable () -> Void) { self.installed = installed }
     func query() async -> NativeStateLocation {
-        await withCheckedContinuation { continuation = $0 }
+        await withCheckedContinuation { continuation in
+            // finish() may have run first during test cleanup; never strand.
+            if let released { continuation.resume(returning: released); return }
+            self.continuation = continuation
+            installed()
+        }
     }
-    func finish(_ location: NativeStateLocation) { continuation?.resume(returning: location); continuation = nil }
+    func finish(_ location: NativeStateLocation) {
+        released = location
+        continuation?.resume(returning: location)
+        continuation = nil
+    }
 }
 
 extension EmbeddedHelperRunnerTests {
     func testClosingWhileQueryIsInFlightCannotReacquireOwnership() async throws {
         let account = try ownershipAccount()
         let session = NativeOwnershipSession(accountHome: { account })
-        let suspended = SuspendedOwnershipQuery()
+        let reachedQuery = expectation(description: "ownership query continuation installed")
+        let suspended = SuspendedOwnershipQuery(installed: { reachedQuery.fulfill() })
+        let location = NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path)
         let work = Task { try await session.resolve { await suspended.query() } }
-        for _ in 0..<1000 {
-            if await suspended.waiting { break }
-            await Task.yield()
+        // Cleanup runs on every exit path, including assertion failure: close
+        // releases ownership, cancel stops the pending resolve, and finish
+        // resumes a suspended or not-yet-entered query so work.result settles.
+        addTeardownBlock {
+            session.close()
+            work.cancel()
+            await suspended.finish(location)
+            _ = await work.result
         }
-        let waiting = await suspended.waiting
-        XCTAssertTrue(waiting)
+        // The query signals once its continuation is installed. Scheduler
+        // yields cannot prove that the suspension point was reached.
+        let readiness = await XCTWaiter.fulfillment(of: [reachedQuery], timeout: 5)
+        XCTAssertEqual(readiness, .completed, "query never reached its suspension point")
+        guard readiness == .completed else { return }
         session.close()
-        await suspended.finish(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))
+        await suspended.finish(location)
         do { _ = try await work.value; XCTFail("closed during query but returned a usable path") }
         catch { XCTAssertEqual(error as? HelperExecutionError, .cancelled) }
         let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
