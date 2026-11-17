@@ -94,7 +94,11 @@ func (e *ClaudeFailureError) Unwrap() error { return e.Err }
 func ProbeClaudeProse(ctx context.Context, observedAt time.Time, timeout time.Duration) (ClaudeProseResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, claudeProseCommandArgs[0], claudeProseCommandArgs[1:]...)
+	executable, resolveErr := claudeCommandPath(claudeProseCommandArgs)
+	if resolveErr != nil {
+		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureSpawn, Err: resolveErr}
+	}
+	cmd := exec.CommandContext(ctx, executable, claudeProseCommandArgs[1:]...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Start(); err != nil {
