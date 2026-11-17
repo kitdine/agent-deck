@@ -178,3 +178,55 @@ func snapshotWithPricedToday(_ snapshot: WidgetDesktopSnapshotV1, client: String
 }
 
 private final class WidgetFixtureBundleMarker {}
+
+/// Parts of one scope+period's totals: (tokens, input, output, cacheRead, cacheWrite).
+typealias WidgetTokenParts = (tokens: Int64, input: Int64, output: Int64, cacheRead: Int64, cacheWrite: Int64)
+
+func snapshotWithTokenParts(_ snapshot: WidgetDesktopSnapshotV1, _ overrides: [String: [String: WidgetTokenParts]]) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var usage = try XCTUnwrap(object["usage"] as? [String: Any])
+	var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+	var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+	for (client, periods) in overrides {
+		let index = try XCTUnwrap(scopes.firstIndex { ($0["client"] as? String) == client })
+		var scopePeriods = try XCTUnwrap(scopes[index]["periods"] as? [String: Any])
+		var items = try XCTUnwrap(scopePeriods["items"] as? [[String: Any]])
+		for (period, parts) in periods {
+			let at = try XCTUnwrap(items.firstIndex { ($0["period"] as? String) == period })
+			var totals = try XCTUnwrap(items[at]["totals"] as? [String: Any])
+			totals["tokens"] = parts.tokens
+			totals["input_tokens"] = parts.input
+			totals["output_tokens"] = parts.output
+			totals["cached_read_tokens"] = parts.cacheRead
+			totals["cache_write_tokens"] = parts.cacheWrite
+			items[at]["totals"] = totals
+		}
+		scopePeriods["items"] = items
+		scopes[index]["periods"] = scopePeriods
+	}
+	presentation["scopes"] = scopes
+	usage["presentation"] = presentation
+	object["usage"] = usage
+	return try JSONDecoder().decode(
+		WidgetDesktopSnapshotV1.self,
+		from: JSONSerialization.data(withJSONObject: object)
+	)
+}
+
+func snapshotWithUnavailablePeriods(_ snapshot: WidgetDesktopSnapshotV1, client: String) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var usage = try XCTUnwrap(object["usage"] as? [String: Any])
+	var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+	var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+	let index = try XCTUnwrap(scopes.firstIndex { ($0["client"] as? String) == client })
+	var periods = try XCTUnwrap(scopes[index]["periods"] as? [String: Any])
+	periods["available"] = false
+	scopes[index]["periods"] = periods
+	presentation["scopes"] = scopes
+	usage["presentation"] = presentation
+	object["usage"] = usage
+	return try JSONDecoder().decode(
+		WidgetDesktopSnapshotV1.self,
+		from: JSONSerialization.data(withJSONObject: object)
+	)
+}
