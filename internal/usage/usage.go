@@ -359,6 +359,7 @@ type catalog struct {
 	Version       string                `json:"catalog_version"`
 	Currency      string                `json:"currency"`
 	Models        map[string]modelPrice `json:"models"`
+	PricingRules  *PriceRuleSet         `json:"-"`
 }
 type modelPrice struct {
 	Provider      string            `json:"provider"`
@@ -566,10 +567,14 @@ func Calculate(client, model string, tokens map[string]int64, prices modelPrice,
 }
 
 func parseCatalog(data []byte) (catalog, error) {
-	var c catalog
-	if err := json.Unmarshal(data, &c); err != nil {
-		return c, err
+	var document struct {
+		catalog
+		PricingRules packagedPriceRules `json:"pricing_rules"`
 	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		return document.catalog, err
+	}
+	c := document.catalog
 	if c.SchemaVersion != 1 || c.Version == "" || c.Currency != "USD" || len(c.Models) == 0 {
 		return c, errors.New("invalid price catalog")
 	}
@@ -578,6 +583,7 @@ func parseCatalog(data []byte) (catalog, error) {
 			return c, fmt.Errorf("invalid model price: %s", name)
 		}
 	}
+	c.PricingRules = document.PricingRules.set
 	return c, nil
 }
 
