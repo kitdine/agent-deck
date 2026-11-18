@@ -22,7 +22,7 @@ created: 2026-11-18
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `quota-window-valuation` | [ ] | [ ] |
+| 1. `quota-window-valuation` | [x] | [x] |
 | 2. `quota-sample-storage` | [ ] | [ ] |
 | 3. `quota-session-reporting` | [ ] | [ ] |
 
