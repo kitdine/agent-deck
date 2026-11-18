@@ -143,7 +143,7 @@ func (s Service) SessionScopeView(ctx context.Context, request SessionScopeReque
 	if coreErr == nil {
 		defer core.Close()
 	}
-	return s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now), nil
+	return s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now, nil), nil
 }
 
 // SessionScopeBatchClients and SessionScopeBatchPeriods are every client and
@@ -163,6 +163,49 @@ type SessionScopeBatch struct {
 	Views []SessionScopeView `json:"views"`
 }
 
+// sessionScopeBatchVerifyBudget is the waiting time every verification of one
+// batch shares, retries included. The App runs a batch in one helper process
+// under EmbeddedHelperRunner.defaultTimeout (30s), which must also cover the
+// launch, the nine views' own reads, encoding and output. Before verification
+// was given the ordinary read budget, a batch's verifications could wait at
+// most 9 views × (1 + MaxSelectionRetries) × 200ms = 5.4s, leaving at least
+// 24.6s of the deadline for the rest. Sharing one VerifyServingGeneration
+// budget (5s) keeps the verifications' total below that, so the rest of the
+// batch keeps at least the time it had, while a slow verification still gets
+// the same patience a single view's verification does.
+const sessionScopeBatchVerifyBudget = store.VerifyServingGenerationBudget
+
+// errSessionScopeBatchVerifyBudgetSpent ends a verification the shared budget
+// no longer covers; the view is unavailable as for any failed verification.
+var errSessionScopeBatchVerifyBudgetSpent = fmt.Errorf("session scope batch verification budget spent: %w", context.DeadlineExceeded)
+
+// sessionScopeVerifyBudget is the remaining waiting time of one batch's
+// verifications. A batch reads its views one after another, so it is never
+// used concurrently.
+type sessionScopeVerifyBudget struct {
+	remaining time.Duration
+}
+
+func newSessionScopeVerifyBudget() *sessionScopeVerifyBudget {
+	return &sessionScopeVerifyBudget{remaining: sessionScopeBatchVerifyBudget}
+}
+
+// verifier verifies stateRoot's serving generation within what is left of the
+// budget, and never past the caller's own deadline.
+func (b *sessionScopeVerifyBudget) verifier(stateRoot string) func(context.Context) (store.ServingGeneration, error) {
+	return func(ctx context.Context) (store.ServingGeneration, error) {
+		if b.remaining <= 0 {
+			return store.ServingGeneration{}, errSessionScopeBatchVerifyBudgetSpent
+		}
+		ctx, cancel := context.WithTimeout(ctx, b.remaining)
+		defer cancel()
+		start := time.Now()
+		generation, err := store.VerifyServingGeneration(ctx, stateRoot)
+		b.remaining -= time.Since(start)
+		return generation, err
+	}
+}
+
 // SessionScopeBatch reads one scope for every client and period in one
 // process, the read a consumer that needs all of them (the Widget publisher)
 // makes once per publication instead of starting a helper per selection. The
@@ -170,8 +213,16 @@ type SessionScopeBatch struct {
 // instant, and each view after the first available one is pinned to that
 // view's generation, so a generation that moves mid-batch leaves the later
 // views unavailable with generation_unavailable rather than splicing two
-// generations together. Like SessionScopeView it never scans or writes.
+// generations together. Every verification of the batch shares one waiting
+// budget (sessionScopeBatchVerifyBudget): a view whose verification it no
+// longer covers is unavailable with generation_unavailable, and the views
+// already verified keep their answers. Like SessionScopeView it never scans
+// or writes.
 func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequest) (SessionScopeBatch, error) {
+	return s.sessionScopeBatch(ctx, request, newSessionScopeVerifyBudget())
+}
+
+func (s Service) sessionScopeBatch(ctx context.Context, request SessionScopeRequest, budget *sessionScopeVerifyBudget) (SessionScopeBatch, error) {
 	request.Client, request.Period = SessionScopeBatchClients[0], SessionScopeBatchPeriods[0]
 	if err := request.Validate(); err != nil {
 		return SessionScopeBatch{}, err
@@ -189,6 +240,7 @@ func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequ
 	if coreErr == nil {
 		defer core.Close()
 	}
+	verify := budget.verifier(s.StateRoot)
 	batch := SessionScopeBatch{Views: make([]SessionScopeView, 0, len(SessionScopeBatchClients)*len(SessionScopeBatchPeriods))}
 	for _, client := range SessionScopeBatchClients {
 		for _, period := range SessionScopeBatchPeriods {
@@ -196,7 +248,7 @@ func (s Service) SessionScopeBatch(ctx context.Context, request SessionScopeRequ
 				sessionScopeBatchObserver(len(batch.Views))
 			}
 			request.Client, request.Period = client, period
-			view := s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now)
+			view := s.sessionScopeView(ctx, core, coreErr, readSessionScopeDefault(ctx, core, coreErr), request, now, verify)
 			if request.GenerationID == "" && view.Available && view.GenerationID != nil {
 				request.GenerationID = *view.GenerationID
 			}
@@ -218,7 +270,9 @@ type SessionScopeDefaultBatch struct {
 // SessionScopeDefaultBatch answers SessionScopeBatch for the saved default
 // scope at one whole-second instant. A process that has just published a
 // serving snapshot (the App's bootstrap) hands it over with that publication,
-// so the Widget publisher starts no helper of its own to read it.
+// so the Widget publisher starts no helper of its own to read it. A batch
+// re-read because the default changed shares the first one's verification
+// budget.
 func (s Service) SessionScopeDefaultBatch(ctx context.Context, recentLimit int) SessionScopeDefaultBatch {
 	now := s.now().UTC().Truncate(time.Second)
 	core, coreErr := store.OpenReadOnly(ctx, s.StateRoot)
@@ -227,12 +281,13 @@ func (s Service) SessionScopeDefaultBatch(ctx context.Context, recentLimit int) 
 		core.Close()
 	}
 	result := SessionScopeDefaultBatch{AsOf: now.Format(time.RFC3339), Default: defaults, Views: []SessionScopeView{}}
+	budget := newSessionScopeVerifyBudget()
 	for attempt := 0; attempt <= sessionorigin.MaxSelectionRetries; attempt++ {
 		if !defaults.Confirmed || defaults.Value == nil {
 			result.Default, result.Views = defaults, []SessionScopeView{}
 			return result
 		}
-		batch, err := s.SessionScopeBatch(ctx, SessionScopeRequest{Scope: *defaults.Value, RecentLimit: recentLimit, AsOf: now})
+		batch, err := s.sessionScopeBatch(ctx, SessionScopeRequest{Scope: *defaults.Value, RecentLimit: recentLimit, AsOf: now}, budget)
 		if err != nil {
 			return result
 		}
@@ -311,7 +366,7 @@ func (s Service) loadSessionScopeView(ctx context.Context, limit int, now time.T
 			view = unavailableSessionScopeView(defaults, nil, SessionScopeReasonDefaultUnconfirmed)
 			break
 		}
-		view = s.sessionScopeView(ctx, core, coreErr, defaults, request, now)
+		view = s.sessionScopeView(ctx, core, coreErr, defaults, request, now, nil)
 		if !view.Available || sameDefaultScope(view.Default, defaults) {
 			break
 		}
@@ -341,7 +396,9 @@ func (r SessionScopeRequest) selection() *SessionScopeSelection {
 	return &SessionScopeSelection{Scope: r.Scope, Client: r.Client, Period: r.Period}
 }
 
-func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreErr error, defaults sessionorigin.DefaultScope, request SessionScopeRequest, now time.Time) SessionScopeView {
+// sessionScopeView reads one view. verify, when non-nil, replaces the
+// selection's default verification; a single view leaves it nil.
+func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreErr error, defaults sessionorigin.DefaultScope, request SessionScopeRequest, now time.Time, verify func(context.Context) (store.ServingGeneration, error)) SessionScopeView {
 	selection := request.selection()
 	var window desktopPeriodRange
 	for _, candidate := range desktopPeriodRanges(now, s.location()) {
@@ -359,7 +416,7 @@ func (s Service) sessionScopeView(ctx context.Context, core *store.Store, coreEr
 		return unavailableSessionScopeView(defaults, selection, sessionorigin.PublicationReasonSessionsUnavailable)
 	}
 	defer sessions.Close()
-	reader := sessionorigin.Reader{Core: core, Sessions: sessions, StateRoot: s.StateRoot}
+	reader := sessionorigin.Reader{Core: core, Sessions: sessions, StateRoot: s.StateRoot, Verify: verify}
 	signals := emptyWorkSignalsSnapshot()
 	var snapshot sessionorigin.Snapshot
 	switch {

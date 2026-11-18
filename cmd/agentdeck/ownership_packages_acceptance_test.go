@@ -43,6 +43,7 @@ var ownershipPackageCases = []string{
 	"installation.StateRoot", "installation.StateRootWithHome",
 	"store.Open", "store.OpenExisting", "store.OpenReadOnly", "store.OpenWithLockHeld", "store.OpenSessions", "store.OpenSessionsReadOnly",
 	"store.AcquireLock", "store.AcquireScanLock", "store.AcquireQuotaRefreshLock", "store.AcquireDerivedSnapshotCacheLock", "store.AcquireServingSnapshotLock", "store.InspectScanLockContention", "store.OpenServingGenerationReader", "store.ReadServingGeneration",
+	"store.VerifyServingGeneration",
 	"credentialvault.Vault.Seal", "credentialvault.Vault.SealExisting", "credentialvault.Vault.Open", "credentialvault.Vault.InspectKey", "credentialvault.Vault.InspectKeyIDs", "credentialvault.Vault.InitializeNew",
 	"hookrefusal.Read", "hookrefusal.Live", "hookrefusal.Write", "hookrefusal.Clear",
 	"telemetry.LoadConfig", "telemetry.SaveConfig", "telemetry.EnsureToken", "telemetry.ReadToken", "telemetry.ReadListenerState", "telemetry.ReadStatus", "telemetry.WriteManagedBlock", "telemetry.RemoveManagedBlock", "telemetry.Serve", "telemetry.Receiver.ServeHTTP",
@@ -131,6 +132,8 @@ func ownershipPackageProbe(name, root string) int {
 		}
 	case "store.ReadServingGeneration":
 		_, err = store.ReadServingGeneration(ctx, root)
+	case "store.VerifyServingGeneration":
+		_, err = store.VerifyServingGeneration(ctx, root)
 	case "credentialvault.Vault.Seal":
 		_, err = vault.Seal(ctx, "fixture", "synthetic-secret")
 	case "credentialvault.Vault.SealExisting":
@@ -320,7 +323,7 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 		"telemetry.Dir":                       "pure path constructor",
 		"telemetry.JournalDir":                "pure path constructor",
 		"sessionorigin.SourceConfigDir":       "pure path constructor; config I/O is guarded",
-		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.ReadServingGeneration",
+		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.VerifyServingGeneration",
 		"desktop.Service.RefreshQuota":        "AcquireQuotaRefreshLock guards before quota work; supplied Store owns its handle",
 		"desktop.Service.BuildSubscription":   "supplied guarded Store; quota APIs own their lock",
 	}
