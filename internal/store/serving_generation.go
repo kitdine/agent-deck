@@ -102,9 +102,15 @@ func installServingRevisionTriggers(ctx context.Context, tx *sql.Tx, tables []st
 	return nil
 }
 
+// servingIdentityBudget is the global startup identity deadline: App restore
+// and serving publication treat an identity check that misses it as identity
+// unknown.
+const servingIdentityBudget = 200 * time.Millisecond
+
 // ServingGenerationReader borrows process-owned read-only pools for the two
 // identity observations. Generation values are never cached. The reader itself
-// is request-local, not shared concurrently, and owns one 200ms deadline.
+// is request-local, not shared concurrently, and owns one deadline fixed when
+// it is opened.
 type ServingGenerationReader struct {
 	ctx                          context.Context
 	cancel                       context.CancelFunc
@@ -114,12 +120,18 @@ type ServingGenerationReader struct {
 	releaseCore, releaseSessions func() error
 }
 
+// OpenServingGenerationReader opens a reader under servingIdentityBudget.
 func OpenServingGenerationReader(ctx context.Context, stateRoot string) (*ServingGenerationReader, error) {
+	return openServingGenerationReader(ctx, stateRoot, servingIdentityBudget)
+}
+
+// budget never extends the caller's deadline or outlives its cancellation.
+func openServingGenerationReader(ctx context.Context, stateRoot string, budget time.Duration) (*ServingGenerationReader, error) {
 	stateRoot, err := platform.GuardStateRoot(stateRoot)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	success := false
 	defer func() {
 		if !success {
@@ -200,8 +212,29 @@ func (r *ServingGenerationReader) Read() (ServingGeneration, error) {
 }
 
 // ReadServingGeneration never creates, migrates, scans, or takes a writer lock.
+// It is the identity check, bounded by servingIdentityBudget.
 func ReadServingGeneration(ctx context.Context, stateRoot string) (ServingGeneration, error) {
-	reader, err := OpenServingGenerationReader(ctx, stateRoot)
+	return readServingGeneration(ctx, stateRoot, servingIdentityBudget)
+}
+
+// VerifyServingGenerationBudget bounds one VerifyServingGeneration call: the
+// ordinary read-only busy timeout of the reads it verifies.
+const VerifyServingGenerationBudget = readOnlyBusyTimeout
+
+// VerifyServingGeneration is ReadServingGeneration for a request that has
+// already read its data through ordinary read-only stores and now checks that
+// the vector did not move. It is one more read of that request, so it is
+// bounded like the reads it verifies (VerifyServingGenerationBudget) rather
+// than by the startup identity budget, and never longer than the caller's own
+// deadline. Lock waits keep the identity profile's short busy timeout;
+// missing, unsafe, replaced, corrupt or newer state fails exactly as
+// ReadServingGeneration does.
+func VerifyServingGeneration(ctx context.Context, stateRoot string) (ServingGeneration, error) {
+	return readServingGeneration(ctx, stateRoot, VerifyServingGenerationBudget)
+}
+
+func readServingGeneration(ctx context.Context, stateRoot string, budget time.Duration) (ServingGeneration, error) {
+	reader, err := openServingGenerationReader(ctx, stateRoot, budget)
 	if err != nil {
 		return ServingGeneration{}, err
 	}

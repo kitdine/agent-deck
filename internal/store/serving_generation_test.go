@@ -2,11 +2,15 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 func servingTestStores(t *testing.T) (string, *Store, *Store) {
@@ -225,5 +229,227 @@ func TestServingGenerationReaderBudgetAndCancellation(t *testing.T) {
 	cancel()
 	if _, err := reader.Read(); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel ignored: %v", err)
+	}
+}
+
+// holdIdentityConnection occupies the process identity pool's only connection
+// to the core database until the returned release runs. Readers on that pool
+// then wait inside the serving reader exactly as they do when the process is
+// slow, without depending on machine load. The returned pool counts those
+// waits, so a test can see a reader enter one.
+func holdIdentityConnection(t *testing.T, root string) (*sql.DB, func()) {
+	t.Helper()
+	guarded, err := platform.GuardStateRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, release, err := acquireReadOnlySQL(context.Background(), filepath.Join(guarded, "agentdeck.sqlite3"), "identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		_ = release()
+		t.Fatal(err)
+	}
+	var once sync.Once
+	free := func() {
+		once.Do(func() {
+			_ = conn.Close()
+			_ = release()
+		})
+	}
+	t.Cleanup(free)
+	return db, free
+}
+
+// awaitIdentityWaiter returns once a reader has started waiting for the held
+// identity connection: the pool counts a wait when it begins, so this is
+// ordered after the reader entered the wait however the scheduler runs.
+func awaitIdentityWaiter(t *testing.T, db *sql.DB, before int64) {
+	t.Helper()
+	guard := time.Now().Add(time.Minute) // hang guard only
+	for db.Stats().WaitCount <= before {
+		if time.Now().After(guard) {
+			t.Fatal("no reader waited for the identity connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+type servingVerification struct {
+	generation ServingGeneration
+	err        error
+	elapsed    time.Duration
+}
+
+// startVerification runs VerifyServingGeneration in the background; its
+// elapsed time starts when the call does.
+func startVerification(ctx context.Context, root string) <-chan servingVerification {
+	done := make(chan servingVerification, 1)
+	go func() {
+		start := time.Now()
+		generation, err := VerifyServingGeneration(ctx, root)
+		done <- servingVerification{generation, err, time.Since(start)}
+	}()
+	return done
+}
+
+func awaitVerification(t *testing.T, done <-chan servingVerification) servingVerification {
+	t.Helper()
+	select {
+	case result := <-done:
+		return result
+	case <-time.After(time.Minute):
+		t.Fatal("verification did not return") // hang guard only
+		return servingVerification{}
+	}
+}
+
+func TestServingGenerationVerifyOutlastsIdentityBudgetOnHealthyState(t *testing.T) {
+	root, _, _ := servingTestStores(t)
+	ctx := context.Background()
+	want, err := ReadServingGeneration(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The startup identity check keeps its budget: a connection held past it
+	// still makes identity unknown there.
+	db, free := holdIdentityConnection(t, root)
+	if _, err := ReadServingGeneration(ctx, root); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("identity check outlived its budget: %v", err)
+	}
+
+	// Verification waits for the same connection past that budget. It is
+	// released only after the verification is seen waiting and has run longer
+	// than the identity budget, so a slow scheduler only lengthens the hold.
+	waits := db.Stats().WaitCount
+	start := time.Now()
+	done := startVerification(ctx, root)
+	awaitIdentityWaiter(t, db, waits)
+	time.Sleep(time.Until(start.Add(servingIdentityBudget + 100*time.Millisecond)))
+	free()
+	got := awaitVerification(t, done)
+	if got.err != nil {
+		t.Fatalf("healthy state reported unavailable after %v: %v", got.elapsed, got.err)
+	}
+	if got.elapsed <= servingIdentityBudget {
+		t.Fatalf("verification did not wait for the held connection: %v", got.elapsed)
+	}
+	if got.generation != want {
+		t.Fatalf("verified generation = %+v, want %+v", got.generation, want)
+	}
+}
+
+// Without a caller deadline, a verification whose identity connection stays
+// busy ends at VerifyServingGeneration's own budget: the ordinary read-only
+// busy timeout, never longer and never the startup identity budget.
+func TestServingGenerationVerifyEndsAtItsOwnBudget(t *testing.T) {
+	root, _, _ := servingTestStores(t)
+	db, _ := holdIdentityConnection(t, root)
+	waits := db.Stats().WaitCount
+	got := awaitVerification(t, startVerification(context.Background(), root))
+	if !errors.Is(got.err, context.DeadlineExceeded) {
+		t.Fatalf("held identity connection = %v after %v", got.err, got.elapsed)
+	}
+	if db.Stats().WaitCount <= waits {
+		t.Fatal("verification never waited for the identity connection")
+	}
+	// The deadline cannot fire early; returning takes far less than the slack.
+	const slack = 2 * time.Second
+	if got.elapsed < readOnlyBusyTimeout || got.elapsed > readOnlyBusyTimeout+slack {
+		t.Fatalf("verification budget ended after %v, want %v", got.elapsed, readOnlyBusyTimeout)
+	}
+}
+
+func TestServingGenerationVerifyBoundedByCallerAndBudget(t *testing.T) {
+	root, _, _ := servingTestStores(t)
+	db, _ := holdIdentityConnection(t, root)
+
+	// A caller deadline far shorter than the budget ends the wait: the
+	// budget never extends it.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	got := awaitVerification(t, startVerification(ctx, root))
+	if !errors.Is(got.err, context.DeadlineExceeded) || ctx.Err() == nil {
+		t.Fatalf("caller deadline ignored: %v", got.err)
+	}
+	if got.elapsed >= readOnlyBusyTimeout {
+		t.Fatalf("caller deadline extended to %v", got.elapsed)
+	}
+
+	// Cancellation while the verification waits ends it as cancelled.
+	ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+	waits := db.Stats().WaitCount
+	done := startVerification(ctx, root)
+	awaitIdentityWaiter(t, db, waits)
+	cancel()
+	got = awaitVerification(t, done)
+	if !errors.Is(got.err, context.Canceled) {
+		t.Fatalf("caller cancellation ignored: %v", got.err)
+	}
+	if got.elapsed >= readOnlyBusyTimeout {
+		t.Fatalf("cancellation observed after %v", got.elapsed)
+	}
+}
+
+func TestServingGenerationVerifyKeepsGenuineFailures(t *testing.T) {
+	ctx := context.Background()
+	missing := filepath.Join(t.TempDir(), "missing")
+	if _, err := VerifyServingGeneration(ctx, missing); err == nil {
+		t.Fatal("missing state verified")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("verification created state: %v", err)
+	}
+
+	root, core, sessionStore := servingTestStores(t)
+	path := filepath.Join(root, "agentdeck.sqlite3")
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyServingGeneration(ctx, root); err == nil {
+		t.Fatal("public database verified")
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := core.DB.Exec(`UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1); err != nil {
+		t.Fatal(err)
+	}
+	var ahead *SchemaAhead
+	if _, err := VerifyServingGeneration(ctx, root); !errors.As(err, &ahead) {
+		t.Fatalf("newer core verified: %v", err)
+	}
+	if _, err := core.DB.Exec(`UPDATE schema_metadata SET version=?`, CurrentSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sessionStore.DB.Exec(`UPDATE serving_generation SET schema_version=schema_version+1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyServingGeneration(ctx, root); err == nil || err.Error() != "invalid serving generation" {
+		t.Fatalf("invalid generation verified: %v", err)
+	}
+
+	// Move the WAL with the database: it still holds the old pages.
+	sessions := filepath.Join(root, "sessions.sqlite3")
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(sessions+suffix, sessions+suffix+".old"); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(sessions, []byte("not a database"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := VerifyServingGeneration(ctx, root); err == nil {
+		t.Fatal("corrupt session index verified")
+	}
+	if elapsed := time.Since(start); elapsed > servingIdentityBudget {
+		t.Fatalf("corrupt state waited for the budget: %v", elapsed)
 	}
 }
