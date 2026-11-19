@@ -317,6 +317,27 @@ func TestQuotaIdentityReadOnlySchemaMatrix(t *testing.T) {
 			if err != nil || len(alerts) != 0 {
 				t.Fatalf("unknown failure order generated a notice: %d: %v", len(alerts), err)
 			}
+			if version >= 29 {
+				official := map[Client]bool{ClientCodex: true}
+				config := AlertConfig{Enabled: true, Thresholds: []float64{25}}
+				due, err := DueAlerts(ctx, q, true, official, config, now)
+				if err != nil || len(due) != 1 || due[0].Client != ClientCodex || due[0].Generation != 0 {
+					t.Fatalf("legacy Codex notices = %+v: %v", due, err)
+				}
+				key, err := parseAlertID(due[0].ID)
+				if err != nil || key.Generation != 0 {
+					t.Fatalf("legacy Codex notice ID = %+v: %v", key, err)
+				}
+				if _, err := s.db.ExecContext(ctx,
+					"INSERT INTO quota_alert_notices (client, window_key, kind, threshold, instance_unix, notified_at) VALUES (?, ?, ?, ?, ?, ?)",
+					key.Client, key.WindowKey, key.Kind, key.Threshold, key.Instance, now.Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				due, err = DueAlerts(ctx, q, true, official, config, now)
+				if err != nil || len(due) != 0 {
+					t.Fatalf("legacy Codex notice was not deduplicated: %+v: %v", due, err)
+				}
+			}
 			if got, err := ro.SchemaVersion(ctx); got != version || err != nil {
 				t.Fatalf("read migrated schema %d: %v", got, err)
 			}

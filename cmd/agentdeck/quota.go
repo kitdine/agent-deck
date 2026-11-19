@@ -314,6 +314,7 @@ func quotaStatusLineManager(opts *commandOptions, stateRoot string) (*usagehook.
 }
 
 type desktopQuotaRefreshResult struct {
+	StateRootID string              `json:"state_root_id,omitempty"`
 	GateReasons map[string]*string  `json:"gate_reasons"`
 	Alerts      []desktopQuotaAlert `json:"alerts"`
 }
@@ -322,19 +323,41 @@ type desktopQuotaRefreshResult struct {
 // present only for a threshold notice; label is the vendor's window label, and
 // window_minutes is null when the length is not reported.
 type desktopQuotaAlert struct {
-	ID            string   `json:"id"`
-	Kind          string   `json:"kind"`
-	Client        string   `json:"client"`
-	Label         string   `json:"label,omitempty"`
-	WindowMinutes *int     `json:"window_minutes"`
-	UsedPercent   float64  `json:"used_percent"`
-	Threshold     *float64 `json:"threshold,omitempty"`
+	Generation    quota.Generation `json:"generation"`
+	ID            string           `json:"id"`
+	Kind          string           `json:"kind"`
+	Client        string           `json:"client"`
+	Label         string           `json:"label,omitempty"`
+	WindowMinutes *int             `json:"window_minutes"`
+	UsedPercent   float64          `json:"used_percent"`
+	Threshold     *float64         `json:"threshold,omitempty"`
 }
 
-func desktopQuotaAlerts(due []quota.DueAlert) []desktopQuotaAlert {
+func desktopQuotaAlertEnvelope(ctx context.Context, ledger *quota.Store, cycle quota.RefreshCycle, guard *quota.QuotaDeliveryGuard, settings quota.Settings, outcome map[quota.Client]quota.Reason, now time.Time) (desktopQuotaRefreshResult, error) {
+	var rootID string
+	var proofErr error
+	if reason, allowed := outcome[quota.ClientClaude]; allowed && reason == "" {
+		rootID, proofErr = ledger.AlertStateRootID(ctx, cycle, guard)
+	}
+	officialClients := map[quota.Client]bool{}
+	for client, reason := range outcome {
+		officialClients[client] = reason == "" && (client != quota.ClientClaude || rootID != "")
+	}
+	due, err := quota.DueAlerts(ctx, ledger, settings.ProbeEnabled, officialClients, settings.AlertConfig(), now)
+	if rootID != "" {
+		// Recheck after collection. A held, still-bound inode remains valid.
+		rootID, proofErr = ledger.AlertStateRootID(ctx, cycle, guard)
+	}
 	alerts := make([]desktopQuotaAlert, 0, len(due))
+	resultRoot := ""
 	for _, alert := range due {
-		item := desktopQuotaAlert{ID: alert.ID, Kind: string(alert.Kind), Client: string(alert.Client), Label: alert.Label, UsedPercent: alert.UsedPercent}
+		if alert.Client == quota.ClientClaude {
+			if rootID == "" {
+				continue
+			}
+			resultRoot = rootID
+		}
+		item := desktopQuotaAlert{ID: alert.ID, Kind: string(alert.Kind), Client: string(alert.Client), Label: alert.Label, UsedPercent: alert.UsedPercent, Generation: alert.Generation}
 		if alert.WindowMinutes > 0 {
 			minutes := alert.WindowMinutes
 			item.WindowMinutes = &minutes
@@ -345,7 +368,16 @@ func desktopQuotaAlerts(due []quota.DueAlert) []desktopQuotaAlert {
 		}
 		alerts = append(alerts, item)
 	}
-	return alerts
+	result := desktopQuotaRefreshResult{StateRootID: resultRoot, Alerts: alerts, GateReasons: map[string]*string{}}
+	for client, reason := range outcome {
+		var text *string
+		if reason != "" {
+			value := string(reason)
+			text = &value
+		}
+		result.GateReasons[string(client)] = text
+	}
+	return result, errors.Join(err, proofErr)
 }
 
 func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
@@ -401,31 +433,19 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	}
 	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeClients, settings.ProbeInterval, quotaMaxBackoff)
 
+	// This refresh has no pinned root or reconciled cycle to vouch for Claude.
+	result, err := desktopQuotaAlertEnvelope(ctx, quota.NewStore(core.DB), quota.RefreshCycle{}, nil, settings, outcome, time.Now())
+	claudeReason, hasClaude := outcome[quota.ClientClaude]
+	missingGuard := settings.ProbeEnabled && settings.AlertsEnabled && hasClaude && claudeReason == ""
+	return writeDesktopQuotaRefreshResult(opts.stdout, opts.format, result, err != nil || missingGuard)
+}
+
+func writeDesktopQuotaRefreshResult(w io.Writer, format string, result desktopQuotaRefreshResult, alertsFailed bool) error {
 	warnings := []string{}
-	// outcome's empty reason means this cycle's C1 gate passed for that
-	// client; anything else -- not_official, or probe_failed when the gate
-	// itself could not be evaluated (Codex PR #5 eleventh review, P2: an
-	// unknown gate is not a confirmed official one either) -- means the gate
-	// did not affirmatively pass, and its retained windows must not generate
-	// alerts until it does.
-	officialClients := map[quota.Client]bool{
-		quota.ClientCodex:  outcome[quota.ClientCodex] == "",
-		quota.ClientClaude: outcome[quota.ClientClaude] == "",
-	}
-	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, officialClients, settings.AlertConfig(), time.Now())
-	if err != nil {
+	if alertsFailed {
 		warnings = append(warnings, "quota_alerts_failed")
 	}
-	result := desktopQuotaRefreshResult{GateReasons: map[string]*string{}, Alerts: desktopQuotaAlerts(due)}
-	for client, reason := range outcome {
-		var text *string
-		if reason != "" {
-			value := string(reason)
-			text = &value
-		}
-		result.GateReasons[string(client)] = text
-	}
-	return writeEnvelope(opts.stdout, opts.format, "desktop.quota-refresh", result, len(warnings) > 0, warnings)
+	return writeEnvelope(w, format, "desktop.quota-refresh", result, len(warnings) > 0, warnings)
 }
 
 type desktopQuotaAlertsAckResult struct {
@@ -467,13 +487,11 @@ func runDesktopQuotaAlertsAck(ctx context.Context, opts *commandOptions, ids []s
 	}
 	defer core.Close()
 	store := quota.NewStore(core.DB)
-	now := time.Now()
-	for _, id := range ids {
-		if err := quota.AcknowledgeAlert(ctx, store, id, now); err != nil {
-			return err
-		}
+	accepted, err := store.AcknowledgeAlerts(ctx, ids, time.Now())
+	if err != nil {
+		return err
 	}
-	return writeResult(opts.stdout, opts.format, "desktop.quota-alerts.ack", desktopQuotaAlertsAckResult{Acknowledged: len(ids)})
+	return writeResult(opts.stdout, opts.format, "desktop.quota-alerts.ack", desktopQuotaAlertsAckResult{Acknowledged: accepted})
 }
 
 type desktopQuotaSettingsView struct {

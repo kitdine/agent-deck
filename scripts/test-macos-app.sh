@@ -15,8 +15,11 @@ if xcodebuild -version >/dev/null 2>&1; then
 	mkdir -p "$test_home"
 	test_helper="$repo_root/apps/macos/build/DerivedData/Build/Products/Debug/AgentDeck.app/Contents/Helpers/agentdeck"
 
+	quota_guard_peer="$test_root/quota-guard-peer"
+	quota_command_peer="$test_root/quota-command-peer"
+
 	isolation_pids() {
-		ps -axo pid=,command= | awk -v helper="$test_helper" -v fixture="$test_root/AgentDeck.app/Contents/Helpers/agentdeck" -v driver="$test_root/native-driver" '$2 == helper || $2 == fixture || $2 == driver { print $1 }'
+		ps -axo pid=,command= | awk -v helper="$test_helper" -v fixture="$test_root/AgentDeck.app/Contents/Helpers/agentdeck" -v driver="$test_root/native-driver" -v quota_guard="$quota_guard_peer" -v quota_command="$quota_command_peer" '$2 == helper || $2 == fixture || $2 == driver || $2 == quota_guard || $2 == quota_command { print $1 }'
 	}
 	baseline_pids=" $(isolation_pids | tr '\n' ' ') "
 	new_isolation_pids() {
@@ -51,6 +54,9 @@ if xcodebuild -version >/dev/null 2>&1; then
   mkdir -p "$test_root/account" "$test_root/AgentDeck.app/Contents/Helpers"
   (cd "$repo_root" && go build -mod=vendor -tags agentdeck_acceptance -o "$test_root/AgentDeck.app/Contents/Helpers/agentdeck" ./cmd/agentdeck)
   (cd "$repo_root" && bash scripts/run-go-test.sh ./internal/installation -c -o "$test_root/native-driver")
+  # Build fixture-only peers for the Go and Swift quota delivery tests.
+  (cd "$repo_root" && bash scripts/run-go-test.sh ./internal/quota -c -o "$quota_guard_peer")
+  (cd "$repo_root" && bash scripts/run-go-test.sh ./cmd/agentdeck -c -o "$quota_command_peer")
   env AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" AGENTDECK_NATIVE_FIXTURE_ACTION=register \
     bash "$repo_root/scripts/run-go-test.sh" ./internal/installation -run '^TestNativeOwnershipFixture$'
   bash "$repo_root/scripts/build-macos-app.sh"
@@ -62,6 +68,9 @@ if xcodebuild -version >/dev/null 2>&1; then
 		TEST_RUNNER_AGENTDECK_TEST_HOME="$test_home" \
         AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" \
         TEST_RUNNER_AGENTDECK_NATIVE_FIXTURE_ROOT="$test_root" \
+		TEST_RUNNER_AGENTDECK_TEST_REQUIRE_QUOTA_PEERS=1 \
+		TEST_RUNNER_AGENTDECK_TEST_QUOTA_GUARD_PEER="$quota_guard_peer" \
+		TEST_RUNNER_AGENTDECK_TEST_QUOTA_COMMAND_PEER="$quota_command_peer" \
 		xcodebuild \
     -project "$repo_root/apps/macos/AgentDeck.xcodeproj" \
     -scheme AgentDeck \

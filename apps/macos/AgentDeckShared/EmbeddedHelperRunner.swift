@@ -1960,7 +1960,12 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 		if manual { arguments.append("--manual") }
 		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments, requestTimeout: Self.quotaRefreshTimeout)
 		guard case let .decoded(result) = outcome else { return [] }
-		return result.alerts
+		// Bind candidates to this response only. The proof is never a path.
+		return result.alerts.map {
+			var alert = $0
+			alert.stateRootID = result.stateRootID
+			return alert
+		}
 	}
 
 	public func acknowledgeQuotaAlerts(ids: [String]) async {
@@ -1977,15 +1982,18 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 }
 
 public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
+	public let stateRootID: String?
 	public let gateReasons: [String: String?]
 	public let alerts: [DesktopQuotaAlertV1]
 
 	enum CodingKeys: String, CodingKey {
 		case gateReasons = "gate_reasons"
+		case stateRootID = "state_root_id"
 		case alerts
 	}
 
-	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1]) {
+	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1], stateRootID: String? = nil) {
+		self.stateRootID = stateRootID
 		self.gateReasons = gateReasons
 		self.alerts = alerts
 	}
@@ -1993,6 +2001,7 @@ public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		gateReasons = try container.decodeIfPresent([String: String?].self, forKey: .gateReasons) ?? [:]
+		stateRootID = try? container.decode(String.self, forKey: .stateRootID)
 		alerts = try container.decodeIfPresent([DesktopQuotaAlertV1].self, forKey: .alerts) ?? []
 	}
 }
@@ -2013,14 +2022,26 @@ public struct DesktopQuotaAlertV1: Codable, Equatable, Sendable {
 	public let windowMinutes: Int?
 	public let usedPercent: Double
 	public let threshold: Double?
+	public let generation: Int64?
+	public fileprivate(set) var stateRootID: String? = nil
 
 	enum CodingKeys: String, CodingKey {
-		case id, kind, client, label, threshold
+		case id, kind, client, label, threshold, generation
 		case windowMinutes = "window_minutes"
 		case usedPercent = "used_percent"
 	}
 
-	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil) {
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		self.init(id: try c.decode(String.self, forKey: .id), kind: try c.decode(Kind.self, forKey: .kind),
+		          client: try c.decode(String.self, forKey: .client), label: try c.decodeIfPresent(String.self, forKey: .label),
+		          windowMinutes: try c.decodeIfPresent(Int.self, forKey: .windowMinutes), usedPercent: try c.decode(Double.self, forKey: .usedPercent),
+		          threshold: try c.decodeIfPresent(Double.self, forKey: .threshold), generation: try? c.decode(Int64.self, forKey: .generation))
+	}
+
+	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil, generation: Int64? = nil, stateRootID: String? = nil) {
+		self.generation = generation
+		self.stateRootID = stateRootID
 		self.id = id
 		self.kind = kind
 		self.client = client

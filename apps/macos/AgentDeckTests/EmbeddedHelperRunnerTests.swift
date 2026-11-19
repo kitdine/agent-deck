@@ -311,6 +311,21 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.timeout == EmbeddedHelperRunner.quotaRefreshTimeout })
 	}
 
+	func testQuotaRefreshBindsOnlyEnvelopeIdentityAndToleratesBadProof() async throws {
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: Data(#"{"data":{"state_root_id":"7:9","alerts":[{"id":"qa2.good","kind":"reset","client":"claude","used_percent":0,"generation":42,"state_root_id":"injected"}]}}"#.utf8))),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: Data(#"{"data":{"state_root_id":false,"alerts":[{"id":"qa2.bad","kind":"reset","client":"claude","used_percent":0,"generation":"42","state_root_id":"injected"},{"id":"legacy","kind":"reset","client":"codex","used_percent":0}]}}"#.utf8))),
+		])
+		let runner = try makeRunner(process: process)
+		let good = await runner.refreshQuota(manual: false)
+		XCTAssertEqual(good.first?.stateRootID, "7:9")
+		XCTAssertEqual(good.first?.generation, 42)
+		let bad = await runner.refreshQuota(manual: false)
+		XCTAssertEqual(bad.map(\.id), ["qa2.bad", "legacy"])
+		XCTAssertNil(bad.first?.generation)
+		XCTAssertNil(bad.first?.stateRootID)
+	}
+
 	func testQuotaAlertAcknowledgementPassesEveryIDAndSkipsAnEmptyBatch() async throws {
 		let payload = Data(#"{"data":{"acknowledged":2}}"#.utf8)
 		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: payload))])

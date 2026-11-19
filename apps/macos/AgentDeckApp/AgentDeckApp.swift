@@ -180,7 +180,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		let coordinator = DesktopRefreshCoordinator(
 			host: DesktopHost(runner: runner),
 			quotaRefresher: runner,
-			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
+			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications,
+			                                  stateRoot: { [runner] in try await runner.resolveStateRoot() }),
 			snapshotStore: snapshotStore,
 			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: runner)
 		)
