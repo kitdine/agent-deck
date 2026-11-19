@@ -1,13 +1,19 @@
 package desktop
 
+import "github.com/kitdine/agent-deck/internal/store"
+
 // Migration 32 adds only derived partitions and invalidation markers,
 // migration 33 only telemetry observations that no canonical fact reads, and
 // migration 34 only session-origin preferences, overrides and derivations that
 // no existing publication field reads. Migration 35 adds a source thread
 // identity column and rebuilds the derived classification table. A saved
-// schema-31 to -34 publication still describes the same canonical facts. Keep these exceptions directional and explicit; unknown schema
-// transitions stay invalid.
+// schema-31 to -34 publication still describes the same canonical facts.
+// Migration 36 adds rule and request evidence storage, so older publications
+// must be rebuilt for a migrated core.
 func compatibleServingCoreSchema(stored, current int) bool {
+	if stored <= 0 || current > store.CurrentSchemaVersion {
+		return false
+	}
 	if stored == current {
 		return true
 	}

@@ -728,7 +728,14 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 | `price history` | 查看 immutable catalog 历史 | 无 | 无 | `agentdeck price history` |
 | `price list [model]` | 查看当前组件级合并后的有效费率，单位 USD / 1M tokens | `model`：可选精确过滤；`--provider openai\|anthropic` | 无 | `agentdeck price list gpt-5.6-sol` |
 | `price update` | 自动解析并下载最新 LiteLLM canonical raw catalog | `--commit <40-char-sha>` | 无；`--commit` 为可选复现入口 | `agentdeck price update` |
-| `price override` | 导入本地 official component override | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
+| `price override` | 导入本地官方组件覆盖或价卡 | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
+
+`price override --file` 接受既有的组件覆盖数组，或包含 `schema_version: 1`、
+`catalog_version`、`currency`、`models` 和 `sources[0].url` 的价卡对象。
+价卡的来源为不含用户凭据的绝对 HTTPS URL。模型包含 RFC 3339 生效时间，
+费率使用已知组件和非负价格。
+价卡对象可附带含摘要的 `pricing_rules` v2 规则，每条规则保留自己的适用期和来源。
+数组导入返回 `overrides`，价卡导入返回 `version` 和 `models`。
 
 `price history` 的 `EFFECTIVE`、`price status` 中嵌入的 catalog 历史，以及
 `price list --verbose` provenance 的 `EFFECTIVE` 在 text 中使用本机时区并在列名标出；

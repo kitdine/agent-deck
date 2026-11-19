@@ -820,7 +820,7 @@ func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
 	if _, err = s.core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token=?`, token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id; UPDATE schema_metadata SET version=34`); err != nil {
+	if _, err = s.core.DB.Exec(`DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; UPDATE schema_metadata SET version=34`); err != nil {
 		t.Fatal(err)
 	}
 	s.core.Close()

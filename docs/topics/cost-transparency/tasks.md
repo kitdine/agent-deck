@@ -25,7 +25,7 @@ created: 2026-11-18
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `tariff-catalog` | [x] | [x] |
-| 2. `pricing-facts-storage` | [ ] | [ ] |
+| 2. `pricing-facts-storage` | [x] | [x] |
 | 3. `request-pricing` | [ ] | [ ] |
 | 4. `pricing-reporting` | [ ] | [ ] |
 

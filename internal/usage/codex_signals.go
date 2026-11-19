@@ -25,6 +25,7 @@ type codexSignalCursor struct {
 	Index           int    `json:"index"`
 	Output          bool   `json:"output"`
 	AwaitingContext bool   `json:"awaiting_context"`
+	ProducerVersion string `json:"producer_version,omitempty"`
 }
 
 func restoreCodexSignalCursor(state *parseState) (bool, error) {
@@ -39,6 +40,7 @@ func restoreCodexSignalCursor(state *parseState) (bool, error) {
 		return false, fmt.Errorf("invalid Codex signal cursor index")
 	}
 	state.turn, state.turnIndex = cursor.Turn, cursor.Index
+	state.codexProducerVersion = requestProducerVersion(cursor.ProducerVersion)
 	state.codexOutput, state.codexAwaitingContext, state.codexHasSignal = cursor.Output, cursor.AwaitingContext, true
 	return true, nil
 }
@@ -46,12 +48,15 @@ func restoreCodexSignalCursor(state *parseState) (bool, error) {
 func storedCodexTurn(state parseState) string {
 	// A context may be captured in a scan before its first user message. Its
 	// index must survive even when no pending/classified signal exists yet.
-	if !state.codexHasSignal && state.turn == "" {
+	if !state.codexHasSignal && state.turn == "" && state.codexProducerVersion == "" {
 		return state.turn
 	}
 	// All fields are supported JSON primitives; the message reduction remains
 	// solely in usage_work_signals and no prompt text enters this cursor.
-	data, _ := json.Marshal(codexSignalCursor{state.turn, state.turnIndex, state.codexOutput, state.codexAwaitingContext})
+	data, _ := json.Marshal(codexSignalCursor{
+		Turn: state.turn, Index: state.turnIndex, Output: state.codexOutput,
+		AwaitingContext: state.codexAwaitingContext, ProducerVersion: state.codexProducerVersion,
+	})
 	return codexSignalCursorPrefix + string(data)
 }
 

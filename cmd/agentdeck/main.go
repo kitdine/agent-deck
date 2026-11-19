@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -4511,6 +4512,24 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, false, nil, err
 		}
+		if bytes.HasPrefix(bytes.TrimSpace(contents), []byte("{")) {
+			var catalog struct {
+				Version string                     `json:"catalog_version"`
+				Models  map[string]json.RawMessage `json:"models"`
+				Sources []struct {
+					URL string `json:"url"`
+				} `json:"sources"`
+			}
+			if err := json.Unmarshal(contents, &catalog); err != nil {
+				return nil, false, nil, err
+			}
+			var sourceURL string
+			if len(catalog.Sources) > 0 {
+				sourceURL = strings.TrimSpace(catalog.Sources[0].URL)
+			}
+			err := s.ImportOfficialCatalog(ctx, contents, sourceURL)
+			return map[string]any{"version": catalog.Version, "models": len(catalog.Models)}, false, nil, err
+		}
 		var values []usage.OfficialOverride
 		if err = json.Unmarshal(contents, &values); err != nil {
 			return nil, false, nil, err
@@ -4518,7 +4537,7 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		err = s.ImportOfficialOverrides(ctx, values)
 		return map[string]any{"overrides": len(values)}, false, nil, err
 	})}
-	override.Flags().String("file", "", "Official component override JSON")
+	override.Flags().String("file", "", "Official component override array or price catalog JSON")
 	_ = override.MarkFlagRequired("file")
 	price.AddCommand(override)
 	return price

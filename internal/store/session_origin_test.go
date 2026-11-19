@@ -133,7 +133,7 @@ func downgradeToSchema33(t *testing.T, core *Store) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; UPDATE schema_metadata SET version=33`); err != nil {
+	if _, err := core.DB.Exec(`DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; UPDATE schema_metadata SET version=33`); err != nil {
 		t.Fatal(err)
 	}
 }

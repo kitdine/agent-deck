@@ -1604,17 +1604,17 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 35
+	public static let maximumSupportedCoreSchema = 36
 
 	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
 	// session-origin storage; 35 adds a source thread identity column and
 	// rebuilds the derived classification table. None changes the canonical
 	// facts in a retained schema-31/32/33/34 publication.
-	// Keep this directional compatibility aligned with the Go serving reader.
-	// All other identity changes still
-	// invalidate a retained publication before date and fullness checks.
+	// Schema 36 adds pricing rules and request facts. A migrated core must
+	// rebuild an older publication. Keep these exceptions aligned with Go.
 	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
-		stored == current || (stored == 31 && current == 32)
+		guard stored > 0, current <= maximumSupportedCoreSchema else { return false }
+		return stored == current || (stored == 31 && current == 32)
 			|| ((stored == 31 || stored == 32) && current == 33)
 			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
 			|| ((31...34).contains(stored) && current == 35)
@@ -1680,7 +1680,7 @@ public struct DesktopServingSnapshotV2: Codable, Equatable, Sendable {
 		guard header.formatVersion == 1, header.wireVersion == 2, header.projectionVersion == 1,
 			!header.publicationID.isEmpty, !generation.stateIdentity.isEmpty,
 			generation.coreEpoch > 0, generation.sessionEpoch > 0,
-			generation.coreSchema <= DesktopServingGenerationV2.maximumSupportedCoreSchema, generation.sessionSchema == 1,
+			(1...DesktopServingGenerationV2.maximumSupportedCoreSchema).contains(generation.coreSchema), generation.sessionSchema == 1,
 			generation.usageRevision >= 0, generation.sessionRevision >= 0,
 			!header.activeGeneration.isEmpty, header.pricingRevision >= 0, ["current", "stale"].contains(header.freshness),
 			header.generatedAt == payload.data.generatedAt,
