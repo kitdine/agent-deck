@@ -3250,7 +3250,9 @@ button.notice:hover {
 }
 
 .w-quota-client header .w-attribution {
+  flex: 0 0 auto;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 /* 额度小组件：small 只显示配置中选定的一端；medium / large 按端分块、上下排列。
@@ -3272,6 +3274,7 @@ button.notice:hover {
 
 .w-quota-split {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: 1fr;
   gap: 8px;
   /* flex:1 是「上下等分」成立的前提：没有它，grid 只有内容那么高，
@@ -3294,6 +3297,7 @@ button.notice:hover {
   flex-direction: column;
   justify-content: center;
   min-height: 0;
+  min-width: 0;
 }
 
 /* 左侧色条 + 淡底 + 明文端名共同区分两端；颜色不是唯一载体。 */
@@ -3316,18 +3320,26 @@ button.notice:hover {
 .w-quota-client > header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 6px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .w-quota-client > header strong {
+  flex: 0 0 auto;
   color: var(--text);
   font-size: 10px;
   font-weight: 650;
+  white-space: nowrap;
 }
 
-.w-quota-client > header small {
+.w-quota-client > header .w-quota-plan {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--dim);
   font-size: 9px;
 }
@@ -3372,6 +3384,45 @@ button.notice:hover {
 
 .w-quota-row .w-track {
   margin-top: 1px;
+}
+
+.w-quota-signed-in {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 3px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  min-width: 0;
+}
+
+/* 新行使用 --muted（暗色 Claude #202131 为 6.21:1、Codex #261f20 为 6.32:1；
+   浅色 Claude #f9f5fd 为 5.09:1、Codex #f9f1ec 为 4.94:1），满足 4.5:1 且不改动既有次级文字令牌。 */
+.w-quota-signed-in-text {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.w-quota-signed-in-assoc {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.w-quota-client:has(.w-quota-signed-in) .w-quota-client-windows {
+  gap: 3px;
+}
+
+.w-quota-client:has(.w-quota-signed-in) .w-quota-row > div:first-child {
+  line-height: 1.3;
 }
 
 .w-quota-none {

@@ -325,6 +325,10 @@ const zh = {
     measurement: "归因质量",
     determinateCost: "可确定成本",
     quotaNoData: "无额度数据",
+    quotaContextChanged: "登录已变化",
+    quotaIdentityKeyReset: "旧额度无法关联",
+    quotaSignedIn: (email) => `当前登录 ${email}`,
+    quotaAssociationUnconfirmed: "与额度关联未确认",
     refresh: {
       aging: "18 分钟前更新",
       old: "上次更新于8小时前",
@@ -784,6 +788,10 @@ const en = {
     measurement: "Measurement quality",
     determinateCost: "determinate cost",
     quotaNoData: "No quota data",
+    quotaContextChanged: "Sign-in changed",
+    quotaIdentityKeyReset: "Prior quota unlinked",
+    quotaSignedIn: (email) => `Signed in ${email}`,
+    quotaAssociationUnconfirmed: "quota unconfirmed",
     refresh: {
       aging: "Updated 18 minutes ago",
       old: "Last updated 8 hours ago",

@@ -78,6 +78,137 @@ export function runProbe() {
 
   window.setTimeout(async () => {
     try {
+    if (new URLSearchParams(window.location.search).get("surface") === "widgets") {
+      const quotaVariant = (key) => click($(`.stage-group button[data-value="${key}"]`));
+      const widgetClientBtn = (key) => click($(`.stage-group button[data-value="${key}"]`));
+      const qCard = (size) =>
+        $$(`.widget-${size}`).find((node) =>
+          (node.getAttribute("aria-label") ?? "").startsWith(dict().widgets.kinds.quota.title),
+        );
+
+      runSyntheticLeakNegativeCheck();
+
+      quotaVariant("identityUnconfirmed");
+      await wait(80);
+      const qSmall = qCard("small");
+      const qMedium = qCard("medium");
+      const qLarge = qCard("large");
+      check("Widget small 无 @ 字符", !(qSmall?.textContent ?? "").includes("@"));
+      check("Widget medium 无 @ 字符", !(qMedium?.textContent ?? "").includes("@"));
+      const largeAtNodes = [...(qLarge?.querySelectorAll("*") ?? [])].filter(
+        (n) => n.children.length === 0 && (n.textContent ?? "").includes("@"),
+      );
+      check(
+        "Widget large @ 只出现在当前登录行",
+        largeAtNodes.length === 2 && largeAtNodes.every((n) => !!n.closest(".w-quota-signed-in")),
+      );
+      check("Widget large 可见文本仅含脱敏邮箱", hasOnlyMaskedVisualEmails(qLarge));
+      check(
+        "Widget large 无障碍标签使用口语脱敏邮箱且无星号",
+        hasOnlyAllowedSpokenEmails(qLarge, dict()),
+      );
+      check(
+        "Widget large Codex 登录行内联标出与额度关联未确认（F4）",
+        (qLarge?.querySelector('.w-quota-client[data-client="codex"] .w-quota-signed-in')?.textContent ?? "").includes(
+          dict().widgets.quotaAssociationUnconfirmed,
+        ),
+      );
+      check(
+        "Widget large Codex 块显示紧凑套餐名 Pro 100，Claude 块不显示套餐",
+        qLarge?.querySelector('.w-quota-client[data-client="codex"] header .w-quota-plan')?.textContent === "Pro 100" &&
+          !qLarge?.querySelector('.w-quota-client[data-client="claude"] header .w-quota-plan'),
+      );
+      check(
+        "Widget 不显示组织或工作区名称",
+        [qSmall, qMedium, qLarge].every(
+          (node) => !(node?.textContent ?? "").includes("Acme Studio") && !(node?.textContent ?? "").includes("Kitdine Labs"),
+        ),
+      );
+
+      quotaVariant("identityConfirmed");
+      await wait(80);
+      check(
+        "Widget large Codex 已确认时登录行不再出现未确认后缀（F4）",
+        !(qCard("large")?.querySelector('.w-quota-client[data-client="codex"] .w-quota-signed-in')?.textContent ?? "").includes(
+          dict().widgets.quotaAssociationUnconfirmed,
+        ),
+      );
+
+      quotaVariant("identityUnknown");
+      await wait(80);
+      check(
+        "Widget large 非 current/identified 时不显示当前登录行且无 @",
+        !qCard("large")?.querySelector(".w-quota-signed-in") && !(qCard("large")?.textContent ?? "").includes("@"),
+      );
+
+      quotaVariant("expiredMailbox");
+      await wait(80);
+      check(
+        "Widget large current_until 已过期时不显示当前登录行（A11）",
+        !qCard("large")?.querySelector(".w-quota-signed-in") && !(qCard("large")?.textContent ?? "").includes("@"),
+      );
+
+      quotaVariant("contextChanged");
+      await wait(80);
+      check(
+        "Widget contextChanged 下 large 只剩 Codex 块",
+        [...(qCard("large")?.querySelectorAll(".w-quota-client") ?? [])].map((n) => n.dataset.client).join(",") === "codex",
+      );
+      widgetClientBtn("claude");
+      await wait(80);
+      check(
+        "Widget small/medium 选定端失效时页脚显示登录已变化",
+        qCard("small")?.querySelector("footer")?.textContent === dict().widgets.quotaContextChanged &&
+          qCard("medium")?.querySelector("footer")?.textContent === dict().widgets.quotaContextChanged,
+      );
+      quotaVariant("contextKeyReset");
+      await wait(80);
+      check(
+        "Widget small/medium 关联密钥重置时页脚说明旧额度无法关联",
+        qCard("small")?.querySelector("footer")?.textContent === dict().widgets.quotaIdentityKeyReset &&
+          qCard("medium")?.querySelector("footer")?.textContent === dict().widgets.quotaIdentityKeyReset,
+      );
+      widgetClientBtn("codex");
+      await wait(60);
+
+      quotaVariant("contextRecovered");
+      await wait(80);
+      check(
+        "Widget contextRecovered 下 Claude 在首次新鲜 usage 后立即恢复展示（A5.6）",
+        [...(qCard("large")?.querySelectorAll(".w-quota-client") ?? [])].map((n) => n.dataset.client).join(",") === "codex,claude",
+      );
+
+      quotaVariant("longPlan");
+      await wait(80);
+      const longPlanLarge = qCard("large");
+      const largeBox = longPlanLarge?.getBoundingClientRect();
+      const codexPlanChip = longPlanLarge?.querySelector('.w-quota-client[data-client="codex"] header .w-quota-plan');
+      const claudeAttr = longPlanLarge?.querySelector('.w-quota-client[data-client="claude"] .w-attribution');
+      const amounts = [...(longPlanLarge?.querySelectorAll(".w-quota-row > div:first-child strong") ?? [])];
+      check(
+        "Widget longPlan 64 字符套餐省略且不挤出卡片与百分比/归属（F1）",
+        !!codexPlanChip &&
+          codexPlanChip.scrollWidth > codexPlanChip.clientWidth &&
+          !!largeBox &&
+          (longPlanLarge?.scrollHeight ?? 0) <= (longPlanLarge?.clientHeight ?? 0) + 1 &&
+          !!claudeAttr &&
+          claudeAttr.getBoundingClientRect().right <= largeBox.right + 1 &&
+          amounts.length === 5 &&
+          amounts.every((amount) => {
+            const box = amount.getBoundingClientRect();
+            return box.width > 0 && box.left >= largeBox.left && box.right <= largeBox.right + 1;
+          }),
+      );
+
+      const box = document.createElement("pre");
+      box.id = "probe-out";
+      box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#0f0;font:12px ui-monospace;white-space:pre-wrap";
+      const failed = results.filter((line) => line.startsWith("FAIL")).length;
+      box.textContent = `${results.join("\n")}\n\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`;
+      document.body.appendChild(box);
+      return;
+    }
+
     // 每条路径从明确的普通状态开始；待采集在下面单独进入并验证。
     const stateButton = (state) => $(`.stage-group button[data-value="${state}"]`);
     click(stateButton("normal"));
