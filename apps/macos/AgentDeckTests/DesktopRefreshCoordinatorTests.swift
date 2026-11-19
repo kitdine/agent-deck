@@ -17,10 +17,11 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(c.state, .ready(installed))
 	}
 
-	func testWidgetFileExcludesGoIdentityFields() async throws {
+	func testWidgetFilePublishesOnlyTheAllowedIdentityFields() async throws {
 		let file = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
 		let sub = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: Data(contentsOf: file))
-		let identity = try XCTUnwrap(sub.clients.first { $0.client == "claude" }?.identity.value)
+		let identified = try XCTUnwrap(sub.clients.first { $0.identity.value?.emailMasked.value != nil })
+		let identity = try XCTUnwrap(identified.identity.value)
 		let email = try XCTUnwrap(identity.emailMasked.value)
 		let organization = try XCTUnwrap(identity.organizationName.value)
 		let page = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json")).replacingSubscription(sub)
@@ -33,11 +34,31 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let disk = try XCTUnwrap(object["subscription"] as? [String: Any])
 		XCTAssertNil(disk["projection"])
 		let clients = try XCTUnwrap(disk["clients"] as? [[String: Any]])
+		XCTAssertEqual(clients.count, sub.clients.count)
 		for client in clients {
-			for key in ["identity", "plan_display", "quota_context", "failure_detail"] { XCTAssertNil(client[key], key) }
+			let name = try XCTUnwrap(client["client"] as? String)
+			let input = try XCTUnwrap(sub.clients.first { $0.client == name })
+			XCTAssertNil(client["failure_detail"])
+			switch input.identity {
+			case .absent:
+				XCTAssertNil(client["identity"])
+			case .null:
+				XCTAssertTrue(client["identity"] is NSNull)
+			case .value:
+				let storedIdentity = try XCTUnwrap(client["identity"] as? [String: Any])
+				for key in ["organization_kind", "organization_name", "plan_display", "observed_at",
+					"attempted_at", "failure", "failure_at", "source", "unknown_reason"] {
+					XCTAssertNil(storedIdentity[key], key)
+				}
+			}
 		}
-		XCTAssertEqual(clients.first { $0["client"] as? String == "codex" }?["plan"] as? String, "pro")
-		for sentinel in [email, organization] { XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains(sentinel)) }
+		let inputCodex = try XCTUnwrap(sub.clients.first { $0.client == "codex" })
+		let storedCodex = try XCTUnwrap(clients.first { $0["client"] as? String == "codex" })
+		XCTAssertEqual(storedCodex["plan"] as? String, try XCTUnwrap(inputCodex.plan))
+		let storedClient = try XCTUnwrap(clients.first { $0["client"] as? String == identified.client })
+		let storedIdentity = try XCTUnwrap(storedClient["identity"] as? [String: Any])
+		XCTAssertEqual(storedIdentity["email_masked"] as? String, email)
+		XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains(organization))
 	}
 
 	func testNonBootstrapFullInstallsNewerQuota() async throws {
@@ -202,7 +223,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await quota.waitUntilSuspended()
 		host.resume()
 		let noSummary = AppGroupSessionScopeSummarySetV1.unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
-		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload.legacyWidgetFixture, sessionScopeSummary: noSummary)
+		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload, sessionScopeSummary: noSummary)
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(3))
 		while (try? store.read()) != baseline, clock.now < deadline {
@@ -215,7 +236,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let updated = final.payload.replacingSubscription(subscription)
 		XCTAssertNotEqual(updated, final.payload)
 		XCTAssertEqual(coordinator.latestSnapshot, updated)
-		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated.legacyWidgetFixture, sessionScopeSummary: noSummary), "Widget snapshot must contain the final quota merge without changing the full snapshot")
+		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated, sessionScopeSummary: noSummary), "Widget snapshot must contain the final quota merge without changing the full snapshot")
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
@@ -570,7 +591,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete.legacyWidgetFixture,
+			envelope: complete,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		let quotaCalls = await quotaRefresher.recordedManualValues()
@@ -629,7 +650,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.latestSnapshot?.data.subscription, freshSubscription)
 		XCTAssertEqual(coordinator.latestSnapshot?.data.usage, complete.data.usage, "the session/usage scan must not be rerun")
 		XCTAssertEqual(coordinator.state, .ready(try XCTUnwrap(coordinator.latestSnapshot)))
-		XCTAssertEqual(try store.read().subscription, freshSubscription.legacyWidgetSubscription, "the App Group projection widgets read must also carry the fresher figures")
+		XCTAssertEqual(try store.read().subscription, AppGroupSubscriptionV1(freshSubscription), "the App Group projection widgets read must also carry the fresher figures")
 	}
 
 	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
@@ -922,7 +943,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete.legacyWidgetFixture,
+			envelope: complete,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		// The failing helper never reported real progress past the synthetic
@@ -975,7 +996,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete.legacyWidgetFixture,
+			envelope: complete,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 	}
@@ -1022,7 +1043,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await recovered.refresh()
 		XCTAssertEqual(recovered.widgetPublication, .succeeded(generation: 1, affectedKinds: Set(AppGroupWidgetKind.allCases)))
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete.legacyWidgetFixture,
+			envelope: complete,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		XCTAssertEqual(recovered.state, .ready(complete))
@@ -1117,10 +1138,6 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertNil(DesktopTimestamp.date(from: "2026-08-13"))
 		XCTAssertEqual(DesktopTimestamp.date(from: "2026-08-13T10:00:00Z"), whole)
 	}
-}
-
-private extension DesktopWireEnvelopeV1 {
-	var legacyWidgetFixture: Self { replacingSubscription(data.subscription.legacyWidgetSubscription) }
 }
 
 private func newerQuota(than envelope: DesktopWireEnvelopeV1, available: Bool) throws -> DesktopSubscriptionSnapshotV1 {

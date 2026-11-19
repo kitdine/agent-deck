@@ -3121,7 +3121,7 @@ public final class DesktopRefreshCoordinator {
 			? await widgetSessionScopeSummary(for: envelope, publisher: snapshotPublisher)
 			: await snapshotPublisher.lastSessionScopeSummary() ?? .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		let result = await snapshotPublisher.publish(
-			AppGroupDesktopSnapshotV1(envelope: envelope.replacingSubscription(envelope.data.subscription.legacyWidgetSubscription), sessionScopeSummary: summary),
+			AppGroupDesktopSnapshotV1(envelope: envelope, sessionScopeSummary: summary),
 			generation: publicationGeneration
 		)
 		switch result {

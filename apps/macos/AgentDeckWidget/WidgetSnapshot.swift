@@ -8,7 +8,7 @@ struct WidgetDesktopSnapshotV1: Codable, Equatable, Sendable {
 	let nextRefreshAt: String
 	let partial: Bool
 	let usage: WidgetUsageSnapshotV1
-	let subscription: DesktopSubscriptionSnapshotV1
+	let subscription: AppGroupSubscriptionV1
 	/// Decoded apart from the rest: a malformed summary degrades only the
 	/// session row, never the card or the usage beside it.
 	let sessionScopeSummary: WidgetSessionScopeSummaryField
@@ -29,7 +29,7 @@ struct WidgetDesktopSnapshotV1: Codable, Equatable, Sendable {
 		nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
 		partial = try container.decode(Bool.self, forKey: .partial)
 		usage = try container.decode(WidgetUsageSnapshotV1.self, forKey: .usage)
-		subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
+		subscription = try container.decodeIfPresent(AppGroupSubscriptionV1.self, forKey: .subscription) ?? .unavailable
 		if !container.contains(.sessionScopeSummary) {
 			sessionScopeSummary = .legacy
 		} else if let set = try? container.decode(WidgetSessionScopeSummarySetV1.self, forKey: .sessionScopeSummary) {
