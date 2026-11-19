@@ -1,10 +1,7 @@
 package quota
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -73,49 +70,32 @@ type ClaudeFailureError struct {
 }
 
 func (e *ClaudeFailureError) Error() string {
-	return fmt.Sprintf("claude prose probe failed (%s): %v", e.Kind, e.Err)
+	return "claude prose probe failed (" + e.Kind.String() + ")"
 }
 
 func (e *ClaudeFailureError) Unwrap() error { return e.Err }
 
-// ProbeClaudeProse drives `claude -p "/usage"` as a child process and parses
-// its stdout (C4). --output-format json adds no structured keys — the same
-// prose arrives in "result" — so this reads plain stdout rather than adding
-// unnecessary JSON handling.
-//
-// Start and Wait are classified separately, matching codex.go's ProbeCodex:
-// a Start failure is unambiguously a spawn failure (the process never ran at
-// all), while a Wait failure is an ordinary exit unless the context deadline
-// had already expired. This avoids sniffing cmd.Output()'s combined error by
-// type, which does not reliably distinguish "executable not found via
-// LookPath" (*exec.Error) from "executable not found at an absolute path"
-// (a plain fs.ErrNotExist-wrapping error) — both are spawn failures, but
-// only the former satisfies errors.As(err, *exec.Error).
+// ProseParseError is the redacted detail for an unsupported usage response.
+type ProseParseError struct {
+	Detail FailureDetail
+}
+
+func (e *ProseParseError) Error() string {
+	switch e.Detail {
+	case DetailMissingLine, DetailShapeInvalid, DetailTimezoneUnresolved:
+		return string(e.Detail)
+	default:
+		return "claude prose parse failed"
+	}
+}
+
+// ProbeClaudeProse is the compatibility entry point for the existing scheduler.
 func ProbeClaudeProse(ctx context.Context, observedAt time.Time, timeout time.Duration) (ClaudeProseResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	executable, resolveErr := claudeCommandPath(claudeProseCommandArgs)
-	if resolveErr != nil {
-		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureSpawn, Err: resolveErr}
+	probe, err := NewClaudeProbe()
+	if err != nil {
+		return ClaudeProseResult{}, err
 	}
-	cmd := exec.CommandContext(ctx, executable, claudeProseCommandArgs[1:]...)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Start(); err != nil {
-		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureSpawn, Err: err}
-	}
-	if err := cmd.Wait(); err != nil {
-		kind := ClaudeFailureExit
-		if ctx.Err() != nil {
-			kind = ClaudeFailureDeadline
-		}
-		return ClaudeProseResult{}, &ClaudeFailureError{Kind: kind, Err: err}
-	}
-	result, parseErr := ParseClaudeProse(stdout.String(), observedAt)
-	if parseErr != nil {
-		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureParse, Err: parseErr}
-	}
-	return result, nil
+	return probe.probeUsage(ctx, observedAt, timeout)
 }
 
 // claudeProseLinePattern matches one of the two known lines, e.g.:
@@ -150,16 +130,16 @@ func ParseClaudeProse(output string, observedAt time.Time) (ClaudeProseResult, e
 		}
 	}
 	if !haveSession || !haveWeek {
-		return ClaudeProseResult{}, fmt.Errorf("expected both usage lines in claude -p /usage output, got session=%v week=%v", haveSession, haveWeek)
+		return ClaudeProseResult{}, &ProseParseError{Detail: DetailMissingLine}
 	}
 
 	session, err := parseClaudeProseLine(sessionLine, observedAt)
 	if err != nil {
-		return ClaudeProseResult{}, fmt.Errorf("session line: %w", err)
+		return ClaudeProseResult{}, err
 	}
 	week, err := parseClaudeProseLine(weekLine, observedAt)
 	if err != nil {
-		return ClaudeProseResult{}, fmt.Errorf("week line: %w", err)
+		return ClaudeProseResult{}, err
 	}
 
 	return ClaudeProseResult{Windows: []Observation{
@@ -177,7 +157,7 @@ type claudeProseLine struct {
 func parseClaudeProseLine(line string, now time.Time) (claudeProseLine, error) {
 	matches := claudeProseLinePattern.FindStringSubmatch(line)
 	if matches == nil {
-		return claudeProseLine{}, fmt.Errorf("line does not match the expected shape: %q", line)
+		return claudeProseLine{}, &ProseParseError{Detail: DetailShapeInvalid}
 	}
 	label, percentText, dateText, timeText, zoneName := matches[1], matches[2], matches[3], matches[4], matches[5]
 
@@ -188,17 +168,17 @@ func parseClaudeProseLine(line string, now time.Time) (claudeProseLine, error) {
 	case "Current week (all models)":
 		windowKey = ClaudeWindowSevenDay
 	default:
-		return claudeProseLine{}, fmt.Errorf("unrecognized line label %q", label)
+		return claudeProseLine{}, &ProseParseError{Detail: DetailShapeInvalid}
 	}
 
 	percent, err := strconv.ParseFloat(percentText, 64)
 	if err != nil {
-		return claudeProseLine{}, fmt.Errorf("invalid used percent %q: %w", percentText, err)
+		return claudeProseLine{}, &ProseParseError{Detail: DetailShapeInvalid}
 	}
 
 	location, err := time.LoadLocation(zoneName)
 	if err != nil {
-		return claudeProseLine{}, fmt.Errorf("unknown time zone %q: %w", zoneName, err)
+		return claudeProseLine{}, &ProseParseError{Detail: DetailTimezoneUnresolved}
 	}
 	resetsAt, err := resolveClaudeProseInstant(dateText, timeText, location, now)
 	if err != nil {
@@ -231,7 +211,7 @@ func resolveClaudeProseInstant(dateText, timeText string, location *time.Locatio
 		}
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("unparseable reset instant %q %q: %w", dateText, timeText, err)
+		return time.Time{}, &ProseParseError{Detail: DetailTimezoneUnresolved}
 	}
 	if parsed.Before(nowInZone.Add(-24 * time.Hour)) {
 		parsed = parsed.AddDate(1, 0, 0)
