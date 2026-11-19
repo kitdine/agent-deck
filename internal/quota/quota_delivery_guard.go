@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	deliveryGuardWait = time.Second
-	quotaEpochName    = "quota-delivery.epoch"
-	quotaEpochMagic   = "AGENTDECK-QDG-1\n"
+	quotaEpochName  = "quota-delivery.epoch"
+	quotaEpochMagic = "AGENTDECK-QDG-1\n"
 )
 
 var (
@@ -46,7 +45,11 @@ func (g *QuotaDeliveryGuard) StateRootID() string { return g.id }
 // from caller-supplied alert or path data. SQLite's committed value wins even
 // if the previous process died after syncing the mirror but before COMMIT.
 func (s *Store) ReconcileQuotaDelivery(ctx context.Context, cycle RefreshCycle) (*QuotaDeliveryGuard, error) {
-	until := time.Now().Add(deliveryGuardWait)
+	return s.reconcileQuotaDelivery(ctx, cycle, nil)
+}
+
+func (s *Store) reconcileQuotaDelivery(ctx context.Context, cycle RefreshCycle, anchor *RefreshCore) (*QuotaDeliveryGuard, error) {
+	until := time.Now().Add(refreshGuardWait)
 	lookup, cancel := context.WithDeadline(ctx, until)
 	defer cancel()
 	if err := s.checkCycle(cycle); err != nil {
@@ -60,6 +63,12 @@ func (s *Store) ReconcileQuotaDelivery(ctx context.Context, cycle RefreshCycle) 
 		return nil, ErrQuotaDeliveryUnavailable
 	}
 	g := &QuotaDeliveryGuard{cycle: cycle, root: filepath.Dir(path), syncFD: unix.Fsync}
+	if anchor != nil {
+		if anchor.store != s || anchor.root != g.root || anchor.id == "" {
+			return nil, ErrQuotaDeliveryUnavailable
+		}
+		g.id = anchor.id
+	}
 	err := g.acquire(ctx, until, true, func(lock heldDeliveryGuard) error {
 		state, err := s.CommittedClaudeContext(ctx, cycle)
 		if err != nil {
@@ -128,7 +137,7 @@ func (g *QuotaDeliveryGuard) applyClaudeIdentity(ctx context.Context, obs Identi
 }
 
 func (g *QuotaDeliveryGuard) locked(ctx context.Context, body func(heldDeliveryGuard) error) error {
-	return g.acquire(ctx, time.Now().Add(deliveryGuardWait), false, body)
+	return g.acquire(ctx, time.Now().Add(refreshGuardWait), false, body)
 }
 
 func (g *QuotaDeliveryGuard) acquire(ctx context.Context, until time.Time, initialize bool, body func(heldDeliveryGuard) error) error {

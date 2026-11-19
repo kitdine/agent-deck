@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
@@ -2302,4 +2303,58 @@ func TestWrapLockContentionFallsBackToOwnerUnknownOnStatRace(t *testing.T) {
 	if contention.ActionKind != nil {
 		t.Fatalf("contention.ActionKind = %v, want nil", contention.ActionKind)
 	}
+}
+
+func TestQuotaRefreshLockCannotStartAfterCutoff(t *testing.T) {
+	root := t.TempDir()
+	cutoff := time.Now().Add(-time.Nanosecond)
+	lock, err := AcquireQuotaRefreshLockBefore(context.Background(), root, cutoff)
+	if lock != nil || !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expired cutoff acquired %v: %v", lock, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "quota-refresh.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected lock file: %v", err)
+	}
+}
+
+func TestQuotaRefreshLockCannotRetryAfterCutoff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		root := t.TempDir()
+		holder, err := AcquireQuotaRefreshLock(ctx, root, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer holder.Release()
+
+		cutoff := time.Now().Add(time.Second)
+		wakes := 0
+		after := func(time.Duration) <-chan time.Time {
+			wakes++
+			if contents, err := os.ReadFile(holder.path); err != nil || string(contents) != holder.token {
+				t.Fatalf("expected the original holder at the first retry: %v", err)
+			}
+			// Advance only the synctest clock, then make the lock available
+			// before the delayed retry resumes.
+			time.Sleep(time.Until(cutoff) + time.Nanosecond)
+			if err := holder.Release(); err != nil {
+				t.Fatal(err)
+			}
+			return time.After(0)
+		}
+		lock, err := acquireNamedLockBefore(ctx, root, "quota-refresh.lock", time.Until(cutoff),
+			lockProcessAlive, tryLockReclaimFile, cutoff, after)
+		if lock != nil {
+			defer lock.Release()
+		}
+		if wakes != 1 || !time.Now().After(cutoff) {
+			t.Fatalf("expected one retry wake after cutoff, got %d at %v relative to cutoff", wakes, time.Since(cutoff))
+		}
+		if lock != nil || !errors.Is(err, ErrStateBusy) {
+			t.Errorf("retry after cutoff acquired %v: %v", lock != nil, err)
+		}
+		if _, err := os.Lstat(holder.path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("retry after cutoff left a lock file: %v", err)
+		}
+	})
 }

@@ -164,6 +164,9 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 		return nil, err
 	}
 	if version >= identitySchemaVersion {
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < refreshWriteAndCleanup {
+			return nil, context.DeadlineExceeded
+		}
 		if err := store.pruneAlertNotices(ctx, now.Add(-alertNoticeRetention)); err != nil {
 			return nil, err
 		}
@@ -407,6 +410,9 @@ func (r *SnapshotReader) alertNoticed(ctx context.Context, client Client, genera
 }
 
 func (s *Store) pruneAlertNotices(ctx context.Context, before time.Time) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM quota_alert_notices_v2 WHERE instance_unix < ?`, before.Unix())
+	_, err := s.refreshWrite(ctx, func(ctx context.Context, c *sql.Conn) (bool, error) {
+		_, err := c.ExecContext(ctx, `DELETE FROM quota_alert_notices_v2 WHERE instance_unix < ?`, before.Unix())
+		return err == nil, err
+	})
 	return err
 }

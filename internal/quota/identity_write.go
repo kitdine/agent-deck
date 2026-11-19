@@ -9,12 +9,22 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/store"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// quotaWrite pins the busy limit and the immediate transaction to one
-// connection. A failed cleanup must not return altered state to the pool.
-func (s *Store) quotaWrite(ctx context.Context, limit time.Duration, write func(context.Context, *sql.Conn) (bool, error)) (out WriteOutcome, err error) {
-	ctx, cancel := context.WithTimeout(ctx, limit)
+func (s *Store) refreshWrite(ctx context.Context, write func(context.Context, *sql.Conn) (bool, error)) (WriteOutcome, error) {
+	return s.writeImmediate(ctx, time.Second, true, write)
+}
+
+func (s *Store) quotaWrite(ctx context.Context, limit time.Duration, write func(context.Context, *sql.Conn) (bool, error)) (WriteOutcome, error) {
+	return s.writeImmediate(ctx, limit, false, write)
+}
+
+// writeImmediate pins the busy limit and the transaction to one connection.
+func (s *Store) writeImmediate(ctx context.Context, limit time.Duration, refresh bool, write func(context.Context, *sql.Conn) (bool, error)) (out WriteOutcome, err error) {
+	entry := time.Now()
+	ctx, cancel := context.WithDeadline(ctx, entry.Add(limit))
 	defer cancel()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -26,7 +36,13 @@ func (s *Store) quotaWrite(ctx context.Context, limit time.Duration, write func(
 		return WriteUnresolved, err
 	}
 	deadline, _ := ctx.Deadline()
-	busy := max(0, time.Until(deadline).Milliseconds())
+	// Anchor a parent deadline supplied as wall time to this operation's
+	// monotonic entry time, even if acquiring the connection took a while.
+	deadline = entry.Add(deadline.Sub(entry))
+	var busy int64
+	if !refresh {
+		busy = max(0, time.Until(deadline).Milliseconds())
+	}
 	open := false
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), limit)
@@ -43,10 +59,15 @@ func (s *Store) quotaWrite(ctx context.Context, limit time.Duration, write func(
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d", busy)); err != nil {
 		return WriteUnresolved, err
 	}
-	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+	if refresh {
+		open, err = beginRefreshWrite(ctx, conn, deadline)
+	} else {
+		_, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE")
+		open = err == nil
+	}
+	if err != nil {
 		return WriteUnresolved, err
 	}
-	open = true
 	changed, err := write(ctx, conn)
 	if err != nil {
 		return WriteUnresolved, err
@@ -61,6 +82,53 @@ func (s *Store) quotaWrite(ctx context.Context, limit time.Duration, write func(
 	return WriteCommitted, nil
 }
 
+// beginRefreshWrite returns whether cleanup must roll back. Only a native
+// BUSY from BEGIN is retryable. No transaction body has run at that point.
+func beginRefreshWrite(ctx context.Context, conn *sql.Conn, deadline time.Time) (bool, error) {
+	var lastBusy error
+	for {
+		if err := refreshWriteCutoff(ctx, deadline, lastBusy); err != nil {
+			return false, err
+		}
+		_, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE")
+		if err == nil {
+			return true, refreshWriteCutoff(ctx, deadline, lastBusy)
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// modernc can replace the native result with the context error.
+			// Roll back a possible acquisition, or discard the connection if
+			// rollback cannot confirm that it is clean.
+			if stop := refreshWriteCutoff(ctx, deadline, lastBusy); stop != nil {
+				err = stop
+			}
+			return true, err
+		}
+		var native *sqlite.Error
+		if !errors.As(err, &native) || native.Code()&255 != sqlite3.SQLITE_BUSY {
+			return false, err
+		}
+		lastBusy = err
+		select {
+		case <-ctx.Done():
+		case <-time.After(min(5*time.Millisecond, time.Until(deadline))):
+		}
+	}
+}
+
+func refreshWriteCutoff(ctx context.Context, deadline time.Time, lastBusy error) error {
+	err := ctx.Err()
+	if err == context.Canceled {
+		return err
+	}
+	if err == context.DeadlineExceeded || !time.Now().Before(deadline) {
+		if lastBusy != nil {
+			return lastBusy
+		}
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
 func (s *Store) BeginRefreshCycle(ctx context.Context, lock *store.Lock, at time.Time) (RefreshCycle, error) {
 	if s.core == nil || at.IsZero() {
 		return RefreshCycle{}, errors.New("invalid quota refresh store or observation time")
@@ -69,7 +137,7 @@ func (s *Store) BeginRefreshCycle(ctx context.Context, lock *store.Lock, at time
 		return RefreshCycle{}, err
 	}
 	cycle := RefreshCycle{owner: s, lock: lock, at: at}
-	_, err := s.quotaWrite(ctx, time.Second, func(ctx context.Context, conn *sql.Conn) (bool, error) {
+	_, err := s.refreshWrite(ctx, func(ctx context.Context, conn *sql.Conn) (bool, error) {
 		err := conn.QueryRowContext(ctx, "UPDATE quota_cycle SET seq=seq+1 WHERE singleton=1 RETURNING seq").Scan(&cycle.seq)
 		return err == nil, err
 	})
@@ -90,7 +158,7 @@ func (s *Store) cycleWrite(ctx context.Context, cycle RefreshCycle, write func(c
 	if err := s.checkCycle(cycle); err != nil {
 		return WriteUnresolved, err
 	}
-	return s.quotaWrite(ctx, time.Second, func(ctx context.Context, conn *sql.Conn) (bool, error) {
+	return s.refreshWrite(ctx, func(ctx context.Context, conn *sql.Conn) (bool, error) {
 		var latest CycleSeq
 		if err := conn.QueryRowContext(ctx, "SELECT seq FROM quota_cycle WHERE singleton=1").Scan(&latest); err != nil {
 			return false, err

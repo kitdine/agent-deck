@@ -4,11 +4,193 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
+	func testStandaloneRejectsStrictlyOlderQuota() async throws {
+		let page = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let installed = page.replacingSubscription(try newerQuota(than: page, available: true))
+		let quota = RecordingQuotaRefresher()
+		let c = DesktopRefreshCoordinator(host: ScriptedSnapshotRefresher(responses: [.snapshot(installed)]),
+		                                  quotaRefresher: quota, snapshotStore: nil)
+		await c.startInitialRefresh().value
+		await quota.setSubscription(page.data.subscription)
+		await c.refreshQuotaAlertsOnly(manual: true)
+		XCTAssertEqual(c.latestSnapshot, installed)
+		XCTAssertEqual(c.state, .ready(installed))
+	}
+
+	func testWidgetFileExcludesGoIdentityFields() async throws {
+		let file = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		let sub = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: Data(contentsOf: file))
+		let identity = try XCTUnwrap(sub.clients.first { $0.client == "claude" }?.identity.value)
+		let email = try XCTUnwrap(identity.emailMasked.value)
+		let organization = try XCTUnwrap(identity.organizationName.value)
+		let page = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json")).replacingSubscription(sub)
+		let store = AppGroupSnapshotStore(directoryURL: storeDirectory())
+		let c = DesktopRefreshCoordinator(host: ScriptedSnapshotRefresher(responses: [.snapshot(page)]), snapshotStore: store)
+		await c.startInitialRefresh().value
+		XCTAssertEqual(c.latestSnapshot?.data.subscription, sub)
+		let bytes = try Data(contentsOf: store.snapshotURL)
+		let object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+		let disk = try XCTUnwrap(object["subscription"] as? [String: Any])
+		XCTAssertNil(disk["projection"])
+		let clients = try XCTUnwrap(disk["clients"] as? [[String: Any]])
+		for client in clients {
+			for key in ["identity", "plan_display", "quota_context", "failure_detail"] { XCTAssertNil(client[key], key) }
+		}
+		XCTAssertEqual(clients.first { $0["client"] as? String == "codex" }?["plan"] as? String, "pro")
+		for sentinel in [email, organization] { XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains(sentinel)) }
+	}
+
+	func testNonBootstrapFullInstallsNewerQuota() async throws {
+		let page = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let newer = try newerQuota(than: page, available: false)
+		let quota = RecordingQuotaRefresher()
+		await quota.setSubscription(newer)
+		let c = DesktopRefreshCoordinator(host: ScriptedSnapshotRefresher(responses: [.snapshot(page)]), quotaRefresher: quota, snapshotStore: nil)
+		await c.startInitialRefresh().value
+		XCTAssertEqual(c.latestSnapshot, page.replacingSubscription(newer))
+	}
+
+	func testFirstServingInstallRejectsForeignSubscription() async throws {
+		let page = try servingCoordinatorFixture(id: "first", full: true)
+		let foreign = DesktopSubscriptionSnapshotV1(available: true, clients: [], projection: .value(.init(coreEpoch: 99, revision: 9, boot: "fixture", mono: 10)))
+		let bad = DesktopServingSnapshotV2(header: page.header, payload: page.payload.replacingSubscription(foreign))
+		let host = ControlledServingRefresher(restore: nil, partial: bad, final: bad)
+		let c = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: widgetBatchNow)
+		let task = c.startInitialRefresh()
+		await host.waitUntilSuspended()
+		host.resume()
+		await task.value
+		XCTAssertEqual(c.servingHeader, page.header)
+		XCTAssertEqual(c.latestSnapshot, page.payload.replacingSubscription(.unavailable))
+	}
+
+	func testEqualStandaloneQuotaRetriesFailedWidgetWrite() async throws {
+		let page = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let dir = storeDirectory()
+		let permit = dir.appendingPathComponent("permit")
+		let store = AppGroupSnapshotStore(directoryURL: dir, atomicReplace: { src, dest in
+			guard FileManager.default.fileExists(atPath: permit.path) else { throw CacheReplacementError.failed }
+			try FileManager.default.moveItem(at: src, to: dest)
+		})
+		let quota = RecordingQuotaRefresher()
+		let c = DesktopRefreshCoordinator(host: ScriptedSnapshotRefresher(responses: [.snapshot(page)]), quotaRefresher: quota, snapshotStore: store)
+		await c.startInitialRefresh().value
+		guard case .failedBeforeCommit = c.widgetPublication else { return XCTFail("fixture must fail first write") }
+		try Data().write(to: permit)
+		await quota.setSubscription(page.data.subscription)
+		await c.refreshQuotaAlertsOnly(manual: true)
+		guard case .succeeded = c.widgetPublication else { return XCTFail("equal section did not repair Widget write") }
+		XCTAssertEqual(try store.read().generatedAt, page.generatedAt)
+		XCTAssertEqual(c.latestSnapshot, page)
+	}
+
+	func testReleaseDuringRunningFullOnlyPublishesChangedSection() async throws {
+		let first = try servingCoordinatorFixture(id: "first", full: false)
+		let full = try servingCoordinatorFixture(id: "held", full: true)
+		let newer = try newerQuota(than: full.payload, available: false)
+		let held = DesktopServingSnapshotV2(header: full.header, payload: full.payload.replacingSubscription(newer))
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: full)
+		let reader = ScriptedWidgetBatchReader([.failure(.timedOut)])
+		let store = AppGroupSnapshotStore(directoryURL: storeDirectory())
+		let c = DesktopRefreshCoordinator(host: host, snapshotStore: store,
+			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: reader, now: widgetBatchNow), wallNow: widgetBatchNow)
+		let task = c.startInitialRefresh()
+		await host.waitUntilSuspended()
+		let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+		while (try? store.read()) == nil, ContinuousClock.now < deadline { await Task.yield() }
+		XCTAssertTrue(try store.read().subscription.available)
+		c.holdPublications()
+		host.publish(held)
+		// The publication callback queues its installation on MainActor.
+		await Task { @MainActor in }.value
+		XCTAssertEqual(c.servingHeader?.publicationID, "first")
+		c.releasePublications()
+		let written = ContinuousClock.now.advanced(by: .seconds(3))
+		while (try? store.read().subscription.available) != false, ContinuousClock.now < written { await Task.yield() }
+		XCTAssertFalse(try store.read().subscription.available)
+		let asks = await reader.deliveryAsks
+		XCTAssertTrue(asks.isEmpty, "held release before full success must not recollect session scope")
+		host.resume()
+		await task.value
+	}
+
+	func testHeldServingReleaseKeepsNewerStandaloneSubscription() async throws {
+		let partial = try servingCoordinatorFixture(id: "early", full: false)
+		let full = try servingCoordinatorFixture(id: "held", full: true)
+		let host = ControlledServingRefresher(restore: nil, partial: partial, final: full)
+		let newer = try newerQuota(than: full.payload, available: true)
+		let quota = SuspendingQuotaRefresher(alerts: [], subscription: newer)
+		let now = try XCTUnwrap(DesktopTimestamp.date(from: full.header.generatedAt))
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil, wallNow: { now })
+		let initial = coordinator.startInitialRefresh()
+		await host.waitUntilSuspended()
+		await quota.waitUntilSuspended()
+		for _ in 0..<100 where coordinator.latestSnapshot == nil { await Task.yield() }
+		// Advance the serving baseline while the independent quota request
+		// is suspended. It must publish before the full job returns.
+		let intervening = try servingCoordinatorFixture(id: "intervening", full: false, sessionTotal: 91)
+		host.publish(intervening)
+		let installedBy = ContinuousClock.now.advanced(by: .seconds(2))
+		while coordinator.servingHeader?.publicationID != "intervening", ContinuousClock.now < installedBy { await Task.yield() }
+		coordinator.holdPublications()
+		host.publish(full)
+		await quota.resume()
+		let mergedBy = ContinuousClock.now.advanced(by: .seconds(2))
+		while coordinator.latestSnapshot?.data.subscription != newer, ContinuousClock.now < mergedBy { await Task.yield() }
+		XCTAssertEqual(coordinator.latestSnapshot, intervening.payload.replacingSubscription(newer))
+		host.resume()
+		await initial.value
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "intervening")
+		coordinator.releasePublications()
+		XCTAssertEqual(coordinator.servingHeader?.publicationID, "held")
+		XCTAssertEqual(coordinator.latestSnapshot, full.payload.replacingSubscription(newer))
+		XCTAssertEqual(coordinator.latestSnapshot?.data.sessions.available, true)
+	}
+
+	func testProjectionOrderingThroughServingInstallation() async throws {
+		func publication(_ id: String, headerEpoch: Int64 = 1, keyEpoch: Int64 = 1, revision: Int64, mono: Int64,
+		                 boot: String = "boot", legacy: Bool = false, nullProjection: Bool = false, available: Bool = true) throws -> DesktopServingSnapshotV2 {
+			let page = try servingCoordinatorFixture(id: id, full: true, generationChanges: ["core_epoch": headerEpoch])
+			let section = DesktopSubscriptionSnapshotV1(available: available, clients: [], projection: legacy ? .absent : nullProjection ? .null :
+				.value(.init(coreEpoch: keyEpoch, revision: revision, boot: boot, mono: mono)))
+			return .init(header: page.header, payload: page.payload.replacingSubscription(section))
+		}
+		let first = try publication("base", revision: 2, mono: 20)
+		let nextEpoch = try publication("next", headerEpoch: 9, keyEpoch: 9, revision: 1, mono: 1)
+		let host = ControlledServingRefresher(restore: nil, partial: first, final: nextEpoch)
+		let now = try XCTUnwrap(DesktopTimestamp.date(from: first.header.generatedAt))
+		let c = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let task = c.startInitialRefresh()
+		await host.waitUntilSuspended()
+		var expected = first.payload.data.subscription
+		for (candidate, wins) in [
+			(try publication("older revision", revision: 1, mono: 90), false),
+			(try publication("equal", revision: 2, mono: 20, available: false), false),
+			(try publication("smaller mono", revision: 2, mono: 19), false),
+			(try publication("larger mono", revision: 2, mono: 21), true),
+			(try publication("other boot same revision", revision: 2, mono: 90, boot: "other"), false),
+			(try publication("larger revision", revision: 3, mono: 1), true),
+			(try publication("legacy", revision: 0, mono: 0, legacy: true), false),
+			(try publication("null", revision: 0, mono: 0, nullProjection: true), false),
+			(try publication("foreign", keyEpoch: 9, revision: 99, mono: 99), false)
+		] {
+			host.publish(candidate)
+			let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+			while c.servingHeader?.publicationID != candidate.header.publicationID, ContinuousClock.now < deadline { await Task.yield() }
+			XCTAssertEqual(c.servingHeader?.publicationID, candidate.header.publicationID)
+			if wins { expected = candidate.payload.data.subscription }
+			XCTAssertEqual(c.latestSnapshot?.data.subscription, expected, candidate.header.publicationID)
+		}
+		host.resume()
+		await task.value
+		XCTAssertEqual(c.latestSnapshot, nextEpoch.payload)
+	}
+
 	func testLateBootstrapQuotaMergePublishesTheFinalWidgetSnapshot() async throws {
 		let partial = try servingCoordinatorFixture(id: "quota-partial", full: false)
 		let final = try servingCoordinatorFixture(id: "quota-full", full: true)
 		let host = ControlledServingRefresher(restore: nil, partial: partial, final: final)
-		let subscription = DesktopSubscriptionSnapshotV1(available: !final.payload.data.subscription.available, clients: [])
+		let subscription = try newerQuota(than: final.payload, available: !final.payload.data.subscription.available)
 		let quota = SuspendingQuotaRefresher(alerts: [], subscription: subscription)
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: directory) }
@@ -20,7 +202,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await quota.waitUntilSuspended()
 		host.resume()
 		let noSummary = AppGroupSessionScopeSummarySetV1.unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
-		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload, sessionScopeSummary: noSummary)
+		let baseline = AppGroupDesktopSnapshotV1(envelope: final.payload.legacyWidgetFixture, sessionScopeSummary: noSummary)
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: .seconds(3))
 		while (try? store.read()) != baseline, clock.now < deadline {
@@ -33,7 +215,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let updated = final.payload.replacingSubscription(subscription)
 		XCTAssertNotEqual(updated, final.payload)
 		XCTAssertEqual(coordinator.latestSnapshot, updated)
-		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated, sessionScopeSummary: noSummary), "Widget snapshot must contain the final quota merge without changing the full snapshot")
+		XCTAssertTrue(try store.read() == AppGroupDesktopSnapshotV1(envelope: updated.legacyWidgetFixture, sessionScopeSummary: noSummary), "Widget snapshot must contain the final quota merge without changing the full snapshot")
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
@@ -367,7 +549,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 		host.resume()
 		await refresh.value
-		XCTAssertEqual(coordinator.latestSnapshot, next)
+		XCTAssertEqual(coordinator.latestSnapshot, next.replacingSubscription(previous.data.subscription))
 		XCTAssertNil(coordinator.scanProgress)
 	}
 
@@ -388,7 +570,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete,
+			envelope: complete.legacyWidgetFixture,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		let quotaCalls = await quotaRefresher.recordedManualValues()
@@ -440,14 +622,14 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await coordinator.startInitialRefresh().value
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 
-		let freshSubscription = DesktopSubscriptionSnapshotV1(available: true, clients: [])
+		let freshSubscription = try newerQuota(than: complete, available: true)
 		await quotaRefresher.setSubscription(freshSubscription)
 		await coordinator.refreshQuotaAlertsOnly(manual: false)
 
 		XCTAssertEqual(coordinator.latestSnapshot?.data.subscription, freshSubscription)
 		XCTAssertEqual(coordinator.latestSnapshot?.data.usage, complete.data.usage, "the session/usage scan must not be rerun")
 		XCTAssertEqual(coordinator.state, .ready(try XCTUnwrap(coordinator.latestSnapshot)))
-		XCTAssertEqual(try store.read().subscription, freshSubscription, "the App Group projection widgets read must also carry the fresher figures")
+		XCTAssertEqual(try store.read().subscription, freshSubscription.legacyWidgetSubscription, "the App Group projection widgets read must also carry the fresher figures")
 	}
 
 	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
@@ -485,7 +667,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await providerFollowUp.value
 
 		XCTAssertEqual(host.callCount, 2)
-		XCTAssertEqual(coordinator.latestSnapshot, second)
+		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
 
 	func testSourceBurstDuringScanCreatesOneFollowUpAndRetainsPublishedValue() async throws {
@@ -504,7 +686,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await initial.value
 		for notification in notifications { await notification.value }
 		XCTAssertEqual(host.callCount, 2)
-		XCTAssertEqual(coordinator.latestSnapshot, second)
+		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
 
 	func testWakeDuringScanLeavesOneFollowUpMergedWithSourceEvents() async throws {
@@ -526,7 +708,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await wake.value
 		for source in sources { await source.value }
 		XCTAssertEqual(host.callCount, 2, "the wake and the source burst share one follow-up")
-		XCTAssertEqual(coordinator.latestSnapshot, second)
+		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
 
 	func testWakeAloneDuringScanStillGetsItsReconciliation() async throws {
@@ -740,7 +922,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete,
+			envelope: complete.legacyWidgetFixture,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		// The failing helper never reported real progress past the synthetic
@@ -793,7 +975,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete,
+			envelope: complete.legacyWidgetFixture,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 	}
@@ -810,7 +992,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await coordinator.startInitialRefresh().value
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.widgetPublication, .failedBeforeCommit(generation: 1, issue: .storageUnavailable))
-		let subscription = DesktopSubscriptionSnapshotV1(available: true, clients: [])
+		let subscription = try newerQuota(than: complete, available: true)
 		await quota.setSubscription(subscription)
 		await coordinator.requestQuotaRefresh(manual: false)
 		let updated = complete.replacingSubscription(subscription)
@@ -840,7 +1022,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await recovered.refresh()
 		XCTAssertEqual(recovered.widgetPublication, .succeeded(generation: 1, affectedKinds: Set(AppGroupWidgetKind.allCases)))
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(
-			envelope: complete,
+			envelope: complete.legacyWidgetFixture,
 			sessionScopeSummary: .unavailable(AppGroupSessionScopeSummaryReason.summaryUnavailable)
 		))
 		XCTAssertEqual(recovered.state, .ready(complete))
@@ -937,8 +1119,17 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 	}
 }
 
+private extension DesktopWireEnvelopeV1 {
+	var legacyWidgetFixture: Self { replacingSubscription(data.subscription.legacyWidgetSubscription) }
+}
+
+private func newerQuota(than envelope: DesktopWireEnvelopeV1, available: Bool) throws -> DesktopSubscriptionSnapshotV1 {
+	let p = try XCTUnwrap(envelope.data.subscription.projection.value)
+	return .init(available: available, clients: [], projection: .value(.init(coreEpoch: p.coreEpoch, revision: p.revision, boot: p.boot, mono: p.mono + 1)))
+}
+
 private func servingCoordinatorFixture(id: String, full: Bool, generationChanges: [String: Any] = [:],
-	day: String = "2026-08-13", nextDay: String = "2026-08-14") throws -> DesktopServingSnapshotV2 {
+	day: String = "2026-08-13", nextDay: String = "2026-08-14", sessionTotal: Int? = nil) throws -> DesktopServingSnapshotV2 {
 	var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
 	let generatedAt = "\(day)T10:00:00Z"
 	payload["generated_at"] = generatedAt
@@ -950,12 +1141,18 @@ private func servingCoordinatorFixture(id: String, full: Bool, generationChanges
 		var data = try XCTUnwrap(payload["data"] as? [String: Any])
 		var sessions = try XCTUnwrap(data["sessions"] as? [String: Any])
 		sessions["available"] = false
+		if let sessionTotal { sessions["total"] = sessionTotal }
 		data["sessions"] = sessions
 		payload["data"] = data
 	}
 	let coverage: [String: Any] = ["state": full ? "complete" : "partial", "inventory_id": "fixture", "observed_at": generatedAt, "sources": 2, "committed": full ? 2 : 1]
 	var generation: [String: Any] = ["state_identity": "fixture-state", "core_epoch": 1, "session_epoch": 2, "core_schema": 31, "session_schema": 1, "usage_revision": 3, "session_revision": 4]
 	generation.merge(generationChanges) { _, new in new }
+	// A valid serving fixture carries the generation of its actual header.
+	if var data = payload["data"] as? [String: Any], var sub = data["subscription"] as? [String: Any], var p = sub["projection"] as? [String: Any] {
+		p["core_epoch"] = generation["core_epoch"]
+		sub["projection"] = p; data["subscription"] = sub; payload["data"] = data
+	}
 	let body: [String: Any] = ["payload": payload, "header": [
 		"format_version": 1, "wire_version": 2, "publication_id": id, "projection_version": 1,
 		"usage_parser_version": 1, "session_prepared": full, "timezone": "UTC",
@@ -1314,14 +1511,16 @@ private struct FailingWidgetScopeReader: WidgetSessionScopeReading {
 	}
 }
 
-@MainActor
-final class DesktopRefreshCoordinatorWidgetSummaryTests: XCTestCase {
-	private func storeDirectory() -> URL {
+private extension XCTestCase {
+	@MainActor func storeDirectory() -> URL {
 		let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		addTeardownBlock { try? FileManager.default.removeItem(at: url) }
 		return url
 	}
+}
 
+@MainActor
+final class DesktopRefreshCoordinatorWidgetSummaryTests: XCTestCase {
 	/// The Widget batch is asked of the bootstrap's last publication even while
 	/// that publication is held behind an opening surface, and again once it is
 	/// released: neither publish has to start a read for another publication.

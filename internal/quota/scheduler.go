@@ -50,8 +50,9 @@ type Scheduler struct {
 	// package (internal/desktop's own tests, which drive Scheduler through
 	// desktop.Service.RefreshQuota) can inject a fake without needing access
 	// to those internal seams.
-	ProbeCodex       func(ctx context.Context, observedAt time.Time, timeout time.Duration) (CodexResult, error)
-	ProbeClaudeProse func(ctx context.Context, observedAt time.Time, timeout time.Duration) (ClaudeProseResult, error)
+	ProbeCodex          func(ctx context.Context, observedAt time.Time, timeout time.Duration) (CodexResult, error)
+	ProbeClaudeIdentity func(context.Context, string) IdentityObservation
+	ProbeClaudeProse    func(ctx context.Context, observedAt time.Time, timeout time.Duration) (ClaudeProseResult, error)
 }
 
 func (s Scheduler) probeCodex(ctx context.Context, observedAt time.Time) (CodexResult, error) {

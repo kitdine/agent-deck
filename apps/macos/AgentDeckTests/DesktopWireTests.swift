@@ -3,6 +3,55 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+	func testSubscriptionGoFixtureAndNullableWireContract() throws {
+		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		let bytes = try Data(contentsOf: url)
+		let decoder = JSONDecoder()
+		let original = try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: bytes)
+		XCTAssertEqual(original.projection.value?.coreEpoch, 11)
+		let codex = original.clients[0]
+		XCTAssertEqual(codex.plan, "pro")
+		XCTAssertEqual(codex.displayPlanShortName, "pro")
+		XCTAssertEqual(codex.identity, .null)
+		XCTAssertEqual(original.clients[1].planDisplay, .null)
+		XCTAssertEqual(original.clients[1].identity.value?.state, .identified)
+		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(original)), original)
+
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
+		var identity = try XCTUnwrap(clients[1]["identity"] as? [String: Any])
+		identity["freshness"] = "last_read"
+		identity["quota_association"] = "future_association"
+		identity["state"] = "future_identity"
+		identity["current_until"] = NSNull()
+		identity.removeValue(forKey: "organization_name")
+		clients[0]["identity"] = identity
+		clients[0]["plan_display"] = NSNull()
+		clients[1]["failure_detail"] = "future_detail"
+		clients[1]["quota_context"] = ["invalidated_at": "2026-11-18T12:01:00Z", "reason": "context_changed"]
+		func read() throws -> DesktopSubscriptionSnapshotV1 {
+			object["clients"] = clients
+			return try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		}
+		let changed = try read()
+		XCTAssertNil(changed.clients[0].displayPlanShortName)
+		let decoded = try XCTUnwrap(changed.clients[0].identity.value)
+		XCTAssertEqual(decoded.state, .unrecognized)
+		XCTAssertEqual(decoded.freshness, .lastRead)
+		XCTAssertEqual(decoded.currentUntil, .null)
+		XCTAssertEqual(decoded.emailMasked.value, "a***e@example.test")
+		XCTAssertEqual(decoded.organizationName, .absent)
+		XCTAssertEqual(decoded.quotaAssociation, .value(.unrecognized))
+		XCTAssertEqual(changed.clients[1].failureDetail, .value(.unrecognized))
+		XCTAssertEqual(changed.clients[1].quotaContext.value?.reason, .contextChanged)
+		clients[0].removeValue(forKey: "plan_display")
+		object.removeValue(forKey: "projection")
+		let legacy = try read()
+		XCTAssertEqual(legacy.clients[0].displayPlanShortName, "pro")
+		XCTAssertEqual(legacy.projection, .absent)
+		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(legacy)), legacy)
+	}
+
 	// MARK: session_scope_view
 
 	/// The producer's canonical fixtures carry the view: a confirmed Work
@@ -562,7 +611,7 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertEqual(codex.windows.map(\.key), ["codex", "codex_bengalfox"])
 		XCTAssertEqual(codex.tightestWindowKey, "codex")
 		XCTAssertEqual(codex.windows[1].label, "GPT-5.3-Codex-Spark")
-		XCTAssertEqual(codex.plan, "prolite")
+		XCTAssertEqual(codex.plan, "pro")
 		XCTAssertTrue(codex.attributionConfirmed)
 		XCTAssertEqual(codex.resetAllowance?.remaining, 3)
 		XCTAssertNil(codex.resetAllowance?.total)

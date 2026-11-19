@@ -735,6 +735,15 @@ func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time
 	return acquireNamedLock(ctx, stateRoot, "quota-refresh.lock", timeout)
 }
 
+// AcquireQuotaRefreshLockBefore keeps the quota command's original cutoff
+// through directory validation, stale-owner checks and polling wakeups.
+func AcquireQuotaRefreshLockBefore(ctx context.Context, stateRoot string, cutoff time.Time) (*Lock, error) {
+	if cutoff.IsZero() || !time.Now().Before(cutoff) {
+		return nil, ErrStateBusy
+	}
+	return acquireNamedLockBefore(ctx, stateRoot, "quota-refresh.lock", time.Until(cutoff), lockProcessAlive, tryLockReclaimFile, cutoff, time.After)
+}
+
 // CheckQuotaRefreshLock verifies the lock is still held for this core.
 func (s *Store) CheckQuotaRefreshLock(lock *Lock) error {
 	if s.readOnly || lock == nil || lock.token == "" ||
@@ -777,6 +786,10 @@ func acquireNamedLockWithProcessCheck(ctx context.Context, stateRoot, name strin
 type reclaimFileLock func(*os.File) (bool, error)
 
 func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (*Lock, error) {
+	return acquireNamedLockBefore(ctx, stateRoot, name, timeout, processAlive, tryReclaimLock, time.Time{}, time.After)
+}
+
+func acquireNamedLockBefore(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock, cutoff time.Time, after func(time.Duration) <-chan time.Time) (*Lock, error) {
 	stateRoot, err := platform.GuardStateRoot(stateRoot)
 	if err != nil {
 		return nil, err
@@ -787,7 +800,18 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 		return nil, err
 	}
 	deadline := time.Now().Add(timeout)
+	if !cutoff.IsZero() {
+		deadline = cutoff
+	}
 	for {
+		if !cutoff.IsZero() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if time.Now().After(cutoff) {
+				return nil, ErrStateBusy
+			}
+		}
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, platform.FileMode)
 		if err == nil {
 			if _, writeErr := file.WriteString(token); writeErr != nil {
@@ -816,7 +840,7 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(min(25*time.Millisecond, time.Until(deadline))):
+		case <-after(min(25*time.Millisecond, time.Until(deadline))):
 		}
 	}
 }

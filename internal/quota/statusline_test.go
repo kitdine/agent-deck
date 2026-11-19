@@ -167,7 +167,7 @@ func TestChainStatusLinePriorFailureDoesNotAffectSubsequentCapture(t *testing.T)
 	var stdout bytes.Buffer
 
 	ChainStatusLine(ctx, "exit 1", []byte(statusLineSample), &stdout)
-	RecordStatusLinePayload(ctx, store, []byte(statusLineSample), observedAt)
+	RecordStatusLinePayload(ctx, store, []byte(statusLineSample), observedAt, nil)
 
 	windows, err := store.Windows(ctx, ClientClaude)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestRecordStatusLinePayloadFailureDoesNotAffectAlreadyCompletedChain(t *tes
 	var stdout bytes.Buffer
 
 	ChainStatusLine(ctx, "cat", []byte("not valid json"), &stdout)
-	RecordStatusLinePayload(ctx, store, []byte("not valid json"), time.Now())
+	RecordStatusLinePayload(ctx, store, []byte("not valid json"), time.Now(), nil)
 
 	if stdout.String() != "not valid json" {
 		t.Fatalf("stdout = %q, want the prior command's output despite the capture payload being malformed", stdout.String())
@@ -202,7 +202,7 @@ func TestRecordStatusLinePayloadNilStoreIsANoop(t *testing.T) {
 	// Must not panic; persistence being unavailable is swallowed (C3
 	// property 3 applies here too, since this only ever runs after the
 	// chain has already completed).
-	RecordStatusLinePayload(context.Background(), nil, []byte(statusLineSample), time.Now())
+	RecordStatusLinePayload(context.Background(), nil, []byte(statusLineSample), time.Now(), nil)
 }
 
 func TestChainThenRecordPersistsThroughStore(t *testing.T) {
@@ -212,7 +212,7 @@ func TestChainThenRecordPersistsThroughStore(t *testing.T) {
 	var stdout bytes.Buffer
 
 	ChainStatusLine(ctx, "", []byte(statusLineSample), &stdout)
-	RecordStatusLinePayload(ctx, store, []byte(statusLineSample), observedAt)
+	RecordStatusLinePayload(ctx, store, []byte(statusLineSample), observedAt, nil)
 
 	windows, err := store.Windows(ctx, ClientClaude)
 	if err != nil {
@@ -225,5 +225,63 @@ func TestChainThenRecordPersistsThroughStore(t *testing.T) {
 		if w.Source != SourceClaudeStatusLine || !w.ObservedAt.Equal(observedAt) {
 			t.Fatalf("window = %+v, want Source/ObservedAt set correctly", w)
 		}
+	}
+}
+
+func TestRecordStatusLinePayloadGuardMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name, gate string
+		confirmed  int
+		stamp      *BootStamp
+		want       int
+	}{
+		{"initial without clock", "open_initial", -1, nil, 2},
+		{"blocked", "blocked", 2, &BootStamp{"same", 11}, 0},
+		{"equal", "open", 2, &BootStamp{"same", 10}, 0},
+		{"old boot", "open", 2, &BootStamp{"old", 11}, 0},
+		{"missing boot", "open", 2, &BootStamp{"", 11}, 0},
+		{"missing clock", "open", 2, nil, 0},
+		{"wrong confirmation", "open", 1, &BootStamp{"same", 11}, 0},
+		{"strictly after", "open", 2, &BootStamp{"same", 11}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, db := openTestStore(t)
+			gen := 2
+			if tc.gate == "open_initial" {
+				gen = 0
+			}
+			_, err := db.Exec(`INSERT INTO quota_envelopes_v2(client,context_generation,confirmed_generation,capture_gate,capture_open_boot,capture_open_mono) VALUES('claude',?,?,?,'same',10)`, gen, tc.confirmed, tc.gate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			RecordStatusLinePayload(context.Background(), s, []byte(statusLineSample), time.Now(), tc.stamp)
+			var rows, bound int
+			if err := db.QueryRow(`SELECT count(*),count(CASE WHEN context_generation=? THEN 1 END) FROM quota_windows_v2`, gen).Scan(&rows, &bound); err != nil || rows != tc.want || bound != rows {
+				t.Fatal(rows, bound, err)
+			}
+		})
+	}
+}
+
+func TestRecordStatusLinePayloadContendedWriter(t *testing.T) {
+	s, db := openTestStore(t)
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(ctx, "ROLLBACK")
+	start := time.Now()
+	RecordStatusLinePayload(ctx, s, []byte(statusLineSample), start, nil)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("capture used ordinary SQLite busy timeout: %s", elapsed)
+	}
+	var rows int
+	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM quota_windows_v2").Scan(&rows); err != nil || rows != 0 {
+		t.Fatal(rows, err)
 	}
 }

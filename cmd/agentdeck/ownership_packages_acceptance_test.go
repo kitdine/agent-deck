@@ -42,7 +42,7 @@ var ownershipPackageCases = []string{
 	"platform.GuardStateRoot", "platform.RevalidateOwnership", "platform.EnsureStateRoot", "platform.EnsureStateRootWithFS",
 	"installation.StateRoot", "installation.StateRootWithHome",
 	"store.Open", "store.OpenExisting", "store.OpenReadOnly", "store.OpenWithLockHeld", "store.OpenSessions", "store.OpenSessionsReadOnly",
-	"store.AcquireLock", "store.AcquireScanLock", "store.AcquireQuotaRefreshLock", "store.AcquireDerivedSnapshotCacheLock", "store.AcquireServingSnapshotLock", "store.InspectScanLockContention", "store.OpenServingGenerationReader", "store.ReadServingGeneration",
+	"store.AcquireLock", "store.AcquireScanLock", "store.AcquireQuotaRefreshLock", "store.AcquireQuotaRefreshLockBefore", "store.AcquireDerivedSnapshotCacheLock", "store.AcquireServingSnapshotLock", "store.InspectScanLockContention", "store.OpenServingGenerationReader", "store.ReadServingGeneration",
 	"credentialvault.Vault.Seal", "credentialvault.Vault.SealExisting", "credentialvault.Vault.Open", "credentialvault.Vault.InspectKey", "credentialvault.Vault.InspectKeyIDs", "credentialvault.Vault.InitializeNew",
 	"hookrefusal.Read", "hookrefusal.Live", "hookrefusal.Write", "hookrefusal.Clear",
 	"telemetry.LoadConfig", "telemetry.SaveConfig", "telemetry.EnsureToken", "telemetry.ReadToken", "telemetry.ReadListenerState", "telemetry.ReadStatus", "telemetry.WriteManagedBlock", "telemetry.RemoveManagedBlock", "telemetry.Serve", "telemetry.Receiver.ServeHTTP",
@@ -113,6 +113,8 @@ func ownershipPackageProbe(name, root string) int {
 		lock, err = store.AcquireScanLock(ctx, root, time.Second)
 	case "store.AcquireQuotaRefreshLock":
 		lock, err = store.AcquireQuotaRefreshLock(ctx, root, time.Second)
+	case "store.AcquireQuotaRefreshLockBefore":
+		lock, err = store.AcquireQuotaRefreshLockBefore(ctx, root, time.Now().Add(time.Second))
 	case "store.AcquireDerivedSnapshotCacheLock":
 		lock, err = store.AcquireDerivedSnapshotCacheLock(ctx, root, time.Second)
 	case "store.AcquireServingSnapshotLock":
@@ -322,6 +324,7 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 		"sessionorigin.SourceConfigDir":       "pure path constructor; config I/O is guarded",
 		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.ReadServingGeneration",
 		"desktop.Service.RefreshQuota":        "AcquireQuotaRefreshLock guards before quota work; supplied Store owns its handle",
+		"desktop.Service.RefreshQuotaCycle":   "caller supplies a guarded RefreshCore and holds the quota refresh lock",
 		"desktop.Service.BuildSubscription":   "supplied guarded Store; quota APIs own their lock",
 	}
 	covered := map[string]bool{}

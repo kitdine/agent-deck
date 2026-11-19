@@ -344,3 +344,58 @@ func TestQuotaIdentityReadOnlySchemaMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestRefreshWriteDisablesSQLiteWaitWithShorterParent(t *testing.T) {
+	ctx, s, _, _ := newIdentityStore(t)
+	s.db.SetMaxOpenConns(1)
+	var before, after int
+	if err := s.db.QueryRow("PRAGMA busy_timeout").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(150 * time.Millisecond)
+	parent, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	out, err := s.refreshWrite(parent, func(ctx context.Context, conn *sql.Conn) (bool, error) {
+		d, ok := ctx.Deadline()
+		var busy int
+		err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busy)
+		if err != nil || busy != 0 || !ok || !d.Equal(deadline) {
+			t.Fatalf("busy=%d deadline=%v, want %v: %v", busy, d, deadline, err)
+		}
+		return false, nil
+	})
+	if err != nil || out != WriteDropped {
+		t.Fatal(out, err)
+	}
+	if err := s.db.QueryRow("PRAGMA busy_timeout").Scan(&after); err != nil || after != before {
+		t.Fatal(before, after, err)
+	}
+}
+
+func TestRefreshWriteReturnsBusyAtDeadline(t *testing.T) {
+	ctx, s, _, _ := newIdentityStore(t)
+	writer, err := s.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err = writer.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	defer writer.ExecContext(ctx, "ROLLBACK")
+	for _, budget := range []time.Duration{time.Second, 150 * time.Millisecond} {
+		start := time.Now()
+		child, cancel := context.WithDeadline(ctx, start.Add(budget))
+		out, err := s.refreshWrite(child, func(context.Context, *sql.Conn) (bool, error) {
+			t.Fatal("writer entered while the other connection held BEGIN IMMEDIATE")
+			return false, nil
+		})
+		elapsed := time.Since(start)
+		cancel()
+		var code interface{ Code() int }
+		t.Logf("budget=%v return_after_cleanup=%v", budget, elapsed)
+		if elapsed < budget || out != WriteUnresolved || !errors.As(err, &code) || code.Code()&255 != 5 {
+			t.Errorf("busy write took %v (budget %v), outcome %v, error %v", elapsed, budget, out, err)
+		}
+	}
+}

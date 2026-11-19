@@ -17,41 +17,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type deliveryFixture struct {
-	store *Store
-	root  string
-	id    string
-}
-
-// Open a real core through an alias, retaining its managed drain pin and
-// refresh lock. Reconciliation independently resolves the core's path.
-func newDeliveryFixture(t *testing.T) (context.Context, deliveryFixture, *corestore.Lock) {
-	t.Helper()
-	ctx := t.Context()
-	root := canonicalQuotaFixtureRoot(t, t.TempDir())
-	alias := filepath.Join(t.TempDir(), "alias")
-	if err := os.Symlink(root, alias); err != nil {
-		t.Fatal(err)
-	}
-	core, err := corestore.Open(ctx, alias)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { core.Close() })
-	lock, err := corestore.AcquireQuotaRefreshLock(ctx, root, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { lock.Release() })
-	var st unix.Stat_t
-	if err := unix.Stat(root, &st); err != nil {
-		t.Fatal(err)
-	}
-	return ctx, deliveryFixture{NewWritableStore(core), root, fmt.Sprintf("%d:%d", uint64(st.Dev), st.Ino)}, lock
-}
-
 func TestQuotaDeliveryIndependentDomains(t *testing.T) {
-	ctx, r, lock := newDeliveryFixture(t) // enters through a directory alias
+	ctx, r, lock := refreshFixture(t) // enters through a directory alias
 	c := startIdentityCycle(t, ctx, r.store, lock, time.Now())
 	dir, err := unix.Open(r.root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -61,7 +28,7 @@ func TestQuotaDeliveryIndependentDomains(t *testing.T) {
 	if err := unix.Flock(dir, unix.LOCK_SH|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	g, err := r.store.ReconcileQuotaDelivery(ctx, c)
+	g, err := r.store.reconcileQuotaDelivery(ctx, c, r)
 	if err != nil {
 		t.Fatal("root shared lock interfered with reconciliation", err)
 	}
@@ -80,9 +47,7 @@ func TestQuotaDeliveryIndependentDomains(t *testing.T) {
 
 		// A managed core can hold its own shared drain pin. Simulate drain
 		// after retiring the core while the independent delivery file is held.
-		if err := r.store.core.Close(); err != nil {
-			return err
-		}
+		r.Close()
 		if err := corestore.CloseReadPools(); err != nil {
 			return err
 		}
@@ -103,7 +68,7 @@ func TestQuotaDeliveryInterruptedPublication(t *testing.T) {
 	// immediately after fsync leaves the same namespace as an interruption.
 	for idx, label := range []string{"pending-inode", "pending-directory", "binding-directory", "linked-directory", "unlinked-directory", "epoch-inode", "epoch-directory"} {
 		t.Run(label, func(t *testing.T) {
-			ctx, r, l := newDeliveryFixture(t)
+			ctx, r, l := refreshFixture(t)
 			c := startIdentityCycle(t, ctx, r.store, l, time.Now())
 			interrupted := QuotaDeliveryGuard{cycle: c, root: r.root, id: r.id}
 			syncs := 0
@@ -151,7 +116,7 @@ func TestQuotaDeliveryInterruptedPublication(t *testing.T) {
 			if hasP && hasO && (deliveryID(&o) != original || p.Nlink != 2 || o.Nlink != 2) {
 				t.Fatal("not two names for one inode")
 			}
-			g, e := r.store.ReconcileQuotaDelivery(ctx, c)
+			g, e := r.store.reconcileQuotaDelivery(ctx, c, r)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -169,7 +134,7 @@ func TestQuotaDeliveryInterruptedPublication(t *testing.T) {
 
 func TestQuotaDeliverySetupDeadline(t *testing.T) {
 	for _, cancelIt := range []bool{false, true} {
-		ctx, r, l := newDeliveryFixture(t)
+		ctx, r, l := refreshFixture(t)
 		c := startIdentityCycle(t, ctx, r.store, l, time.Now())
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -211,9 +176,9 @@ func TestQuotaDeliverySetupDeadline(t *testing.T) {
 func TestQuotaDeliveryRefusesRebind(t *testing.T) {
 	for _, kind := range []string{"missing", "replaced", "wrong-mode", "symlink", "fifo", "directory", "extra-link", "binding-missing", "binding-malformed", "binding-different", "pending-different", "bound-stage-missing", "bound-stage-replaced", "two-names-different", "prior-epoch", "unbound-official", "unsafe-unbound-stage"} {
 		t.Run(kind, func(t *testing.T) {
-			ctx, r, l := newDeliveryFixture(t)
+			ctx, r, l := refreshFixture(t)
 			c := startIdentityCycle(t, ctx, r.store, l, time.Now())
-			g, e := r.store.ReconcileQuotaDelivery(ctx, c)
+			g, e := r.store.reconcileQuotaDelivery(ctx, c, r)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -299,7 +264,7 @@ func TestQuotaDeliveryRefusesRebind(t *testing.T) {
 				return string(b[:n])
 			}
 			before := attr()
-			if newGuard, e := r.store.ReconcileQuotaDelivery(ctx, c); newGuard != nil || !errors.Is(e, ErrQuotaDeliveryUnavailable) {
+			if newGuard, e := r.store.reconcileQuotaDelivery(ctx, c, r); newGuard != nil || !errors.Is(e, ErrQuotaDeliveryUnavailable) {
 				t.Fatalf("refreshed invalid guard: %v", e)
 			}
 			if after := attr(); after != before {
@@ -396,7 +361,7 @@ func TestQuotaDeliverySwiftPeer(t *testing.T) {
 }
 
 func TestQuotaDeliverySetupAndFlockShareDeadline(t *testing.T) {
-	ctx, r, l := newDeliveryFixture(t)
+	ctx, r, l := refreshFixture(t)
 	c := startIdentityCycle(t, ctx, r.store, l, time.Now())
 	fd, e := unix.Open(filepath.Join(r.root, deliveryPending), unix.O_RDONLY|unix.O_CREAT|unix.O_EXCL, 0600)
 	if e != nil {

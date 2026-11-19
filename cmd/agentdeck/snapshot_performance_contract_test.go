@@ -1051,6 +1051,11 @@ func captureSnapshotPerformanceReference(t *testing.T, state, home string) snaps
 	normalized.PublicationID = &id
 	normalized.GenerationID = &generation
 	result.Snapshot.SessionScopeView = &normalized
+	p := result.Snapshot.Subscription.Projection
+	if p == nil || p.CoreEpoch <= 0 || p.Mono < 0 || p.Boot == "" {
+		t.Fatal("snapshot lacks subscription projection identity")
+	}
+	result.Snapshot.Subscription.Projection = &desktop.SubscriptionProjection{CoreEpoch: 1, Revision: p.Revision, Boot: "fixture-boot", Mono: 1}
 	var stream bytes.Buffer
 	if err = writeDesktopSnapshotStream(&stream, result); err != nil {
 		t.Fatalf("write stream: %v", err)
