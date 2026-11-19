@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"maps"
 	"regexp"
 
 	"github.com/kitdine/agent-deck/internal/store"
@@ -19,15 +18,16 @@ type RequestFacts struct {
 	ObservedAt      string `json:"observed_at"`
 	Association     string `json:"association"`
 
-	InputTokens      *int64 `json:"input_tokens,omitempty"`
-	CachedReadTokens *int64 `json:"cached_read_tokens,omitempty"`
-	CacheWriteTokens *int64 `json:"cache_write_tokens,omitempty"`
-	OutputTokens     *int64 `json:"output_tokens,omitempty"`
-	CacheWrite5m     *int64 `json:"cache_write_5m_tokens,omitempty"`
-	CacheWrite1h     *int64 `json:"cache_write_1h_tokens,omitempty"`
-	CacheWrite30m    *int64 `json:"cache_write_30m_tokens,omitempty"`
-	CacheWrite12h    *int64 `json:"cache_write_12h_tokens,omitempty"`
-	ExecutedTier     string `json:"executed_tier,omitempty"`
+	InputTokens      *int64                  `json:"input_tokens,omitempty"`
+	CachedReadTokens *int64                  `json:"cached_read_tokens,omitempty"`
+	CacheWriteTokens *int64                  `json:"cache_write_tokens,omitempty"`
+	OutputTokens     *int64                  `json:"output_tokens,omitempty"`
+	CacheWrite5m     *int64                  `json:"cache_write_5m_tokens,omitempty"`
+	CacheWrite1h     *int64                  `json:"cache_write_1h_tokens,omitempty"`
+	CacheWrite30m    *int64                  `json:"cache_write_30m_tokens,omitempty"`
+	CacheWrite12h    *int64                  `json:"cache_write_12h_tokens,omitempty"`
+	ExecutedTier     string                  `json:"executed_tier,omitempty"`
+	Pricing          *RequestPricingEvidence `json:"pricing_evidence,omitempty"`
 }
 
 var producerVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+](?:alpha|beta|rc|dev)(?:[.-]?[0-9]+)?)?$`)
@@ -50,9 +50,29 @@ func requestCount(values map[string]any, key string) *int64 {
 
 func codexRequestFacts(last map[string]any, admitted map[string]int64, at, version string) *RequestFacts {
 	counts, valid := tokenUsage(last)
-	// A cumulative delta may span multiple requests, or be smaller than
-	// last_token_usage. In either case the last request cannot label the delta.
-	if !valid || !maps.Equal(counts, admitted) {
+	if !valid {
+		return nil
+	}
+	// Only components reported by last_token_usage can disagree with an
+	// admitted delta. Absence stays unknown even if the cumulative counter
+	// establishes a quantity for the event.
+	fields := [][2]string{
+		{"input_tokens", "input_tokens"},
+		{"cached_input_tokens", "cached_input_tokens"},
+		{"cache_write_input_tokens", "cache_write_tokens"},
+		{"output_tokens", "output_tokens"},
+	}
+	matched := false
+	for _, field := range fields {
+		if requestCount(last, field[0]) == nil {
+			continue
+		}
+		if counts[field[1]] != admitted[field[1]] {
+			return nil
+		}
+		matched = matched || counts[field[1]] > 0
+	}
+	if !matched {
 		return nil
 	}
 	inputDetails, _ := last["input_tokens_details"].(map[string]any)

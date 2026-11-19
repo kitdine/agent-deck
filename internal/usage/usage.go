@@ -3160,8 +3160,16 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 	if err != nil {
 		return readPriceResolver{}, err
 	}
+	return loadReadPriceRows(ctx, s.Store.DB, current, timeline)
+}
+
+type priceRowsQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadReadPriceRows(ctx context.Context, db priceRowsQueryer, current time.Time, timeline store.ProviderTimeline) (readPriceResolver, error) {
 	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline, routes: map[string][]readSessionRoute{}}
-	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes ORDER BY client,session_id,id`)
+	routeRows, err := db.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes ORDER BY client,session_id,id`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
@@ -3191,7 +3199,7 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 		sortSessionRoutes(routes)
 		resolver.routes[key] = routes
 	}
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+	rows, err := db.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
@@ -4239,12 +4247,16 @@ func (s *Service) requestEventQuery(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return requestEventSelect(supported), nil
+}
+
+func requestEventSelect(supported bool) string {
 	facts, factsJoins := "NULL", ""
 	if supported {
 		facts, factsJoins = requestFactsSelection, requestFactsJoins
 	}
 	return `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at,` + facts +
-		` FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id` + factsJoins, nil
+		` FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id` + factsJoins
 }
 
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
@@ -4306,20 +4318,30 @@ func (s *Service) eventsRangeFiltered(ctx context.Context, from, to time.Time, c
 
 func scanRequestEvents(rows *sql.Rows) ([]storedEvent, error) {
 	out := []storedEvent{}
+	err := visitRequestEvents(rows, func(e storedEvent) error {
+		out = append(out, e)
+		return nil
+	})
+	return out, err
+}
+
+func visitRequestEvents(rows *sql.Rows, visit func(storedEvent) error) error {
 	for rows.Next() {
 		var e storedEvent
 		var facts RequestFacts
 		var input, cached, output, read, creation, write5, write1, write int64
 		if err := rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart, &e.processStart, &e.sessionEnd, &facts); err != nil {
-			return nil, err
+			return err
 		}
 		e.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}
 		if facts.Source != "" {
 			e.Facts = &facts
 		}
-		out = append(out, e)
+		if err := visit(e); err != nil {
+			return err
+		}
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
 type eventPricing func(storedEvent) (eventAttribution, error)
