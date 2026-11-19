@@ -105,6 +105,19 @@ CEv1 精确状态通过 4/4。主控读回全部证据关系，确认无缺项�
 - ux/menubar.md `subscription-account-identity:ux/menubar.md:state:02eb79b035ba2274198891def349cbd3b812363642312c210dfcecb140f16ed3`
 - ux/widget.md `subscription-account-identity:ux/widget.md:state:1ab73647b22651ea0140b04705fcd82feccd8efd4fa3d7e9cc6be66149d09f85`
 
+### 任务 1 接口冻结 — 2026-11-18
+
+主控核对目标 HEAD `a224b0b824d2cad451d3bd83153832d65506f0fe`、已批准分解指纹 `5dd1f6b41182f176e5c6e326fa86c4cfac5c1f4514adf81f0aa0bb1007dcc661`、A4/A5/A6/A7/A8、实际 adapter 输入、刷新调度及投影读取。当前共享迁移号为 36。任务 1 拥有 `internal/quota/identity_contract.go`、事务接口和版本化读写。任务 2 提供适配及筛查结果。任务 3 提供目录守卫与镜像回调。任务 4 连接现有门禁、调度和一致读取。运行时改动由对应写者按序接线。
+
+| 合同 | 冻结边界 |
+| --- | --- |
+| 周期与事务 | `BeginRefreshCycle` 接受本根仍持有的刷新锁，分配正的周期序号并固定展示时刻。`ApplyClaudeIdentity` 在立即事务按 A5.3 判定后调用持目录守卫方提供的提交前回调。回调失败回滚。更旧的周期或世代返回丢弃，已确认提交与错误或结果不明分开。下一周期按数据库已提交世代对账。 |
+| 身份与套餐 | `IdentityObservation` 恰有成功状态或失败类别。只有已识别才带脱敏显示字段。比较材料仅进内部事务和受准许的 Claude 基线列。同周期 Codex 关联用私有结论。Codex 最后一次成功额度读取使用私有布尔列 `quota_envelopes_v2.plan_unsafe`（默认 0）表达 A4 的 `unsafe_value`。旧字段仍为 `plan=null` 和 `plan_reason=not_reported`，等价的数据库缺省用原空值约定。成功写入原值和标记同事务覆盖，失败保留上次成功值。已知不安全的旧套餐在迁移时清除原值并记分类。旧库缺字段和无法证明拒绝的旧空值按未报告处理。标记不进入既有 wire 或一般导出。 |
+| Usage、闸门与顺序 | `CommitClaudeUsage` 按已提交世代与周期入账。仅同周期已识别、基线一致且 usage 成功时记录确认世代，之后以独立的 `PublishClaudeCaptureGate` 提交 boot/mono。`RecordStatusLineCapture` 在单事务内根据读 stdin 前的单调输入和提交时的闸门判定。写入失败显式接收既有 `Trigger`、实际失败时刻和后台退避值，事务内保留手动失败的后台 `FailureAt/BackoffUntil`，仅更新原因、`failure_detail` 与 `FailureObservedAt`。 |
+| 快照 | 在一个只读 tx 内取 schema、core epoch、projection revision、revalidate floor、身份、envelope、窗口及消费方要求的门禁输入。v27–35 用现有表和相应列。不存在的身份、标记或失败顺序保持缺省。用内部读边界提供新投影所需事实，既有调用签名保留兼容。 |
+
+冻结证据为接口和隔离夹具验证。已核对拟定声明与适配、手动失败及桌面读取的调用形状。实现验收覆盖 v27/28/29/30/35 读取和升级、WAL 已预热旧写者、账户隔离、镜像回调失败与重放、确认和闸门分开提交、套餐缺失与拒绝的重开读取，以及 A8 备份和 Restore 清理。生产任务仍处于实现中。
+
 ## Round 4 — 2026-11-19
 
 评审结论：FAIL

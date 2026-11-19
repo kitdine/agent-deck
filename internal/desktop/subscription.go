@@ -233,7 +233,7 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 	// older than a later prose failure was wrongly read as superseding that
 	// failure, hiding it even though the failure is the freshest thing that
 	// happened.
-	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && windowObservedAt.After(rec.FailureObservedAt)
+	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && !rec.FailureObservedAt.IsZero() && windowObservedAt.After(rec.FailureObservedAt)
 	failed := hasRecord && rec.Failure != "" && !supersededByStatusLine
 
 	switch {

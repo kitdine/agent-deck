@@ -358,7 +358,7 @@ func TestEvaluateAlertsPrunesExpiredNotices(t *testing.T) {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil {
 		t.Fatalf("count notices: %v", err)
 	}
 	if rows != 0 {
@@ -417,7 +417,7 @@ func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
 		t.Fatalf("unacknowledged notice: second evaluation = %+v, %v; want the same id again", second, err)
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("ledger rows before acknowledgement = %d, %v; want 0", rows, err)
 	}
 	for i := 0; i < 2; i++ {
@@ -458,7 +458,7 @@ func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
 		}
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("ledger rows after rejected acknowledgements = %d, %v; want 0", rows, err)
 	}
 	if err := AcknowledgeAlert(ctx, store, valid.id(), now); err != nil {

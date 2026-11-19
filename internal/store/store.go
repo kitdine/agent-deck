@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 35
+	CurrentSchemaVersion   = 36
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -733,6 +733,22 @@ func InspectScanLockContention(stateRoot string) *ErrLockContention {
 // domain rather than holding state.lock across network/process I/O.
 func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
 	return acquireNamedLock(ctx, stateRoot, "quota-refresh.lock", timeout)
+}
+
+// CheckQuotaRefreshLock verifies the lock is still held for this core.
+func (s *Store) CheckQuotaRefreshLock(lock *Lock) error {
+	if s.readOnly || lock == nil || lock.token == "" ||
+		lock.path != filepath.Join(filepath.Dir(s.path), "quota-refresh.lock") {
+		return ErrLockLost
+	}
+	contents, err := os.ReadFile(lock.path)
+	if err != nil {
+		return errors.Join(ErrLockLost, err)
+	}
+	if string(contents) != lock.token {
+		return ErrLockLost
+	}
+	return nil
 }
 
 // AcquireDerivedSnapshotCacheLock serializes cache publishers without sharing

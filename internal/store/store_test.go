@@ -616,11 +616,11 @@ func TestMigrationsAdoptExactPreassemblyQuotaAlertTable(t *testing.T) {
 		t.Fatalf("schema version = %d, %v, want %d", version, versionErr, CurrentSchemaVersion)
 	}
 	var notices int
-	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices_v2 WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
 		t.Fatalf("preserved notices = %d, %v, want 1", notices, err)
 	}
 	var failureObservedAtColumns int
-	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('quota_envelopes') WHERE name='failure_observed_at'`).Scan(&failureObservedAtColumns); err != nil || failureObservedAtColumns != 1 {
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('quota_envelopes_v2') WHERE name='failure_observed_at'`).Scan(&failureObservedAtColumns); err != nil || failureObservedAtColumns != 1 {
 		t.Fatalf("failure_observed_at columns = %d, %v, want 1", failureObservedAtColumns, err)
 	}
 }

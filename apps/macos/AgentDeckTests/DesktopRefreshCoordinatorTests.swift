@@ -41,8 +41,12 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let snapshot = try servingCoordinatorFixture(id: "session-origin-schema", full: true,
 			generationChanges: ["core_schema": 35])
 		XCTAssertEqual(snapshot.header.generation.coreSchema, 35)
+		let supportedSchema = DesktopServingGenerationV2.maximumSupportedCoreSchema
+		let current = try servingCoordinatorFixture(id: "current-schema", full: true,
+			generationChanges: ["core_schema": supportedSchema])
+		XCTAssertEqual(current.header.generation.coreSchema, supportedSchema)
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
-			generationChanges: ["core_schema": 36]))
+			generationChanges: ["core_schema": supportedSchema + 1]))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 34))
@@ -53,7 +57,8 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 35))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 35))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 34))
-		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {

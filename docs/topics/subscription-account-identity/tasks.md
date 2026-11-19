@@ -23,7 +23,7 @@ created: 2026-11-17
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `quota-storage-compatibility` | [ ] | [ ] |
+| 1. `quota-storage-compatibility` | [x] | [x] |
 | 2. `identity-adapters` | [ ] | [ ] |
 | 3. `quota-delivery-guard` | [ ] | [ ] |
 | 4. `quota-refresh-publication` | [ ] | [ ] |
