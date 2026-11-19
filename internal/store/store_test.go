@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2301,5 +2302,120 @@ func TestWrapLockContentionFallsBackToOwnerUnknownOnStatRace(t *testing.T) {
 	}
 	if contention.ActionKind != nil {
 		t.Fatalf("contention.ActionKind = %v, want nil", contention.ActionKind)
+	}
+}
+
+func TestLockOwnedByCurrentProcessTracksRealAcquisitionAndIdentity(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	otherRoot := t.TempDir()
+	scanPath := filepath.Join(root, "scan.lock")
+	statePath := filepath.Join(root, "state.lock")
+	otherScanPath := filepath.Join(otherRoot, "scan.lock")
+
+	lock, err := AcquireScanLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("held scan.lock was not recognized as owned by current process")
+	}
+	if _, err := AcquireScanLock(ctx, root, 0); !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expected ErrStateBusy while holding real lock, got %v", err)
+	}
+
+	tokenBytes, err := os.ReadFile(scanPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Copied token to another root or another lock name must not be owned.
+	if err := os.WriteFile(otherScanPath, tokenBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(otherScanPath) {
+		t.Fatal("copied token in another root reported as owned")
+	}
+	if err := os.WriteFile(statePath, tokenBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(statePath) {
+		t.Fatal("copied token on state.lock reported as owned")
+	}
+	_ = os.Remove(statePath)
+
+	// Hardlink of the held lock file to another path must not be owned.
+	hardlinkPath := filepath.Join(otherRoot, "hardlink.lock")
+	if err := os.Link(scanPath, hardlinkPath); err == nil {
+		defer os.Remove(hardlinkPath)
+		if LockOwnedByCurrentProcess(hardlinkPath) {
+			t.Fatal("hardlinked token at another path reported as owned")
+		}
+	}
+
+	// Concurrent Release calls must release only once and never delete a later lock.
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = lock.Release()
+		}()
+	}
+	wg.Wait()
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("released scan.lock still reported as owned")
+	}
+
+	// Replacing a released lock at the same path and releasing the old handle again
+	// must not touch the replacement lock.
+	nextLock, err := AcquireScanLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("second Release on already-released lock returned error: %v", err)
+	}
+	if !LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("stale Release removed or unregistered replacement lock")
+	}
+
+	// Recreating the file at the same path with the exact same registered token
+	// produces a different file identity (inode) and must not be treated as owned.
+	nextToken, err := os.ReadFile(scanPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(scanPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scanPath, nextToken, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("replaced inode with copied token reported as owned")
+	}
+	if err := nextLock.Release(); !errors.Is(err, ErrLockLost) {
+		t.Fatalf("Release after inode replacement = %v, want ErrLockLost", err)
+	}
+	if _, err := os.Stat(scanPath); err != nil {
+		t.Fatalf("Release removed replaced file with different inode: %v", err)
+	}
+	_ = os.Remove(scanPath)
+
+	// Unregistered same-PID nonce and foreign PID must both return false.
+	unregistered := fmt.Sprintf("v1:%d:%032x", os.Getpid(), 99)
+	if err := os.WriteFile(scanPath, []byte(unregistered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("unregistered same-PID token reported as owned")
+	}
+	foreign := fmt.Sprintf("v1:%d:%032x", os.Getpid()+100000, 99)
+	if err := os.WriteFile(scanPath, []byte(foreign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("foreign PID token reported as owned")
 	}
 }
