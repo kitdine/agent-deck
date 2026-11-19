@@ -1,4 +1,35 @@
-import { catalogs } from "./i18n.js";
+import { catalogs, spokenMaskedEmail } from "./i18n.js";
+
+export function hasOnlyMaskedVisualEmails(root) {
+  if (!root) return true;
+  const texts = [root.textContent ?? ""];
+  for (const node of [root, ...(root.querySelectorAll?.("*") ?? [])]) {
+    const title = node.getAttribute?.("title");
+    if (title) texts.push(title);
+  }
+  return texts.every((text) => {
+    const matches = text.match(/\S+@\S+/g) ?? [];
+    return matches.every((token) => {
+      const at = token.indexOf("@");
+      return at > 0 && at === token.lastIndexOf("@") && token.slice(0, at).includes("***");
+    });
+  });
+}
+
+export function hasOnlyAllowedSpokenEmails(root, dict) {
+  if (!root) return true;
+  const emailNodes = root.querySelectorAll(".quota-identity-email, .w-quota-signed-in-text");
+  const maskedAddresses = new Set(
+    Array.from(emailNodes).flatMap((node) => node.textContent.match(/\S*\*\*\*\S*@\S+/g) ?? []),
+  );
+  const allowed = Array.from(maskedAddresses, (email) => spokenMaskedEmail(email, dict));
+  return [root, ...root.querySelectorAll("*")].every((node) => {
+    const aria = node.getAttribute?.("aria-label");
+    if (!aria) return true;
+    if (aria.includes("***")) return false;
+    return !allowed.reduce((text, email) => text.replaceAll(email, ""), aria).includes("@");
+  });
+}
 
 // 交互探针：用真实事件走一遍关键路径并断言结果。
 // 截图只能证明"长什么样"，证明不了"点了会怎样"，这段补的是后者。
@@ -24,6 +55,26 @@ export function runProbe() {
   // 语言要在断言执行时读，不能在 runProbe 进来时读：那一刻 React 还没把
   // lang 落到 <html> 上，en 会静默拿到中文文案表，断言于是永远为假。
   const dict = () => catalogs[document.documentElement.lang.startsWith("en") ? "en" : "zh"];
+
+  const runSyntheticLeakNegativeCheck = () => {
+    const leakVisual = document.createElement("div");
+    leakVisual.textContent = "alice@example.test";
+    check("合成反例：可见未脱敏邮箱被隐私检查拦截", !hasOnlyMaskedVisualEmails(leakVisual));
+
+    const leakSpoken = document.createElement("div");
+    const masked = document.createElement("span");
+    masked.className = "quota-identity-email";
+    masked.textContent = "a***e@example.test";
+    leakSpoken.append(masked);
+    const spoken = spokenMaskedEmail(masked.textContent, dict());
+    leakSpoken.setAttribute("aria-label", spoken);
+    check("合成正例：无障碍口语形对应可见脱敏邮箱", hasOnlyAllowedSpokenEmails(leakSpoken, dict()));
+    leakSpoken.setAttribute("aria-label", `${spoken} alice@example.test`);
+    check(
+      "合成反例：无障碍未脱敏邮箱被隐私检查拦截",
+      !hasOnlyAllowedSpokenEmails(leakSpoken, dict()),
+    );
+  };
 
   window.setTimeout(async () => {
     try {
@@ -328,6 +379,212 @@ export function runProbe() {
 
     check("Claude 卡声明账号归属不可确认", !!card("claude")?.querySelector(".quota-attribution"));
     check("Codex 卡不带这句声明（它有 accountId）", !card("codex")?.querySelector(".quota-attribution"));
+    check("门禁下 Codex 无身份区域，Claude 有身份区域", !card("codex")?.querySelector(".quota-identity") && !!card("claude")?.querySelector(".quota-identity"));
+
+    runSyntheticLeakNegativeCheck();
+
+    quotaVariant("identityUnconfirmed");
+    await wait(80);
+    check(
+      "Codex 标题胶囊显示紧凑套餐名且含原值说明",
+      card("codex")?.querySelector(".quota-plan")?.textContent === "Pro 100" &&
+        (card("codex")?.querySelector(".quota-plan")?.getAttribute("title") ?? "").includes("prolite"),
+    );
+    check("Codex 套餐相同时省略身份侧套餐且仍显示工作区（F10）",
+      (card("codex")?.querySelector(".quota-identity-org")?.textContent ?? "").includes("Acme Studio") &&
+        !card("codex")?.querySelector(".quota-identity-plan"),
+    );
+    check(
+      "Claude 额度侧套餐提示写明来源且身份侧标清登录套餐（F5）",
+      (card("claude")?.textContent ?? "").includes(dict().quota.reasons.plan_not_reported) &&
+        (card("claude")?.querySelector(".quota-identity-plan")?.textContent ?? "").startsWith(`${dict().quota.identity.planPrefix}: `),
+    );
+    check("Popover 可见文本仅含脱敏邮箱（F9）", hasOnlyMaskedVisualEmails($(".popover")));
+    check(
+      "Popover 无障碍名称仅含允许的口语脱敏邮箱（F9）",
+      hasOnlyAllowedSpokenEmails($(".popover"), dict()),
+    );
+    check(
+      "Codex 关联说明存在且 Claude 不重复",
+      card("codex")?.querySelector(".quota-identity-assoc")?.textContent === dict().quota.identity.associationUnconfirmed &&
+        !card("claude")?.querySelector(".quota-identity-assoc"),
+    );
+
+    click($('.stage-group button[data-value="280"]'));
+    await wait(80);
+    const narrowLabel = card("codex")?.querySelector(".quota-identity-label");
+    const narrowPill = card("codex")?.querySelector(".quota-plan");
+    check(
+      "280 pt 时登录标签保持可见并进入 aria-label（F3）",
+      $(".popover")?.classList.contains("narrow") &&
+        !!narrowLabel &&
+        getComputedStyle(narrowLabel).clipPath === "none" &&
+        narrowLabel.getBoundingClientRect().width > 0 &&
+        (card("codex")?.querySelector(".quota-identity")?.getAttribute("aria-label") ?? "").includes(dict().quota.identity.title),
+    );
+    check(
+      "280 pt 时 Pro 100 胶囊保持单行（F6）",
+      !!narrowPill && narrowPill.getBoundingClientRect().height <= 20,
+    );
+
+    quotaVariant("longPlan");
+    await wait(80);
+    const longCodexCard = card("codex");
+    const longCodexPill = longCodexCard?.querySelector(".quota-plan");
+    const longClaudePlan = card("claude")?.querySelector(".quota-identity-plan");
+    check(
+      "280 pt 下 64 字符安全套餐省略且不超出卡片（F1）",
+      !!longCodexPill &&
+        longCodexPill.scrollWidth > longCodexPill.clientWidth &&
+        longCodexPill.getBoundingClientRect().right <= longCodexCard.getBoundingClientRect().right + 1 &&
+        !!longClaudePlan &&
+        longClaudePlan.scrollWidth > longClaudePlan.clientWidth &&
+        longClaudePlan.getBoundingClientRect().right <= card("claude").getBoundingClientRect().right + 1,
+    );
+
+    click($('.stage-group button[data-value="420"]'));
+    await wait(80);
+    check(
+      "420 pt 下 64 字符安全套餐同样不超出卡片（F1）",
+      (card("codex")?.querySelector(".quota-plan")?.getBoundingClientRect().right ?? 0) <=
+        (card("codex")?.getBoundingClientRect().right ?? 0) + 1,
+    );
+
+    quotaVariant("identityConfirmed");
+    await wait(80);
+    check(
+      "Codex 已确认变体展示同一账号关联文案",
+      card("codex")?.querySelector(".quota-identity-assoc")?.textContent === dict().quota.identity.associationConfirmed &&
+        !card("claude")?.querySelector(".quota-identity-assoc"),
+    );
+
+    quotaVariant("identityUnknown");
+    await wait(80);
+    const codexIdChildren = [...(card("codex")?.querySelector(".quota-identity")?.children ?? [])];
+    const codexMetaIdx = codexIdChildren.findIndex((n) => n.classList.contains("quota-identity-meta"));
+    const codexCtxIdx = codexIdChildren.findIndex((n) => n.classList.contains("quota-identity-context"));
+    const codexAria = card("codex")?.querySelector(".quota-identity")?.getAttribute("aria-label") ?? "";
+    check(
+      "身份未知保留旧邮箱时明确标为上次识别并相邻显示原时间（F2）",
+      card("codex")?.querySelector(".quota-identity-label")?.textContent === dict().quota.identity.lastKnown &&
+        !!card("codex")?.querySelector(".quota-identity-email.is-dim") &&
+        codexMetaIdx === 1 &&
+        (codexCtxIdx === -1 || codexMetaIdx < codexCtxIdx) &&
+        (card("codex")?.querySelector(".quota-identity-meta")?.textContent ?? "").includes(dict().quota.identity.reasons.probe_failed) &&
+        codexAria.includes(dict().quota.identity.lastKnown) &&
+        !codexAria.includes(`${dict().clients.codex} ${dict().quota.identity.title}`),
+    );
+    check(
+      "身份未知无旧值显示未知状态词与原因且无邮箱",
+      card("claude")?.querySelector(".quota-identity-status")?.textContent === dict().quota.identity.unknown &&
+        !(card("claude")?.querySelector(".quota-identity")?.textContent ?? "").includes("@") &&
+        (card("claude")?.querySelector(".quota-identity-meta")?.textContent ?? "").includes(dict().quota.identity.reasons.incomparable),
+    );
+
+    quotaVariant("expiredMailbox");
+    await wait(80);
+    check(
+      "expiredMailbox 下 Popover 标为上次识别的登录并弱化邮箱",
+      card("claude")?.querySelector(".quota-identity-label")?.textContent === dict().quota.identity.lastKnown &&
+        !!card("claude")?.querySelector(".quota-identity-email.is-dim"),
+    );
+
+    quotaVariant("contextChanged");
+    await wait(80);
+    check(
+      "登录上下文变化后 Claude 失效区无百分比并显示已失效（F9 拆分）",
+      !/\d+%/.test(card("claude")?.textContent ?? "") &&
+        card("claude")?.querySelector(".quota-missing b")?.textContent === dict().quota.discarded &&
+        (card("claude")?.querySelector(".quota-missing small")?.textContent ?? "").includes(dict().quota.context.changed) &&
+        card("claude")?.querySelector(".card-head small")?.textContent === "—",
+    );
+    check("上下文变化后 Popover 可见文本无未脱敏邮箱（F9 拆分）", hasOnlyMaskedVisualEmails($(".popover")));
+    check(
+      "上下文变化后 Popover 无障碍名称仅含口语脱敏邮箱（F9 拆分）",
+      hasOnlyAllowedSpokenEmails($(".popover"), dict()),
+    );
+
+    quotaVariant("claudeApiKey");
+    await wait(80);
+    check(
+      "claudeApiKey 下 Claude 显示非订阅失效而 Codex 正常（F10 / D3）",
+      !/\d+%/.test(card("claude")?.textContent ?? "") &&
+        card("claude")?.querySelector(".quota-missing b")?.textContent === dict().quota.discarded &&
+        (card("claude")?.querySelector(".quota-missing small")?.textContent ?? "").includes(dict().quota.context.nonSubscription) &&
+        card("claude")?.querySelector(".quota-identity-status")?.textContent === dict().quota.identity.nonSubscription &&
+        /\d+%/.test(card("codex")?.textContent ?? ""),
+    );
+
+    quotaVariant("contextKeyReset");
+    await wait(80);
+    check(
+      "contextKeyReset 下 Claude 显示密钥重置失效文案（F10）",
+      !/\d+%/.test(card("claude")?.textContent ?? "") &&
+        card("claude")?.querySelector(".quota-missing b")?.textContent === dict().quota.discarded &&
+        (card("claude")?.querySelector(".quota-missing small")?.textContent ?? "").includes(dict().quota.context.keyReset),
+    );
+
+    quotaVariant("contextRecovered");
+    await wait(80);
+    check(
+      "contextRecovered 下 Claude 首次新鲜 usage 后恢复窗口并保持未确认归属（A5.6）",
+      /\d+%/.test(card("claude")?.textContent ?? "") &&
+        !!card("claude")?.querySelector(".quota-attribution") &&
+        card("claude")?.querySelector(".quota-missing b")?.textContent !== dict().quota.discarded,
+    );
+
+    quotaVariant("signedOut");
+    await wait(80);
+    const signedOutName = card("claude")?.querySelector(".quota-identity")?.getAttribute("aria-label") ?? "";
+    check(
+      "退出订阅登录的无障碍名称直接说状态",
+      signedOutName.startsWith(`${dict().clients.claude} ${dict().quota.identity.signedOut}`),
+    );
+    check(
+      "退出登录后 Claude 失效无百分比且身份区不显示邮箱",
+      !/\d+%/.test(card("claude")?.textContent ?? "") &&
+        card("claude")?.querySelector(".quota-missing b")?.textContent === dict().quota.discarded &&
+        card("claude")?.querySelector(".quota-identity-status")?.textContent === dict().quota.identity.signedOut &&
+        !(card("claude")?.querySelector(".quota-identity")?.textContent ?? "").includes("@"),
+    );
+    check(
+      "Codex 非订阅身份不触发额度失效（D3）",
+      card("codex")?.querySelector(".quota-identity-status")?.textContent === dict().quota.identity.nonSubscription &&
+        /\d+%/.test(card("codex")?.textContent ?? ""),
+    );
+
+    quotaVariant("planConflict");
+    await wait(80);
+    check(
+      "Claude 套餐来源冲突显示冲突文案并在 help 列出原值",
+      (card("claude")?.querySelector(".quota-identity-plan")?.textContent ?? "").includes(dict().quota.planDisplay.conflict) &&
+        (card("claude")?.querySelector(".quota-identity-plan")?.getAttribute("title") ?? "").includes("max_5x"),
+    );
+
+    quotaVariant("parseFailed");
+    await wait(80);
+    check(
+      "parseFailed 显示 shape_invalid 第二行小字",
+      card("claude")?.querySelector(".quota-missing-detail")?.textContent === dict().quota.parseDetail.shape_invalid,
+    );
+
+    quotaVariant("parseFailedMissingLine");
+    await wait(80);
+    check(
+      "parseFailedMissingLine 显示 missing_line 第二行小字（F10）",
+      card("claude")?.querySelector(".quota-missing-detail")?.textContent === dict().quota.parseDetail.missing_line,
+    );
+
+    quotaVariant("parseFailedTimezone");
+    await wait(80);
+    check(
+      "parseFailedTimezone 显示 timezone_unresolved 第二行小字（F10）",
+      card("claude")?.querySelector(".quota-missing-detail")?.textContent === dict().quota.parseDetail.timezone_unresolved,
+    );
+
+    quotaVariant("neverProbed");
+    await wait(80);
+    check("从未探测时不出现身份区域", !$(".quota-identity"));
 
     quotaVariant("bothOfficial");
     await wait(80);
@@ -385,7 +642,7 @@ export function runProbe() {
     await wait(80);
     check("读取关闭时隐藏额度 tab", !tabButton("quota"));
     check("读取关闭从额度页返回用量页", tabButton("usage")?.classList.contains("active"));
-    check("读取关闭不保留额度卡或额度百分比", !$(".quota-client") && !$(".quota-track"));
+    check("读取关闭不保留额度卡或额度百分比", !$(".quota-client") && !$(".quota-track") && !$(".quota-identity"));
     check("读取关闭仍保留用量数据", !!$(".hero strong") && !!$(".bars"));
 
     const box = document.createElement("pre");
