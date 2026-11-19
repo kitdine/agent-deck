@@ -62,23 +62,11 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 					Partial: true,
 				}, nil
 			}
-			summary, err := service.SessionUsageSummary(ctx, metadata.Client, metadata.SessionID)
+			summary, invocations, pagination, err := service.SessionUsagePage(ctx, metadata.Client, metadata.SessionID, page, limit, false)
 			if err != nil {
 				return sessionViewerPage{
-					Empty:   "Normalized token summary is unavailable.",
-					Page:    page,
-					Warning: "Token summary could not be read.",
-					Partial: true,
-				}, nil
-			}
-			invocations, pagination, err := service.SessionInvocations(ctx, metadata.Client, metadata.SessionID, page, limit, false)
-			if err != nil {
-				return sessionViewerPage{
-					Summary: sessionViewerTokenSummaryLines(summary, false),
-					Empty:   "Normalized invocation details are unavailable.",
-					Page:    page,
-					Warning: "Token invocation details could not be read.",
-					Partial: true,
+					Empty: "Normalized token usage is unavailable.", Page: page,
+					Warning: "Token usage could not be read.", Partial: true,
 				}, nil
 			}
 			return sessionViewerTokensPage(summary, invocations, pagination), nil
@@ -229,15 +217,23 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 			}
 			detail.fields = append(detail.fields, terminalDetailField{label: component.label, value: groupedInt(invocation.Tokens[component.key]), role: terminalDetailRoleToken, priority: terminalDetailPriorityPrimary})
 		}
-		if catalogCost := sessionViewerInvocationCatalogCost(invocation); catalogCost != "unpriced" {
+		if invocation.Pricing != nil {
+			for _, field := range requestPricingFields(invocation.Pricing, true) {
+				detail.fields = append(detail.fields, terminalDetailField{label: field.label, value: field.value, role: sessionViewerPricingDetailRole(status), priority: terminalDetailPriorityPrimary})
+			}
+		} else if catalogCost := sessionViewerInvocationCatalogCost(invocation); catalogCost != "unpriced" {
 			detail.fields = append(detail.fields, terminalDetailField{label: "CATALOG BASE COST", value: catalogCost, role: sessionViewerPricingDetailRole(status), priority: terminalDetailPriorityPrimary})
 		}
 		detail.notes = append(detail.notes, terminalDetailNote{text: "Normalized invocation; no unreliable conversation-turn join is claimed.", status: strings.ToUpper(status), role: sessionViewerPricingDetailRole(status), priority: terminalDetailPriorityPrimary})
-		if len(invocation.Unpriced) > 0 {
+		if invocation.Pricing == nil && len(invocation.Unpriced) > 0 {
 			detail.notes = append(detail.notes, terminalDetailNote{text: strings.Join(invocation.Unpriced, ", "), status: "UNPRICED COMPONENTS", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
 		}
 		if len(invocation.Warnings) > 0 {
 			detail.notes = append(detail.notes, terminalDetailNote{text: strings.Join(invocation.Warnings, " · "), status: "WARNING", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
+		}
+		costLabel := "COST"
+		if invocation.Pricing != nil {
+			costLabel = "API EQUIVALENT"
 		}
 		rows = append(rows, sessionViewerRow{
 			Identity: fmt.Sprintf("invocation-%d", invocation.Sequence),
@@ -246,10 +242,10 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 				sessionViewerKnown(renderDisplayTime(invocation.EventAt)),
 				model,
 			),
-			Value: fmt.Sprintf("IN %s · OUT %s · COST %s",
+			Value: fmt.Sprintf("IN %s · OUT %s · %s %s",
 				groupedInt(invocation.Tokens["input_tokens"]),
 				groupedInt(invocation.Tokens["output_tokens"]),
-				cost,
+				costLabel, cost,
 			),
 			Detail:     detail,
 			LabelColor: sessionClientColor(summary.Client),
@@ -258,7 +254,7 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 	}
 
 	warnings := append([]string(nil), summary.Warnings...)
-	if len(summary.Unpriced) > 0 {
+	if summary.Pricing == nil && len(summary.Unpriced) > 0 {
 		warnings = append(warnings, "unpriced components: "+strings.Join(summary.Unpriced, ", "))
 	}
 	warningText := ""
@@ -290,9 +286,13 @@ func sessionViewerTokenSummaryLines(summary usage.SessionSummary, empty bool) []
 	if empty {
 		cost, pricing = "not applicable", "not applicable"
 	}
+	label := "PROVIDER COST"
+	if summary.Pricing != nil {
+		label = "API EQUIVALENT"
+	}
 	return []string{
 		fmt.Sprintf("INPUT %s · CACHED INPUT %s · OUTPUT %s", groupedInt(summary.Tokens["input_tokens"]), groupedInt(summary.Tokens["cached_input_tokens"]), groupedInt(summary.Tokens["output_tokens"])),
-		"PROVIDER COST " + cost + " · PRICING " + pricing,
+		label + " " + cost + " · PRICING " + pricing,
 	}
 }
 
@@ -315,6 +315,9 @@ func sessionViewerTokenComponents() []sessionViewerTokenComponent {
 }
 
 func sessionViewerSummaryCost(summary usage.SessionSummary) (string, string) {
+	if summary.Pricing != nil {
+		return apiReportText(summary.Pricing)
+	}
 	if summary.ProviderCost != nil && len(summary.Unpriced) == 0 {
 		return *summary.ProviderCost, "complete"
 	}
@@ -325,6 +328,9 @@ func sessionViewerSummaryCost(summary usage.SessionSummary) (string, string) {
 }
 
 func sessionViewerInvocationCost(invocation usage.SessionInvocation) (string, string) {
+	if invocation.Pricing != nil {
+		return apiReportText(invocation.Pricing)
+	}
 	if invocation.ProviderCost != nil && len(invocation.Unpriced) == 0 {
 		return *invocation.ProviderCost, "complete"
 	}

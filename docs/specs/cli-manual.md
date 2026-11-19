@@ -518,6 +518,24 @@ Detail，并立即把高度归还给列表；
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
 
+#### API 等价金额
+
+`usage summary`、`usage stats`、`usage sessions` 和 `session show --tokens`
+按所选调用范围展示 API 等价金额。依次优先显示完整金额、已知小计、同口径全量参考和
+`Unavailable`。确认无调用的范围及有证据的零费率显示为零金额。参考区间和缺项原因在计价详情中展示。
+渠道估算单独显示，个人套餐内含请求的渠道估算可为 `null`。
+金额排序、峰值及占比使用同币种、完整且至少有一项非零的金额集合。其余情形使用
+token 顺序，金额峰值与占比为空。选中范围有 Codex 调用且审批审查覆盖未证实时，
+`Coverage` 提示出现一次。
+
+JSON 新增可选 `pricing`，汇总位于 `data.pricing`，统计位于
+`data.totals.pricing` 和各明细行，会话列表位于 `data[].pricing`。
+`session show --tokens` 的会话汇总位于 `data.usage.pricing`，逐笔计价位于
+`data.invocations[].pricing`。该对象含 `rule_set`、`api_equivalent`、
+可空的 `provider_estimate` 和 `reference`，以及 `reasons[]`。
+金额的 `status` 为 `complete`、`partial` 或 `unavailable`，有值时用十进制字符串。
+旧 `catalog_base_cost` 和 `provider_cost` 继续提供既有目录与倍率估算。
+
 `usage scan` 目标计数：
 
 | 字段 | 含义 |
@@ -726,7 +744,7 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 | --- | --- | --- | --- | --- |
 | `price status` | 查看 active price catalogs、覆盖和 provenance；不联网 | 无 | 无 | `agentdeck price status` |
 | `price history` | 查看 immutable catalog 历史 | 无 | 无 | `agentdeck price history` |
-| `price list [model]` | 查看当前组件级合并后的有效费率，单位 USD / 1M tokens | `model`：可选精确过滤；`--provider openai\|anthropic` | 无 | `agentdeck price list gpt-5.6-sol` |
+| `price list [model]` | 查看组件级合并费率及带条件的价卡规则，单位 USD / 1M tokens | `model` 可选精确过滤，`--provider openai\|anthropic`，`--at <date-or-timestamp>` | 无 | `agentdeck price list gpt-6.2-astra --at 2026-11-18` |
 | `price update` | 自动解析并下载最新 LiteLLM canonical raw catalog | `--commit <40-char-sha>` | 无；`--commit` 为可选复现入口 | `agentdeck price update` |
 | `price override` | 导入本地官方组件覆盖或价卡 | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
 
@@ -736,6 +754,10 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 费率使用已知组件和非负价格。
 价卡对象可附带含摘要的 `pricing_rules` v2 规则，每条规则保留自己的适用期和来源。
 数组导入返回 `overrides`，价卡导入返回 `version` 和 `models`。
+
+`price list --at` 接受 `YYYY-MM-DD` 或 RFC 3339 时刻，日期按 UTC 零点查询。
+默认使用当前时刻。JSON 的 `tariffs[]` 提供对应日期的规则 ID、来源和适用期，以及
+渠道、端点、执行档和上下文等条件。单次请求的适用费率见调用计价详情。
 
 `price history` 的 `EFFECTIVE`、`price status` 中嵌入的 catalog 历史，以及
 `price list --verbose` provenance 的 `EFFECTIVE` 在 text 中使用本机时区并在列名标出；
@@ -757,11 +779,11 @@ truncated JSON 最多尝试三次；非 retryable 错误立即返回，只有完
 future 并存时所有这些字段只描述当前有效集合。合法 RFC3339 offset 会先解析为绝对
 时间，不参与字符串范围排序。
 
-事件成本优先使用事件时间有效的历史费率；历史模型或单个组件缺失时仅从当前有效
-费率补缺，绝不覆盖已可计算的历史组件，也不增加 fallback/estimate 标记。历史和
-当前本地目录都不存在的模型继续 unpriced。默认 text 的 status/history/list/update/
-override 使用可读表格并隐藏长 URL、完整 commit/SHA；JSON 和 `--verbose` 保留完整
-provenance。
+API 等价使用事件时间及请求证据支持的费率。历史条件缺证时，报告区分已知金额、参考
+和缺项。旧目录估算仍以历史有效组件为先，缺项按既有逻辑从当前目录补齐。
+`price status`、`price history`、`price list`、`price update` 和 `price override`
+默认提供可读表格。旧目录的长 URL 和完整提交摘要按既有表格规则简写，
+JSON 和 `--verbose` 保留完整出处。
 
 ## Session
 
@@ -971,6 +993,9 @@ envelope 写入 stderr 并退出 `2`。省略 `--format json` 或选择 text/NDJ
 `data.wire_version: 1`。`data` 始终包含 `provider`、`usage`、`sessions`、
 `health`、`subscription` 五个 section 及各自的 `available`。旧 wire-v1 payload
 缺少 `subscription` 时解码为 unavailable，不提高 `wire_version`。
+应用端可选的 `data.pricing` 按客户端和期间提供 API 等价、渠道估算、参考与计价原因。
+旧 payload 继续使用原金额展示。App Group v1 仍从 `data.usage` 构造，
+旧金额与覆盖字段保留既有口径。
 `sessions.work_signals` additively
 包含 `activity`、`workflow`、`tooling` 三个 family；每个 family 都有自己的
 `available` 与按 `period`、`client` keyed 的 bounded `items[]`。producer 固定生成

@@ -248,6 +248,7 @@ func (r invocationRules) amount(s tariffSelection, at time.Time, counts invocati
 func (r invocationRules) ttlReference(s tariffSelection, at time.Time, counts invocationComponents, speed tariffTerm, known *big.Rat) *PricingReference {
 	var values []*big.Rat
 	var candidates []string
+	var sources []PricingRuleSource
 	for _, token := range counts.tokens {
 		// A measured bucket cannot absorb an unallocated remainder.
 		if !strings.HasPrefix(token.kind, "cache_write_") || token.count != nil {
@@ -267,11 +268,12 @@ func (r invocationRules) ttlReference(s tariffSelection, at time.Time, counts in
 			}
 			return nil
 		}
-		_, extra := priceComponent(PricingComponent{Quantity: counts.unassigned}, term, modifier)
+		component, extra := priceComponent(PricingComponent{Quantity: counts.unassigned}, term, modifier)
+		sources = append(sources, pricingSources([]PricingComponent{component})...)
 		values = append(values, new(big.Rat).Add(known, extra))
 		candidates = append(candidates, strings.TrimPrefix(token.kind, "cache_write_"))
 	}
-	ref := &PricingReference{Currency: pricingCurrency, Tier: s.tier}
+	ref := &PricingReference{Currency: pricingCurrency, Tier: s.tier, sources: sources}
 	if counts.assume5m && len(values) > 0 {
 		amount := exactPrice(values[0], 9)
 		ref.Basis, ref.Amount = "assumed_5m", &amount

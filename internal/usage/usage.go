@@ -85,6 +85,7 @@ type Result struct {
 	Warnings             []string         `json:"warnings,omitempty"`
 }
 type Summary struct {
+	Pricing                     *PricingReport   `json:"pricing,omitempty"`
 	Tokens                      map[string]int64 `json:"tokens"`
 	Counts                      map[string]int64 `json:"counts"`
 	AttributionReasons          map[string]int64 `json:"attribution_reasons"`
@@ -107,6 +108,7 @@ type ModelCoverage struct {
 }
 
 type SessionSummary struct {
+	Pricing              *PricingReport   `json:"pricing,omitempty"`
 	Client               string           `json:"client"`
 	SessionID            string           `json:"session_id"`
 	FirstAt              string           `json:"first_at"`
@@ -139,40 +141,44 @@ type StatsRange struct {
 }
 
 type StatsTotals struct {
-	Tokens               int64   `json:"tokens"`
-	InputTokens          int64   `json:"input_tokens"`
-	OutputTokens         int64   `json:"output_tokens"`
-	CachedReadTokens     int64   `json:"cached_read_tokens"`
-	CacheWriteTokens     int64   `json:"cache_write_tokens"`
-	Sessions             int64   `json:"sessions"`
-	Events               int64   `json:"events"`
-	CatalogBaseCost      *string `json:"catalog_base_cost"`
-	ProviderCost         *string `json:"provider_cost"`
-	KnownCatalogBaseCost string  `json:"known_catalog_base_cost"`
-	KnownProviderCost    string  `json:"known_provider_cost"`
-	AverageTokens        string  `json:"average_tokens_per_session"`
-	AverageCost          *string `json:"average_cost_per_session"`
-	KnownAverageCost     string  `json:"known_average_cost_per_session"`
+	Pricing              *PricingReport `json:"pricing,omitempty"`
+	Tokens               int64          `json:"tokens"`
+	InputTokens          int64          `json:"input_tokens"`
+	OutputTokens         int64          `json:"output_tokens"`
+	CachedReadTokens     int64          `json:"cached_read_tokens"`
+	CacheWriteTokens     int64          `json:"cache_write_tokens"`
+	Sessions             int64          `json:"sessions"`
+	Events               int64          `json:"events"`
+	CatalogBaseCost      *string        `json:"catalog_base_cost"`
+	ProviderCost         *string        `json:"provider_cost"`
+	KnownCatalogBaseCost string         `json:"known_catalog_base_cost"`
+	KnownProviderCost    string         `json:"known_provider_cost"`
+	AverageTokens        string         `json:"average_tokens_per_session"`
+	AverageCost          *string        `json:"average_cost_per_session"`
+	KnownAverageCost     string         `json:"known_average_cost_per_session"`
 }
 
 type StatsBucket struct {
-	Start             string  `json:"start"`
-	End               string  `json:"end"`
-	Tokens            int64   `json:"tokens"`
-	InputTokens       int64   `json:"input_tokens"`
-	OutputTokens      int64   `json:"output_tokens"`
-	CachedReadTokens  int64   `json:"cached_read_tokens"`
-	CacheWriteTokens  int64   `json:"cache_write_tokens"`
-	Sessions          int64   `json:"sessions"`
-	Events            int64   `json:"events"`
-	ProviderCost      *string `json:"provider_cost"`
-	KnownProviderCost string  `json:"known_provider_cost"`
-	MetricValue       *string `json:"metric_value"`
-	KnownMetricValue  string  `json:"known_metric_value"`
-	Coverage          string  `json:"coverage"`
+	Pricing           *PricingReport `json:"pricing,omitempty"`
+	Start             string         `json:"start"`
+	End               string         `json:"end"`
+	Tokens            int64          `json:"tokens"`
+	InputTokens       int64          `json:"input_tokens"`
+	OutputTokens      int64          `json:"output_tokens"`
+	CachedReadTokens  int64          `json:"cached_read_tokens"`
+	CacheWriteTokens  int64          `json:"cache_write_tokens"`
+	Sessions          int64          `json:"sessions"`
+	Events            int64          `json:"events"`
+	ProviderCost      *string        `json:"provider_cost"`
+	KnownProviderCost string         `json:"known_provider_cost"`
+	MetricValue       *string        `json:"metric_value"`
+	KnownMetricValue  string         `json:"known_metric_value"`
+	Coverage          string         `json:"coverage"`
 }
 
 type StatsDimension struct {
+	APIShare           *string             `json:"api_share"`
+	Pricing            *PricingReport      `json:"pricing,omitempty"`
 	Name               string              `json:"name"`
 	Client             string              `json:"client,omitempty"`
 	Tokens             int64               `json:"tokens"`
@@ -220,30 +226,32 @@ type StatsModelActivity struct {
 }
 
 type StatsCacheSession struct {
-	Client             string   `json:"client"`
-	SessionID          string   `json:"session_id"`
-	Models             []string `json:"models"`
-	InputTokens        int64    `json:"input_tokens"`
-	OutputTokens       int64    `json:"output_tokens"`
-	CachedReadTokens   int64    `json:"cached_read_tokens"`
-	CacheWriteTokens   int64    `json:"cache_write_tokens"`
-	LogicalInputTokens int64    `json:"logical_input_tokens"`
-	CacheHitRate       *string  `json:"cache_hit_rate"`
-	Events             int64    `json:"events"`
-	FirstAt            string   `json:"first_at"`
-	LastAt             string   `json:"last_at"`
-	DetailCommand      string   `json:"detail_command"`
+	Pricing            *PricingReport `json:"pricing,omitempty"`
+	Client             string         `json:"client"`
+	SessionID          string         `json:"session_id"`
+	Models             []string       `json:"models"`
+	InputTokens        int64          `json:"input_tokens"`
+	OutputTokens       int64          `json:"output_tokens"`
+	CachedReadTokens   int64          `json:"cached_read_tokens"`
+	CacheWriteTokens   int64          `json:"cache_write_tokens"`
+	LogicalInputTokens int64          `json:"logical_input_tokens"`
+	CacheHitRate       *string        `json:"cache_hit_rate"`
+	Events             int64          `json:"events"`
+	FirstAt            string         `json:"first_at"`
+	LastAt             string         `json:"last_at"`
+	DetailCommand      string         `json:"detail_command"`
 }
 
 type StatsActivity struct {
-	Weekday          int     `json:"weekday"`
-	Hour             int     `json:"hour"`
-	Tokens           int64   `json:"tokens"`
-	Sessions         int64   `json:"sessions"`
-	Events           int64   `json:"events"`
-	KnownCost        string  `json:"known_provider_cost"`
-	MetricValue      *string `json:"metric_value"`
-	KnownMetricValue string  `json:"known_metric_value"`
+	Pricing          *PricingReport `json:"pricing,omitempty"`
+	Weekday          int            `json:"weekday"`
+	Hour             int            `json:"hour"`
+	Tokens           int64          `json:"tokens"`
+	Sessions         int64          `json:"sessions"`
+	Events           int64          `json:"events"`
+	KnownCost        string         `json:"known_provider_cost"`
+	MetricValue      *string        `json:"metric_value"`
+	KnownMetricValue string         `json:"known_metric_value"`
 }
 
 type StatsPeak struct {
@@ -262,6 +270,7 @@ type StatsCoverage struct {
 }
 
 type StatsReport struct {
+	APIPeak           *StatsPeak           `json:"api_peak"`
 	Range             StatsRange           `json:"range"`
 	Timezone          string               `json:"timezone"`
 	GroupBy           string               `json:"group_by"`
@@ -380,6 +389,8 @@ type OfficialOverride struct {
 }
 
 type PriceCatalog struct {
+	TariffDigest  string `json:"tariff_sha256,omitempty"`
+	TariffRules   int    `json:"tariff_rules,omitempty"`
 	Version       string `json:"version"`
 	SourceKind    string `json:"source_kind"`
 	SourceURL     string `json:"source_url"`
@@ -403,6 +414,7 @@ type PriceProvenance struct {
 }
 
 type EffectivePrice struct {
+	Tariffs    []PriceTariff              `json:"tariffs,omitempty"`
 	Provider   string                     `json:"provider"`
 	Model      string                     `json:"model"`
 	Unit       string                     `json:"unit"`
@@ -2245,11 +2257,28 @@ func (s *Service) CheckSourceReadability(ctx context.Context) (int, error) {
 	return unreadable, rows.Err()
 }
 func (s *Service) PriceHistory(ctx context.Context) ([]PriceCatalog, error) {
-	return s.priceHistoryPortable(ctx)
+	tx, err := s.Store.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	out, err := priceHistory(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
 }
 
-func (s *Service) priceHistoryPortable(ctx context.Context) ([]PriceCatalog, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,c.imported_at,c.effective_from,c.currency,c.schema_version,COUNT(mp.model) FROM price_catalogs c LEFT JOIN model_prices mp ON mp.catalog_version=c.version GROUP BY c.version`)
+func priceHistory(ctx context.Context, tx *sql.Tx) ([]PriceCatalog, error) {
+	supported, err := pricingRulesSupported(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,c.imported_at,c.effective_from,c.currency,c.schema_version,COUNT(mp.model),NULL FROM price_catalogs c LEFT JOIN model_prices mp ON mp.catalog_version=c.version GROUP BY c.version`
+	if supported {
+		query = `SELECT c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,c.imported_at,c.effective_from,c.currency,c.schema_version,COUNT(mp.model),p.rules_json FROM price_catalogs c LEFT JOIN model_prices mp ON mp.catalog_version=c.version LEFT JOIN price_rule_sets p ON p.catalog_version=c.version GROUP BY c.version`
+	}
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -2257,8 +2286,16 @@ func (s *Service) priceHistoryPortable(ctx context.Context) ([]PriceCatalog, err
 	var out []PriceCatalog
 	for rows.Next() {
 		var item PriceCatalog
-		if err = rows.Scan(&item.Version, &item.SourceKind, &item.SourceURL, &item.CommitSHA, &item.ContentSHA256, &item.ImportedAt, &item.EffectiveFrom, &item.Currency, &item.SchemaVersion, &item.Models); err != nil {
+		var raw sql.NullString
+		if err = rows.Scan(&item.Version, &item.SourceKind, &item.SourceURL, &item.CommitSHA, &item.ContentSHA256, &item.ImportedAt, &item.EffectiveFrom, &item.Currency, &item.SchemaVersion, &item.Models, &raw); err != nil {
 			return nil, err
+		}
+		if raw.Valid {
+			set, err := decodePriceRules([]byte(raw.String), true)
+			if err != nil {
+				return nil, err
+			}
+			item.TariffDigest, item.TariffRules = set.Digest, len(set.Rules)
 		}
 		out = append(out, item)
 	}
@@ -2287,7 +2324,7 @@ func (s *Service) priceHistoryPortable(ctx context.Context) ([]PriceCatalog, err
 		return nil, fmt.Errorf("invalid price catalog time: %w", sortErr)
 	}
 	for index := range out {
-		priceRows, queryErr := s.Store.DB.QueryContext(ctx, `SELECT prices_json FROM model_prices WHERE catalog_version=?`, out[index].Version)
+		priceRows, queryErr := tx.QueryContext(ctx, `SELECT prices_json FROM model_prices WHERE catalog_version=?`, out[index].Version)
 		if queryErr != nil {
 			return nil, queryErr
 		}
@@ -2313,7 +2350,12 @@ func (s *Service) priceHistoryPortable(ctx context.Context) ([]PriceCatalog, err
 
 // PriceStatus reports the locally available catalog; it never accesses the network.
 func (s *Service) PriceStatus(ctx context.Context) (map[string]any, error) {
-	history, err := s.PriceHistory(ctx)
+	tx, err := s.Store.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	history, err := priceHistory(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -2335,13 +2377,16 @@ func (s *Service) PriceStatus(ctx context.Context) (map[string]any, error) {
 		return map[string]any{"available": false}, nil
 	}
 	latest := active[len(active)-1]
-	prices, err := s.priceListAt(ctx, "", "", now)
+	prices, err := priceListAt(ctx, tx, "", "", now)
 	if err != nil {
 		return nil, err
 	}
 	components := 0
 	for _, price := range prices {
 		components += len(price.Prices)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return map[string]any{
 		"available": true, "version": latest.Version, "source_kind": latest.SourceKind,
@@ -2355,11 +2400,12 @@ func (s *Service) PriceStatus(ctx context.Context) (map[string]any, error) {
 // PriceList returns the current component-wise merged effective prices. Every
 // component retains the provenance of the catalog row that supplied it.
 func (s *Service) PriceList(ctx context.Context, providerFilter, modelFilter string) ([]EffectivePrice, error) {
-	return s.priceListAt(ctx, providerFilter, modelFilter, s.now())
+	at := s.now()
+	return s.reportPriceList(ctx, providerFilter, modelFilter, at, at)
 }
 
-func (s *Service) priceListAt(ctx context.Context, providerFilter, modelFilter string, at time.Time) ([]EffectivePrice, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.prices_json,c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,mp.effective_from,c.effective_from,c.imported_at FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+func priceListAt(ctx context.Context, db priceRowsQueryer, providerFilter, modelFilter string, at time.Time) ([]EffectivePrice, error) {
+	rows, err := db.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.prices_json,c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,mp.effective_from,c.effective_from,c.imported_at FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
 		return nil, err
 	}
@@ -2840,19 +2886,35 @@ type storedEvent struct {
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
-	events, err := s.events(ctx, "", "")
-	if err != nil {
-		return Summary{}, err
-	}
-	return s.summarize(ctx, events)
+	return s.SummaryRange(ctx, time.Time{}, time.Time{})
 }
 
 func (s *Service) SummaryRange(ctx context.Context, from, to time.Time) (Summary, error) {
-	events, err := s.eventsRange(ctx, from, to, "", "")
+	read, err := s.openPricingRead(ctx, s.now())
 	if err != nil {
 		return Summary{}, err
 	}
-	return s.summarize(ctx, events)
+	defer read.tx.Rollback()
+	summary := newUsageSummaryBuilder()
+	var prices pricingReportFold
+	err = read.visit(ctx, InvocationPricingFilter{From: from, To: to}, func(event storedEvent, at time.Time) error {
+		a, priced, err := read.price(event, at)
+		if err != nil {
+			return err
+		}
+		if err := legacyPricingError(priced); err != nil {
+			return err
+		}
+		summary.add(event, a, priced.Legacy)
+		prices.add(event.Client, pricingContribution(priced))
+		return nil
+	})
+	if err != nil {
+		return Summary{}, err
+	}
+	out := summary.finish()
+	out.Pricing = prices.result(read.rules.digest, true)
+	return out, read.tx.Commit()
 }
 
 func (s *Service) EarliestEventAt(ctx context.Context) (*time.Time, error) {
@@ -2871,6 +2933,7 @@ func (s *Service) EarliestEventAt(ctx context.Context) (*time.Time, error) {
 }
 
 type statsAccumulator struct {
+	pricing                                       pricingReportFold
 	tokens, input, output, cachedRead, cacheWrite int64
 	events, priced, unpriced                      int64
 	// wrapperEvents is only counted on the provider dimension, where the
@@ -3882,15 +3945,13 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	if options.Metric != "tokens" && options.Metric != "cost" && options.Metric != "sessions" {
 		return StatsReport{}, fmt.Errorf("invalid usage stats metric %q", options.Metric)
 	}
-	events, err := s.eventsRange(ctx, options.From, options.To, options.Client, options.Model)
+	read, err := s.openPricingRead(ctx, s.now())
 	if err != nil {
 		return StatsReport{}, err
 	}
-	resolver, err := s.loadReadPriceResolver(ctx, s.now())
-	if err != nil {
-		return StatsReport{}, err
-	}
-	timeline := resolver.timeline
+	defer read.tx.Rollback()
+	ruleSet := read.rules.digest
+	timeline := read.resolver.timeline
 	total := newStatsAccumulator()
 	warnings := map[string]bool{}
 	buckets := map[string]*statsAccumulator{}
@@ -3900,24 +3961,21 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	sessions := map[string]*statsSessionAccumulator{}
 	modelActivity := map[string]*statsModelActivityAccumulator{}
 	activity := map[[2]int]*statsAccumulator{}
-	for _, event := range events {
-		at, parseErr := time.Parse(time.RFC3339Nano, event.EventAt)
-		if parseErr != nil {
-			return StatsReport{}, parseErr
-		}
-		attribution, priceErr := resolver.priceForEvent(event)
-		if priceErr != nil {
-			return StatsReport{}, priceErr
+	err = read.visit(ctx, InvocationPricingFilter{From: options.From, To: options.To, Client: options.Client, Model: options.Model}, func(event storedEvent, at time.Time) error {
+		attribution, err := read.resolver.priceForEvent(event)
+		if err != nil {
+			return err
 		}
 		runtimeProvider := attribution.provider
 		if options.Provider != "" && runtimeProvider != options.Provider {
-			continue
+			return nil
 		}
-		result, calculateErr := calculateAttributedEvent(event, attribution)
-		if calculateErr != nil {
-			return StatsReport{}, calculateErr
+		priced := read.evaluate(event, at, attribution)
+		if err := legacyPricingError(priced); err != nil {
+			return err
 		}
-		result = aggregateAttributedResult(result, attribution)
+		projection := pricingContribution(priced)
+		result := aggregateAttributedResult(priced.Legacy, attribution)
 		for _, warning := range result.Warnings {
 			warnings[warning] = true
 		}
@@ -3952,13 +4010,11 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if activity[activityKey] == nil {
 			activity[activityKey] = newStatsAccumulator()
 		}
-		for _, accumulator := range []*statsAccumulator{total, buckets[key], models[modelKey], clients[event.Client], providers[providerKey], activity[activityKey]} {
+		for _, accumulator := range []*statsAccumulator{total, buckets[key], models[modelKey], clients[event.Client], providers[providerKey], activity[activityKey], sessions[sessionKey].statsAccumulator} {
 			if err = accumulator.add(event, result); err != nil {
-				return StatsReport{}, err
+				return err
 			}
-		}
-		if err = sessions[sessionKey].add(event, result); err != nil {
-			return StatsReport{}, err
+			accumulator.pricing.add(event.Client, projection)
 		}
 		sessions[sessionKey].models[event.Model] = struct{}{}
 		if sessions[sessionKey].firstAt == "" || event.EventAt < sessions[sessionKey].firstAt {
@@ -3968,8 +4024,12 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 			sessions[sessionKey].lastAt = event.EventAt
 		}
 		if err = modelActivity[modelKey].observe(event.Client, event.SessionID, event.EventAt, location); err != nil {
-			return StatsReport{}, err
+			return err
 		}
+		return nil
+	})
+	if err != nil {
+		return StatsReport{}, err
 	}
 	toolQuery := `SELECT t.client,t.session_id,t.model,t.tool_name,t.started_at,t.status,t.duration_ms,us.first_at FROM usage_tool_calls t LEFT JOIN usage_sessions us ON us.client=t.client AND us.session_id=t.session_id WHERE t.started_at>=? AND t.started_at<?`
 	toolArgs := []any{options.From.UTC().Format(time.RFC3339Nano), options.To.UTC().Format(time.RFC3339Nano)}
@@ -3982,7 +4042,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		toolArgs = append(toolArgs, options.Model)
 	}
 	toolQuery += ` ORDER BY t.started_at,t.activity_key`
-	toolRows, err := s.Store.DB.QueryContext(ctx, toolQuery, toolArgs...)
+	toolRows, err := read.tx.QueryContext(ctx, toolQuery, toolArgs...)
 	if err != nil {
 		return StatsReport{}, err
 	}
@@ -4058,7 +4118,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		completeBase = &value
 	}
 	zeroCost := "0.000000000"
-	report.Totals = StatsTotals{Tokens: total.tokens, InputTokens: total.input, OutputTokens: total.output, CachedReadTokens: total.cachedRead, CacheWriteTokens: total.cacheWrite, Sessions: int64(len(total.sessions)), Events: total.events, CatalogBaseCost: completeBase, ProviderCost: completeProvider, KnownCatalogBaseCost: knownBase, KnownProviderCost: money(total.provider), AverageTokens: "0.00", AverageCost: &zeroCost, KnownAverageCost: zeroCost}
+	report.Totals = StatsTotals{Pricing: total.pricing.result(ruleSet, true), Tokens: total.tokens, InputTokens: total.input, OutputTokens: total.output, CachedReadTokens: total.cachedRead, CacheWriteTokens: total.cacheWrite, Sessions: int64(len(total.sessions)), Events: total.events, CatalogBaseCost: completeBase, ProviderCost: completeProvider, KnownCatalogBaseCost: knownBase, KnownProviderCost: money(total.provider), AverageTokens: "0.00", AverageCost: &zeroCost, KnownAverageCost: zeroCost}
 	if len(total.sessions) > 0 {
 		report.Totals.AverageTokens = new(big.Rat).Quo(big.NewRat(total.tokens, 1), big.NewRat(int64(len(total.sessions)), 1)).FloatString(2)
 		report.Totals.KnownAverageCost = money(new(big.Rat).Quo(total.provider, big.NewRat(int64(len(total.sessions)), 1)))
@@ -4085,19 +4145,31 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		}
 		cost, known := statsCost(value)
 		metricComplete, metricKnown := statsMetricValues(options.Metric, value)
-		bucket := StatsBucket{Start: start.Format(time.RFC3339Nano), End: end.Format(time.RFC3339Nano), Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Coverage: statsCoverage(value.priced, value.unpriced)}
+		bucket := StatsBucket{Pricing: value.pricing.result(ruleSet, false), Start: start.Format(time.RFC3339Nano), End: end.Format(time.RFC3339Nano), Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Coverage: statsCoverage(value.priced, value.unpriced)}
 		report.Buckets = append(report.Buckets, bucket)
 		candidate := statsMetricRat(options.Metric, value)
 		if len(report.Buckets) == 1 || candidate.Cmp(peakValue) > 0 {
 			peakValue.Set(candidate)
 			report.Peak = StatsPeak{Start: bucket.Start, End: bucket.End, Value: bucket.MetricValue, KnownValue: bucket.KnownMetricValue, Coverage: bucket.Coverage}
 		}
+		if completeComparable(total.pricing.api, total.pricing.events, value.pricing.api, value.pricing.events) &&
+			(report.APIPeak == nil || value.pricing.api.sum.Cmp(statsKnownMetricRat(report.APIPeak.KnownValue)) > 0) {
+			amount := exactPrice(&value.pricing.api.sum, 9)
+			report.APIPeak = &StatsPeak{Start: bucket.Start, End: bucket.End, Value: &amount, KnownValue: amount, Coverage: "100.00"}
+		}
 		start = end
 	}
-	totalMetric := statsMetricRat(options.Metric, total)
+	dimensionFor := func(name, client string, value *statsAccumulator) StatsDimension {
+		dimension := statsDimension(name, client, options.Metric, value, statsMetricRat(options.Metric, total), total.providerComplete)
+		dimension.Pricing = value.pricing.result(ruleSet, false)
+		if completeComparable(total.pricing.api, total.pricing.events, value.pricing.api, value.pricing.events) {
+			dimension.APIShare = percentRat(&value.pricing.api.sum, &total.pricing.api.sum)
+		}
+		return dimension
+	}
 	for key, value := range models {
 		parts := strings.SplitN(key, "\x00", 2)
-		dimension := statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.providerComplete)
+		dimension := dimensionFor(parts[1], parts[0], value)
 		if modelActivity[key] != nil {
 			summary := modelActivity[key].summary()
 			dimension.Activity = &summary
@@ -4113,11 +4185,11 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		}
 	}
 	for name, value := range clients {
-		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.providerComplete))
+		report.Clients = append(report.Clients, dimensionFor(name, "", value))
 	}
 	for key, value := range providers {
 		parts := strings.SplitN(key, "\x00", 2)
-		report.Providers = append(report.Providers, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.providerComplete))
+		report.Providers = append(report.Providers, dimensionFor(parts[1], parts[0], value))
 	}
 	for key, value := range sessions {
 		if value.cachedRead == 0 && value.cacheWrite == 0 {
@@ -4133,11 +4205,10 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if parts[0] == "claude" {
 			logicalInput += value.cachedRead + value.cacheWrite
 		}
-		report.CacheSessions = append(report.CacheSessions, StatsCacheSession{Client: parts[0], SessionID: parts[1], Models: models, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: percentPointer(value.cachedRead, logicalInput), Events: value.events, FirstAt: value.firstAt, LastAt: value.lastAt, DetailCommand: fmt.Sprintf("agentdeck session show %s --client %s --activity", parts[1], parts[0])})
+		report.CacheSessions = append(report.CacheSessions, StatsCacheSession{Pricing: value.pricing.result(ruleSet, false), Client: parts[0], SessionID: parts[1], Models: models, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: percentPointer(value.cachedRead, logicalInput), Events: value.events, FirstAt: value.firstAt, LastAt: value.lastAt, DetailCommand: fmt.Sprintf("agentdeck session show %s --client %s --activity", parts[1], parts[0])})
 	}
 	sort.Slice(report.Models, func(i, j int) bool {
-		left := statsKnownMetricRat(report.Models[i].KnownMetricValue)
-		right := statsKnownMetricRat(report.Models[j].KnownMetricValue)
+		left, right := statsReportOrder(report.Models[i], report.Models[j], options.Metric, report.Totals.Pricing)
 		if comparison := left.Cmp(right); comparison != 0 {
 			return comparison > 0
 		}
@@ -4147,8 +4218,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		return report.Models[i].Client < report.Models[j].Client
 	})
 	sort.Slice(report.Providers, func(i, j int) bool {
-		left := statsKnownMetricRat(report.Providers[i].KnownMetricValue)
-		right := statsKnownMetricRat(report.Providers[j].KnownMetricValue)
+		left, right := statsReportOrder(report.Providers[i], report.Providers[j], options.Metric, report.Totals.Pricing)
 		if comparison := left.Cmp(right); comparison != 0 {
 			return comparison > 0
 		}
@@ -4183,61 +4253,70 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 				value = newStatsAccumulator()
 			}
 			metricComplete, metricKnown := statsMetricValues(options.Metric, value)
-			report.Activity = append(report.Activity, StatsActivity{Weekday: weekday, Hour: hour, Tokens: value.tokens, Sessions: int64(len(value.sessions)), Events: value.events, KnownCost: money(value.provider), MetricValue: metricComplete, KnownMetricValue: metricKnown})
+			report.Activity = append(report.Activity, StatsActivity{Pricing: value.pricing.result(ruleSet, false), Weekday: weekday, Hour: hour, Tokens: value.tokens, Sessions: int64(len(value.sessions)), Events: value.events, KnownCost: money(value.provider), MetricValue: metricComplete, KnownMetricValue: metricKnown})
 		}
 	}
 	for warning := range warnings {
 		report.Warnings = append(report.Warnings, warning)
 	}
 	sort.Strings(report.Warnings)
-	return report, nil
+	return report, read.tx.Commit()
 }
 
 func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,first_at,last_at FROM usage_sessions ORDER BY first_at DESC, client, session_id`)
+	read, err := s.openPricingRead(ctx, s.now())
+	if err != nil {
+		return nil, err
+	}
+	defer read.tx.Rollback()
+	rows, err := read.tx.QueryContext(ctx, `SELECT client,session_id,first_at,last_at FROM usage_sessions ORDER BY first_at DESC, client, session_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]SessionSummary, 0)
+	out := []SessionSummary{}
+	type sessionTotals struct {
+		summary *usageSummaryBuilder
+		prices  pricingReportFold
+	}
+	bySession := map[[2]string]*sessionTotals{}
 	for rows.Next() {
 		var item SessionSummary
 		if err := rows.Scan(&item.Client, &item.SessionID, &item.FirstAt, &item.LastAt); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
+		bySession[[2]string{item.Client, item.SessionID}] = &sessionTotals{summary: newUsageSummaryBuilder()}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	events, err := s.events(ctx, "", "")
+	err = read.visit(ctx, InvocationPricingFilter{}, func(event storedEvent, at time.Time) error {
+		total := bySession[[2]string{event.Client, event.SessionID}]
+		if total == nil {
+			return nil
+		}
+		a, priced, err := read.price(event, at)
+		if err != nil {
+			return err
+		}
+		if err := legacyPricingError(priced); err != nil {
+			return err
+		}
+		total.summary.add(event, a, priced.Legacy)
+		total.prices.add(event.Client, pricingContribution(priced))
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	resolver, err := s.loadReadPriceResolver(ctx, s.now())
-	if err != nil {
-		return nil, err
-	}
-	bySession := make(map[string][]storedEvent)
-	for _, event := range events {
-		key := event.Client + "\x00" + event.SessionID
-		bySession[key] = append(bySession[key], event)
 	}
 	for index := range out {
 		item := &out[index]
-		total, err := summarizeWithReadPriceResolver(bySession[item.Client+"\x00"+item.SessionID], resolver)
-		if err != nil {
-			return nil, err
-		}
-		item.Tokens = total.Tokens
-		item.CatalogBaseCost = total.CatalogBaseCost
-		item.ProviderCost = total.ProviderCost
-		item.KnownCatalogBaseCost = total.KnownCatalogBaseCost
-		item.KnownProviderCost = total.KnownProviderCost
-		item.Unpriced = total.Unpriced
-		item.Warnings = total.Warnings
+		total := bySession[[2]string{item.Client, item.SessionID}]
+		item.applyUsage(total.summary.finish())
+		item.Pricing = total.prices.result(read.rules.digest, false)
 	}
-	return out, nil
+	return out, read.tx.Commit()
 }
 
 // requestEventQuery works against both migrated cores and legacy read-only
@@ -4346,116 +4425,20 @@ func visitRequestEvents(rows *sql.Rows, visit func(storedEvent) error) error {
 
 type eventPricing func(storedEvent) (eventAttribution, error)
 
-func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary, error) {
-	resolver, err := s.loadReadPriceResolver(ctx, s.now())
-	if err != nil {
-		return Summary{}, err
-	}
-	return summarizeWithReadPriceResolver(events, resolver)
-}
-
-func summarizeWithReadPriceResolver(events []storedEvent, resolver readPriceResolver) (Summary, error) {
-	return summarizeEvents(events, resolver.priceForEvent)
-}
-
 func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary, error) {
-	reasons := make(map[string]int64, len(attributionReasons()))
-	for _, reason := range attributionReasons() {
-		reasons[reason] = 0
-	}
-	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, AttributionReasons: reasons, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
-	base := new(big.Rat)
-	provider := new(big.Rat)
-	unattributedBase := new(big.Rat)
-	complete, providerComplete, unattributedComplete := true, true, true
-	warned := map[string]bool{}
-	unpriced := map[string]bool{}
-	coverage := map[string]*ModelCoverage{}
-	for _, e := range events {
-		coverageKey := e.Client + "\x00" + e.Model
-		model := coverage[coverageKey]
-		if model == nil {
-			model = &ModelCoverage{Client: e.Client, Model: e.Model}
-			coverage[coverageKey] = model
-		}
-		model.Events++
-		for k, v := range e.Tokens {
-			out.Tokens[k] += v
-		}
-		attribution, err := priceForEvent(e)
+	summary := newUsageSummaryBuilder()
+	for _, event := range events {
+		attribution, err := priceForEvent(event)
 		if err != nil {
-			return out, err
+			return Summary{}, err
 		}
-		out.Counts[attribution.quality]++
-		out.AttributionReasons[attribution.reason]++
-		if attribution.quality != "exact" && !warned[attribution.quality] {
-			out.Warnings = append(out.Warnings, attribution.quality+" attribution")
-			warned[attribution.quality] = true
-		}
-		r, err := calculateAttributedEvent(e, attribution)
+		result, err := calculateAttributedEvent(event, attribution)
 		if err != nil {
-			return out, err
+			return Summary{}, err
 		}
-		r = aggregateAttributedResult(r, attribution)
-		for _, warning := range r.Warnings {
-			if !warned[warning] {
-				out.Warnings = append(out.Warnings, warning)
-				warned[warning] = true
-			}
-		}
-		knownBase, _ := decimal(r.KnownCatalogBaseCost)
-		knownProvider, _ := decimal(r.KnownProviderCost)
-		base.Add(base, knownBase)
-		provider.Add(provider, knownProvider)
-		if r.ProviderCost == nil {
-			providerComplete = false
-		}
-		if attribution.reason == attributionReasonBeforeAdoption || attribution.reason == attributionReasonCoverageGap {
-			if r.CatalogBaseCost == nil {
-				unattributedComplete = false
-			} else {
-				unattributedBase.Add(unattributedBase, knownBase)
-			}
-		}
-		if r.CatalogBaseCost == nil {
-			complete = false
-			out.Counts["unpriced"]++
-			model.UnpricedEvents++
-			for _, u := range r.Unpriced {
-				unpriced[u] = true
-			}
-			continue
-		}
-		out.Counts["priced"]++
-		model.PricedEvents++
+		summary.add(event, attribution, result)
 	}
-	knownBase, knownProvider := money(base), money(provider)
-	out.KnownCatalogBaseCost = &knownBase
-	out.KnownProviderCost = &knownProvider
-	if complete {
-		out.CatalogBaseCost = &knownBase
-	}
-	if providerComplete {
-		out.ProviderCost = &knownProvider
-	}
-	if unattributedComplete {
-		value := money(unattributedBase)
-		out.UnattributedCatalogBaseCost = &value
-	}
-	for u := range unpriced {
-		out.Unpriced = append(out.Unpriced, u)
-	}
-	sort.Strings(out.Unpriced)
-	for _, model := range coverage {
-		out.Models = append(out.Models, *model)
-	}
-	sort.Slice(out.Models, func(i, j int) bool {
-		if out.Models[i].Client == out.Models[j].Client {
-			return out.Models[i].Model < out.Models[j].Model
-		}
-		return out.Models[i].Client < out.Models[j].Client
-	})
-	return out, nil
+	return summary.finish(), nil
 }
 
 func calculateAttributedEvent(event storedEvent, attribution eventAttribution) (Result, error) {

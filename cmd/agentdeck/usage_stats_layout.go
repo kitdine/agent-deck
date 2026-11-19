@@ -23,6 +23,14 @@ func (r statsTextRenderer) renderResponsive() string {
 	out.WriteByte('\n')
 	out.WriteString(r.metaLine())
 	out.WriteString("\n\n")
+	if pricing := r.report.Totals.Pricing; pricing != nil {
+		for _, field := range requestPricingFields(pricing, false) {
+			writeStatsLines(&out, statsWrap(field.label+" "+field.value, r.width))
+		}
+		if r.report.Metric == "cost" && !statsAPIComparable(r.report) {
+			writeStatsLines(&out, statsWrap("Trend and rank by tokens · comparable API amounts unavailable", r.width))
+		}
+	}
 	writeStatsLines(&out, r.responsiveKPILines())
 	out.WriteByte('\n')
 
@@ -74,9 +82,25 @@ func (r statsTextRenderer) responsiveKPILines() []string {
 		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, peakAvailable)
 		peakColor = usageCostColor(r.report.Peak.Value, peakAvailable)
 	}
+	cost := compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, costAvailable)
+	if pricing := r.report.Totals.Pricing; pricing != nil {
+		cost = compactAPICost(pricing)
+		average = "unavailable"
+		if _, amount, ok := pricing.CompleteAPI(); ok && r.report.Totals.Sessions > 0 {
+			if parsed, err := strconv.ParseFloat(amount, 64); err == nil {
+				average = compactMetric(parsed/float64(r.report.Totals.Sessions), "cost")
+			}
+		}
+		if r.report.Metric == "cost" {
+			peak = "unavailable"
+			if r.report.APIPeak != nil {
+				peak = compactCost(r.report.APIPeak.Value, r.report.APIPeak.KnownValue, true)
+			}
+		}
+	}
 	values := []struct{ label, value, color string }{
 		{label: "TOKENS", value: compactNumber(float64(r.report.Totals.Tokens)), color: usageColorToken},
-		{label: "COST", value: compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, costAvailable), color: usageCostColor(r.report.Totals.ProviderCost, costAvailable)},
+		{label: statsPricingLabel(r.report.Totals.Pricing), value: cost, color: usageCostColor(r.report.Totals.ProviderCost, costAvailable)},
 		{label: "SESSIONS", value: groupedInt(r.report.Totals.Sessions), color: usageColorSession},
 		{label: "AVG COST / SESSION", value: average, color: usageCostColor(r.report.Totals.AverageCost, costAvailable)},
 		{label: "PEAK " + strings.ToUpper(r.report.Metric), value: peak, color: peakColor},

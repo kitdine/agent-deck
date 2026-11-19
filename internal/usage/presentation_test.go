@@ -100,7 +100,7 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 }
 
 func TestPresentationSummaryExcludesNonSpendEligibleProviderCost(t *testing.T) {
-	builder := newPresentationSummaryBuilder()
+	builder := newUsageSummaryBuilder()
 	cost := "1.000000000"
 	result := Result{CatalogBaseCost: &cost, ProviderCost: &cost, KnownCatalogBaseCost: cost, KnownProviderCost: cost}
 	event := storedEvent{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{}}}
@@ -138,7 +138,7 @@ func TestAddPresentationQualityUsesQualityAndSpendEligibility(t *testing.T) {
 		{quality: "estimated", provider: "unknown", spendEligible: false},
 		{quality: "unattributed", provider: "known", spendEligible: false},
 	} {
-		if err := addPresentationQuality(scope, "today", attribution, event, result); err != nil {
+		if err := addPresentationQuality(scope, "today", attribution, event, result, &PricingReport{}); err != nil {
 			t.Fatal(err)
 		}
 	}

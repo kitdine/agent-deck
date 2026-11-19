@@ -459,7 +459,9 @@ VALUES('codex','s','2026-11-20T23:59:00Z','official','1',0,'SessionStart','fixtu
 			t.Fatalf("legacy output changed for %s: %+v -> %+v", after.EventKey, before.Legacy, after.Legacy)
 		}
 	}
-	if legacyAfter, err := s.SessionUsageSummary(ctx, "codex", "s"); err != nil || !reflect.DeepEqual(legacyAfter, legacyBefore) {
+	legacyAfter, err := s.SessionUsageSummary(ctx, "codex", "s")
+	legacyAfter.Pricing, legacyBefore.Pricing = nil, nil
+	if err != nil || !reflect.DeepEqual(legacyAfter, legacyBefore) {
 		t.Fatalf("v1 session output changed: %+v (%v)", legacyAfter, err)
 	}
 	if again, err := s.PriceInvocations(ctx, filter); err != nil || !reflect.DeepEqual(again, priced) {

@@ -54,55 +54,56 @@ type RequestPricingEvidence struct {
 }
 
 type PricingAmount struct {
-	Currency    string
-	Status      string
-	Amount      *string
-	KnownAmount *string
+	Currency    string  `json:"currency"`
+	Status      string  `json:"status"`
+	Amount      *string `json:"amount"`
+	KnownAmount *string `json:"known_amount"`
 }
 
 type PricingReference struct {
-	Basis         string
-	Currency      string
-	AsOf          string
-	Amount        *string
-	Lower         *string
-	Upper         *string
-	Tier          string
-	ContextUnit   string
-	TTLCandidates []string
+	Basis         string   `json:"basis"`
+	Currency      string   `json:"currency"`
+	AsOf          string   `json:"as_of,omitempty"`
+	Amount        *string  `json:"amount"`
+	Lower         *string  `json:"lower,omitempty"`
+	Upper         *string  `json:"upper,omitempty"`
+	Tier          string   `json:"tier,omitempty"`
+	ContextUnit   string   `json:"context_unit,omitempty"`
+	TTLCandidates []string `json:"ttl_candidates,omitempty"`
+	sources       []PricingRuleSource
 }
 
 type PricingComponent struct {
-	Kind           string
-	Quantity       int64
-	Unit           string
-	Currency       string
-	Rate           *string
-	Amount         *string
-	RuleID         string
-	SourceURL      string
-	EffectiveFrom  *PriceRuleBoundary
-	EffectiveUntil *PriceRuleBoundary
-	Modifier       *PricingPolicy
-	Treatment      *PricingPolicy
+	Kind           string             `json:"kind"`
+	Quantity       int64              `json:"quantity"`
+	Unit           string             `json:"unit"`
+	Currency       string             `json:"currency"`
+	Rate           *string            `json:"rate"`
+	Amount         *string            `json:"amount"`
+	RuleID         string             `json:"rule_id"`
+	SourceURL      string             `json:"source_url,omitempty"`
+	EffectiveFrom  *PriceRuleBoundary `json:"effective_from,omitempty"`
+	EffectiveUntil *PriceRuleBoundary `json:"effective_until,omitempty"`
+	Modifier       *PricingPolicy     `json:"modifier,omitempty"`
+	Treatment      *PricingPolicy     `json:"treatment,omitempty"`
 }
 
 type PricingPolicy struct {
-	ID         string
-	RuleID     string
-	SourceURL  string
-	Multiplier string
+	ID         string `json:"policy_id"`
+	RuleID     string `json:"rule_id"`
+	SourceURL  string `json:"source_url,omitempty"`
+	Multiplier string `json:"multiplier,omitempty"`
 }
 
 type PricingSubscription struct {
-	Channel                 string
-	Status                  string
-	Activity                string
-	QuotaEligibility        string
-	QuotaReason             string
-	SubscriptionLongContext string
-	PolicyID                string
-	SpeedPolicy             *PricingPolicy
+	Channel                 string         `json:"channel"`
+	Status                  string         `json:"status"`
+	Activity                string         `json:"activity"`
+	QuotaEligibility        string         `json:"quota_eligibility"`
+	QuotaReason             string         `json:"quota_reason"`
+	SubscriptionLongContext string         `json:"subscription_long_context"`
+	PolicyID                string         `json:"policy_id,omitempty"`
+	SpeedPolicy             *PricingPolicy `json:"speed_policy,omitempty"`
 }
 
 // InvocationPricing is the shared calculation result, including the identity
@@ -146,59 +147,124 @@ type InvocationPricingRead struct {
 	Reasons         []string
 }
 
-// PriceInvocations evaluates precisely the admitted events. The route timeline
-// is loaded using the existing attribution reader and its revision is checked
-// against the read transaction before any results are returned. That same
-// transaction supplies the routes, v1 catalog, dated rules and event facts.
+// PriceInvocations evaluates precisely the admitted events and returns the
+// quota handoff. Reporting uses the same reader inside its reducers.
 func (s *Service) PriceInvocations(ctx context.Context, filter InvocationPricingFilter) (InvocationPricingRead, error) {
-	cutoff := s.now()
-	revision, err := s.Store.UsageProjectionMetadataRevision(ctx)
+	read, err := s.openPricingRead(ctx, s.now())
 	if err != nil {
 		return InvocationPricingRead{}, err
+	}
+	defer read.tx.Rollback()
+	out := InvocationPricingRead{KnowledgeCutoff: read.rules.cutoff, RuleSet: read.rules.digest, Invocations: []InvocationPricing{}}
+	err = read.visit(ctx, filter, func(event storedEvent, at time.Time) error {
+		_, priced, err := read.price(event, at)
+		if err != nil {
+			return err
+		}
+		out.Invocations = append(out.Invocations, priced)
+		if event.Client == "codex" && len(out.Reasons) == 0 {
+			// Current admitted producers cannot attest Guardian coverage.
+			out.Reasons = []string{reasonCoverage}
+		}
+		return nil
+	})
+	if err != nil {
+		return InvocationPricingRead{}, err
+	}
+	if err := read.tx.Commit(); err != nil {
+		return InvocationPricingRead{}, err
+	}
+	return out, nil
+}
+
+type pricingRead struct {
+	tx        *sql.Tx
+	resolver  readPriceResolver
+	rules     invocationRules
+	supported bool
+	revision  int64
+}
+
+// The timeline comes from the existing reader. Its metadata revision must
+// agree with the transaction before any rows can be returned.
+func (s *Service) openPricingRead(ctx context.Context, cutoff time.Time) (*pricingRead, error) {
+	revision, err := s.Store.UsageProjectionMetadataRevision(ctx)
+	if err != nil {
+		return nil, err
 	}
 	timeline, err := s.Store.LoadProviderTimeline(ctx)
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return nil, err
 	}
 	tx, err := s.Store.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return nil, err
 	}
-	defer tx.Rollback()
+	success := false
+	defer func() {
+		if !success {
+			tx.Rollback()
+		}
+	}()
 	var snapshotRevision int64
 	err = tx.QueryRowContext(ctx, "SELECT revision FROM usage_derived_metadata WHERE singleton=1").Scan(&snapshotRevision)
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return nil, err
 	}
 	if revision != snapshotRevision {
-		return InvocationPricingRead{}, store.ErrUsagePartitionChanged
+		return nil, store.ErrUsagePartitionChanged
 	}
-	var schema int
-	if err = tx.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&schema); err != nil {
-		return InvocationPricingRead{}, err
+	supported, err := pricingRulesSupported(ctx, tx)
+	if err != nil {
+		return nil, err
 	}
-	supported := schema >= store.PricingFactsSchemaVersion
 	resolver, err := loadReadPriceRows(ctx, tx, cutoff, timeline)
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return nil, err
 	}
 	rules, err := loadInvocationRules(ctx, tx, cutoff, supported)
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return nil, err
 	}
-	query := requestEventSelect(supported)
+	success = true
+	return &pricingRead{tx: tx, resolver: resolver, rules: rules, supported: supported, revision: revision}, nil
+}
+
+func (r *pricingRead) price(event storedEvent, at time.Time) (eventAttribution, InvocationPricing, error) {
+	attribution, err := r.resolver.priceForEvent(event)
+	if err != nil {
+		return attribution, InvocationPricing{}, err
+	}
+	return attribution, r.evaluate(event, at, attribution), nil
+}
+
+func (r *pricingRead) evaluate(event storedEvent, at time.Time, attribution eventAttribution) InvocationPricing {
+	legacy, err := calculateAttributedEvent(event, attribution)
+	priced := r.rules.evaluate(event, at, attribution, legacy)
+	if err != nil {
+		priced.LegacyError = err.Error()
+	}
+	return priced
+}
+
+func (r *pricingRead) visit(ctx context.Context, filter InvocationPricingFilter, visit func(storedEvent, time.Time) error) error {
+	return r.visitPage(ctx, filter, 0, 0, false, visit)
+}
+
+func (r *pricingRead) visitPage(ctx context.Context, filter InvocationPricingFilter, limit, offset int, exactPartition bool, visit func(storedEvent, time.Time) error) error {
+	query := requestEventSelect(r.supported)
 	var clauses []string
 	var args []any
 	add := func(clause string, value any) {
 		clauses, args = append(clauses, clause), append(args, value)
 	}
-	if filter.Client != "" {
+	if filter.Client != "" || exactPartition {
 		add("e.client=?", filter.Client)
 	}
 	if filter.SessionID != "" {
 		add("e.session_id=?", filter.SessionID)
 	}
-	if filter.Model != "" {
+	if filter.Model != "" || exactPartition {
 		add("e.model=?", filter.Model)
 	}
 	if !filter.From.IsZero() {
@@ -210,13 +276,17 @@ func (s *Service) PriceInvocations(ctx context.Context, filter InvocationPricing
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
-	rows, err := tx.QueryContext(ctx, query+" ORDER BY substr(e.event_at,1,19),substr(e.event_at,20,length(e.event_at)-20),e.event_key", args...)
+	query += " ORDER BY substr(e.event_at,1,19),substr(e.event_at,20,length(e.event_at)-20),e.event_key"
+	if limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+	rows, err := r.tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return InvocationPricingRead{}, err
+		return err
 	}
 	defer rows.Close()
-	out := InvocationPricingRead{KnowledgeCutoff: cutoff, RuleSet: rules.digest, Invocations: []InvocationPricing{}}
-	err = visitRequestEvents(rows, func(event storedEvent) error {
+	return visitRequestEvents(rows, func(event storedEvent) error {
 		at, err := time.Parse(time.RFC3339Nano, event.EventAt)
 		if err != nil {
 			return err
@@ -224,30 +294,14 @@ func (s *Service) PriceInvocations(ctx context.Context, filter InvocationPricing
 		if (!filter.From.IsZero() && at.Before(filter.From)) || (!filter.To.IsZero() && !at.Before(filter.To)) {
 			return nil
 		}
-		attribution, err := resolver.priceForEvent(event)
-		if err != nil {
-			return err
-		}
-		legacy, err := calculateAttributedEvent(event, attribution)
-		priced := rules.evaluate(event, at, attribution, legacy)
-		if err != nil {
-			priced.LegacyError = err.Error()
-		}
-		out.Invocations = append(out.Invocations, priced)
-		if event.Client == "codex" && len(out.Reasons) == 0 {
-			// Neither admitted Codex producer currently proves period-wide
-			// Guardian collection coverage.
-			out.Reasons = []string{reasonCoverage}
-		}
-		return nil
+		return visit(event, at)
 	})
-	if err != nil {
-		return InvocationPricingRead{}, err
-	}
-	if err = tx.Commit(); err != nil {
-		return InvocationPricingRead{}, err
-	}
-	return out, nil
+}
+
+func pricingRulesSupported(ctx context.Context, tx *sql.Tx) (bool, error) {
+	var schema int
+	err := tx.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&schema)
+	return schema >= store.PricingFactsSchemaVersion, err
 }
 
 func loadInvocationRules(ctx context.Context, tx *sql.Tx, cutoff time.Time, supported bool) (invocationRules, error) {
@@ -363,7 +417,7 @@ func (r invocationRules) evaluate(event storedEvent, at time.Time, attribution e
 		if tier != "standard" {
 			standard := s
 			standard.tier = "standard"
-			out.Standard = wholeReference("standard", "standard", "", r.amount(standard, at, counts).amount)
+			out.Standard = wholeReference("standard", "standard", "", r.amount(standard, at, counts))
 		}
 		if out.APIEquivalent.Status != pricingComplete && out.Reference == nil {
 			out.Reference = r.invocationReference(s, at, counts, out.RequestedTier, out.Standard, model, reasons)
@@ -408,11 +462,12 @@ func ambiguousCodexContext(model string, count *int64) bool {
 	return (model == "gpt-5.4" || model == "gpt-5.5") && (count == nil || *count > 272_000)
 }
 
-func wholeReference(basis, tier, asOf string, amount PricingAmount) *PricingReference {
-	if amount.Status != pricingComplete {
+func wholeReference(basis, tier, asOf string, priced tariffAmount) *PricingReference {
+	if priced.amount.Status != pricingComplete {
 		return nil
 	}
-	return &PricingReference{Basis: basis, Currency: amount.Currency, Amount: amount.Amount, Tier: tier, AsOf: asOf}
+	return &PricingReference{Basis: basis, Currency: priced.amount.Currency, Amount: priced.amount.Amount, Tier: tier, AsOf: asOf,
+		sources: pricingSources(priced.components)}
 }
 
 func (r invocationRules) invocationReference(s tariffSelection, at time.Time, counts invocationCounts, requested string, standard *PricingReference, model string, reasons pricingReasons) *PricingReference {
@@ -420,7 +475,7 @@ func (r invocationRules) invocationReference(s tariffSelection, at time.Time, co
 		if requested != "" {
 			assumed := s
 			assumed.tier = requested
-			if ref := wholeReference("requested_tier", requested, "", r.amount(assumed, at, counts).amount); ref != nil {
+			if ref := wholeReference("requested_tier", requested, "", r.amount(assumed, at, counts)); ref != nil {
 				return ref
 			}
 		}
@@ -431,7 +486,7 @@ func (r invocationRules) invocationReference(s tariffSelection, at time.Time, co
 	}
 	s.asOf = true
 	s.model, _ = r.resolveModel(s, r.cutoff, model)
-	return wholeReference("as_of_date", "", r.cutoff.Format(priceRuleDay), r.amount(s, r.cutoff, counts).amount)
+	return wholeReference("as_of_date", "", r.cutoff.Format(priceRuleDay), r.amount(s, r.cutoff, counts))
 }
 
 func validThirdPartyRoute(a eventAttribution) bool {

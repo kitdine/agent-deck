@@ -99,6 +99,8 @@ func encodeFixture(t *testing.T, result Result) string {
 		}
 		result.Snapshot.SessionScopeView = &normalized
 	}
+	// The original canonical goldens also replay the legacy Widget contract.
+	result.Snapshot.Pricing = nil
 	envelope := output.New("desktop.snapshot", result.Snapshot, fixtureNow)
 	envelope.Partial, envelope.Warnings = result.Partial, result.Warnings
 	if envelope.Warnings == nil {

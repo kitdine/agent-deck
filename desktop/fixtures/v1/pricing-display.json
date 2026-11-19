@@ -1,0 +1,1355 @@
+{
+  "version": 1,
+  "valid_until": "2026-08-14T00:00:00Z",
+  "scopes": [
+    {
+      "client": "all",
+      "periods": [
+        {
+          "period": "today",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "2.32",
+              "known_amount": "2.32"
+            },
+            "reference": null,
+            "reasons": [
+              "activity_coverage_unavailable"
+            ],
+            "sources": [
+              {
+                "rule_id": "fixture-astra-standard",
+                "source_url": "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+                "effective_from": {
+                  "value": "2026-08-01",
+                  "precision": "calendar_day",
+                  "timezone": "UTC"
+                }
+              }
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": {
+            "key": "8",
+            "pricing": {
+              "version": 1,
+              "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+              "api_equivalent": {
+                "currency": "USD",
+                "status": "complete",
+                "amount": "3.512016",
+                "known_amount": "3.512016"
+              },
+              "provider_estimate": null,
+              "reference": null,
+              "reasons": []
+            }
+          }
+        },
+        {
+          "period": "7d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "partial",
+              "amount": null,
+              "known_amount": "1.656"
+            },
+            "provider_estimate": null,
+            "reference": {
+              "currency": "USD",
+              "basis": "cache_write_ttl_range",
+              "lower": "1.856",
+              "upper": "2.056",
+              "amount": null,
+              "tier": "standard",
+              "ttl_candidates": [
+                "30m",
+                "12h"
+              ]
+            },
+            "reasons": [
+              "activity_coverage_unavailable",
+              "cache_write_ttl_unverified"
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        },
+        {
+          "period": "30d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "partial",
+              "amount": null,
+              "known_amount": "1.656"
+            },
+            "provider_estimate": null,
+            "reference": {
+              "currency": "USD",
+              "basis": "cache_write_ttl_range",
+              "lower": "1.856",
+              "upper": "2.056",
+              "amount": null,
+              "tier": "standard",
+              "ttl_candidates": [
+                "30m",
+                "12h"
+              ]
+            },
+            "reasons": [
+              "activity_coverage_unavailable",
+              "cache_write_ttl_unverified"
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        }
+      ],
+      "daily": [
+        {
+          "key": "2026-08-13",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ],
+      "hourly": [
+        {
+          "key": "8",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ]
+    },
+    {
+      "client": "codex",
+      "periods": [
+        {
+          "period": "today",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "2.32",
+              "known_amount": "2.32"
+            },
+            "reference": null,
+            "reasons": [
+              "activity_coverage_unavailable"
+            ],
+            "sources": [
+              {
+                "rule_id": "fixture-astra-standard",
+                "source_url": "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+                "effective_from": {
+                  "value": "2026-08-01",
+                  "precision": "calendar_day",
+                  "timezone": "UTC"
+                }
+              }
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "3.512016",
+                  "known_amount": "3.512016"
+                },
+                "provider_estimate": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "2.32",
+                  "known_amount": "2.32"
+                },
+                "reference": null,
+                "reasons": []
+              },
+              "share": "100"
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": {
+            "key": "8",
+            "pricing": {
+              "version": 1,
+              "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+              "api_equivalent": {
+                "currency": "USD",
+                "status": "complete",
+                "amount": "3.512016",
+                "known_amount": "3.512016"
+              },
+              "provider_estimate": null,
+              "reference": null,
+              "reasons": []
+            }
+          }
+        },
+        {
+          "period": "7d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "partial",
+              "amount": null,
+              "known_amount": "1.656"
+            },
+            "provider_estimate": null,
+            "reference": {
+              "currency": "USD",
+              "basis": "cache_write_ttl_range",
+              "lower": "1.856",
+              "upper": "2.056",
+              "amount": null,
+              "tier": "standard",
+              "ttl_candidates": [
+                "30m",
+                "12h"
+              ]
+            },
+            "reasons": [
+              "activity_coverage_unavailable",
+              "cache_write_ttl_unverified"
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        },
+        {
+          "period": "30d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "partial",
+              "amount": null,
+              "known_amount": "1.656"
+            },
+            "provider_estimate": null,
+            "reference": {
+              "currency": "USD",
+              "basis": "cache_write_ttl_range",
+              "lower": "1.856",
+              "upper": "2.056",
+              "amount": null,
+              "tier": "standard",
+              "ttl_candidates": [
+                "30m",
+                "12h"
+              ]
+            },
+            "reasons": [
+              "activity_coverage_unavailable",
+              "cache_write_ttl_unverified"
+            ]
+          },
+          "models": [
+            {
+              "key": "gpt-5",
+              "client": "codex",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "partial",
+                  "amount": null,
+                  "known_amount": "1.656"
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "cache_write_ttl_range",
+                  "lower": "1.856",
+                  "upper": "2.056",
+                  "amount": null,
+                  "tier": "standard",
+                  "ttl_candidates": [
+                    "30m",
+                    "12h"
+                  ]
+                },
+                "reasons": [
+                  "cache_write_ttl_unverified"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        }
+      ],
+      "daily": [
+        {
+          "key": "2026-08-13",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ],
+      "hourly": [
+        {
+          "key": "8",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "3.512016",
+              "known_amount": "3.512016"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ]
+    },
+    {
+      "client": "claude",
+      "periods": [
+        {
+          "period": "today",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "0",
+              "known_amount": "0"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          },
+          "models": [
+            {
+              "key": "claude-sonnet-5",
+              "client": "claude",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "0",
+                  "known_amount": "0"
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": []
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "0",
+                  "known_amount": "0"
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": []
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "complete",
+                  "amount": "0",
+                  "known_amount": "0"
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": []
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        },
+        {
+          "period": "7d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "unavailable",
+              "amount": null,
+              "known_amount": null
+            },
+            "provider_estimate": null,
+            "reference": {
+              "currency": "USD",
+              "basis": "as_of_date",
+              "as_of": "2026-08-13",
+              "amount": "0.84"
+            },
+            "reasons": [
+              "historical_rule_missing"
+            ]
+          },
+          "models": [
+            {
+              "key": "claude-sonnet-5",
+              "client": "claude",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "as_of_date",
+                  "as_of": "2026-08-13",
+                  "amount": "0.84"
+                },
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "as_of_date",
+                  "as_of": "2026-08-13",
+                  "amount": "0.84"
+                },
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": {
+                  "currency": "USD",
+                  "basis": "as_of_date",
+                  "as_of": "2026-08-13",
+                  "amount": "0.84"
+                },
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        },
+        {
+          "period": "30d",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "unavailable",
+              "amount": null,
+              "known_amount": null
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": [
+              "historical_rule_missing"
+            ]
+          },
+          "models": [
+            {
+              "key": "claude-sonnet-5",
+              "client": "claude",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "tiers": [
+            {
+              "key": "standard",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "quality": [
+            {
+              "key": "inferred",
+              "tokens": 250,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            },
+            {
+              "key": "unattributed",
+              "tokens": 50,
+              "pricing": {
+                "version": 1,
+                "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+                "api_equivalent": {
+                  "currency": "USD",
+                  "status": "unavailable",
+                  "amount": null,
+                  "known_amount": null
+                },
+                "provider_estimate": null,
+                "reference": null,
+                "reasons": [
+                  "historical_rule_missing"
+                ]
+              },
+              "share": null
+            }
+          ],
+          "peak": null
+        }
+      ],
+      "daily": [
+        {
+          "key": "2026-08-13",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "0",
+              "known_amount": "0"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ],
+      "hourly": [
+        {
+          "key": "8",
+          "pricing": {
+            "version": 1,
+            "rule_set": "88dcbe4cf00a78c231a71c9dad4fe4869e244f539cb7004cfc65a58407d8cb7f",
+            "api_equivalent": {
+              "currency": "USD",
+              "status": "complete",
+              "amount": "0",
+              "known_amount": "0"
+            },
+            "provider_estimate": null,
+            "reference": null,
+            "reasons": []
+          }
+        }
+      ]
+    }
+  ]
+}

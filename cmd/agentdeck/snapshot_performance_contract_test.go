@@ -342,7 +342,14 @@ func TestSnapshotPerformanceContractSyntheticCorpus(t *testing.T) {
 			t.Fatalf("fixed corpus did not exercise required logical table %s", name)
 		}
 	}
-	assertSnapshotPerformanceGolden(t, reference.Payload)
+	if pricing := reference.Result.Snapshot.Pricing; pricing == nil || len(pricing.Scopes) != 3 {
+		t.Fatalf("snapshot omitted application request pricing: %+v", pricing)
+	}
+	legacy := reference.Result
+	legacy.Snapshot.Pricing = nil
+	// Preserve the frozen pre-pricing bytes as a compatibility check. Warm
+	// and cold complete payload comparisons below include the new field.
+	assertSnapshotPerformanceGolden(t, snapshotPerformanceStreamPayload(t, legacy))
 
 	unchanged, partial, warnings, err := refreshDesktopIndexes(context.Background(), state, corpus.Home)
 	if err != nil {
@@ -1051,12 +1058,17 @@ func captureSnapshotPerformanceReference(t *testing.T, state, home string) snaps
 	normalized.PublicationID = &id
 	normalized.GenerationID = &generation
 	result.Snapshot.SessionScopeView = &normalized
+	payload := snapshotPerformanceStreamPayload(t, result)
+	return snapshotPerformanceReference{Payload: payload, Result: result, Rows: captureSnapshotPerformanceRows(t, state)}
+}
+
+func snapshotPerformanceStreamPayload(t *testing.T, result desktop.Result) []byte {
+	t.Helper()
 	var stream bytes.Buffer
-	if err = writeDesktopSnapshotStream(&stream, result); err != nil {
+	if err := writeDesktopSnapshotStream(&stream, result); err != nil {
 		t.Fatalf("write stream: %v", err)
 	}
-	payload := decodeSnapshotPerformanceStream(t, stream.Bytes())
-	return snapshotPerformanceReference{Payload: payload, Result: result, Rows: captureSnapshotPerformanceRows(t, state)}
+	return decodeSnapshotPerformanceStream(t, stream.Bytes())
 }
 
 func decodeSnapshotPerformanceStream(t *testing.T, stream []byte) []byte {

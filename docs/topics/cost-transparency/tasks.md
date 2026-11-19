@@ -27,7 +27,7 @@ created: 2026-11-18
 | 1. `tariff-catalog` | [x] | [x] |
 | 2. `pricing-facts-storage` | [x] | [x] |
 | 3. `request-pricing` | [x] | [x] |
-| 4. `pricing-reporting` | [ ] | [ ] |
+| 4. `pricing-reporting` | [x] | [x] |
 
 ## 实现边界
 

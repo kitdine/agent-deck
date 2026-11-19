@@ -584,6 +584,64 @@
             "warnings": "number"
           },
           "next_refresh_at": "string",
+          "pricing": {
+            "scopes": [
+              {
+                "client": "string",
+                "daily": [],
+                "hourly": [],
+                "periods": []
+              },
+              {
+                "client": "string",
+                "daily": [],
+                "hourly": [],
+                "periods": [
+                  {
+                    "models": [],
+                    "peak": null,
+                    "period": "string",
+                    "pricing": {
+                      "api_equivalent": {
+                        "amount": null,
+                        "currency": "string",
+                        "known_amount": null,
+                        "status": "string"
+                      },
+                      "provider_estimate": null,
+                      "reasons": [],
+                      "reference": null,
+                      "rule_set": "string",
+                      "version": "number"
+                    },
+                    "quality": [
+                      {
+                        "key": "string",
+                        "pricing": {
+                          "api_equivalent": {
+                            "amount": null,
+                            "currency": "string",
+                            "known_amount": null,
+                            "status": "string"
+                          },
+                          "provider_estimate": null,
+                          "reasons": [],
+                          "reference": null,
+                          "rule_set": "string",
+                          "version": "number"
+                        },
+                        "share": null,
+                        "tokens": "number"
+                      }
+                    ],
+                    "tiers": []
+                  }
+                ]
+              }
+            ],
+            "valid_until": "string",
+            "version": "number"
+          },
           "provider": {
             "available": "boolean",
             "candidates": [
@@ -1376,6 +1434,21 @@
             "schema_version": "number",
             "source_kind": "string",
             "source_url": "string",
+            "tariff_rules": "number",
+            "tariff_sha256": "string",
+            "version": "string"
+          },
+          {
+            "commit_sha": "string",
+            "components": "number",
+            "content_sha256": "string",
+            "currency": "string",
+            "effective_from": "string",
+            "imported_at": "string",
+            "models": "number",
+            "schema_version": "number",
+            "source_kind": "string",
+            "source_url": "string",
             "version": "string"
           }
         ],
@@ -1494,6 +1567,173 @@
               }
             },
             "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_1h": "string",
+                  "cache_write_5m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_1h": "string",
+                  "cache_write_5m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {
+              "cache_read": "string",
+              "cache_write_1h": "string",
+              "cache_write_5m": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cache_read": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "cache_write_1h": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "cache_write_5m": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
             "unit": "string"
           },
           {
@@ -1530,6 +1770,1407 @@
               }
             },
             "provider": "string",
+            "tariffs": [
+              {
+                "alias_to": "string",
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ]
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {
+              "cached_input": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cached_input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_30m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "to": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "to": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_write_12h": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean",
+                  "to": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {
+              "cached_input": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cached_input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_30m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_write_12h": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {
+              "cached_input": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cached_input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {},
+            "provenance": {},
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "to": {
+                    "precision": "string",
+                    "timezone": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_30m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_write_12h": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {},
+            "provenance": {},
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "multiplier": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "timezone": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_30m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_write_12h": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {},
+            "provenance": {},
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "activity": "string",
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "timezone": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "policy": {
+                  "kind": "string",
+                  "policy_id": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "eligibility": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {},
+            "provenance": {},
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string",
+                  "cache_write_1h": "string",
+                  "cache_write_5m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "context": {
+                    "axis": "string",
+                    "comparison": "string",
+                    "mode": "string",
+                    "tokens": "number"
+                  },
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              }
+            ],
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {},
+            "provenance": {},
+            "provider": "string",
+            "tariffs": [
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_read": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  }
+                }
+              },
+              {
+                "applicability": "string",
+                "currency": "string",
+                "id": "string",
+                "rates": {
+                  "cache_write_1h": "string",
+                  "cache_write_5m": "string",
+                  "input": "string",
+                  "output": "string"
+                },
+                "rule_set": "string",
+                "selector": {
+                  "channel": "string",
+                  "endpoints": [
+                    "string"
+                  ],
+                  "models": [
+                    "string"
+                  ],
+                  "provider": "string",
+                  "regions": [
+                    "string"
+                  ],
+                  "service_tier": "string"
+                },
+                "source": {
+                  "kind": "string",
+                  "revision": "string",
+                  "url": "string",
+                  "verified_on": "string"
+                },
+                "sources": [
+                  {
+                    "kind": "string",
+                    "revision": "string",
+                    "url": "string",
+                    "verified_on": "string"
+                  }
+                ],
+                "unit": "string",
+                "validity": {
+                  "basis": "string",
+                  "from": {
+                    "precision": "string",
+                    "value": "string"
+                  },
+                  "initial_rate": "boolean"
+                }
+              }
+            ],
             "unit": "string"
           }
         ],
@@ -1586,6 +3227,21 @@
           "aggregated_reference": "boolean",
           "available": "boolean",
           "catalogs": [
+            {
+              "commit_sha": "string",
+              "components": "number",
+              "content_sha256": "string",
+              "currency": "string",
+              "effective_from": "string",
+              "imported_at": "string",
+              "models": "number",
+              "schema_version": "number",
+              "source_kind": "string",
+              "source_url": "string",
+              "tariff_rules": "number",
+              "tariff_sha256": "string",
+              "version": "string"
+            },
             {
               "commit_sha": "string",
               "components": "number",
@@ -3043,6 +4699,25 @@
             "known_catalog_base_cost": "string",
             "known_provider_cost": "string",
             "last_at": "string",
+            "pricing": {
+              "api_equivalent": {
+                "amount": null,
+                "currency": "string",
+                "known_amount": null,
+                "status": "string"
+              },
+              "provider_estimate": null,
+              "reasons": [
+                "string"
+              ],
+              "reference": {
+                "amount": "string",
+                "basis": "string",
+                "currency": "string"
+              },
+              "rule_set": "string",
+              "version": "number"
+            },
             "provider_cost": "string",
             "session_id": "string",
             "tokens": {
@@ -3174,11 +4849,54 @@
               "known_metric_value": "string",
               "known_provider_cost": "string",
               "metric_value": "string",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
+                "rule_set": "string",
+                "version": "number"
+              },
+              "sessions": "number",
+              "tokens": "number",
+              "weekday": "number"
+            },
+            {
+              "events": "number",
+              "hour": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "metric_value": "string",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [],
+                "reference": null,
+                "rule_set": "string",
+                "version": "number"
+              },
               "sessions": "number",
               "tokens": "number",
               "weekday": "number"
             }
           ],
+          "api_peak": null,
           "buckets": [
             {
               "cache_write_tokens": "number",
@@ -3191,6 +4909,54 @@
               "known_provider_cost": "string",
               "metric_value": "string",
               "output_tokens": "number",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
+                "rule_set": "string",
+                "version": "number"
+              },
+              "provider_cost": "string",
+              "sessions": "number",
+              "start": "string",
+              "tokens": "number"
+            },
+            {
+              "cache_write_tokens": "number",
+              "cached_read_tokens": "number",
+              "coverage": "string",
+              "end": "string",
+              "events": "number",
+              "input_tokens": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "metric_value": "string",
+              "output_tokens": "number",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [],
+                "reference": null,
+                "rule_set": "string",
+                "version": "number"
+              },
               "provider_cost": "string",
               "sessions": "number",
               "start": "string",
@@ -3200,6 +4966,7 @@
           "cache_sessions": [],
           "clients": [
             {
+              "api_share": null,
               "cache_hit_rate": "string",
               "cache_write_tokens": "number",
               "cached_read_tokens": "number",
@@ -3213,6 +4980,25 @@
               "metric_value": "string",
               "name": "string",
               "output_tokens": "number",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
+                "rule_set": "string",
+                "version": "number"
+              },
               "provider_cost": "string",
               "sessions": "number",
               "share": "string",
@@ -3241,6 +5027,7 @@
                 "tools": [],
                 "total_duration_ms": "number"
               },
+              "api_share": null,
               "cache_hit_rate": "string",
               "cache_write_tokens": "number",
               "cached_read_tokens": "number",
@@ -3255,6 +5042,25 @@
               "metric_value": "string",
               "name": "string",
               "output_tokens": "number",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
+                "rule_set": "string",
+                "version": "number"
+              },
               "provider_cost": "string",
               "sessions": "number",
               "share": "string",
@@ -3270,6 +5076,7 @@
           },
           "providers": [
             {
+              "api_share": null,
               "cache_hit_rate": "string",
               "cache_write_tokens": "number",
               "cached_read_tokens": "number",
@@ -3284,6 +5091,25 @@
               "metric_value": "string",
               "name": "string",
               "output_tokens": "number",
+              "pricing": {
+                "api_equivalent": {
+                  "amount": null,
+                  "currency": "string",
+                  "known_amount": null,
+                  "status": "string"
+                },
+                "provider_estimate": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
+                "rule_set": "string",
+                "version": "number"
+              },
               "provider_cost": "string",
               "sessions": "number",
               "share": "string",
@@ -3308,6 +5134,25 @@
             "known_catalog_base_cost": "string",
             "known_provider_cost": "string",
             "output_tokens": "number",
+            "pricing": {
+              "api_equivalent": {
+                "amount": null,
+                "currency": "string",
+                "known_amount": null,
+                "status": "string"
+              },
+              "provider_estimate": null,
+              "reasons": [
+                "string"
+              ],
+              "reference": {
+                "amount": "string",
+                "basis": "string",
+                "currency": "string"
+              },
+              "rule_set": "string",
+              "version": "number"
+            },
             "provider_cost": "string",
             "sessions": "number",
             "tokens": "number"
@@ -3381,6 +5226,25 @@
               "unpriced_events": "number"
             }
           ],
+          "pricing": {
+            "api_equivalent": {
+              "amount": null,
+              "currency": "string",
+              "known_amount": null,
+              "status": "string"
+            },
+            "provider_estimate": null,
+            "reasons": [
+              "string"
+            ],
+            "reference": {
+              "amount": "string",
+              "basis": "string",
+              "currency": "string"
+            },
+            "rule_set": "string",
+            "version": "number"
+          },
           "provider_cost": "string",
           "tokens": {
             "cache_creation_tokens": "number",
