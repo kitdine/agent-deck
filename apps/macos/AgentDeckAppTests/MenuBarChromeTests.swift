@@ -1524,3 +1524,588 @@ final class SchemaSignalAcceptanceTests: XCTestCase {
 		// speech order or disclosure operation; those remain manual acceptance.
 	}
 }
+
+@MainActor
+private final class QuotaPanelWidthCapture {
+	var width: CGFloat = 0
+}
+
+// subscription-account-identity task 5 (`menubar-subscription-identity`):
+// ux/menubar.md M1–M11 over the producer's additive wire. Pure presentation
+// assertions pin selection, wording and spoken order; the hosted renderings
+// pin the 280 pt and normal-width layout. Real VoiceOver speech, SF font
+// truncation on a live menu-bar window and Dynamic Type remain task 7's
+// native acceptance (ux/menubar.md §9).
+@MainActor
+extension MenuBarChromeTests {
+	private static let quotaISO: ISO8601DateFormatter = {
+		let formatter = ISO8601DateFormatter()
+		formatter.formatOptions = [.withInternetDateTime]
+		return formatter
+	}()
+
+	private func quotaStamp(_ offset: TimeInterval, from now: Date) -> String {
+		Self.quotaISO.string(from: now.addingTimeInterval(offset))
+	}
+
+	private func withQuotaLocale<T>(_ language: String, _ body: () throws -> T) rethrows -> T {
+		let old = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		setenv("AGENTDECK_TEST_LOCALE", language, 1)
+		defer { if let old { setenv("AGENTDECK_TEST_LOCALE", old, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") } }
+		return try body()
+	}
+
+	private func planJSON(_ state: String, name: String? = nil, short: String? = nil, source: String, raw: [(String, String)] = [], reason: String? = nil) -> [String: Any] {
+		[
+			"state": state, "name": name as Any, "short_name": short as Any,
+			"basis": (state == "known" ? "mapping" : state == "raw_only" ? "raw" : nil) as String? as Any,
+			"source": source, "raw": raw.map { ["field": $0.0, "value": $0.1] }, "reason": reason as Any,
+		]
+	}
+
+	/// One identity object as the producer emits it: every key present.
+	private func identityJSON(
+		state: String,
+		freshness: String,
+		currentUntil: String? = nil,
+		observedAt: String? = nil,
+		attemptedAt: String? = nil,
+		unknownReason: String? = nil,
+		email: String? = nil,
+		orgKind: String? = nil,
+		orgName: String? = nil,
+		plan: [String: Any]? = nil,
+		association: String? = nil,
+		source: String
+	) -> [String: Any] {
+		[
+			"state": state, "unknown_reason": unknownReason as Any, "freshness": freshness,
+			"current_until": currentUntil as Any, "observed_at": observedAt as Any,
+			"attempted_at": (attemptedAt ?? observedAt) as Any, "failure": unknownReason == "never_probed" ? NSNull() : unknownReason as Any,
+			"failure_at": NSNull(), "source": source, "email_masked": email as Any,
+			"organization_kind": orgKind as Any, "organization_name": orgName as Any,
+			"plan_display": plan as Any, "quota_association": association as Any,
+		]
+	}
+
+	/// A quota client; `extra` overrides or adds keys. Leaving a key out of
+	/// `extra` and `omit` reproduces the current producer; `omit` removes keys
+	/// to reproduce a legacy producer.
+	private func quotaClient(
+		_ client: String, extra: [String: Any] = [:], omit: Set<String> = [],
+		resetsAt: String = "2026-11-19T14:00:00Z"
+	) throws -> DesktopSubscriptionClientV1 {
+		var json: [String: Any] = [
+			"client": client, "applicable": true, "applicable_reason": NSNull(),
+			"source": client == "codex" ? "codex_app_server" : "claude_statusline",
+			"observed_at": "2026-11-19T10:00:00Z", "stale": false,
+			"attribution_confirmed": client == "codex",
+			"plan": client == "codex" ? "prolite" : NSNull(), "plan_reason": client == "codex" ? NSNull() : "not_reported",
+			"windows": [[
+				"key": client == "codex" ? "codex" : "five_hour", "label": NSNull(), "window_minutes": 300,
+				"window_minutes_reason": NSNull(), "used_percent": 89, "resets_at": resetsAt,
+			]],
+			"tightest_window_key": client == "codex" ? "codex" : "five_hour",
+			"reset_allowance": NSNull(), "reset_allowance_reason": "not_reported",
+			"observed_reset_at": NSNull(), "failure": NSNull(),
+			"identity": NSNull(), "quota_context": NSNull(), "failure_detail": NSNull(),
+			"plan_display": client == "codex"
+				? planJSON("known", name: "ChatGPT Pro 100", short: "Pro 100", source: "codex_rate_limits", raw: [("planType", "prolite")])
+				: NSNull(),
+		]
+		for (key, value) in extra { json[key] = value }
+		for key in omit { json.removeValue(forKey: key) }
+		return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: JSONSerialization.data(withJSONObject: json))
+	}
+
+	private func quotaAccessibilityLabels(_ element: Any, depth: Int = 0) -> [String] {
+		guard depth < 40, let object = element as? NSObject else { return [] }
+		var labels: [String] = []
+		if object.responds(to: #selector(NSAccessibilityProtocol.accessibilityLabel)),
+			let label = object.perform(#selector(NSAccessibilityProtocol.accessibilityLabel))?.takeUnretainedValue() as? String {
+			labels.append(label)
+		}
+		if object.responds(to: #selector(NSAccessibilityProtocol.accessibilityChildren)),
+			let children = object.perform(#selector(NSAccessibilityProtocol.accessibilityChildren))?.takeUnretainedValue() as? [Any] {
+			for child in children { labels += quotaAccessibilityLabels(child, depth: depth + 1) }
+		}
+		return labels
+	}
+
+	private func renderedQuotaText(_ hosting: NSView, language: String) throws -> [String] {
+		let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+		let request = VNRecognizeTextRequest()
+		request.recognitionLevel = .accurate
+		request.usesLanguageCorrection = false
+		if language == "zh-Hans" { request.recognitionLanguages = ["zh-Hans", "en-US"] }
+		try VNImageRequestHandler(cgImage: try XCTUnwrap(bitmap.cgImage), options: [:]).perform([request])
+		let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+		guard language == "zh-Hans" else { return lines }
+		// Vision can return the traditional form of a simplified glyph.
+		let simplified = StringTransform("Traditional-Simplified")
+		return lines.map { $0.applyingTransform(simplified, reverse: false) ?? $0 }
+	}
+
+	/// Shared expiry: the same open card relabels a current sign-in as the
+	/// last known one at `current_until`, in visible text and in the spoken
+	/// identity element, without a new snapshot.
+	func testOpenQuotaCardRelabelsExpiredSignIn() async throws {
+		let now = Date()
+		let stamp = quotaStamp(4, from: now)
+		let deadline = try XCTUnwrap(DesktopFormat.timestamp(stamp))
+		let client = try quotaClient("claude", extra: ["identity": identityJSON(
+			state: "identified", freshness: "current", currentUntil: stamp,
+			observedAt: quotaStamp(-60, from: now), email: "c***e@expiry.example.test",
+			source: "claude_auth_status"
+		)])
+		let language = QuotaIdentityPunctuation.isChinese ? "zh-Hans" : "en"
+		let current = "Claude " + t(DesktopCopy.quotaIdentityTitle)
+		let lastKnown = "Claude " + t(DesktopCopy.quotaIdentityLastKnown)
+		let hosting = NSHostingView(rootView: QuotaPanelView(clients: [client])
+			.frame(width: 396)
+			.frame(width: 420, height: 440, alignment: .top)
+			.background(Color.white)
+			.environment(\.colorScheme, .light))
+		let bounds = NSRect(x: 0, y: 0, width: 420, height: 440)
+		let window = NSWindow(contentRect: bounds, styleMask: [.titled], backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentView = hosting
+		window.orderFront(nil)
+		defer { window.close() }
+		hosting.layoutSubtreeIfNeeded()
+		try await Task.sleep(for: .milliseconds(100))
+
+		XCTAssertLessThan(Date(), deadline)
+		XCTAssertTrue(quotaAccessibilityLabels(hosting).contains { $0.hasPrefix(current) })
+		XCTAssertTrue(try renderedQuotaText(hosting, language: language).joined(separator: " ").contains(t(DesktopCopy.quotaIdentityTitle)))
+
+		let limit = deadline.addingTimeInterval(2)
+		var labels = quotaAccessibilityLabels(hosting)
+		while Date() < limit && !labels.contains(where: { $0.hasPrefix(lastKnown) }) {
+			try await Task.sleep(for: .milliseconds(50))
+			labels = quotaAccessibilityLabels(hosting)
+		}
+		XCTAssertGreaterThanOrEqual(Date(), deadline)
+		XCTAssertTrue(labels.contains { $0.hasPrefix(lastKnown) }, "\(labels)")
+		XCTAssertFalse(labels.contains { $0.hasPrefix(current) }, "\(labels)")
+		let text = try renderedQuotaText(hosting, language: language).joined(separator: " ")
+		XCTAssertTrue(text.contains(t(DesktopCopy.quotaIdentityLastKnown)), text)
+		XCTAssertFalse(text.contains(t(DesktopCopy.quotaIdentityTitle)), text)
+	}
+
+	func testWideRawQuotaPlanLeavesSourceAndReadTimeVisibleAt280Points() throws {
+		try withQuotaLocale("en") {
+			let now = Date()
+			let observedAt = quotaStamp(-320, from: now)
+			let resetsAt = quotaStamp(-6 * 3600 - 600, from: now)
+			let readAge = DesktopFormat.relative(observedAt)
+			XCTAssertNotEqual(readAge, DesktopFormat.relative(resetsAt))
+			let caption = t(DesktopCopy.quotaSourceCodexAppServer) + " " + t(DesktopCopy.quotaObservedAt, readAge)
+
+			func captionWords(_ text: String) -> String {
+				let words = text.lowercased().split { !$0.isLetter && !$0.isNumber }
+				return " " + words.joined(separator: " ") + " "
+			}
+
+			let raw = String(repeating: "W", count: 16)
+			let client = try quotaClient("codex", extra: [
+				"observed_at": observedAt,
+				"plan_display": planJSON("raw_only", name: raw, short: raw, source: "codex_rate_limits", raw: [("planType", raw)]),
+			], resetsAt: resetsAt)
+			let pro = try quotaClient("codex", extra: ["observed_at": observedAt], resetsAt: resetsAt)
+			for (card, isRaw) in [(client, true), (pro, false)] {
+				let hosting = NSHostingView(rootView: QuotaPanelView(clients: [card])
+					.frame(width: 256)
+					.frame(width: 280, height: 600, alignment: .top)
+					.background(Color.white)
+					.environment(\.colorScheme, .light))
+				hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 600)
+				hosting.layoutSubtreeIfNeeded()
+				hosting.displayIfNeeded()
+				let lines = try renderedQuotaText(hosting, language: "en")
+				let text = lines.joined(separator: " ")
+				XCTAssertTrue(captionWords(text).contains(captionWords(caption)), "Expected \(caption) in \(lines)")
+				if isRaw {
+					XCTAssertTrue(text.uppercased().contains("WWW"), "\(lines)")
+					XCTAssertFalse(text.uppercased().contains(raw), "\(lines)")
+				} else {
+					XCTAssertTrue(lines.contains { $0.contains("Pro 100") }, "\(lines)")
+				}
+			}
+		}
+	}
+
+	func testQuotaIdentityHidesOnlyWhenNeitherSideHasProbed() throws {
+		try withQuotaLocale("en") {
+			let identity = identityJSON(
+				state: "unknown", freshness: "last_read", unknownReason: "never_probed", source: "codex_account_read"
+			)
+			let neverProbed = try quotaClient("codex", extra: [
+				"identity": identity, "failure": "never_probed", "observed_at": NSNull(),
+				"windows": [], "tightest_window_key": NSNull(),
+			])
+			XCTAssertNil(QuotaIdentityPresentation.make(neverProbed, now: Date()))
+			let quotaAlreadyRead = try quotaClient("codex", extra: ["identity": identity])
+			XCTAssertEqual(QuotaIdentityPresentation.make(quotaAlreadyRead, now: Date())?.meta, "Identity not read yet")
+		}
+	}
+
+	func testQuotaIdentityCurrentAndLastKnownSignInInBothLanguages() throws {
+		let now = Date()
+		let expected: [String: (title: String, lastKnown: String, hidden: String)] = [
+			"en": ("Signed in", "Last known sign-in", "partly hidden"),
+			"zh-Hans": ("当前登录", "上次识别的登录", "部分隐藏"),
+		]
+		for (language, copy) in expected {
+			try withQuotaLocale(language) {
+				let current = try quotaClient("codex", extra: ["identity": identityJSON(
+					state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now),
+					observedAt: quotaStamp(-60, from: now), email: "a***e@example.test",
+					orgKind: "workspace", orgName: "Acme Research", association: "unconfirmed", source: "codex_account_read"
+				)])
+				let presented = try XCTUnwrap(QuotaIdentityPresentation.make(current, now: now))
+				XCTAssertEqual(presented.lead, .email(label: copy.title, masked: "a***e@example.test", lastKnown: false), language)
+				XCTAssertTrue(presented.isCurrent)
+				XCTAssertFalse(presented.metaAdjacent)
+				XCTAssertTrue(presented.accessibilityLabel.hasPrefix("Codex " + copy.title), presented.accessibilityLabel)
+				XCTAssertTrue(presented.accessibilityLabel.contains("a \(copy.hidden) e@example.test"), presented.accessibilityLabel)
+				XCTAssertFalse(presented.accessibilityLabel.contains("***"), "the spoken name must not read the mask as asterisks")
+
+				let confirmed = try quotaClient("codex", extra: ["identity": identityJSON(
+					state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now),
+					observedAt: quotaStamp(-60, from: now), email: "a***e@example.test", association: "confirmed", source: "codex_account_read"
+				)])
+				let expiredRender = try XCTUnwrap(QuotaIdentityPresentation.make(confirmed, now: now.addingTimeInterval(601)))
+				XCTAssertEqual(expiredRender.lead, .email(label: copy.lastKnown, masked: "a***e@example.test", lastKnown: true))
+				XCTAssertTrue(expiredRender.metaAdjacent)
+				XCTAssertFalse(expiredRender.isCurrent)
+
+				// A producer-side last_read keeps the old mailbox dimmed with its
+				// original read time and actual reason adjacent, before row b.
+				let lastRead = try quotaClient("codex", extra: ["identity": identityJSON(
+					state: "unknown", freshness: "last_read", observedAt: quotaStamp(-3 * 3600, from: now),
+					unknownReason: "probe_failed", email: "a***e@example.test", orgKind: "workspace", orgName: "Acme Research",
+					source: "codex_account_read"
+				)])
+				let last = try XCTUnwrap(QuotaIdentityPresentation.make(lastRead, now: now))
+				XCTAssertEqual(last.lead, .email(label: copy.lastKnown, masked: "a***e@example.test", lastKnown: true))
+				let relative = DesktopFormat.relative(quotaStamp(-3 * 3600, from: now))
+				XCTAssertEqual(last.meta, t(DesktopCopy.quotaIdentityLastRead, relative) + " · " + t(DesktopCopy.quotaIdentityReasonProbeFailed))
+				XCTAssertTrue(last.metaAdjacent)
+				let spoken = last.accessibilityLabel
+				let timeIndex = try XCTUnwrap(spoken.range(of: try XCTUnwrap(last.meta))?.lowerBound)
+				let orgIndex = try XCTUnwrap(spoken.range(of: try XCTUnwrap(last.organization))?.lowerBound)
+				XCTAssertLessThan(timeIndex, orgIndex, "the last-known read time is spoken right after the mailbox: \(spoken)")
+			}
+		}
+		XCTAssertEqual(withQuotaLocale("zh-Hans") { t(DesktopCopy.quotaIdentityLastRead, "3小时前") }, "上次读取 · 3小时前")
+		XCTAssertEqual(withQuotaLocale("en") { t(DesktopCopy.quotaIdentityLastRead, "3 hours ago") }, "last read 3 hours ago")
+	}
+
+	func testQuotaIdentityWithoutMailboxSpeaksTheStateItself() throws {
+		let now = Date()
+		try withQuotaLocale("en") {
+			let signedOut = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "signed_out", freshness: "current", currentUntil: quotaStamp(600, from: now),
+				observedAt: quotaStamp(-30, from: now), email: "stale***@example.test", source: "claude_auth_status"
+			)])
+			let out = try XCTUnwrap(QuotaIdentityPresentation.make(signedOut, now: now))
+			XCTAssertEqual(out.lead, .status("Not signed in to a subscription"), "a signed-out state never shows a mailbox")
+			XCTAssertNil(out.organization)
+			XCTAssertTrue(out.accessibilityLabel.hasPrefix("Claude Not signed in to a subscription"), out.accessibilityLabel)
+			XCTAssertFalse(out.accessibilityLabel.contains("stale"))
+
+			let apiKey = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "non_subscription", freshness: "last_read", observedAt: quotaStamp(-7200, from: now), source: "claude_auth_status"
+			)])
+			let key = try XCTUnwrap(QuotaIdentityPresentation.make(apiKey, now: now))
+			XCTAssertEqual(key.lead, .status("Last read · Not a subscription sign-in"))
+			XCTAssertTrue(key.metaAdjacent)
+			XCTAssertTrue(try XCTUnwrap(key.meta).hasPrefix("last read "))
+
+			let codexSignedOut = try quotaClient("codex", extra: ["identity": identityJSON(
+				state: "signed_out", freshness: "current", currentUntil: quotaStamp(600, from: now),
+				observedAt: quotaStamp(-30, from: now), source: "codex_account_read"
+			)])
+			let codexOut = try XCTUnwrap(QuotaIdentityPresentation.make(codexSignedOut, now: now))
+			XCTAssertEqual(codexOut.lead, .status("Not signed in to a subscription"))
+			XCTAssertNil(QuotaPanelView(clients: []).quotaDiscardedLabel(codexSignedOut), "Codex sign-out never discards quota (D3)")
+
+			let never = try quotaClient("codex", extra: ["identity": identityJSON(
+				state: "unknown", freshness: "last_read", unknownReason: "never_probed", source: "codex_account_read"
+			)])
+			let unknown = try XCTUnwrap(QuotaIdentityPresentation.make(never, now: now))
+			XCTAssertEqual(unknown.lead, .status("Current identity unknown"))
+			XCTAssertEqual(unknown.meta, "Identity not read yet")
+			XCTAssertEqual(unknown.accessibilityLabel, "Codex Current identity unknown, Identity not read yet")
+
+			let incomparable = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "unknown", freshness: "last_read", unknownReason: "incomparable", source: "claude_auth_status"
+			)])
+			XCTAssertEqual(QuotaIdentityPresentation.make(incomparable, now: now)?.meta, "Identity fields incomplete")
+		}
+		try withQuotaLocale("zh-Hans") {
+			let apiKey = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "non_subscription", freshness: "current", currentUntil: quotaStamp(600, from: now),
+				observedAt: quotaStamp(-30, from: now), source: "claude_auth_status"
+			)])
+			XCTAssertEqual(QuotaIdentityPresentation.make(apiKey, now: now)?.lead, .status("当前不是订阅登录"))
+		}
+	}
+
+	func testQuotaIdentityIsHiddenWhenReadingIsOffNotOfficialOrGated() throws {
+		let identity = identityJSON(
+			state: "identified", freshness: "current", currentUntil: "2099-01-01T00:00:00Z",
+			observedAt: "2026-11-19T10:00:00Z", email: "a***e@example.test", source: "codex_account_read"
+		)
+		let now = Date()
+		XCTAssertNil(QuotaIdentityPresentation.make(try quotaClient("codex", extra: ["identity": NSNull()]), now: now), "gate: identity null")
+		XCTAssertNil(QuotaIdentityPresentation.make(try quotaClient("codex", omit: ["identity"]), now: now), "legacy producer: no identity key")
+		XCTAssertNil(QuotaIdentityPresentation.make(try quotaClient("codex", extra: ["identity": identity, "failure": "probe_disabled", "windows": [], "tightest_window_key": NSNull()]), now: now), "reading off hides any retained identity")
+		XCTAssertNil(QuotaIdentityPresentation.make(try quotaClient("codex", extra: ["identity": identity, "applicable": false, "applicable_reason": "not_official", "windows": [], "tightest_window_key": NSNull()]), now: now), "a non-official provider hides any retained identity")
+		XCTAssertNotNil(QuotaIdentityPresentation.make(try quotaClient("codex", extra: ["identity": identity]), now: now))
+	}
+
+	func testQuotaPlanPillConflictAndLegacyFallback() throws {
+		let panel = QuotaPanelView(clients: [])
+		let now = Date()
+		try withQuotaLocale("en") {
+			// Legacy producer: only a missing `plan_display` key falls back.
+			let legacy = try quotaClient("codex", omit: ["plan_display", "identity", "quota_context", "failure_detail"])
+			XCTAssertEqual(panel.planPill(legacy)?.text, "prolite")
+			let legacyMissing = try quotaClient("codex", extra: ["plan": NSNull(), "plan_reason": "not_reported"], omit: ["plan_display"])
+			XCTAssertNil(panel.planPill(legacyMissing))
+			XCTAssertEqual(panel.planUnavailableLabel(legacyMissing), t(DesktopCopy.quotaReasonNotReported))
+
+			// Explicit null never reads the legacy `plan`.
+			let claude = try quotaClient("claude", extra: ["plan": "should-not-show"])
+			XCTAssertNil(panel.planPill(claude))
+			XCTAssertEqual(panel.planUnavailableLabel(claude), "not reported by quota source")
+
+			let unsafe = try quotaClient("codex", extra: ["plan": NSNull(), "plan_display": planJSON("missing", source: "codex_rate_limits", reason: "unsafe_value")])
+			XCTAssertNil(panel.planPill(unsafe))
+			XCTAssertEqual(panel.planUnavailableLabel(unsafe), "plan value cannot be safely displayed")
+			let unreported = try quotaClient("codex", extra: ["plan": NSNull(), "plan_display": planJSON("missing", source: "codex_rate_limits", reason: "not_reported")])
+			XCTAssertEqual(panel.planUnavailableLabel(unreported), "not reported by quota source")
+
+			let rawOnly = try quotaClient("codex", extra: ["plan_display": planJSON("raw_only", name: "max", short: "max", source: "codex_rate_limits", raw: [("planType", "max")])])
+			XCTAssertEqual(panel.planPill(rawOnly)?.text, "max", "an unknown safe raw value is shown as itself")
+
+			let long = String(repeating: "W", count: 64)
+			let longPill = try XCTUnwrap(panel.planPill(try quotaClient("codex", extra: ["plan_display": planJSON("known", name: long, short: long, source: "codex_rate_limits")])))
+			XCTAssertEqual(longPill.text, long)
+
+			// Claude's identity-side conflict: row b names the disagreement and
+			// help lists both raw values; there is still no pill.
+			let conflict = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now),
+				observedAt: quotaStamp(-60, from: now), email: "c***e@example.test", orgKind: "organization", orgName: "Acme",
+				plan: planJSON("conflict", source: "claude_auth_status", raw: [("planTier", "pro"), ("subscriptionType", "max")]),
+				source: "claude_auth_status"
+			)])
+			let presented = try XCTUnwrap(QuotaIdentityPresentation.make(conflict, now: now))
+			XCTAssertEqual(presented.plan, "Sign-in plan: Plan sources disagree")
+			XCTAssertTrue(presented.planConflict)
+			XCTAssertEqual(presented.planHelp, "Plan sources disagree (planTier: raw value pro · subscriptionType: raw value max)")
+			XCTAssertEqual(presented.organization, "Organization: Acme")
+
+			let claudePro = try quotaClient("claude", extra: ["identity": identityJSON(
+				state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
+				email: "c***e@example.test", plan: planJSON("known", name: "Claude Pro", short: "Pro", source: "claude_auth_status", raw: [("planTier", "pro")]),
+				source: "claude_auth_status"
+			)])
+			let claudeIdentity = try XCTUnwrap(QuotaIdentityPresentation.make(claudePro, now: now))
+			XCTAssertEqual(claudeIdentity.plan, "Sign-in plan: Pro")
+			XCTAssertTrue(claudeIdentity.accessibilityLabel.contains("Sign-in plan: Claude Pro"), claudeIdentity.accessibilityLabel)
+		}
+		try withQuotaLocale("zh-Hans") {
+			XCTAssertEqual(panel.planUnavailableLabel(try quotaClient("claude")), "额度来源不提供套餐")
+		}
+	}
+
+	func testQuotaDiscardedRowAndParseDetailSelection() throws {
+		let panel = QuotaPanelView(clients: [])
+		let emptied: [String: Any] = ["windows": [], "tightest_window_key": NSNull(), "source": NSNull(), "observed_at": NSNull()]
+		let expected: [String: [String: String]] = [
+			"en": [
+				"context_changed": "Sign-in context changed; earlier quota discarded",
+				"signed_out": "Signed out of the subscription; earlier quota discarded",
+				"non_subscription": "Switched to a non-subscription sign-in; earlier quota discarded",
+				"identity_key_reset": "Cannot compare with the earlier sign-in; earlier quota discarded",
+				"from_a_newer_producer": "Sign-in context changed; earlier quota discarded",
+			],
+			"zh-Hans": [
+				"context_changed": "登录上下文已变化，旧额度已失效",
+				"signed_out": "已退出订阅登录，旧额度已失效",
+				"non_subscription": "已切换为非订阅登录，旧额度已失效",
+				"identity_key_reset": "无法与之前的登录比较，旧额度已失效",
+			],
+		]
+		for (language, reasons) in expected {
+			try withQuotaLocale(language) {
+				XCTAssertEqual(t(DesktopCopy.quotaDiscarded), language == "en" ? "Discarded" : "已失效")
+				for (reason, sentence) in reasons {
+					var extra = emptied
+					extra["quota_context"] = ["invalidated_at": "2026-11-19T10:00:00Z", "reason": reason]
+					let client = try quotaClient("claude", extra: extra)
+					XCTAssertEqual(panel.quotaDiscardedLabel(client), sentence, "\(language) \(reason)")
+					XCTAssertNil(panel.parseDetailLabel(client))
+				}
+			}
+		}
+		// The first new usage after invalidation clears quota_context: windows
+		// return and Claude's attribution stays unconfirmed.
+		let recovered = try quotaClient("claude")
+		XCTAssertNil(panel.quotaDiscardedLabel(recovered))
+		XCTAssertFalse(recovered.attributionConfirmed)
+
+		try withQuotaLocale("en") {
+			for (detail, text) in [("missing_line", "expected usage line missing"), ("shape_invalid", "usage line shape or value invalid"), ("timezone_unresolved", "reset time or time zone unresolved")] {
+				var extra = emptied
+				extra["failure"] = "parse_failed"
+				extra["failure_detail"] = detail
+				XCTAssertEqual(panel.parseDetailLabel(try quotaClient("claude", extra: extra)), text)
+			}
+			var legacy = emptied
+			legacy["failure"] = "parse_failed"
+			XCTAssertNil(panel.parseDetailLabel(try quotaClient("claude", extra: legacy, omit: ["failure_detail"])), "an old producer shows only the original wording")
+			var probe = emptied
+			probe["failure"] = "probe_failed"
+			probe["failure_detail"] = "missing_line"
+			XCTAssertNil(panel.parseDetailLabel(try quotaClient("claude", extra: probe)))
+		}
+	}
+
+	/// Quota and identity carry independent times and provenance: the header
+	/// keeps the quota source and age, the identity area its own read time.
+	func testQuotaAndIdentityTimesStayIndependent() throws {
+		let now = Date()
+		try withQuotaLocale("en") {
+			let quotaObserved = quotaStamp(-5 * 60, from: now)
+			let identityObserved = quotaStamp(-2 * 3600, from: now)
+			let identityAttempted = quotaStamp(-30, from: now)
+			let client = try quotaClient("claude", extra: [
+				"observed_at": quotaObserved,
+				"identity": identityJSON(
+					state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now),
+					observedAt: identityObserved, attemptedAt: identityAttempted,
+					email: "c***e@example.test", source: "claude_auth_status"
+				),
+			])
+			let caption = QuotaPanelView(clients: []).headerCaption(client, source: .claudeStatusLine)
+			XCTAssertEqual(caption, t(DesktopCopy.quotaSourceClaudeStatusLine) + " · " + t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(quotaObserved)))
+			let identity = try XCTUnwrap(QuotaIdentityPresentation.make(client, now: now))
+			XCTAssertEqual(identity.meta, t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(identityObserved)))
+			XCTAssertNotEqual(identity.meta, t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(identityAttempted)))
+			XCTAssertNotEqual(identity.meta.map { caption.contains($0) }, true)
+		}
+	}
+
+	/// Hosted rendering at 280 pt and normal width, in both languages and
+	/// themes. Panel A carries the long plan, long mailbox and organization
+	/// (M3/M11) beside Claude's discarded window with a plan conflict (M4/M6);
+	/// panel B carries `Pro 100` with a current, confirmed Codex sign-in (M2)
+	/// beside a recovered Claude card (M9). The laid-out panel width proves no
+	/// long value widens the card, OCR proves `Pro 100` stays one token and the
+	/// long values are truncated, and the AX tree proves each identity area is
+	/// one element named by the presentation's spoken text.
+	func testQuotaIdentityCardsRenderAtNativeWidthsInBothLanguagesAndThemes() throws {
+		let now = Date()
+		let long = String(repeating: "W", count: 64)
+		let longMailbox = "averyveryverylongmailboxname***e@subdomain.example.org"
+		func panels() throws -> [(name: String, cards: [DesktopSubscriptionClientV1])] {
+			[
+				("long-and-discarded", [
+					try quotaClient("codex", extra: [
+						"plan_display": planJSON("known", name: long, short: long, source: "codex_rate_limits", raw: [("planType", "w")]),
+						"identity": identityJSON(
+							state: "unknown", freshness: "last_read", observedAt: quotaStamp(-3 * 3600, from: now), unknownReason: "probe_failed",
+							email: longMailbox, orgKind: "workspace",
+							orgName: "Acme Research Workspace With A Long Display Name", association: "unconfirmed", source: "codex_account_read"
+						),
+					]),
+					try quotaClient("claude", extra: [
+						"windows": [], "tightest_window_key": NSNull(),
+						"quota_context": ["invalidated_at": quotaStamp(-60, from: now), "reason": "context_changed"],
+						"identity": identityJSON(
+							state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
+							email: "c***e@example.test", orgKind: "organization", orgName: "Acme",
+							plan: planJSON("conflict", source: "claude_auth_status", raw: [("planTier", "pro"), ("subscriptionType", "max")]),
+							source: "claude_auth_status"
+						),
+					]),
+				]),
+				("pro100-and-recovered", [
+					try quotaClient("codex", extra: ["identity": identityJSON(
+						state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
+						email: "a***e@example.test", orgKind: "workspace", orgName: "Acme",
+						plan: planJSON("known", name: "ChatGPT Pro 100", short: "Pro 100", source: "codex_account_read", raw: [("planType", "prolite")]),
+						association: "confirmed", source: "codex_account_read"
+					)]),
+					try quotaClient("claude", extra: ["identity": identityJSON(
+						state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
+						email: "c***e@example.test", plan: planJSON("known", name: "Claude Pro", short: "Pro", source: "claude_auth_status", raw: [("planTier", "pro")]),
+						source: "claude_auth_status"
+					)]),
+				]),
+			]
+		}
+
+		for (language, scheme) in [("en", ColorScheme.light), ("zh-Hans", .dark), ("en", .dark), ("zh-Hans", .light)] {
+			try withQuotaLocale(language) {
+				for panel in try panels() {
+					for width in [280, 420] {
+						let inner = CGFloat(width - 24)
+						let measured = QuotaPanelWidthCapture()
+						let view = QuotaPanelView(clients: panel.cards)
+							.onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { measured.width = $0 }
+							.frame(width: inner)
+							.padding(.horizontal, 12)
+							.frame(width: CGFloat(width), height: 900, alignment: .top)
+							.background(scheme == .dark ? Color.black : Color.white)
+							.environment(\.colorScheme, scheme)
+						let hosting = NSHostingView(rootView: view)
+						hosting.frame = NSRect(x: 0, y: 0, width: width, height: 900)
+						hosting.layoutSubtreeIfNeeded()
+						hosting.displayIfNeeded()
+						RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+						let label = "\(panel.name) \(language) \(width) \(scheme == .dark ? "dark" : "light")"
+						XCTAssertGreaterThan(measured.width, 0, label)
+						XCTAssertLessThanOrEqual(measured.width, inner + 1, "\(label): a long plan, mailbox or organization must not widen the card")
+
+						let png = try renderedViewPNG(hosting)
+						XCTAssertGreaterThan(png.count, 8_000)
+						add(renderingAttachment(png, named: "Quota identity — \(label)"))
+
+						let lines = try renderedQuotaText(hosting, language: language)
+						let joined = lines.joined(separator: "\n")
+						XCTAssertTrue(joined.contains("Codex") && joined.contains("Claude"), "\(label): \(lines)")
+						if panel.name == "pro100-and-recovered" {
+							XCTAssertTrue(joined.contains("example.test"), "\(label): \(lines)")
+							XCTAssertTrue(lines.contains { $0.contains("Pro 100") }, "\(label): `Pro 100` must render on one line: \(lines)")
+						} else {
+							XCTAssertTrue(lines.contains { line in
+								guard let start = line.range(of: "avery", options: .caseInsensitive) else { return false }
+								return line[start.upperBound...].contains(".org")
+							},
+								"\(label): middle truncation keeps the same mailbox's start and top-level domain: \(lines)")
+							XCTAssertFalse(joined.contains(long), "\(label): the 64-character plan must be truncated")
+							XCTAssertTrue(joined.contains(language == "en" ? "Discarded" : "已失效"), "\(label): \(lines)")
+							if width == 280 {
+								XCTAssertFalse(joined.contains(longMailbox), "\(label): the long mailbox is truncated")
+							}
+						}
+
+						let labels = quotaAccessibilityLabels(hosting)
+						for card in panel.cards {
+							guard let spoken = QuotaIdentityPresentation.make(card, now: Date())?.accessibilityLabel else { continue }
+							XCTAssertTrue(labels.contains(spoken), "\(label): identity area is one AX element named \(spoken); found \(labels)")
+							XCTAssertFalse(labels.contains { $0 != spoken && $0.contains("***") }, "\(label): no AX element reads the mask as asterisks")
+						}
+					}
+				}
+			}
+		}
+	}
+}

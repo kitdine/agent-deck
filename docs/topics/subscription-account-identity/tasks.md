@@ -27,7 +27,7 @@ created: 2026-11-17
 | 2. `identity-adapters` | [ ] | [ ] |
 | 3. `quota-delivery-guard` | [x] | [x] |
 | 4. `quota-refresh-publication` | [x] | [x] |
-| 5. `menubar-subscription-identity` | [ ] | [ ] |
+| 5. `menubar-subscription-identity` | [x] | [x] |
 | 6. `widget-subscription-identity` | [ ] | [ ] |
 | 7. `subscription-identity-acceptance` | [ ] | [ ] |
 
