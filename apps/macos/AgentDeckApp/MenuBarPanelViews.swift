@@ -1932,6 +1932,7 @@ struct QuotaIdentityPresentation: Equatable {
 	/// Last-known values keep their original read time and reason directly
 	/// beneath them, before row b.
 	let metaAdjacent: Bool
+	let association: String?
 	/// Deadline for the current presentation, if applicable.
 	let currentUntil: Date?
 	var isCurrent: Bool { currentUntil != nil }
@@ -1967,6 +1968,7 @@ struct QuotaIdentityPresentation: Equatable {
 		var organization: String?
 		if hasEmail, let name = identity.organizationName.value, !name.isEmpty {
 			switch identity.organizationKind.value {
+			case .workspace: organization = t(DesktopCopy.quotaIdentityWorkspace) + colon + name
 			case .organization: organization = t(DesktopCopy.quotaIdentityOrganization) + colon + name
 			default: organization = name
 			}
@@ -1999,12 +2001,23 @@ struct QuotaIdentityPresentation: Equatable {
 		}
 		let meta = [time, reason].compactMap { $0 }.joined(separator: " · ")
 
+		// Only Codex can carry a same-account statement, and only while the
+		// confirmation is still current at the rendering instant (Claude stays
+		// account-unconfirmed: its attribution line above is never replaced).
+		var association: String?
+		if client.client == "codex", hasEmail {
+			association = isCurrent && identity.quotaAssociation.value == .confirmed
+				? t(DesktopCopy.quotaIdentityAssociationConfirmed)
+				: t(DesktopCopy.quotaIdentityAssociationUnconfirmed)
+		}
+
 		let lead: Lead = if hasEmail, let masked { .email(label: rowALabel, masked: masked, lastKnown: lastKnown) } else { .status(statusLabel) }
 		let spokenName: String = if case let .email(label, value, _) = lead { label + colon + spokenMaskedEmail(value) } else { statusLabel }
 		let head = DesktopPresentationModelV1.clientDisplayLabel(client.client) + " " + spokenName
 		let timeSummary = meta.isEmpty ? nil : meta
 		let details = adjacent ? [timeSummary, organization, planSpeech] : [organization, planSpeech, timeSummary]
-		let spoken = ([head] + details.compactMap { $0 }).joined(separator: QuotaIdentityPunctuation.comma)
+		var spoken = ([head] + details.compactMap { $0 }).joined(separator: QuotaIdentityPunctuation.comma)
+		if let association { spoken += QuotaIdentityPunctuation.semicolon + association }
 
 		return Self(
 			lead: lead,
@@ -2014,6 +2027,7 @@ struct QuotaIdentityPresentation: Equatable {
 			planConflict: plan?.conflict ?? false,
 			meta: timeSummary,
 			metaAdjacent: adjacent,
+			association: association,
 			currentUntil: isCurrent ? currentUntil : nil,
 			accessibilityLabel: spoken
 		)
@@ -2083,6 +2097,10 @@ struct QuotaIdentityView: View {
 				.foregroundStyle(DesktopVisualTheme.dim)
 			}
 			if !identity.metaAdjacent { meta }
+			if let association = identity.association {
+				Text(association).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
 		}
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(identity.accessibilityLabel)
