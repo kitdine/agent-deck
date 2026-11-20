@@ -252,6 +252,58 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertEqual(recorder.calls, [Set(AppGroupWidgetKind.allCases)])
 	}
 
+	func testCodexAssociationStorageAndQuotaOnlyReloads() async throws {
+		typealias Object = [String: Any]
+		let file = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		var upstream = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? Object)
+		var clients = try XCTUnwrap(upstream["clients"] as? [Object])
+		let codex = try XCTUnwrap(clients.firstIndex { $0["client"] as? String == "codex" })
+		var identity = try XCTUnwrap(clients[codex]["identity"] as? Object)
+		let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(directoryURL: directory)
+		let recorder = TimelineReloadRecorder()
+		let publisher = WidgetSnapshotPublisher(store: store, reloader: WidgetTimelineReloader { recorder.record($0) })
+
+		let inputs: [Any?] = [nil, NSNull(), "unconfirmed", "confirmed", "future", NSNull()]
+		for (i, association) in inputs.enumerated() {
+			identity["quota_association"] = association
+			clients[codex]["identity"] = identity
+			upstream["clients"] = clients
+			let source = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: JSONSerialization.data(withJSONObject: upstream))
+			let result = await publisher.publish(AppGroupDesktopSnapshotV1(envelope: envelope.replacingSubscription(source)), generation: UInt64(i + 1))
+			let expectedKinds: Set<AppGroupWidgetKind>
+			switch i {
+			case 0: expectedKinds = Set(AppGroupWidgetKind.allCases)
+			case inputs.count - 1: expectedKinds = [] // Unknown already wrote null.
+			default: expectedKinds = [.quota]
+			}
+			XCTAssertEqual(result, .published(affectedKinds: expectedKinds))
+			let bytes = try Data(contentsOf: store.snapshotURL)
+			let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? Object)
+			let sub = try XCTUnwrap(root["subscription"] as? Object)
+			let storedClients = try XCTUnwrap(sub["clients"] as? [Object])
+			let storedID = try XCTUnwrap(storedClients[codex]["identity"] as? Object)
+			switch association as? String {
+			case "confirmed", "unconfirmed": XCTAssertEqual(storedID["quota_association"] as? String, association as? String)
+			default:
+				if association == nil { XCTAssertNil(storedID["quota_association"]) }
+				else { XCTAssertTrue(storedID["quota_association"] is NSNull) }
+			}
+		}
+
+		var plan = try XCTUnwrap(clients[codex]["plan_display"] as? Object)
+		plan["short_name"] = "Another short name"
+		clients[codex]["plan_display"] = plan
+		upstream["clients"] = clients
+		let updated = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: JSONSerialization.data(withJSONObject: upstream))
+		let result = await publisher.publish(AppGroupDesktopSnapshotV1(envelope: envelope.replacingSubscription(updated)), generation: UInt64(inputs.count + 1))
+		XCTAssertEqual(result, .published(affectedKinds: [.quota]))
+		XCTAssertEqual(recorder.calls.last, [.quota])
+		XCTAssertEqual(try store.read().subscription.clients[codex].planDisplay.value?.shortName.value, "Another short name")
+	}
+
 	func testSubscriptionChangeReloadsOnlyQuota() async throws {
 		let original = try AppGroupDesktopSnapshotV1(envelope: decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json")))
 		let changed = try snapshot(from: original) { object in

@@ -54,11 +54,13 @@ struct AppGroupQuotaClient: Codable, Equatable, Sendable {
 		let state: DesktopQuotaIdentityV1.State
 		let freshness: DesktopQuotaIdentityV1.Freshness
 		let currentUntil, emailMasked: WireField<String>
+		let quotaAssociation: WireField<DesktopQuotaIdentityV1.Association>
 		enum CodingKeys: String, CodingKey {
 			case state, freshness, currentUntil = "current_until", emailMasked = "email_masked"
+			case quotaAssociation = "quota_association"
 		}
 
-		func safeForStorage() -> Self {
+		func safeForStorage(client: String) -> Self {
 			var email = emailMasked
 			if let value = email.value {
 				// Reject a full address mistakenly supplied in email_masked. Never
@@ -70,7 +72,12 @@ struct AppGroupQuotaClient: Codable, Equatable, Sendable {
 					(local == "***" || local.dropFirst() == "***" || local.dropFirst().dropLast() == "***")
 				if state != .identified || freshness != .current || !valid { email = .null }
 			}
-			return Self(state: state, freshness: freshness, currentUntil: currentUntil, emailMasked: email)
+			let association: WireField<DesktopQuotaIdentityV1.Association>
+			if client != "codex" { association = .absent }
+			else if quotaAssociation.value == .unrecognized { association = .null }
+			else { association = quotaAssociation }
+			return Self(state: state, freshness: freshness, currentUntil: currentUntil,
+				emailMasked: email, quotaAssociation: association)
 		}
 	}
 
@@ -94,7 +101,7 @@ struct AppGroupQuotaClient: Codable, Equatable, Sendable {
 		quotaContext = source.quotaContext.project { Context(reason: $0.reason) }
 		identity = source.identity.project {
 			Identity(state: $0.state, freshness: $0.freshness, currentUntil: $0.currentUntil,
-				emailMasked: $0.emailMasked).safeForStorage()
+				emailMasked: $0.emailMasked, quotaAssociation: $0.quotaAssociation).safeForStorage(client: source.client)
 		}
 	}
 
@@ -145,7 +152,7 @@ struct AppGroupQuotaClient: Codable, Equatable, Sendable {
 		failure = try c.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .failure)
 		planDisplay = try c.decode(WireField<Plan>.self, forKey: .planDisplay)
 		quotaContext = try c.decode(WireField<Context>.self, forKey: .quotaContext)
-		identity = try c.decode(WireField<Identity>.self, forKey: .identity).project { $0.safeForStorage() }
+		identity = try c.decode(WireField<Identity>.self, forKey: .identity).project { $0.safeForStorage(client: name) }
 	}
 }
 
