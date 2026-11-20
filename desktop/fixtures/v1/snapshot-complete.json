@@ -7938,20 +7938,35 @@
       "clients": [
         {
           "plan_display": {
-            "state": "raw_only",
-            "name": "pro",
-            "short_name": "pro",
-            "basis": "raw",
+            "state": "known",
+            "name": "ChatGPT Pro 100",
+            "short_name": "Pro 100",
+            "basis": "mapping",
             "source": "codex_rate_limits",
             "raw": [
               {
                 "field": "planType",
-                "value": "pro"
+                "value": "prolite"
               }
             ],
             "reason": null
           },
-          "identity": null,
+          "identity": {
+            "state": "unknown",
+            "unknown_reason": "never_probed",
+            "freshness": "last_read",
+            "current_until": null,
+            "observed_at": null,
+            "attempted_at": null,
+            "failure": null,
+            "failure_at": null,
+            "source": "codex_account_read",
+            "email_masked": null,
+            "organization_kind": null,
+            "organization_name": null,
+            "plan_display": null,
+            "quota_association": null
+          },
           "failure_detail": null,
           "quota_context": null,
           "client": "codex",
@@ -7961,7 +7976,7 @@
           "observed_at": "2026-08-13T09:58:00Z",
           "stale": false,
           "attribution_confirmed": true,
-          "plan": "pro",
+          "plan": "prolite",
           "plan_reason": null,
           "windows": [
             {

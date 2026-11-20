@@ -69,8 +69,8 @@ func subscriptionPlan(src quota.PlanSource, sources quota.PlanSources) *Subscrip
 func projectSubscriptionFacts(ctx context.Context, out *SubscriptionClient, r *quota.SnapshotReader, tx *sql.Tx, c quota.Client, u quota.UsageRecord, now time.Time, interval time.Duration) error {
 	src := quota.PlanSourceClaudeAuthStatus
 	if c == quota.ClientCodex {
+		src = quota.PlanSourceCodexAccountRead
 		out.PlanDisplay = subscriptionPlan(quota.PlanSourceCodexRateLimits, u.Plan)
-		return nil
 	} else if at := timeText(u.Claude.InvalidatedAt); at != nil {
 		out.QuotaContext = &SubscriptionContext{*at, string(u.Claude.Invalidation)}
 	}
@@ -103,7 +103,19 @@ func projectSubscriptionFacts(ctx context.Context, out *SubscriptionClient, r *q
 		i.OrganizationName = optional(row.Display.OrganizationName)
 		i.PlanDisplay = subscriptionPlan(src, row.Display.Plan)
 	}
-
+	if c == quota.ClientCodex && i.State == "identified" {
+		i.QuotaAssociation = optional("unconfirmed")
+		if i.Freshness == "current" && row.SuccessSeq > 0 && row.AssociationSeq == row.SuccessSeq && u.Seq == row.SuccessSeq {
+			// The frozen IdentityRecord exposes the sequence, not the verdict.
+			var confirmed bool
+			if err := tx.QueryRowContext(ctx, `SELECT association='confirmed' FROM quota_identities WHERE client='codex'`).Scan(&confirmed); err != nil {
+				return err
+			}
+			if confirmed {
+				i.QuotaAssociation = optional("confirmed")
+			}
+		}
+	}
 	return nil
 }
 

@@ -28,14 +28,10 @@ func projectionSeed(t *testing.T, core *store.Store, at time.Time) {
 	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
 	date := at.Format(time.RFC3339Nano)
 	projectionSQL(t, core, `UPDATE quota_cycle SET seq=4,revalidate_seq=1`)
-	projectionSQL(t, core, `INSERT INTO quota_envelopes_v2(client,source,observed_at,plan,cycle_seq,account_id,reset_allowance_reason) VALUES('codex','codex',?,'pro',4,'private-account-sentinel','not_reported')`, date)
+	projectionSQL(t, core, `INSERT INTO quota_envelopes_v2(client,source,observed_at,plan,cycle_seq,account_id,reset_allowance_reason) VALUES('codex','codex',?,'prolite',4,'private-account-sentinel','not_reported')`, date)
+	projectionSQL(t, core, `INSERT INTO quota_identities(client,attempt_cycle_seq,attempted_at,success_cycle_seq,success_state,success_observed_at,email_masked,org_kind,org_name,plan_sources_json,association,association_cycle_seq,baseline_key_id)
+	VALUES('codex',4,?,4,'identified',?,'a***e@example.test','workspace','Test workspace','[{"value":"prolite"},{},{}]','confirmed',4,'private-key-sentinel')`, date, date)
 	recordQuotaWindow(t, core, quota.Observation{Client: quota.ClientClaude, Source: quota.SourceClaudeStatusLine, WindowKey: "five_hour", WindowMinutes: 300, ObservedAt: at, UsedPercent: 32, ResetsAt: at.Add(time.Hour)})
-}
-
-func seedClaudeProjectionIdentity(t *testing.T, core *store.Store, at time.Time) {
-	t.Helper()
-	projectionSQL(t, core, `INSERT INTO quota_identities(client,attempt_cycle_seq,attempted_at,success_cycle_seq,success_state,success_observed_at,email_masked,org_kind,org_name,plan_sources_json)
-	VALUES('claude',4,?,4,'identified',?,'a***e@example.test','organization','Fixture organization','[{},{"value":"pro"},{}]')`, at.Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
 }
 
 func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
@@ -43,7 +39,6 @@ func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 	ctx := context.Background()
 	at := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	projectionSeed(t, core, at)
-	seedClaudeProjectionIdentity(t, core, at)
 	// This clock runs after the transaction's first read. Commit invalidation
 	// and a gate change before the projector reads either client's facts.
 	s := Service{Now: func() time.Time {
@@ -59,7 +54,7 @@ func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, x := subscriptionFor(t, before, "claude"), subscriptionFor(t, before, "codex")
-	if !before.Reading || before.Projection == nil || c.QuotaContext != nil || len(c.Windows) != 1 || c.Identity == nil || c.Identity.State != "identified" || x.Identity != nil || x.PlanDisplay == nil || x.PlanDisplay.State != quota.PlanRawOnly {
+	if !before.Reading || before.Projection == nil || c.QuotaContext != nil || len(c.Windows) != 1 || c.Identity == nil || c.Identity.State != "unknown" || x.Identity.QuotaAssociation == nil || *x.Identity.QuotaAssociation != "confirmed" {
 		t.Fatal("mixed snapshots", before)
 	}
 	after, err := (Service{}).BuildSubscription(ctx, core, at)
@@ -87,18 +82,17 @@ func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 	}
 }
 
-func TestSubscriptionProjectionExpiryAndFailure(t *testing.T) {
+func TestSubscriptionProjectionExpiryFailureAndAssociation(t *testing.T) {
 	core := openSubscriptionStore(t)
 	at := time.Now().UTC().Truncate(time.Second)
 	projectionSeed(t, core, at)
-	seedClaudeProjectionIdentity(t, core, at)
 	read := func(now time.Time) SubscriptionClient {
 		t.Helper()
 		sub, err := (Service{}).BuildSubscription(context.Background(), core, now)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return subscriptionFor(t, sub, "claude")
+		return subscriptionFor(t, sub, "codex")
 	}
 	until := at.Add(10 * time.Minute)
 	for _, tc := range []struct {
@@ -106,7 +100,7 @@ func TestSubscriptionProjectionExpiryAndFailure(t *testing.T) {
 		current bool
 	}{{at.Add(-1), false}, {at, true}, {until, true}, {until.Add(1), false}} {
 		i := read(tc.now).Identity
-		if (i.Freshness == "current") != tc.current || (i.CurrentUntil != nil) != tc.current {
+		if (i.Freshness == "current") != tc.current || (i.CurrentUntil != nil) != tc.current || (*i.QuotaAssociation == "confirmed") != tc.current {
 			t.Fatal(i)
 		}
 		if tc.current && *i.CurrentUntil != until.Format(time.RFC3339Nano) {
@@ -114,12 +108,20 @@ func TestSubscriptionProjectionExpiryAndFailure(t *testing.T) {
 		}
 	}
 	projectionSQL(t, core, `UPDATE quota_cycle SET revalidate_seq=4`)
-	if i := read(at).Identity; i.Freshness != "last_read" || i.CurrentUntil != nil {
+	if i := read(at).Identity; i.Freshness != "last_read" || i.CurrentUntil != nil || *i.QuotaAssociation != "unconfirmed" {
 		t.Fatal("revalidation floor accepted an old success", i)
 	}
 	projectionSQL(t, core, `UPDATE quota_cycle SET revalidate_seq=1`)
+	projectionSQL(t, core, `UPDATE quota_identities SET association=''`)
+	if *read(at).Identity.QuotaAssociation != "unconfirmed" {
+		t.Fatal("sequence alone is not proof")
+	}
 	projectionSQL(t, core, `UPDATE quota_identities SET attempt_cycle_seq=5,failure_cycle_seq=5,attempt_failure='probe_failed',attempted_at=?`, until.Format(time.RFC3339Nano))
+	projectionSQL(t, core, `UPDATE quota_envelopes_v2 SET plan='',plan_unsafe=1,plan_reason='not_reported'`)
 	c := read(until)
+	if c.Plan != nil || *c.PlanReason != "not_reported" || c.PlanDisplay.Reason == nil || *c.PlanDisplay.Reason != "unsafe_value" || len(c.PlanDisplay.Raw) != 0 {
+		t.Fatal("unsafe plan projection", c.PlanDisplay)
+	}
 	i := c.Identity
 	if i.State != "unknown" || *i.UnknownReason != "probe_failed" || i.Freshness != "last_read" || i.CurrentUntil != nil || i.EmailMasked == nil || i.QuotaAssociation != nil || *i.FailureAt != until.Format(time.RFC3339Nano) {
 		t.Fatal("wrong last-read state", i)
@@ -209,7 +211,7 @@ func TestSubscriptionLegacyProjection(t *testing.T) {
 			if c.ObservedAt == nil || *c.ObservedAt != "2026-10-12T10:00:00Z" {
 				t.Fatalf("schema %d should display legacy failure_at, got %v", version, c.ObservedAt)
 			}
-			if c.Identity != nil || c.QuotaContext != nil || c.FailureDetail != nil || !reasonIs(c.Failure, quota.ReasonParseFailed) || len(c.Windows) != 0 || x.Plan == nil || *x.Plan != "pro" || x.Identity != nil || x.PlanDisplay == nil || x.PlanDisplay.Name == nil || *x.PlanDisplay.Name != "pro" {
+			if c.Identity != nil || c.QuotaContext != nil || c.FailureDetail != nil || !reasonIs(c.Failure, quota.ReasonParseFailed) || len(c.Windows) != 0 || x.Plan == nil || *x.Plan != "prolite" || x.Identity != nil || x.PlanDisplay == nil || *x.PlanDisplay.Name != "ChatGPT Pro 100" {
 				t.Fatal("legacy projection or unknown failure order", version, c, x)
 			}
 		})

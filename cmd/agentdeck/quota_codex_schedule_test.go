@@ -11,7 +11,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
-func TestDesktopQuotaRefreshCodexUsageOnly(t *testing.T) {
+func TestDesktopQuotaRefreshCodexSingleProcess(t *testing.T) {
 	home := t.TempDir()
 	state := filepath.Join(home, "state")
 	withTestHome(t, home)
@@ -23,6 +23,7 @@ echo process >> "$HOME/requests"
 while IFS= read -r line; do
   case "$line" in
     *account/rateLimits/read*) echo usage >> "$HOME/requests"; echo '{"id":2,"result":{"accountId":"synthetic-account","rateLimits":{"planType":"prolite","primary":{"usedPercent":37}}}}';;
+    *account/read*'"refreshToken":false'*) echo identity >> "$HOME/requests"; echo '{"id":3,"result":{"account":{"type":"chatgpt","email":"fixture@example.test","planType":"prolite"},"requiresOpenaiAuth":true,"userId":"synthetic-account"}}';;
     *initialized*) echo ready >> "$HOME/requests";;
     *initialize*) echo handshake >> "$HOME/requests"; echo '{"id":1,"result":{}}';;
     *) exit 8;;
@@ -41,7 +42,7 @@ done
 	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")
 	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh")
 	b, err := os.ReadFile(filepath.Join(home, "requests"))
-	if err != nil || string(b) != "process\nhandshake\nready\nusage\n" {
+	if err != nil || string(b) != "process\nhandshake\nready\nidentity\nusage\n" {
 		t.Fatal(string(b), err)
 	}
 	core, err := store.Open(context.Background(), state)
@@ -49,12 +50,12 @@ done
 		t.Fatal(err)
 	}
 	defer core.Close()
-	var account, plan string
-	var seq, generation, identities int
-	if err := core.DB.QueryRow(`SELECT cycle_seq,account_id,plan,context_generation,(SELECT COUNT(*) FROM quota_identities WHERE client='codex') FROM quota_envelopes_v2 WHERE client='codex'`).Scan(&seq, &account, &plan, &generation, &identities); err != nil {
+	var email, association, account, plan string
+	var seq, usageSeq, generation int
+	if err := core.DB.QueryRow(`SELECT i.email_masked,i.association,i.success_cycle_seq,e.cycle_seq,e.account_id,e.plan,e.context_generation FROM quota_identities i JOIN quota_envelopes_v2 e USING(client) WHERE client='codex'`).Scan(&email, &association, &seq, &usageSeq, &account, &plan, &generation); err != nil {
 		t.Fatal(err)
 	}
-	if seq <= 0 || account == "" || strings.Contains(account, "synthetic-account") || generation != 0 || plan != "prolite" || identities != 0 {
-		t.Fatal("incorrect usage-only commit")
+	if email != "f***e@example.test" || association != "" || seq <= 0 || seq != usageSeq || account == "" || strings.Contains(account, "synthetic-account") || generation != 0 || plan != "prolite" {
+		t.Fatal("incorrect persisted joint projection")
 	}
 }
