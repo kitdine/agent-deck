@@ -51,5 +51,8 @@ func ProjectPlan(source PlanSource, sources PlanSources) PlanDisplay {
 	if source == PlanSourceClaudeAuthStatus && raw == "pro" {
 		result.State, result.Basis, result.Name, result.ShortName = PlanKnown, PlanBasisMapping, "Claude Pro", "Pro"
 	}
+	if (source == PlanSourceCodexAccountRead || source == PlanSourceCodexRateLimits) && raw == "prolite" {
+		result.State, result.Basis, result.Name, result.ShortName = PlanKnown, PlanBasisMapping, "ChatGPT Pro 100", "Pro 100"
+	}
 	return result
 }

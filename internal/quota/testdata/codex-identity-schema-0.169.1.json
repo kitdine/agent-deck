@@ -1,0 +1,176 @@
+{
+  "version": "codex-cli 0.169.1",
+  "generated_utc": "2026-11-18T15:49Z",
+  "command": "codex app-server generate-json-schema --out <isolated-output>",
+  "source_sha256": {
+    "GetAccountParams": "30b545275f60975b55bd6fbaafd70f15505801d14168ee82d3931b6e93c78aab",
+    "GetAccountResponse": "588bac1dacbcf8d0676f2c31d9d5750e8baaee5c3062ef820ae4e6ee68687418",
+    "GetAccountRateLimitsResponse": "9c0def7f8ab2396122af939dffbf01b34b8d66082fe4129dd20917bfd4313fdc"
+  },
+  "GetAccountParams": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "refreshToken": {
+        "description": "When `true`, requests a proactive token refresh before returning.\n\nIn managed auth mode this triggers the normal refresh-token flow. In external auth mode this flag is ignored. Clients should refresh tokens themselves and call `account/login/start` with `chatgptAuthTokens`.",
+        "type": "boolean"
+      }
+    },
+    "title": "GetAccountParams",
+    "type": "object"
+  },
+  "GetAccountResponse": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/Account"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "requiresOpenaiAuth": {
+        "type": "boolean"
+      },
+      "userId": {
+        "default": null,
+        "description": "ChatGPT user ID belonging to this account response, when available.",
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "requiresOpenaiAuth"
+    ],
+    "title": "GetAccountResponse",
+    "type": "object"
+  },
+  "Account": {
+    "oneOf": [
+      {
+        "properties": {
+          "type": {
+            "enum": [
+              "apiKey"
+            ],
+            "title": "ApiKeyAccountType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ApiKeyAccount",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "planType": {
+            "$ref": "#/definitions/PlanType"
+          },
+          "type": {
+            "enum": [
+              "chatgpt"
+            ],
+            "title": "ChatgptAccountType",
+            "type": "string"
+          },
+          "workspaceName": {
+            "description": "Display name of the selected ChatGPT workspace, when available.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "planType",
+          "type"
+        ],
+        "title": "ChatgptAccount",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "type": {
+            "enum": [
+              "amazonBedrock"
+            ],
+            "title": "AmazonBedrockAccountType",
+            "type": "string"
+          },
+          "usesCodexManagedCredentials": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "AmazonBedrockAccount",
+        "type": "object"
+      },
+      {
+        "description": "Google Cloud Vertex AI with externally managed credentials.",
+        "properties": {
+          "type": {
+            "enum": [
+              "gcp"
+            ],
+            "title": "GcpAccountType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "GcpAccount",
+        "type": "object"
+      }
+    ]
+  },
+  "PlanType": {
+    "enum": [
+      "free",
+      "go",
+      "plus",
+      "pro",
+      "prolite",
+      "promax",
+      "team",
+      "self_serve_business_prolite",
+      "self_serve_business_usage_based",
+      "business",
+      "ent26",
+      "enterprise_cbp_automation",
+      "enterprise_cbp_usage_based",
+      "enterprise",
+      "edu",
+      "edu_plus",
+      "edu_pro",
+      "sci",
+      "sci_plus",
+      "unknown"
+    ],
+    "type": "string"
+  },
+  "GetAccountRateLimitsResponse.accountId": {
+    "description": "Account associated with this usage snapshot, when supplied by the backend.",
+    "type": [
+      "string",
+      "null"
+    ]
+  },
+  "certified_common_key": null
+}
