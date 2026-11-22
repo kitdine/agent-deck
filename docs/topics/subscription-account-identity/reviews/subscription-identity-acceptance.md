@@ -85,7 +85,9 @@ N1/N4 原生回执摘要为 `446460da256a3ee2ccb81a8aaee84641d0a0ae240db89fb6330
 
 ## Round 3 — 2026-11-22，N3 真实桌面 WidgetKit 与 N2 VoiceOver 处置
 
-原生验收：N3 PASS；N2 VoiceOver 部分按用户授权跳过，未执行
+评审结论：PASS
+
+N3 PASS；N2 的系统 VoiceOver 部分按用户授权跳过，记为未执行。
 
 完成门禁：VERIFIED
 
