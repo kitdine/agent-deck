@@ -43,11 +43,12 @@ var ownershipPackageCases = []string{
 	"installation.StateRoot", "installation.StateRootWithHome",
 	"store.Open", "store.OpenExisting", "store.OpenReadOnly", "store.OpenWithLockHeld", "store.OpenSessions", "store.OpenSessionsReadOnly",
 	"store.AcquireLock", "store.AcquireScanLock", "store.AcquireQuotaRefreshLock", "store.AcquireQuotaRefreshLockBefore", "store.AcquireDerivedSnapshotCacheLock", "store.AcquireServingSnapshotLock", "store.InspectScanLockContention", "store.OpenServingGenerationReader", "store.ReadServingGeneration",
+	"store.VerifyServingGeneration",
 	"credentialvault.Vault.Seal", "credentialvault.Vault.SealExisting", "credentialvault.Vault.Open", "credentialvault.Vault.InspectKey", "credentialvault.Vault.InspectKeyIDs", "credentialvault.Vault.InitializeNew",
 	"hookrefusal.Read", "hookrefusal.Live", "hookrefusal.Write", "hookrefusal.Clear",
 	"telemetry.LoadConfig", "telemetry.SaveConfig", "telemetry.EnsureToken", "telemetry.ReadToken", "telemetry.ReadListenerState", "telemetry.ReadStatus", "telemetry.WriteManagedBlock", "telemetry.RemoveManagedBlock", "telemetry.Serve", "telemetry.Receiver.ServeHTTP",
 	"scanruntime.Client.Request", "scanruntime.Client.RequestWithProgress", "scanruntime.Serve", "scanruntime.WithMaintenance", "scanruntime.AcquireMaintenance",
-	"doctor.Service.Check", "session.CheckHealth", "extension.DoctorFromStateRoot", "extension.DoctorFromStateRootWithDiscoverer",
+	"doctor.Service.Check", "doctor.Service.LockCheck", "session.CheckHealth", "extension.DoctorFromStateRoot", "extension.DoctorFromStateRootWithDiscoverer",
 	"backup.Service.Create", "backup.Restore",
 	"sessionorigin.LoadSourceConfig", "sessionorigin.SaveSourceConfig",
 	"desktop.Service.SessionScopeView", "desktop.Service.SessionScopeBatch", "desktop.Service.SessionScopeDefaultBatch",
@@ -133,6 +134,8 @@ func ownershipPackageProbe(name, root string) int {
 		}
 	case "store.ReadServingGeneration":
 		_, err = store.ReadServingGeneration(ctx, root)
+	case "store.VerifyServingGeneration":
+		_, err = store.VerifyServingGeneration(ctx, root)
 	case "credentialvault.Vault.Seal":
 		_, err = vault.Seal(ctx, "fixture", "synthetic-secret")
 	case "credentialvault.Vault.SealExisting":
@@ -208,6 +211,12 @@ func ownershipPackageProbe(name, root string) int {
 			fmt.Println("partial refusal")
 			return 0
 		}
+	case "doctor.Service.LockCheck":
+		if _, checked := (doctor.Service{StateRoot: root}).LockCheck("scan_lock"); !checked {
+			fmt.Println("lock check refused")
+			return 0
+		}
+		return 7
 	case "session.CheckHealth":
 		_, err = session.CheckHealth(ctx, root, false)
 	case "extension.DoctorFromStateRoot":
@@ -296,7 +305,7 @@ func TestOwnershipPackageEntrypointsBehindBarrier(t *testing.T) {
 			f.Sandbox(command)
 			out, err := command.CombinedOutput()
 			want := 1
-			if name == "hookrefusal.Read" || name == "hookrefusal.Live" || name == "store.InspectScanLockContention" || name == "doctor.Service.Check" || name == "desktop.Service.SessionScopeDefaultBatch" {
+			if name == "hookrefusal.Read" || name == "hookrefusal.Live" || name == "store.InspectScanLockContention" || name == "doctor.Service.Check" || name == "doctor.Service.LockCheck" || name == "desktop.Service.SessionScopeDefaultBatch" {
 				want = 0
 			}
 			if command.ProcessState == nil || command.ProcessState.ExitCode() != want {
@@ -322,7 +331,7 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 		"telemetry.Dir":                       "pure path constructor",
 		"telemetry.JournalDir":                "pure path constructor",
 		"sessionorigin.SourceConfigDir":       "pure path constructor; config I/O is guarded",
-		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.ReadServingGeneration",
+		"sessionorigin.Reader.Select":         "supplied guarded Core/Sessions handles; fresh vector reads use guarded store.VerifyServingGeneration",
 		"desktop.Service.RefreshQuota":        "AcquireQuotaRefreshLock guards before quota work; supplied Store owns its handle",
 		"desktop.Service.RefreshQuotaCycle":   "caller supplies a guarded RefreshCore and holds the quota refresh lock",
 		"desktop.Service.BuildSubscription":   "supplied guarded Store; quota APIs own their lock",

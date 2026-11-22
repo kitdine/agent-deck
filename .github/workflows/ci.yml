@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   classify:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
       base: ${{ steps.diff.outputs.base }}
@@ -54,7 +54,7 @@ jobs:
   documentation:
     needs: classify
     if: ${{ !cancelled() }}
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
       - name: Check out documentation candidate
         uses: actions/checkout@v4
@@ -82,36 +82,106 @@ jobs:
           fi
           python3 scripts/check-docs.py --base "$DIFF_BASE" --head "$DIFF_HEAD"
 
-  verify:
-    needs: [classify, documentation]
-    if: ${{ !cancelled() }}
+  portable:
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Check whitespace and the Go test runner
+        run: make check-whitespace check-go-test-runner
+
+  go_checks:
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true') }}
     runs-on: macos-15
+    env:
+      AGENTDECK_GO_TEST_REPORT_PACKAGES: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up Go
-        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: Documents-only success
-        if: ${{ needs.classify.result == 'success' && needs.classify.outputs.docs_only == 'true' }}
+      - name: Go tests
+        run: GOCACHE="$(go env GOCACHE)" make test
+      - name: Go vet
+        run: GOCACHE="$(go env GOCACHE)" make vet
+
+  race:
+    name: Go race (${{ matrix.shard }})
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true') }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    # A matrix result can omit a shard that never acquired a runner.
+    outputs:
+      shard_0: ${{ steps.tests.outputs.shard_0 }}
+      shard_1: ${{ steps.tests.outputs.shard_1 }}
+      shard_2: ${{ steps.tests.outputs.shard_2 }}
+    env:
+      AGENTDECK_GO_TEST_REPORT_PACKAGES: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Race test package shard
+        id: tests
         env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -o pipefail
+          export GOCACHE="$(go env GOCACHE)"
+          packages=$(go list -mod=vendor ./... | python3 scripts/ci/go_race_packages.py "$SHARD")
+          make test-race GO_RACE_PACKAGES="$packages"
+          printf 'shard_%s=success\n' "$SHARD" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: [classify, documentation, portable, go_checks, race]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require applicable verification
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          DOCS_ONLY: ${{ needs.classify.outputs.docs_only }}
           DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
+          PORTABLE_RESULT: ${{ needs.portable.result }}
+          GO_CHECKS_RESULT: ${{ needs.go_checks.result }}
+          RACE_RESULT: ${{ needs.race.result }}
+          RACE_SHARD_0: ${{ needs.race.outputs.shard_0 }}
+          RACE_SHARD_1: ${{ needs.race.outputs.shard_1 }}
+          RACE_SHARD_2: ${{ needs.race.outputs.shard_2 }}
         run: |
           test "$DOCUMENTATION_RESULT" = success
-          echo 'Document L0, links, document set and review-record checks passed.'
-      - name: Verify
-        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
-        run: make verify
-      - name: Require documentation checks
-        if: ${{ !cancelled() }}
-        env:
-          DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
-        run: test "$DOCUMENTATION_RESULT" = success
+          if [[ "$CLASSIFY_RESULT" == success && "$DOCS_ONLY" == true ]]; then
+            echo 'Document L0, links, document set and review-record checks passed.'
+            exit 0
+          fi
+          test "$PORTABLE_RESULT" = success
+          test "$GO_CHECKS_RESULT" = success
+          test "$RACE_RESULT" = success
+          for shard in 0 1 2; do
+            result="RACE_SHARD_$shard"
+            if [[ "${!result}" != success ]]; then
+              echo "Race shard $shard did not report success." >&2
+              exit 1
+            fi
+          done
 
   desktop:
     needs: [classify, documentation]
