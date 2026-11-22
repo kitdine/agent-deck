@@ -671,6 +671,20 @@ type Lock struct {
 	released bool
 }
 
+// AcquiredIn compares the open directory handles. It does not prove that
+// the acquired lock entry is still present.
+func (l *Lock) AcquiredIn(dir *os.File) bool {
+	if l == nil || l.dir == nil || dir == nil {
+		return false
+	}
+	acquired, err := l.dir.Stat()
+	if err != nil {
+		return false
+	}
+	want, err := dir.Stat()
+	return err == nil && os.SameFile(acquired, want)
+}
+
 // ownedLockRecord identifies the directory entry a lock was acquired at: the
 // directory holding it, the name it was created under and the file it names.
 type ownedLockRecord struct {

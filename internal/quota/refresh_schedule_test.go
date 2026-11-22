@@ -73,6 +73,56 @@ func TestRefreshOpenAnchorRejectsReplacement(t *testing.T) {
 	}
 }
 
+func TestRefreshRequiresLockInOpenedCoreDirectory(t *testing.T) {
+	for _, name := range []string{"unchanged", "replaced-before-lock"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), RefreshTimeout)
+			defer cancel()
+			root := filepath.Join(t.TempDir(), "state")
+			r, err := OpenRefreshCore(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			if name == "replaced-before-lock" {
+				if err := os.Rename(root, root+".original"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lock, err := store.AcquireQuotaRefreshLockBefore(ctx, root, RefreshLockDeadline(ctx))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := lock.Release(); err != nil {
+					t.Error(err)
+				}
+			}()
+
+			probes := 0
+			s := Scheduler{Store: r.store, ProbeCodex: func(context.Context, time.Time, time.Duration) (CodexResult, error) {
+				probes++
+				return CodexResult{AccountID: "synthetic"}, nil
+			}}
+			c, _, err := s.RunRefresh(ctx, r, lock, TriggerManual, map[Client]Reason{ClientCodex: ""})
+			var seq CycleSeq
+			if readErr := r.core.DB.QueryRowContext(ctx, "SELECT seq FROM quota_cycle WHERE singleton=1").Scan(&seq); readErr != nil {
+				t.Fatal(readErr)
+			}
+			if name == "replaced-before-lock" {
+				if !errors.Is(err, store.ErrLockLost) || c.seq != 0 || seq != 0 || probes != 0 {
+					t.Fatalf("want lock refusal before any work; err=%v cycle=%d stored=%d probes=%d", err, c.seq, seq, probes)
+				}
+			} else if err != nil || c.seq != 1 || seq != 1 || probes != 1 {
+				t.Fatalf("want one admitted cycle and probe; err=%v cycle=%d stored=%d probes=%d", err, c.seq, seq, probes)
+			}
+		})
+	}
+}
+
 func TestRefreshBudgetAndRetirement(t *testing.T) {
 	ctx, r, lock := refreshFixture(t)
 	count := 0

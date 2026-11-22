@@ -67,6 +67,11 @@ func (s Scheduler) RunRefresh(ctx context.Context, root *RefreshCore, lock *stor
 	if root == nil || root.store != s.Store || !hasRefreshBudget(ctx, refreshPreparation+refreshProbes) {
 		return RefreshCycle{}, nil, store.ErrStateBusy
 	}
+	// The root name may have changed between opening the core and acquiring
+	// the lock. Bind their directories before BeginRefreshCycle checks the entry.
+	if !lock.AcquiredIn(root.dir) {
+		return RefreshCycle{}, nil, store.ErrLockLost
+	}
 	cycle, err := s.Store.BeginRefreshCycle(ctx, lock, s.now())
 	if err != nil {
 		return RefreshCycle{}, nil, err
