@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 type readPoolKey struct{ path, profile string }
@@ -203,13 +205,16 @@ func (p *readPoolCache) release(entry *readPoolEntry) func() error {
 	}
 }
 
+// readOnlyBusyTimeout is the ordinary read-only profile's SQLite busy timeout.
+const readOnlyBusyTimeout = 5 * time.Second
+
 func acquireReadOnlySQL(ctx context.Context, path, profile string) (*sql.DB, func() error, error) {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, err
 	}
 	u := url.URL{Scheme: "file", Path: path}
-	pragmas := "busy_timeout(5000)&_pragma=foreign_keys(1)"
+	pragmas := fmt.Sprintf("busy_timeout(%d)&_pragma=foreign_keys(1)", readOnlyBusyTimeout.Milliseconds())
 	if profile == "identity" {
 		pragmas = "busy_timeout(20)"
 	}

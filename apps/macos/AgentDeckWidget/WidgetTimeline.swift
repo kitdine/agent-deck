@@ -173,8 +173,19 @@ struct QuotaTimelineProvider: AppIntentTimelineProvider {
 	}
 
 	func timeline(for configuration: QuotaWidgetIntent, in context: Context) async -> Timeline<AgentDeckWidgetEntry> {
-		let entry = entry(client: (configuration.client ?? .codex).widgetClient)
+		timeline(client: (configuration.client ?? .codex).widgetClient, family: context.family)
+	}
+
+	func timeline(client: WidgetClient, family: WidgetFamily) -> Timeline<AgentDeckWidgetEntry> {
+		let entry = entry(client: client)
 		let refresh = WidgetTimelinePolicy.refreshDate(suggestedAt: entry.snapshot?.nextRefreshAt, now: entry.date)
-		return Timeline(entries: [entry], policy: .after(refresh))
+		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+		let expiries = Set(model.presentedQuotaClients(family: family)
+			.compactMap { model.quotaLogin($0, family: family)?.expires }
+			.filter { $0 < refresh })
+		let entries = expiries.sorted().map {
+			AgentDeckWidgetEntry(date: $0, outcome: entry.outcome, kind: entry.kind, client: client, period: entry.period)
+		}
+		return Timeline(entries: [entry] + entries, policy: .after(refresh))
 	}
 }

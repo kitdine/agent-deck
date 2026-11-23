@@ -1,0 +1,10 @@
+{
+  "loggedIn": true,
+  "authMethod": "claude.ai",
+  "apiProvider": "firstParty",
+  "email": "alice@example.test",
+  "orgId": "synthetic-org-42",
+  "orgName": "Example Organization",
+  "subscriptionType": "pro",
+  "planTier": "pro"
+}

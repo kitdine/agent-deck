@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -52,13 +54,40 @@ func TestHealthRecoveryAcceptanceAcrossCLIAndDesktop(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = scanLock.Release() })
-	stateToken, err := os.ReadFile(filepath.Join(state, "state.lock"))
-	if err != nil {
+	// The locks stay held here, but a real owner of a lock that doctor
+	// diagnoses is always another process: doctor reports its own locks as
+	// uncontended. The tokens therefore name a separate live process.
+	owner := exec.Command("/bin/sleep", "60")
+	if err := owner.Start(); err != nil {
 		t.Fatal(err)
 	}
-	scanToken, err := os.ReadFile(filepath.Join(state, "scan.lock"))
-	if err != nil {
-		t.Fatal(err)
+	t.Cleanup(func() { _ = owner.Process.Kill(); _ = owner.Wait() })
+	heldTokens := map[string][]byte{}
+	foreignToken := func(name string) []byte {
+		t.Helper()
+		path := filepath.Join(state, name)
+		held, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.SplitN(string(held), ":", 3)
+		if len(parts) != 3 {
+			t.Fatalf("unexpected %s token", name)
+		}
+		token := []byte(fmt.Sprintf("v1:%d:%s", owner.Process.Pid, parts[2]))
+		if err := os.WriteFile(path, token, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		heldTokens[path] = held
+		return token
+	}
+	stateToken, scanToken := foreignToken("state.lock"), foreignToken("scan.lock")
+	restoreHeldTokens := func() {
+		for path, held := range heldTokens {
+			if err := os.WriteFile(path, held, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -147,6 +176,7 @@ func TestHealthRecoveryAcceptanceAcrossCLIAndDesktop(t *testing.T) {
 		}
 	}
 
+	restoreHeldTokens()
 	if err := scanLock.Release(); err != nil {
 		t.Fatal(err)
 	}

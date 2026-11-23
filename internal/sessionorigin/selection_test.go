@@ -820,7 +820,18 @@ func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
 	if _, err = s.core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token=?`, token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id; UPDATE schema_metadata SET version=34`); err != nil {
+	if _, err = s.core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id;
+        ALTER TABLE quota_windows_v2 RENAME TO quota_windows;
+        ALTER TABLE quota_envelopes_v2 RENAME TO quota_envelopes;
+        ALTER TABLE quota_alert_notices_v2 RENAME TO quota_alert_notices;
+        DROP TABLE quota_identities;
+        DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update;
+        DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update;
+        DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE;
+        DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE;
+        DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE;
+        DROP TABLE quota_cycle; DROP TABLE quota_projection_revision;
+        UPDATE schema_metadata SET version=34`); err != nil {
 		t.Fatal(err)
 	}
 	s.core.Close()

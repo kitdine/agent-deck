@@ -39,6 +39,10 @@ printf 'go test log: %s\n' "$log_file" >&2
 "$go_test_bin" test -mod=vendor -count=1 -v "$@" >"$log_file" 2>&1
 test_status=$?
 
+if [ "${AGENTDECK_GO_TEST_REPORT_PACKAGES:-0}" = 1 ]; then
+  awk '/^(ok|FAIL|[?])[[:space:]]/ { print }' "$log_file"
+fi
+
 if [ "$test_status" -eq 0 ]; then
   printf 'go test passed; full log: %s\n' "$log_file" >&2
   exit 0

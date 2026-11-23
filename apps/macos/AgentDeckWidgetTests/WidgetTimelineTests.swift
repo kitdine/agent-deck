@@ -3,6 +3,106 @@ import XCTest
 import WidgetKit
 
 final class WidgetTimelineTests: XCTestCase {
+	func testSpokenMailboxNormalizesWhitespaceInBothLanguages() throws {
+		// Deliberately vary whitespace at the formatting boundary so trimming
+		// just the ends would leave the repeated interior spaces audible.
+		for (language, prefix, hidden, hint) in [
+			("en", "Signed in ", "partly hidden", "quota unconfirmed"),
+			("zh-Hans", "当前登录 ", "部分隐藏", "与额度关联未确认")
+		] {
+			let path = try XCTUnwrap(Bundle(for: Self.self).path(forResource: language, ofType: "lproj"))
+			let bundle = try XCTUnwrap(Bundle(path: path))
+			XCTAssertEqual(WidgetCopy.text("quota unconfirmed", bundle: bundle), hint)
+			for unconfirmed in [false, true] {
+				let login = WidgetSurfaceModel.Login(email: "  a \t***  e@example.test\n", expires: .distantFuture,
+					associationUnconfirmed: unconfirmed)
+				let label = prefix + "a " + hidden + " e@example.test"
+				XCTAssertEqual(WidgetCopy.spokenLogin(login, bundle: bundle), label + (unconfirmed ? ", " + hint : ""))
+			}
+		}
+	}
+
+	func testLoginExpiresFromTheSameSnapshotAtEachVisibleLargeDeadline() throws {
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date("2026-08-13T10:00:00Z"))
+		for seconds in [-1, 0, 30, 60, 180, 181] {
+			let snapshot = try identityWidgetFixture { clients in
+				var identity = clients[1]["identity"] as! [String: String]
+				identity["current_until"] = ISO8601DateFormatter().string(from: now.addingTimeInterval(Double(seconds)))
+				clients[1]["identity"] = identity
+			}
+			let provider = QuotaTimelineProvider(loader: .init(readSnapshot: { snapshot }), now: { now })
+			for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+				let entries = provider.timeline(client: .claude, family: family).entries
+				var expected: Set<Int> = [0]
+				if family == .systemLarge {
+					expected.insert(30)
+					if seconds > 0 && seconds < 180 { expected.insert(seconds) }
+				}
+				XCTAssertEqual(entries.map { Int($0.date.timeIntervalSince(now)) }, expected.sorted())
+				for entry in entries {
+					let model = WidgetSurfaceModel(entry: entry, now: now)
+					for client in model.presentedQuotaClients(family: family) {
+						let deadline = now.addingTimeInterval(Double(client.client == "claude" ? seconds : 30))
+						XCTAssertEqual(model.quotaLogin(client, family: family) != nil, family == .systemLarge && entry.date < deadline)
+					}
+				}
+			}
+		}
+	}
+
+	func testInvalidOrHistoricalLoginKeepsQuotaWithoutAnExpiryEntry() throws {
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date("2026-08-13T10:00:00Z"))
+		let invalid: [[String: String]?] = [nil, [:], ["state": "future"], ["freshness": "future"],
+			["freshness": "last_read"], ["state": "signed_out"], ["state": "non_subscription"],
+			["email_masked": "full-address@example.test"], ["current_until": "2026-08-13"],
+			["current_until": "not-a-date"]]
+		for change in invalid {
+			let snapshot = try identityWidgetFixture { clients in
+				for i in clients.indices {
+					if let change, !change.isEmpty, var identity = clients[i]["identity"] as? [String: String] {
+						identity.merge(change) { _, new in new }
+						clients[i]["identity"] = identity
+					} else if change == nil {
+						clients[i].removeValue(forKey: "identity")
+					} else { clients[i]["identity"] = NSNull() }
+				}
+			}
+			let provider = QuotaTimelineProvider(loader: .init(readSnapshot: { snapshot }), now: { now })
+			let timeline = provider.timeline(client: .codex, family: .systemLarge)
+			XCTAssertEqual(timeline.entries.count, 1)
+			let model = WidgetSurfaceModel(entry: try XCTUnwrap(timeline.entries.first), now: now)
+			let clients = model.presentedQuotaClients(family: .systemLarge)
+			XCTAssertEqual(clients.count, 2)
+			for client in clients {
+				XCTAssertFalse(model.quotaWindows(for: client, family: .systemLarge).isEmpty)
+				XCTAssertNil(model.quotaLogin(client, family: .systemLarge))
+			}
+		}
+	}
+
+	func testContextInvalidationKeepsSelectionAndHealthyPeerAndClearsOnRecovery() throws {
+		for (reason, expected) in [("context_changed", "Sign-in changed"), ("signed_out", "Sign-in changed"),
+			("non_subscription", "Sign-in changed"), ("identity_key_reset", "Prior quota unlinked")] {
+			for invalid in [["codex"], ["claude"], ["codex", "claude"], []] {
+				let snapshot = try identityWidgetFixture { clients in
+					for i in clients.indices where invalid.contains(clients[i]["client"] as! String) {
+						clients[i]["quota_context"] = ["reason": reason]
+					}
+				}
+				for selected in [WidgetClient.claude, .codex] {
+					let entry = AgentDeckWidgetEntry(date: Date(), outcome: .loaded(snapshot), kind: .quota, client: selected, period: .today)
+					let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+					for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+						let wanted = (family == .systemLarge ? ["codex", "claude"] : [selected.rawValue]).filter { !invalid.contains($0) }
+						XCTAssertEqual(model.presentedQuotaClients(family: family).map(\.client), wanted)
+						XCTAssertEqual(model.quotaContextFooter(family: family), wanted.isEmpty ? expected : nil)
+						XCTAssertEqual(model.quotaFooterObservedAt(family: family) != nil, !wanted.isEmpty)
+					}
+				}
+			}
+		}
+	}
+
 	func testPlaceholderContainsNoSnapshotOrRealValue() {
 		let loader = WidgetSnapshotLoader(readSnapshot: { fatalError("placeholder must not read") })
 		let entry = loader.entry(kind: .magnitude, client: .all, period: .today, now: Date(), placeholder: true)
@@ -222,9 +322,9 @@ final class WidgetTimelineTests: XCTestCase {
 	// client's own reason, including the notReported/neverProbed split on
 	// whether a successful observation ever landed.
 	func testQuotaClientReasonDistinguishesEachUnavailableReason() throws {
-		func client(applicable: Bool, applicableReason: String?, observedAt: String?, failure: String?) throws -> DesktopSubscriptionClientV1 {
+		func client(applicable: Bool, applicableReason: String?, observedAt: String?, failure: String?) throws -> AppGroupQuotaClient {
 			try JSONDecoder().decode(
-				DesktopSubscriptionClientV1.self,
+				AppGroupQuotaClient.self,
 				from: JSONSerialization.data(withJSONObject: [
 					"client": "codex", "applicable": applicable, "applicable_reason": applicableReason as Any,
 					"source": observedAt == nil ? NSNull() : "codex_app_server",
@@ -311,7 +411,7 @@ final class WidgetTimelineTests: XCTestCase {
 			)
 		}
 		let client = try JSONDecoder().decode(
-			DesktopSubscriptionClientV1.self,
+			AppGroupQuotaClient.self,
 			from: JSONSerialization.data(withJSONObject: [
 				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
 				"source": "codex_app_server", "observed_at": "2026-09-18T02:00:00Z", "stale": false,

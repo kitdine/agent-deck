@@ -5195,7 +5195,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 35
+          "count": 36
         },
         {
           "name": "pending_operations",
@@ -5245,10 +5245,20 @@
       ]
     },
     "subscription": {
+      "projection": {
+        "core_epoch": 1,
+        "revision": 0,
+        "boot": "fixture-boot",
+        "mono": 1
+      },
       "available": true,
       "reading": false,
       "clients": [
         {
+          "plan_display": null,
+          "identity": null,
+          "failure_detail": null,
+          "quota_context": null,
           "client": "codex",
           "applicable": true,
           "applicable_reason": null,
@@ -5266,6 +5276,10 @@
           "failure": "probe_disabled"
         },
         {
+          "plan_display": null,
+          "identity": null,
+          "failure_detail": null,
+          "quota_context": null,
           "client": "claude",
           "applicable": true,
           "applicable_reason": null,

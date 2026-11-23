@@ -1,0 +1,10 @@
+{
+  "source_issue": "ad-bug-claude-quota-output-plan",
+  "version": "2.1.325",
+  "sampled_utc": "2026-11-17T04:17:00Z/2026-11-17T04:19:00Z",
+  "command": ["claude", "auth", "status", "--json"],
+  "signed_in_exit": 0,
+  "signed_out_exit": null,
+  "personal_organization_shape": null,
+  "fixture": "Observed field shape with synthetic identity values. Unknown fields and source paths omitted."
+}

@@ -33,7 +33,7 @@ RECORDS = load('records_check', 'check-review-records.py')
 
 def workflow_job(name):
     text = (ROOT / '.github/workflows/ci.yml').read_text()
-    return re.split(r'\n  [a-z]+:\n', text.split(f'\n  {name}:\n', 1)[1], maxsplit=1)[0]
+    return re.split(r'\n  [a-z][a-z0-9_-]*:\n', text.split(f'\n  {name}:\n', 1)[1], maxsplit=1)[0]
 
 
 def workflow_step(job, name):
@@ -279,11 +279,39 @@ class CIWorkflowPathTest(unittest.TestCase):
                     self.assertNotIn('--all', result.stdout)
 
     def test_both_required_jobs_fail_when_documentation_fails(self):
-        for job in ['verify', 'desktop']:
+        for job, step in [('verify', 'Require applicable verification'), ('desktop', 'Require documentation checks')]:
             for status in ['success', 'failure', 'cancelled', 'skipped']:
-                result = subprocess.run(['bash', '-e', '-c', workflow_run(job, 'Require documentation checks')],
-                                        env=dict(os.environ, DOCUMENTATION_RESULT=status))
+                result = subprocess.run(
+                    ['bash', '-e', '-c', workflow_run(job, step)],
+                    env=dict(os.environ, CLASSIFY_RESULT='success', DOCS_ONLY='true', DOCUMENTATION_RESULT=status),
+                )
                 self.assertEqual(result.returncode == 0, status == 'success')
+
+    def test_split_product_jobs_require_a_trusted_documentation_only_classification_to_skip(self):
+        for job in ('portable', 'go_checks', 'race'):
+            condition = re.search(r'^    if: (.+)$', workflow_job(job), re.M).group(1)
+            with self.subTest(job=job):
+                self.assertFalse(expression(condition, 'success', 'true'))
+                self.assertTrue(expression(condition, 'success', 'false'))
+                self.assertTrue(expression(condition, 'failure', 'true'))
+                self.assertFalse(expression(condition, cancelled=True))
+
+    def test_verify_requires_every_product_job_on_mixed_or_unknown_scope(self):
+        run = workflow_run('verify', 'Require applicable verification')
+        passed = dict(os.environ, CLASSIFY_RESULT='success', DOCS_ONLY='false', DOCUMENTATION_RESULT='success',
+                      PORTABLE_RESULT='success', GO_CHECKS_RESULT='success', RACE_RESULT='success',
+                      RACE_SHARD_0='success', RACE_SHARD_1='success', RACE_SHARD_2='success')
+        self.assertEqual(subprocess.run(['bash', '-e', '-c', run], env=passed).returncode, 0)
+        for field in ('PORTABLE_RESULT', 'GO_CHECKS_RESULT', 'RACE_RESULT'):
+            with self.subTest(field=field):
+                failed = dict(passed, **{field: 'failure'})
+                self.assertNotEqual(subprocess.run(['bash', '-e', '-c', run], env=failed).returncode, 0)
+        for shard in range(3):
+            with self.subTest(missing_shard=shard):
+                missing = dict(passed, **{f'RACE_SHARD_{shard}': ''})
+                self.assertNotEqual(subprocess.run(['bash', '-e', '-c', run], env=missing).returncode, 0)
+        unknown = dict(passed, CLASSIFY_RESULT='failure', DOCS_ONLY='true', RACE_RESULT='skipped')
+        self.assertNotEqual(subprocess.run(['bash', '-e', '-c', run], env=unknown).returncode, 0)
 
     def test_dynamic_runner_expression_keeps_product_macos(self):
         runner = re.search(r'^    runs-on: (.+)$', workflow_job('desktop'), re.M).group(1)

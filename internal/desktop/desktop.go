@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	pathpkg "path"
 	"sort"
 	"strings"
@@ -251,8 +252,10 @@ type Service struct {
 	// uses that package's own real probes. A test injects a fake here so it
 	// never risks invoking the real "codex" or "claude" binary, mirroring
 	// quota.Scheduler's own ProbeCodex/ProbeClaudeProse fields.
-	QuotaProbeCodex       func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
-	QuotaProbeClaudeProse func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
+	QuotaProbeCodex func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
+
+	QuotaProbeClaudeIdentity func(context.Context, string) quota.IdentityObservation
+	QuotaProbeClaudeProse    func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
 }
 
 type Result struct {
@@ -344,6 +347,25 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 		Store: quota.NewStore(core.DB), Interval: interval, MaxBackoff: maxBackoff, Now: s.now,
 		ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
 	}
+	outcome := s.refreshGates(ctx, core, home, probeEnabled, probeClients)
+	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		scheduler.Run(ctx, client, trigger, outcome[client] == "")
+	}
+	return outcome
+}
+
+func (s Service) RefreshQuotaCycle(ctx context.Context, root *quota.RefreshCore, lock *store.Lock, home string, trigger quota.Trigger, settings quota.Settings, maxBackoff time.Duration) (map[quota.Client]quota.Reason, quota.RefreshCycle, *quota.QuotaDeliveryGuard, error) {
+	outcome := s.refreshGates(ctx, root.Core(), home, settings.ProbeEnabled, settings.ProbeClients)
+	scheduler := quota.Scheduler{
+		Store: root.Store(), Interval: settings.ProbeInterval, MaxBackoff: maxBackoff, Now: s.now,
+		ProbeCodex:       s.QuotaProbeCodex,
+		ProbeClaudeProse: s.QuotaProbeClaudeProse, ProbeClaudeIdentity: s.QuotaProbeClaudeIdentity,
+	}
+	c, g, err := scheduler.RunRefresh(ctx, root, lock, trigger, outcome)
+	return outcome, c, g, err
+}
+
+func (s Service) refreshGates(ctx context.Context, core *store.Store, home string, probeEnabled bool, probeClients []quota.Client) map[quota.Client]quota.Reason {
 	// Codex PR #5 tenth review, P2: a provider.Service.Current read failure
 	// used to fall through as an empty selection set, which
 	// quotaCurrentSelection reads identically to "no selection ever made" --
@@ -369,9 +391,8 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 		}
 		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
 		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
-		allowed, reason := quota.Allowed(probeEnabled && clientEnabled, recordedOfficial, observedKnown, observedOfficial)
+		_, reason := quota.Allowed(probeEnabled && clientEnabled, recordedOfficial, observedKnown, observedOfficial)
 		outcome[client] = reason
-		scheduler.Run(ctx, client, trigger, allowed)
 	}
 	return outcome
 }
@@ -925,37 +946,175 @@ func (s Service) loadHealth(ctx context.Context, result *Result) {
 func healthSnapshot(report doctor.Report) HealthSnapshot {
 	checks := make([]HealthCheck, 0, len(report.Checks))
 	for _, check := range report.Checks {
-		hc := HealthCheck{
-			Name: check.Name, Status: check.Status, Code: check.Code,
-			Count: check.Count, SupportedCount: check.SupportedCount, Recovery: check.Recovery,
-		}
-		if check.Resource != "" {
-			res := check.Resource
-			hc.Resource = &res
-		}
-		if check.Reason != "" {
-			reason := check.Reason
-			hc.Reason = &reason
-		}
-		if check.ActionKind != "" && check.ActionKind != "null" {
-			actionKind := string(check.ActionKind)
-			hc.ActionKind = &actionKind
-		}
-		if check.DiagnosticCommand != "" {
-			diag := check.DiagnosticCommand
-			hc.DiagnosticCommand = &diag
-		}
-		if check.ManualPrerequisite != "" {
-			prereq := check.ManualPrerequisite
-			hc.ManualPrerequisite = &prereq
-		}
-		checks = append(checks, hc)
+		checks = append(checks, healthCheck(check))
 	}
 	return HealthSnapshot{
 		Available: true, Status: report.Status, Healthy: report.Healthy,
 		Problems: report.Problems, Warnings: report.Warnings, Errors: report.Errors,
 		Checks: checks,
 	}
+}
+
+// refreshLockHealth re-evaluates the lock rows of persisted health. Who holds
+// a lock changes without any data change, so a publication's past lock
+// observation would otherwise outlive its owner. Other rows, unrepresented
+// counts, and empty/sparse snapshots keep their publication-time values; only
+// represented lock rows adjust the summary by their status delta.
+//
+// Each lock is observed and accounted once, however many rows name it. Doctor
+// writes one row per lock, so repeated rows in a sparse or older publication
+// cannot all be attributed to the summary: only the smallest contribution
+// among them is removed, the rest stays as unattributed counts, and the lock
+// is served as a single fresh row.
+//
+// Every row still served is visible, so its known contribution is a floor of
+// the summary: a stale lock row is deducted only from what the summary holds
+// beyond the retained rows, never from a visible non-lock warning or error.
+// Persisted counts are accepted as non-negative and adjusted without
+// wrapping near the int limit.
+func (s Service) refreshLockHealth(health *HealthSnapshot) {
+	if !health.Available || len(health.Checks) == 0 {
+		return
+	}
+	type lockAccount struct {
+		oldP, oldW, oldE int
+		oldKnown         bool
+		newP, newW, newE int
+		newKnown         bool
+	}
+	checker := doctor.Service{StateRoot: s.StateRoot}
+	checks := make([]HealthCheck, 0, len(health.Checks))
+	accounts := map[string]*lockAccount{}
+	var order []string
+	// Known contribution of the rows served unchanged.
+	var keptP, keptW, keptE int
+	for _, oldCheck := range health.Checks {
+		oldP, oldW, oldE, oldKnown := healthCheckSummaryDelta(oldCheck.Status)
+		if account, seen := accounts[oldCheck.Name]; seen {
+			// A repeated row of an already observed lock: keep only what
+			// every copy certainly contributed.
+			account.oldKnown = account.oldKnown && oldKnown
+			account.oldP, account.oldW, account.oldE = min(account.oldP, oldP), min(account.oldW, oldW), min(account.oldE, oldE)
+			continue
+		}
+		fresh, ok := checker.LockCheck(oldCheck.Name)
+		if !ok {
+			checks = append(checks, oldCheck)
+			keptP, keptW, keptE = keptP+oldP, keptW+oldW, keptE+oldE
+			continue
+		}
+		newCheck := healthCheck(fresh)
+		newP, newW, newE, newKnown := healthCheckSummaryDelta(newCheck.Status)
+		accounts[oldCheck.Name] = &lockAccount{
+			oldP: oldP, oldW: oldW, oldE: oldE, oldKnown: oldKnown,
+			newP: newP, newW: newW, newE: newE, newKnown: newKnown,
+		}
+		order = append(order, oldCheck.Name)
+		checks = append(checks, newCheck)
+	}
+	if len(order) == 0 {
+		return
+	}
+	var deltaProblems, deltaWarnings, deltaErrors int
+	for _, name := range order {
+		account := accounts[name]
+		if account.newKnown {
+			// Fresh lock rows are visible too and join the floor.
+			keptP, keptW, keptE = keptP+account.newP, keptW+account.newW, keptE+account.newE
+		}
+		if account.oldKnown && account.newKnown {
+			deltaProblems += account.newP - account.oldP
+			deltaWarnings += account.newW - account.oldW
+			deltaErrors += account.newE - account.oldE
+		} else if account.newKnown && !account.oldKnown && account.newP > 0 {
+			// Unknown prior row status cannot justify decrementing counts,
+			// but a newly observed lock problem must still surface.
+			deltaProblems += account.newP
+			deltaWarnings += account.newW
+			deltaErrors += account.newE
+		}
+	}
+	health.Checks = checks
+	warnings := max(addSummaryCount(health.Warnings, deltaWarnings), keptW)
+	errCount := max(addSummaryCount(health.Errors, deltaErrors), keptE)
+	problems := max(addSummaryCount(health.Problems, deltaProblems), keptP, addSummaryCount(warnings, errCount))
+	health.Warnings = warnings
+	health.Errors = errCount
+	health.Problems = problems
+
+	// A refreshed row can change the status even when a sparse summary stays at zero.
+	hasErrorCheck, hasNonOKCheck := false, false
+	for _, check := range checks {
+		if check.Status != "ok" {
+			hasNonOKCheck = true
+			if check.Status == "error" {
+				hasErrorCheck = true
+			}
+		}
+	}
+	switch {
+	case errCount > 0 || hasErrorCheck:
+		health.Healthy = false
+		health.Status = "unhealthy"
+	case problems > 0 || warnings > 0 || hasNonOKCheck:
+		health.Healthy = false
+		health.Status = "degraded"
+	default:
+		health.Healthy = true
+		health.Status = "healthy"
+	}
+}
+
+// addSummaryCount adjusts a persisted summary count by delta. The count is
+// accepted as non-negative and the result saturates at the int limit instead
+// of wrapping, so a large or malformed count never reads as healthy.
+func addSummaryCount(count, delta int) int {
+	count = max(0, count)
+	if delta > 0 && count > math.MaxInt-delta {
+		return math.MaxInt
+	}
+	return max(0, count+delta)
+}
+
+func healthCheckSummaryDelta(status string) (problems, warnings, errCount int, known bool) {
+	switch status {
+	case "ok":
+		return 0, 0, 0, true
+	case "warning":
+		return 1, 1, 0, true
+	case "error":
+		return 1, 0, 1, true
+	default:
+		return 0, 0, 0, false
+	}
+}
+
+func healthCheck(check doctor.Check) HealthCheck {
+	hc := HealthCheck{
+		Name: check.Name, Status: check.Status, Code: check.Code,
+		Count: check.Count, SupportedCount: check.SupportedCount, Recovery: check.Recovery,
+	}
+	if check.Resource != "" {
+		res := check.Resource
+		hc.Resource = &res
+	}
+	if check.Reason != "" {
+		reason := check.Reason
+		hc.Reason = &reason
+	}
+	if check.ActionKind != "" && check.ActionKind != "null" {
+		actionKind := string(check.ActionKind)
+		hc.ActionKind = &actionKind
+	}
+	if check.DiagnosticCommand != "" {
+		diag := check.DiagnosticCommand
+		hc.DiagnosticCommand = &diag
+	}
+	if check.ManualPrerequisite != "" {
+		prereq := check.ManualPrerequisite
+		hc.ManualPrerequisite = &prereq
+	}
+	return hc
 }
 
 func nonNilMap(values map[string]int64) map[string]int64 {

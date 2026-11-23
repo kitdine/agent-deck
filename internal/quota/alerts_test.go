@@ -2,9 +2,11 @@ package quota
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -358,7 +360,7 @@ func TestEvaluateAlertsPrunesExpiredNotices(t *testing.T) {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil {
 		t.Fatalf("count notices: %v", err)
 	}
 	if rows != 0 {
@@ -417,7 +419,7 @@ func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
 		t.Fatalf("unacknowledged notice: second evaluation = %+v, %v; want the same id again", second, err)
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("ledger rows before acknowledgement = %d, %v; want 0", rows, err)
 	}
 	for i := 0; i < 2; i++ {
@@ -428,6 +430,11 @@ func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
 	if after, err := DueAlerts(ctx, store, true, bothClientsOfficial, cfg, t0.Add(3*time.Minute)); err != nil || len(after) != 0 {
 		t.Fatalf("after acknowledgement = %+v, %v; want none", after, err)
 	}
+}
+
+func (s *Store) recordAlertNotice(ctx context.Context, client Client, windowKey string, kind AlertKind, threshold float64, instance, now time.Time) error {
+	key := alertKey{Client: client, WindowKey: windowKey, Kind: kind, Threshold: threshold, Instance: instance.Unix()}
+	return AcknowledgeAlert(ctx, s, key.id(), now)
 }
 
 func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
@@ -458,11 +465,89 @@ func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
 		}
 	}
 	var rows int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("ledger rows after rejected acknowledgements = %d, %v; want 0", rows, err)
 	}
 	if err := AcknowledgeAlert(ctx, store, valid.id(), now); err != nil {
 		t.Fatalf("AcknowledgeAlert(valid) = %v", err)
+	}
+}
+
+func TestAlertGenerationSnapshotAndACK(t *testing.T) {
+	ctx, s, lock, _ := newIdentityStore(t)
+	at := time.Now().UTC().Truncate(time.Second)
+	window := claudeFiveHour(at, at.Add(time.Hour), 80, SourceClaudeStatusLine)
+	recordWindow(t, s, window)
+	due := func() []DueAlert {
+		a, err := DueAlerts(ctx, s, true, bothClientsOfficial, bothThresholds, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	initial := due()
+	if len(initial) != 1 || initial[0].Generation != 0 || !strings.HasPrefix(initial[0].ID, "qa2.") {
+		t.Fatal(initial)
+	}
+	payload := `{"c":"claude","w":"five_hour","k":"threshold","t":75,"i":` + strconv.FormatInt(window.ResetsAt.Unix(), 10) + `}`
+	id := func(prefix, payload string) string {
+		return prefix + base64.RawURLEncoding.EncodeToString([]byte(payload))
+	}
+	old := id("qa1.", payload)
+	ack := func(want int, ids ...string) {
+		n, err := s.AcknowledgeAlerts(ctx, ids, at)
+		if err != nil || n != want {
+			t.Fatalf("ack count=%d want=%d: %v", n, want, err)
+		}
+	}
+	for _, bad := range []string{id("qa2.", payload), id("qa1.", strings.TrimSuffix(payload, "}")+`,"g":0}`), id("qa2.", strings.TrimSuffix(payload, "}")+`,"g":-1}`), id("qa2.", strings.Replace(strings.TrimSuffix(payload, "}"), "claude", "codex", 1)+`,"g":1}`)} {
+		if !errors.Is(ValidateAlertIDs([]string{bad}), ErrInvalidAlertID) {
+			t.Fatal("invalid generation accepted")
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	reader, err := NewSnapshotReader(ctx, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack(1, old, initial[0].ID)
+	if len(due()) != 0 {
+		t.Fatal("legacy ACK did not suppress generation zero")
+	}
+	c := startIdentityCycle(t, ctx, s, lock, at.Add(time.Second))
+	g, err := s.ReconcileQuotaDelivery(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := g.ApplyClaudeIdentity(ctx, IdentityObservation{State: IdentitySignedOut}, time.Time{}, time.Time{})
+	if err != nil || identity.Generation != 1 {
+		t.Fatal(identity, err)
+	}
+	out, err := s.CommitClaudeUsage(ctx, c, 1, ClaudeProseResult{Windows: []Observation{window}}, identity)
+	requireQuotaOutcome(t, out, err, WriteCommitted)
+	// The reader pinned before ACK and invalidation sees only the old occurrence.
+	snapshot, err := reader.dueAlerts(ctx, bothClientsOfficial, bothThresholds, at)
+	if err != nil || len(snapshot) != 1 || snapshot[0].ID != initial[0].ID {
+		t.Fatal(snapshot, err)
+	}
+	codex := id("qa1.", strings.Replace(payload, "claude", "codex", 1))
+	ack(1, old, initial[0].ID, codex)
+	var rows int
+	if err := s.db.QueryRow(`SELECT count(*) FROM quota_alert_notices_v2 WHERE client='claude'`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatal("stale ledger write", rows, err)
+	}
+	fresh := due()
+	if len(fresh) != 1 || fresh[0].Generation != 1 || fresh[0].ID == initial[0].ID {
+		t.Fatal(fresh)
+	}
+	ack(1, fresh[0].ID)
+	ack(1, fresh[0].ID)
+	if len(due()) != 0 {
+		t.Fatal("current ACK did not suppress current occurrence")
 	}
 }
 

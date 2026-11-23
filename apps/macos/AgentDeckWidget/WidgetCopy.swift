@@ -21,6 +21,7 @@ enum WidgetCopy {
 		"Low", "High", "90-day context", "Updated now", "Updated %@", "Last updated %@", "unpriced",
 		"Not read", "Not applicable", "No quota window to show", "Account attribution unconfirmed", "Quota window", "5h window", "7d window",
 		"Reset not reported",
+		"Sign-in changed", "Prior quota unlinked", "Signed in %@", "quota unconfirmed", "partly hidden", "No quota data",
 		"No Widget data yet", "Open AgentDeck to refresh",
 		"Widget storage unavailable", "Open AgentDeck to retry",
 		"Widget data could not be read", "Will retry on the next refresh",
@@ -37,7 +38,13 @@ enum WidgetCopy {
 	}
 
 	static func client(_ client: WidgetClient, bundle: Bundle? = nil) -> String {
-		client == .all ? text("All clients", bundle: bundle) : client.rawValue.capitalized
+		client == .all ? text("All clients", bundle: bundle) : DesktopPresentationModelV1.clientDisplayLabel(client.rawValue)
+	}
+
+	static func spokenLogin(_ login: WidgetSurfaceModel.Login, bundle: Bundle? = nil) -> String {
+		let spoken = login.email.replacingOccurrences(of: "***", with: " \(text("partly hidden", bundle: bundle)) ")
+		let label = format("Signed in %@", value: spoken.split(whereSeparator: \.isWhitespace).joined(separator: " "), bundle: bundle)
+		return login.associationUnconfirmed ? label + ", " + text("quota unconfirmed", bundle: bundle) : label
 	}
 
 	static func period(_ period: WidgetPeriod, bundle: Bundle? = nil) -> String {

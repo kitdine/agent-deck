@@ -37,9 +37,9 @@ const quotaCaptureStoreTimeout = 200 * time.Millisecond
 // nothing here may block or corrupt that refresh.
 //
 // Ordering is deliberate and load-bearing (CLA-R1-F3): the prior command is
-// chained before anything capture-related runs, including resolving it from
-// disk and opening the core database — none of that may sit in front of the
-// chain. The full original stdin is read once, unbounded, and that exact
+// chained before capture performs any I/O. Only the entry clocks are sampled
+// before stdin; boot resolution and database access follow the chain.
+// The full original stdin is read once, unbounded, and that exact
 // slice always reaches the prior command via ChainStatusLine regardless of
 // size (CLA-R1-F5) — the chain must never see a truncated or substituted
 // payload. Capture's own parsing is a separate, smaller concern: once stdin
@@ -49,7 +49,8 @@ const quotaCaptureStoreTimeout = 200 * time.Millisecond
 // one cycle's capture is the acceptable cost C3 already assumes; the chain
 // having already fully run by that point is unaffected either way.
 func runQuotaCapture(ctx context.Context, opts *commandOptions) error {
-	payload, _ := io.ReadAll(opts.stdin)
+	entry := quota.BeginStatusLineCapture()
+	payload, readErr := io.ReadAll(opts.stdin)
 
 	var priorCommand string
 	if home, homeErr := userHomeDir(); homeErr == nil {
@@ -63,10 +64,11 @@ func runQuotaCapture(ctx context.Context, opts *commandOptions) error {
 
 	quota.ChainStatusLine(ctx, priorCommand, payload, opts.stdout)
 
-	if len(payload) > quota.MaxStatusLinePayloadBytes {
+	if readErr != nil || len(payload) > quota.MaxStatusLinePayloadBytes {
 		return nil
 	}
 
+	stamp := entry.BootStamp()
 	captureCtx, cancel := context.WithTimeout(ctx, quotaCaptureStoreTimeout)
 	defer cancel()
 	database, _, err := opts.openStore(captureCtx)
@@ -88,8 +90,8 @@ func runQuotaCapture(ctx context.Context, opts *commandOptions) error {
 	}
 	// captureCtx, not the uncapped parent ctx: another connection can hold the
 	// write lock without holding the state lock, so opening the store can
-	// return quickly while Store.Record's own BeginTx still blocks on that
+	// return quickly while the guarded capture transaction contends for the
 	// same busy database (CLA-R1-F3's bound covers persistence, not just open).
-	quota.RecordStatusLinePayload(captureCtx, quota.NewStore(database.DB), payload, time.Now())
+	quota.RecordStatusLinePayload(captureCtx, quota.NewStore(database.DB), payload, entry.ObservedAt, stamp)
 	return nil
 }

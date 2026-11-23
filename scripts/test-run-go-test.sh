@@ -11,6 +11,8 @@ if [ "${AGENTDECK_FAKE_GO:-0}" = 1 ]; then
     printf '%s\n' '--- FAIL: TestSyntheticFailure (0.00s)'
     printf '%s\n' 'panic: test timed out after 1s' >&2
     printf '%s\n' 'FAIL fake/package 1.000s'
+  else
+    printf '%s\n' 'ok fake/package 1.000s'
   fi
 
   exit "${AGENTDECK_FAKE_GO_STATUS:-0}"
@@ -29,10 +31,14 @@ fail() {
   exit 1
 }
 
+file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+
 success_log="$temporary/success.log"
 success_output="$temporary/success-output.log"
 if ! (
-  unset GOCACHE
+  unset GOCACHE AGENTDECK_GO_TEST_REPORT_PACKAGES
   AGENTDECK_FAKE_GO=1 \
     AGENTDECK_FAKE_GO_STATUS=0 \
     AGENTDECK_GO_TEST_LOG="$success_log" \
@@ -48,13 +54,17 @@ grep -Fq 'GOCACHE:/private/tmp/agent-deck-go-build' "$success_log" ||
   fail 'success path did not set the managed Go build cache'
 grep -Fq "go test passed; full log: $success_log" "$success_output" ||
   fail 'success path did not report its retained log'
-[ "$(stat -f '%Lp' "$success_log")" = 600 ] ||
+[ "$(file_mode "$success_log")" = 600 ] ||
   fail 'success log permissions are not 0600'
+if grep -Fq 'ok fake/package 1.000s' "$success_output"; then
+  fail 'normal wrapper output unexpectedly includes package timings'
+fi
 
 automatic_output="$temporary/automatic-output.log"
 if ! AGENTDECK_FAKE_GO=1 \
   AGENTDECK_FAKE_GO_STATUS=0 \
   AGENTDECK_GO_TEST_LOG_DIR="$temporary" \
+  AGENTDECK_GO_TEST_REPORT_PACKAGES=1 \
   GO_TEST_BIN="$fake_go" \
   "$runner" ./fake/automatic >"$automatic_output" 2>&1; then
   fail 'automatic log path returned non-zero'
@@ -65,8 +75,10 @@ automatic_log=$(sed -n 's/^go test log: //p' "$automatic_output")
   fail 'automatic log path was not reported'
 [ -f "$automatic_log" ] ||
   fail 'automatic log file was not created'
-[ "$(stat -f '%Lp' "$automatic_log")" = 600 ] ||
+[ "$(file_mode "$automatic_log")" = 600 ] ||
   fail 'automatic log permissions are not 0600'
+grep -Fq 'ok fake/package 1.000s' "$automatic_output" ||
+  fail 'optional report did not include package timings'
 
 failure_log="$temporary/failure.log"
 failure_output="$temporary/failure-output.log"

@@ -12,7 +12,7 @@ import (
 )
 
 // openTestStore opens a quota Store backed by internal/store's real,
-// versioned migrations (QD-R1-F5): quota_windows/quota_envelopes are schema
+// versioned migrations (QD-R1-F5): quota_windows_v2/quota_envelopes_v2 are schema
 // version 27 there, not a package-local CREATE TABLE.
 func openTestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
@@ -297,7 +297,7 @@ func TestStoreAccountChangeDiscardsRatherThanMerges(t *testing.T) {
 		t.Fatal("account change must also discard the client's previously stored envelope")
 	}
 	var notices int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices WHERE client = ?`, string(ClientCodex)).Scan(&notices); err != nil {
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices_v2 WHERE client = ?`, string(ClientCodex)).Scan(&notices); err != nil {
 		t.Fatalf("count alert notices: %v", err)
 	}
 	if notices != 0 {
@@ -583,15 +583,15 @@ func TestStoreAccountIDNeverStoredRaw(t *testing.T) {
 	}
 
 	var windowAccountID string
-	if err := db.QueryRowContext(ctx, `SELECT account_id FROM quota_windows WHERE client = ?`, string(ClientCodex)).Scan(&windowAccountID); err != nil {
-		t.Fatalf("query quota_windows.account_id: %v", err)
+	if err := db.QueryRowContext(ctx, `SELECT account_id FROM quota_windows_v2 WHERE client = ?`, string(ClientCodex)).Scan(&windowAccountID); err != nil {
+		t.Fatalf("query quota_windows_v2.account_id: %v", err)
 	}
 	var envelopeAccountID string
-	if err := db.QueryRowContext(ctx, `SELECT account_id FROM quota_envelopes WHERE client = ?`, string(ClientCodex)).Scan(&envelopeAccountID); err != nil {
-		t.Fatalf("query quota_envelopes.account_id: %v", err)
+	if err := db.QueryRowContext(ctx, `SELECT account_id FROM quota_envelopes_v2 WHERE client = ?`, string(ClientCodex)).Scan(&envelopeAccountID); err != nil {
+		t.Fatalf("query quota_envelopes_v2.account_id: %v", err)
 	}
 
-	for name, got := range map[string]string{"quota_windows": windowAccountID, "quota_envelopes": envelopeAccountID} {
+	for name, got := range map[string]string{"quota_windows_v2": windowAccountID, "quota_envelopes_v2": envelopeAccountID} {
 		if got == rawAccount {
 			t.Fatalf("%s.account_id stored the raw account ID verbatim", name)
 		}
@@ -692,7 +692,7 @@ func TestStoreCorruptStickyResetPropagatesError(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE quota_windows SET observed_reset_at = 'not-a-time'`); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE quota_windows_v2 SET observed_reset_at = 'not-a-time'`); err != nil {
 		t.Fatalf("corrupt observed_reset_at: %v", err)
 	}
 
@@ -758,7 +758,7 @@ func TestStorePutEnvelopeFailureRoundTripsFailureObservedAt(t *testing.T) {
 func rawEnvelopeInstants(t *testing.T, db *sql.DB, client Client) (failureAt, backoffUntil, failureObservedAt string) {
 	t.Helper()
 	if err := db.QueryRowContext(context.Background(),
-		`SELECT failure_at, backoff_until, failure_observed_at FROM quota_envelopes WHERE client = ?`, string(client),
+		`SELECT failure_at, backoff_until, failure_observed_at FROM quota_envelopes_v2 WHERE client = ?`, string(client),
 	).Scan(&failureAt, &backoffUntil, &failureObservedAt); err != nil {
 		t.Fatalf("read raw envelope instants: %v", err)
 	}
