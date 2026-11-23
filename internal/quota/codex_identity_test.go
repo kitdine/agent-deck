@@ -110,8 +110,8 @@ func TestCodexIdentityDeadlinesAndFatalEvents(t *testing.T) {
 		identity     IdentityFailure
 		usage        Reason
 	}{
+		// The usage request arrives only after the unanswered identity request times out.
 		{"late", fakeInitialize + fakeAccountRequest + fakeUsageRequest + `echo '{"id":3,"result":{"invalid":"late-private"}}'
-sleep 0.09
 ` + fakeLimits, IdentityProbeFailed, ""},
 		{"silent", fakeInitialize + fakeAccountRequest + fakeUsageRequest + fakeLimits, IdentityProbeFailed, ""},
 		{"before handshake", "exit 0", IdentityProbeFailed, ReasonProbeFailed},
@@ -132,7 +132,7 @@ echo '{"id":3,"result":{"requiresOpenaiAuth":true,"account":null}}'
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			withFakeCodex(t, tc.script)
-			v, err := probeCodexCycle(context.Background(), time.Now(), true, true, 150*time.Millisecond, 100*time.Millisecond, nil)
+			v, err := probeCodexCycle(context.Background(), time.Now(), true, true, 3*time.Second, 500*time.Millisecond, nil)
 			if v.Identity == nil || v.Identity.Failure != tc.identity {
 				t.Fatal("identity mismatch", v.Identity)
 			}

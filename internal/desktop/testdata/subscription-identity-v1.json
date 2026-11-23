@@ -73,19 +73,32 @@
     {
       "plan_display": null,
       "identity": {
-        "state": "unknown",
-        "unknown_reason": "never_probed",
-        "freshness": "last_read",
-        "current_until": null,
-        "observed_at": null,
-        "attempted_at": null,
+        "state": "identified",
+        "unknown_reason": null,
+        "freshness": "current",
+        "current_until": "2026-11-18T12:10:00Z",
+        "observed_at": "2026-11-18T12:00:00Z",
+        "attempted_at": "2026-11-18T12:00:00Z",
         "failure": null,
         "failure_at": null,
         "source": "claude_auth_status",
-        "email_masked": null,
-        "organization_kind": null,
-        "organization_name": null,
-        "plan_display": null,
+        "email_masked": "a***e@example.test",
+        "organization_kind": "organization",
+        "organization_name": "Fixture organization",
+        "plan_display": {
+          "state": "known",
+          "name": "Claude Pro",
+          "short_name": "Pro",
+          "basis": "mapping",
+          "source": "claude_auth_status",
+          "raw": [
+            {
+              "field": "planTier",
+              "value": "pro"
+            }
+          ],
+          "reason": null
+        },
         "quota_association": null
       },
       "failure_detail": null,

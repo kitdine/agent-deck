@@ -15,12 +15,12 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertEqual(codex.identity.value?.quotaAssociation, .value(.confirmed))
 		XCTAssertEqual(codex.identity.value?.currentUntil, .value("2026-11-18T12:10:00Z"))
 		XCTAssertEqual(original.clients[1].planDisplay, .null)
-		XCTAssertEqual(original.clients[1].identity.value?.unknownReason, .value(.neverProbed))
+		XCTAssertEqual(original.clients[1].identity.value?.state, .identified)
 		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(original)), original)
 
 		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
 		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
-		var identity = try XCTUnwrap(clients[0]["identity"] as? [String: Any])
+		var identity = try XCTUnwrap(clients[1]["identity"] as? [String: Any])
 		identity["freshness"] = "last_read"
 		identity["quota_association"] = "future_association"
 		identity["state"] = "future_identity"
@@ -51,6 +51,19 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertEqual(legacy.clients[0].displayPlanShortName, "prolite")
 		XCTAssertEqual(legacy.projection, .absent)
 		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(legacy)), legacy)
+	}
+
+	func testCodexIdentityUnknownAssociation() throws {
+		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
+		var identity = try XCTUnwrap(clients[0]["identity"] as? [String: Any])
+		identity["quota_association"] = "future_association"
+		clients[0]["identity"] = identity
+		object["clients"] = clients
+		let data = try JSONSerialization.data(withJSONObject: object)
+		let changed = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: data)
+		XCTAssertEqual(changed.clients[0].identity.value?.quotaAssociation, .value(.unrecognized))
 	}
 
 	// MARK: session_scope_view

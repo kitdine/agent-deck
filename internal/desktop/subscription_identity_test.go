@@ -34,11 +34,18 @@ func projectionSeed(t *testing.T, core *store.Store, at time.Time) {
 	recordQuotaWindow(t, core, quota.Observation{Client: quota.ClientClaude, Source: quota.SourceClaudeStatusLine, WindowKey: "five_hour", WindowMinutes: 300, ObservedAt: at, UsedPercent: 32, ResetsAt: at.Add(time.Hour)})
 }
 
+func seedClaudeProjectionIdentity(t *testing.T, core *store.Store, at time.Time) {
+	t.Helper()
+	projectionSQL(t, core, `INSERT INTO quota_identities(client,attempt_cycle_seq,attempted_at,success_cycle_seq,success_state,success_observed_at,email_masked,org_kind,org_name,plan_sources_json)
+	VALUES('claude',4,?,4,'identified',?,'a***e@example.test','organization','Fixture organization','[{},{"value":"pro"},{}]')`, at.Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
+}
+
 func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 	core := openSubscriptionStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	projectionSeed(t, core, at)
+	seedClaudeProjectionIdentity(t, core, at)
 	// This clock runs after the transaction's first read. Commit invalidation
 	// and a gate change before the projector reads either client's facts.
 	s := Service{Now: func() time.Time {
@@ -54,7 +61,10 @@ func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, x := subscriptionFor(t, before, "claude"), subscriptionFor(t, before, "codex")
-	if !before.Reading || before.Projection == nil || c.QuotaContext != nil || len(c.Windows) != 1 || c.Identity == nil || c.Identity.State != "unknown" || x.Identity.QuotaAssociation == nil || *x.Identity.QuotaAssociation != "confirmed" {
+	if !before.Reading || before.Projection == nil || c.QuotaContext != nil || len(c.Windows) != 1 || c.Identity == nil || c.Identity.State != "identified" {
+		t.Fatal("mixed snapshots", before)
+	}
+	if x.Identity == nil || x.Identity.QuotaAssociation == nil || *x.Identity.QuotaAssociation != "confirmed" {
 		t.Fatal("mixed snapshots", before)
 	}
 	after, err := (Service{}).BuildSubscription(ctx, core, at)
@@ -82,7 +92,46 @@ func TestSubscriptionProjectionPinnedBeforeClock(t *testing.T) {
 	}
 }
 
-func TestSubscriptionProjectionExpiryFailureAndAssociation(t *testing.T) {
+func TestSubscriptionProjectionExpiryAndFailure(t *testing.T) {
+	core := openSubscriptionStore(t)
+	at := time.Now().UTC().Truncate(time.Second)
+	projectionSeed(t, core, at)
+	seedClaudeProjectionIdentity(t, core, at)
+	read := func(now time.Time) SubscriptionClient {
+		t.Helper()
+		sub, err := (Service{}).BuildSubscription(context.Background(), core, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return subscriptionFor(t, sub, "claude")
+	}
+	until := at.Add(10 * time.Minute)
+	for _, tc := range []struct {
+		now     time.Time
+		current bool
+	}{{at.Add(-1), false}, {at, true}, {until, true}, {until.Add(1), false}} {
+		i := read(tc.now).Identity
+		if (i.Freshness == "current") != tc.current || (i.CurrentUntil != nil) != tc.current {
+			t.Fatal(i)
+		}
+		if tc.current && *i.CurrentUntil != until.Format(time.RFC3339Nano) {
+			t.Fatal("wrong expiry")
+		}
+	}
+	projectionSQL(t, core, `UPDATE quota_cycle SET revalidate_seq=4`)
+	if i := read(at).Identity; i.Freshness != "last_read" || i.CurrentUntil != nil {
+		t.Fatal("revalidation floor accepted an old success", i)
+	}
+	projectionSQL(t, core, `UPDATE quota_cycle SET revalidate_seq=1`)
+	projectionSQL(t, core, `UPDATE quota_identities SET attempt_cycle_seq=5,failure_cycle_seq=5,attempt_failure='probe_failed',attempted_at=?`, until.Format(time.RFC3339Nano))
+	c := read(until)
+	i := c.Identity
+	if i.State != "unknown" || *i.UnknownReason != "probe_failed" || i.Freshness != "last_read" || i.CurrentUntil != nil || i.EmailMasked == nil || i.QuotaAssociation != nil || *i.FailureAt != until.Format(time.RFC3339Nano) {
+		t.Fatal("wrong last-read state", i)
+	}
+}
+
+func TestCodexProjectionExpiryFailureAndAssociation(t *testing.T) {
 	core := openSubscriptionStore(t)
 	at := time.Now().UTC().Truncate(time.Second)
 	projectionSeed(t, core, at)
@@ -112,12 +161,12 @@ func TestSubscriptionProjectionExpiryFailureAndAssociation(t *testing.T) {
 		t.Fatal("revalidation floor accepted an old success", i)
 	}
 	projectionSQL(t, core, `UPDATE quota_cycle SET revalidate_seq=1`)
-	projectionSQL(t, core, `UPDATE quota_identities SET association=''`)
+	projectionSQL(t, core, `UPDATE quota_identities SET association='' WHERE client='codex'`)
 	if *read(at).Identity.QuotaAssociation != "unconfirmed" {
 		t.Fatal("sequence alone is not proof")
 	}
-	projectionSQL(t, core, `UPDATE quota_identities SET attempt_cycle_seq=5,failure_cycle_seq=5,attempt_failure='probe_failed',attempted_at=?`, until.Format(time.RFC3339Nano))
-	projectionSQL(t, core, `UPDATE quota_envelopes_v2 SET plan='',plan_unsafe=1,plan_reason='not_reported'`)
+	projectionSQL(t, core, `UPDATE quota_identities SET attempt_cycle_seq=5,failure_cycle_seq=5,attempt_failure='probe_failed',attempted_at=? WHERE client='codex'`, until.Format(time.RFC3339Nano))
+	projectionSQL(t, core, `UPDATE quota_envelopes_v2 SET plan='',plan_unsafe=1,plan_reason='not_reported' WHERE client='codex'`)
 	c := read(until)
 	if c.Plan != nil || *c.PlanReason != "not_reported" || c.PlanDisplay.Reason == nil || *c.PlanDisplay.Reason != "unsafe_value" || len(c.PlanDisplay.Raw) != 0 {
 		t.Fatal("unsafe plan projection", c.PlanDisplay)
