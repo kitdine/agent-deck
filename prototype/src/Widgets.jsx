@@ -2,7 +2,7 @@ import { createContext, useContext, useState } from "react";
 import { AUX_WIDGET_STATES, auxiliaryWidgetProjection } from "./auxiliaryWidget.js";
 import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
 import { meta, quota, quotaMeta, rhythm, scope } from "./data.js";
-import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens } from "./i18n.js";
+import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens, spokenMaskedEmail } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { ModelLabel, modelKey } from "./ModelLabel.jsx";
 
@@ -572,13 +572,42 @@ function QuotaAttribution({ entry, lang }) {
   return <small className="w-attribution">{catalogs[lang].quota.attributionShort}</small>;
 }
 
+function widgetQuotaPlanLabel(entry) {
+  if (entry.client === "claude") return null;
+  return entry.plan_display === undefined ? entry.plan ?? null : entry.plan_display?.short_name ?? null;
+}
+
 function QuotaClientBlock({ entry, size, lang, now, windows }) {
   const dict = catalogs[lang];
+  const planLabel = widgetQuotaPlanLabel(entry);
+  const signedInEmail =
+    size === "large" &&
+    entry.identity?.state === "identified" &&
+    entry.identity?.freshness === "current" &&
+    typeof entry.identity?.current_until === "number" &&
+    now < entry.identity.current_until &&
+    entry.identity?.email_masked
+      ? entry.identity.email_masked
+      : null;
+  const showCodexUnconfirmed =
+    !!signedInEmail && entry.client === "codex" && entry.identity?.quota_association !== "confirmed";
+  const signedInAriaLabel = signedInEmail
+    ? `${dict.widgets.quotaSignedIn(spokenMaskedEmail(signedInEmail, dict))}${
+        showCodexUnconfirmed
+          ? `${lang === "zh" ? "，" : ", "}${dict.widgets.quotaAssociationUnconfirmed}`
+          : ""
+      }`
+    : null;
+
   return (
     <section className="w-quota-client" data-client={entry.client}>
       <header>
         <strong>{dict.clients[entry.client]}</strong>
-        {entry.plan && <small>{entry.plan}</small>}
+        {planLabel && (
+          <small className="w-quota-plan" title={planLabel}>
+            {planLabel}
+          </small>
+        )}
         <QuotaAttribution entry={entry} lang={lang} />
       </header>
       <div className="w-quota-client-windows">
@@ -598,6 +627,18 @@ function QuotaClientBlock({ entry, size, lang, now, windows }) {
           </div>
         ))}
       </div>
+      {signedInEmail && (
+        <div className="w-quota-signed-in" role="group" aria-label={signedInAriaLabel}>
+          <span className="w-quota-signed-in-text" aria-hidden="true">
+            {dict.widgets.quotaSignedIn(signedInEmail)}
+          </span>
+          {showCodexUnconfirmed && (
+            <span className="w-quota-signed-in-assoc" aria-hidden="true">
+              {`· ${dict.widgets.quotaAssociationUnconfirmed}`}
+            </span>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -608,6 +649,13 @@ function QuotaClientBlock({ entry, size, lang, now, windows }) {
 // 现在说的是实话。
 function QuotaNoData({ size, lang, scopeText, reason = "never_probed" }) {
   const dict = catalogs[lang];
+  const invalidationText = {
+    context_changed: dict.widgets.quotaContextChanged,
+    signed_out: dict.widgets.quotaContextChanged,
+    non_subscription: dict.widgets.quotaContextChanged,
+    identity_key_reset: dict.widgets.quotaIdentityKeyReset,
+  };
+  const footText = invalidationText[reason] ?? dict.quota.reasons[reason] ?? dict.quota.reasons.never_probed;
   return (
     <Frame
       kind="quota"
@@ -615,7 +663,7 @@ function QuotaNoData({ size, lang, scopeText, reason = "never_probed" }) {
       lang={lang}
       scopeText={scopeText}
       Icon={Gauge}
-      footText={dict.quota.reasons[reason] ?? reason}
+      footText={footText}
     >
       <p className="w-quota-none">
         {reason === "probe_disabled" ? dict.quota.readingOff : dict.widgets.quotaNoData}
@@ -628,21 +676,32 @@ function QuotaWidget({ size, lang, quotaVariant = "normal", widgetClient = "code
   const dict = catalogs[lang];
   const payload = quota(quotaVariant);
   const now = quotaMeta.now;
-  // “没有时不展示”在结构层执行：没有窗口、门禁不适用或探测失败的端，
+  // “没有时不展示”在结构层执行：没有窗口、门禁不适用、上下文已失效或探测失败的端，
   // 根本不生成 block，不用一张“不可用”卡去占另一个端的空间。
+  const entryContextInvalidated = (entry) => entry.quota_context != null;
   const available = payload.clients.filter(
-    (entry) => entry.applicable && !entry.failure && entry.windows.length > 0,
+    (entry) =>
+      entry.applicable &&
+      !entry.failure &&
+      !entryContextInvalidated(entry) &&
+      entry.windows.length > 0,
   );
   // 无数据时的原因取自实际载荷，而不是假设成「尚未探测」。
-  const noDataReason = payload.clients.every((entry) => entry.failure === "probe_disabled")
+  const allProbeDisabled = payload.clients.every((entry) => entry.failure === "probe_disabled");
+  const selectedClient = payload.clients.find((item) => item.client === widgetClient);
+  const invalidatedClient = payload.clients.find(entryContextInvalidated);
+  const smallMediumReason = allProbeDisabled
     ? "probe_disabled"
-    : "never_probed";
+    : selectedClient?.quota_context?.reason ?? "never_probed";
+  const largeNoDataReason = allProbeDisabled
+    ? "probe_disabled"
+    : invalidatedClient?.quota_context?.reason ?? "never_probed";
 
   // small 与 medium 都只呈现配置里选定的那一端；它们的差别是深度，不是范围。
   // 选定端无数据时不偷换成另一端——配置说 Codex 却看到 Claude，配置就不可信了。
   if (size === "small" || size === "medium") {
     const entry = available.find((item) => item.client === widgetClient);
-    if (!entry) return <QuotaNoData size={size} lang={lang} scopeText="" reason={noDataReason} />;
+    if (!entry) return <QuotaNoData size={size} lang={lang} scopeText="" reason={smallMediumReason} />;
     const age = dict.quota.observedAt(quotaAgo(entry.observed_at, now));
 
     if (size === "small") {
@@ -714,7 +773,7 @@ function QuotaWidget({ size, lang, quotaVariant = "normal", widgetClient = "code
   // 等分而不是按窗口数分配高度，是因为两端的相对重要性不随窗口多少变化。
   if (available.length === 0)
     return (
-      <QuotaNoData size={size} lang={lang} scopeText={dict.widgets.allClients} reason={noDataReason} />
+      <QuotaNoData size={size} lang={lang} scopeText={dict.widgets.allClients} reason={largeNoDataReason} />
     );
   const observedAt = available.map((entry) => entry.observed_at).filter((value) => value != null);
   const age = observedAt.length

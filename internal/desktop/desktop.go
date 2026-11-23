@@ -252,8 +252,10 @@ type Service struct {
 	// uses that package's own real probes. A test injects a fake here so it
 	// never risks invoking the real "codex" or "claude" binary, mirroring
 	// quota.Scheduler's own ProbeCodex/ProbeClaudeProse fields.
-	QuotaProbeCodex       func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
-	QuotaProbeClaudeProse func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
+	QuotaProbeCodex func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
+
+	QuotaProbeClaudeIdentity func(context.Context, string) quota.IdentityObservation
+	QuotaProbeClaudeProse    func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
 }
 
 type Result struct {
@@ -345,6 +347,25 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 		Store: quota.NewStore(core.DB), Interval: interval, MaxBackoff: maxBackoff, Now: s.now,
 		ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
 	}
+	outcome := s.refreshGates(ctx, core, home, probeEnabled, probeClients)
+	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		scheduler.Run(ctx, client, trigger, outcome[client] == "")
+	}
+	return outcome
+}
+
+func (s Service) RefreshQuotaCycle(ctx context.Context, root *quota.RefreshCore, lock *store.Lock, home string, trigger quota.Trigger, settings quota.Settings, maxBackoff time.Duration) (map[quota.Client]quota.Reason, quota.RefreshCycle, *quota.QuotaDeliveryGuard, error) {
+	outcome := s.refreshGates(ctx, root.Core(), home, settings.ProbeEnabled, settings.ProbeClients)
+	scheduler := quota.Scheduler{
+		Store: root.Store(), Interval: settings.ProbeInterval, MaxBackoff: maxBackoff, Now: s.now,
+		ProbeCodex:       s.QuotaProbeCodex,
+		ProbeClaudeProse: s.QuotaProbeClaudeProse, ProbeClaudeIdentity: s.QuotaProbeClaudeIdentity,
+	}
+	c, g, err := scheduler.RunRefresh(ctx, root, lock, trigger, outcome)
+	return outcome, c, g, err
+}
+
+func (s Service) refreshGates(ctx context.Context, core *store.Store, home string, probeEnabled bool, probeClients []quota.Client) map[quota.Client]quota.Reason {
 	// Codex PR #5 tenth review, P2: a provider.Service.Current read failure
 	// used to fall through as an empty selection set, which
 	// quotaCurrentSelection reads identically to "no selection ever made" --
@@ -370,9 +391,8 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 		}
 		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
 		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
-		allowed, reason := quota.Allowed(probeEnabled && clientEnabled, recordedOfficial, observedKnown, observedOfficial)
+		_, reason := quota.Allowed(probeEnabled && clientEnabled, recordedOfficial, observedKnown, observedOfficial)
 		outcome[client] = reason
-		scheduler.Run(ctx, client, trigger, allowed)
 	}
 	return outcome
 }

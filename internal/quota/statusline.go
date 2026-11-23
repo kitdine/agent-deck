@@ -130,7 +130,7 @@ func ChainStatusLine(ctx context.Context, priorCommand string, stdin []byte, std
 // time this runs the chain — ChainStatusLine — has already completed and
 // nothing here can still affect it. Callers must call this only after
 // ChainStatusLine, never before or concurrently with it.
-func RecordStatusLinePayload(ctx context.Context, store *Store, stdin []byte, observedAt time.Time) {
+func RecordStatusLinePayload(ctx context.Context, store *Store, stdin []byte, observedAt time.Time, stamp *BootStamp) {
 	if store == nil {
 		return
 	}
@@ -138,7 +138,7 @@ func RecordStatusLinePayload(ctx context.Context, store *Store, stdin []byte, ob
 	if err != nil {
 		return
 	}
-	for _, obs := range MapStatusLineObservations(payload, observedAt) {
-		_, _, _, _ = store.Record(ctx, obs)
+	if windows := MapStatusLineObservations(payload, observedAt); len(windows) > 0 {
+		_, _ = store.RecordStatusLineCapture(ctx, observedAt, stamp, windows)
 	}
 }

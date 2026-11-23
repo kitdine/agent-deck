@@ -2,6 +2,7 @@ package quota
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,7 @@ type AlertConfig struct {
 // has no field an account identifier could travel in; ID is an opaque ledger
 // key the app passes back unchanged.
 type DueAlert struct {
+	Generation    Generation
 	ID            string
 	Kind          AlertKind
 	Client        Client
@@ -46,14 +48,15 @@ type DueAlert struct {
 // this evaluator could have produced. Nothing is recorded for it.
 var ErrInvalidAlertID = errors.New("invalid quota alert id")
 
-const alertIDPrefix = "qa1."
+const alertIDPrefix = "qa2."
 
 type alertKey struct {
-	Client    Client    `json:"c"`
-	WindowKey string    `json:"w"`
-	Kind      AlertKind `json:"k"`
-	Threshold float64   `json:"t"`
-	Instance  int64     `json:"i"`
+	Client     Client     `json:"c"`
+	WindowKey  string     `json:"w"`
+	Kind       AlertKind  `json:"k"`
+	Threshold  float64    `json:"t"`
+	Instance   int64      `json:"i"`
+	Generation Generation `json:"g"`
 }
 
 func (k alertKey) id() string {
@@ -63,6 +66,10 @@ func (k alertKey) id() string {
 
 func parseAlertID(id string) (alertKey, error) {
 	raw, ok := strings.CutPrefix(id, alertIDPrefix)
+	legacy := !ok
+	if legacy {
+		raw, ok = strings.CutPrefix(id, "qa1.")
+	}
 	if !ok {
 		return alertKey{}, ErrInvalidAlertID
 	}
@@ -76,7 +83,17 @@ func parseAlertID(id string) (alertKey, error) {
 	}
 	validClient := key.Client == ClientCodex || key.Client == ClientClaude
 	validKind := (key.Kind == AlertThreshold && key.Threshold > 0 && key.Threshold <= 100) || (key.Kind == AlertReset && key.Threshold == 0)
-	if !validClient || !validKind || key.WindowKey == "" || key.Instance <= 0 || key.id() != id {
+	canonical := key.id()
+	if legacy {
+		// qa1 is the same canonical object without the final generation field.
+		image, _ := json.Marshal(struct {
+			alertKey
+			OmitGeneration *Generation `json:"g,omitempty"`
+		}{alertKey: key})
+		canonical = "qa1." + base64.RawURLEncoding.EncodeToString(image)
+	}
+	if !validClient || !validKind || key.WindowKey == "" || key.Instance <= 0 || key.Generation < 0 ||
+		(key.Client == ClientCodex && key.Generation != 0) || canonical != id {
 		return alertKey{}, ErrInvalidAlertID
 	}
 	return key, nil
@@ -137,12 +154,29 @@ const alertNoticeRetention = 31 * 24 * time.Hour
 // no longer this account's current quota and must not still generate
 // threshold or reset alerts, even though they have not yet been probed away.
 func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialClients map[Client]bool, cfg AlertConfig, now time.Time) ([]DueAlert, error) {
-	if !probeEnabled || !cfg.Enabled {
+	if !probeEnabled || !cfg.Enabled || (!officialClients[ClientClaude] && !officialClients[ClientCodex]) {
 		return nil, nil
 	}
-	if err := store.pruneAlertNotices(ctx, now.Add(-alertNoticeRetention)); err != nil {
+	version, err := readQuota(store.db, ctx, func(reader *SnapshotReader) (int, error) {
+		return reader.ReadVersion().Schema, nil
+	})
+	if err != nil || version < 29 {
 		return nil, err
 	}
+	if version >= identitySchemaVersion {
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < refreshWriteAndCleanup {
+			return nil, context.DeadlineExceeded
+		}
+		if err := store.pruneAlertNotices(ctx, now.Add(-alertNoticeRetention)); err != nil {
+			return nil, err
+		}
+	}
+	return readQuota(store.db, ctx, func(reader *SnapshotReader) ([]DueAlert, error) {
+		return reader.dueAlerts(ctx, officialClients, cfg, now)
+	})
+}
+
+func (r *SnapshotReader) dueAlerts(ctx context.Context, officialClients map[Client]bool, cfg AlertConfig, now time.Time) ([]DueAlert, error) {
 	var due []DueAlert
 	thresholds := normalizeThresholds(cfg.Thresholds)
 	var errs []error
@@ -150,7 +184,7 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 		if !officialClients[client] {
 			continue
 		}
-		windows, err := store.Windows(ctx, client)
+		windows, err := r.Windows(ctx, client)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -162,15 +196,20 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 		// threshold or reset alerts just because they have not yet been
 		// probed away. Only Claude's own status-line route (a success the
 		// envelope never records) can supersede a fresher prose failure.
-		if rec, ok, err := store.Envelope(ctx, client); err != nil {
+		rec, ok, err := r.Usage(ctx, client)
+		if err != nil {
 			errs = append(errs, err)
 			continue
-		} else if ok && rec.Failure == ReasonParseFailed {
+		} else if ok && rec.Envelope.Failure == ReasonParseFailed {
 			windowSource, windowObservedAt := newestWindowSource(windows)
-			supersededByStatusLine := windowSource == SourceClaudeStatusLine && windowObservedAt.After(rec.FailureObservedAt)
+			supersededByStatusLine := windowSource == SourceClaudeStatusLine && rec.FailureOrderKnown && windowObservedAt.After(rec.Envelope.FailureObservedAt)
 			if !supersededByStatusLine {
 				continue
 			}
+		}
+		var generation Generation
+		if client == ClientClaude {
+			generation = rec.Claude.Generation
 		}
 		for _, w := range windows {
 			if !occurrenceOngoing(w, now) {
@@ -180,7 +219,7 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 				if w.UsedPercent < threshold {
 					continue
 				}
-				alert, isDue, err := store.dueAlert(ctx, client, w, AlertThreshold, threshold)
+				alert, isDue, err := r.dueAlert(ctx, client, generation, w, AlertThreshold, threshold)
 				if err != nil {
 					errs = append(errs, err)
 				} else if isDue {
@@ -188,7 +227,7 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 				}
 			}
 			if cfg.ResetNotice && w.HasObservedResetAt && resetInCurrentOccurrence(w) {
-				alert, isDue, err := store.dueAlert(ctx, client, w, AlertReset, 0)
+				alert, isDue, err := r.dueAlert(ctx, client, generation, w, AlertReset, 0)
 				if err != nil {
 					errs = append(errs, err)
 				} else if isDue {
@@ -221,11 +260,68 @@ func newestWindowSource(windows []Window) (Source, time.Time) {
 // idempotent, so an acknowledgement repeated after a crash records nothing
 // new. An id this evaluator could not have produced is rejected.
 func AcknowledgeAlert(ctx context.Context, store *Store, id string, now time.Time) error {
-	key, err := parseAlertID(id)
-	if err != nil {
-		return err
+	_, err := store.AcknowledgeAlerts(ctx, []string{id}, now)
+	return err
+}
+
+// AcknowledgeAlerts counts distinct current notices, including idempotent
+// replays. BEGIN IMMEDIATE orders this batch against identity invalidation.
+func (s *Store) AcknowledgeAlerts(ctx context.Context, ids []string, now time.Time) (int, error) {
+	keys := make(map[alertKey]struct{}, len(ids))
+	for _, id := range ids {
+		key, err := parseAlertID(id)
+		if err != nil {
+			return 0, err
+		}
+		keys[key] = struct{}{}
 	}
-	return store.recordAlertNotice(ctx, key.Client, key.WindowKey, key.Kind, key.Threshold, time.Unix(key.Instance, 0), now)
+	accepted := 0
+	_, err := s.quotaWrite(ctx, time.Second, func(ctx context.Context, conn *sql.Conn) (bool, error) {
+		var generation *Generation
+		for key := range keys {
+			if key.Client == ClientClaude {
+				if generation == nil {
+					state, _, err := readClaudeContext(ctx, conn)
+					if err != nil {
+						return false, err
+					}
+					generation = &state.Generation
+				}
+				if key.Generation != *generation {
+					continue
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO quota_alert_notices_v2(client,window_key,kind,threshold,instance_unix,context_generation,notified_at)
+				VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, key.Client, key.WindowKey, key.Kind, key.Threshold, key.Instance, key.Generation, now.Format(timeLayout)); err != nil {
+				return false, err
+			}
+			accepted++
+		}
+		return accepted != 0, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return accepted, nil
+}
+
+// AlertStateRootID returns a proof only while this cycle owns the refresh
+// lock and its bound delivery guard is still usable.
+func (s *Store) AlertStateRootID(ctx context.Context, cycle RefreshCycle, guard *QuotaDeliveryGuard) (string, error) {
+	if guard == nil || guard.cycle != cycle || s.checkCycle(cycle) != nil {
+		return "", nil
+	}
+	var latest CycleSeq
+	if err := s.db.QueryRowContext(ctx, "SELECT seq FROM quota_cycle WHERE singleton=1").Scan(&latest); err != nil {
+		return "", err
+	}
+	if latest != cycle.seq {
+		return "", nil
+	}
+	if err := guard.verifyAlertGuard(ctx); err != nil {
+		return "", err
+	}
+	return guard.StateRootID(), nil
 }
 
 // ValidateAlertIDs checks every id before a caller records any of them.
@@ -283,8 +379,8 @@ func resetInCurrentOccurrence(w Window) bool {
 // dueAlert reports a notice for w unless the ledger already holds one for the
 // same occurrence. The window's vendor label and length travel so the app can
 // name the window; window_key stays opaque and is carried only inside the id.
-func (s *Store) dueAlert(ctx context.Context, client Client, w Window, kind AlertKind, threshold float64) (DueAlert, bool, error) {
-	noticed, err := s.alertNoticed(ctx, client, w.WindowKey, kind, threshold, w.ResetsAt, alertInstanceTolerance)
+func (r *SnapshotReader) dueAlert(ctx context.Context, client Client, generation Generation, w Window, kind AlertKind, threshold float64) (DueAlert, bool, error) {
+	noticed, err := r.alertNoticed(ctx, client, generation, w.WindowKey, kind, threshold, w.ResetsAt, alertInstanceTolerance)
 	if err != nil || noticed {
 		return DueAlert{}, false, err
 	}
@@ -292,28 +388,31 @@ func (s *Store) dueAlert(ctx context.Context, client Client, w Window, kind Aler
 	if w.WindowMinutesReason == "" && w.WindowMinutes > 0 {
 		minutes = w.WindowMinutes
 	}
-	key := alertKey{Client: client, WindowKey: w.WindowKey, Kind: kind, Threshold: threshold, Instance: w.ResetsAt.Unix()}
-	return DueAlert{ID: key.id(), Kind: kind, Client: client, Label: w.Label, WindowMinutes: minutes, UsedPercent: w.UsedPercent, Threshold: threshold}, true, nil
+	key := alertKey{Client: client, WindowKey: w.WindowKey, Kind: kind, Threshold: threshold, Instance: w.ResetsAt.Unix(), Generation: generation}
+	return DueAlert{ID: key.id(), Kind: kind, Client: client, Generation: generation, Label: w.Label, WindowMinutes: minutes, UsedPercent: w.UsedPercent, Threshold: threshold}, true, nil
 }
 
-func (s *Store) alertNoticed(ctx context.Context, client Client, windowKey string, kind AlertKind, threshold float64, instance time.Time, tolerance time.Duration) (bool, error) {
+func (r *SnapshotReader) alertNoticed(ctx context.Context, client Client, generation Generation, windowKey string, kind AlertKind, threshold float64, instance time.Time, tolerance time.Duration) (bool, error) {
 	var found int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices
-		WHERE client = ? AND window_key = ? AND kind = ? AND threshold = ? AND ABS(instance_unix - ?) <= ?`,
-		string(client), windowKey, string(kind), threshold, instance.Unix(), int64(tolerance/time.Second),
+	table := "quota_alert_notices"
+	predicate := ""
+	args := []any{client, windowKey, kind, threshold, instance.Unix(), int64(tolerance / time.Second)}
+	if r.version.Schema >= identitySchemaVersion {
+		table = "quota_alert_notices_v2"
+		predicate = " AND context_generation=?"
+		args = append(args, generation)
+	}
+	err := r.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+`
+		WHERE client = ? AND window_key = ? AND kind = ? AND threshold = ? AND ABS(instance_unix - ?) <= ?`+predicate,
+		args...,
 	).Scan(&found)
 	return found > 0, err
 }
 
-func (s *Store) recordAlertNotice(ctx context.Context, client Client, windowKey string, kind AlertKind, threshold float64, instance, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO quota_alert_notices(client, window_key, kind, threshold, instance_unix, notified_at)
-		VALUES (?,?,?,?,?,?)`,
-		string(client), windowKey, string(kind), threshold, instance.Unix(), now.Format(timeLayout),
-	)
-	return err
-}
-
 func (s *Store) pruneAlertNotices(ctx context.Context, before time.Time) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM quota_alert_notices WHERE instance_unix < ?`, before.Unix())
+	_, err := s.refreshWrite(ctx, func(ctx context.Context, c *sql.Conn) (bool, error) {
+		_, err := c.ExecContext(ctx, `DELETE FROM quota_alert_notices_v2 WHERE instance_unix < ?`, before.Unix())
+		return err == nil, err
+	})
 	return err
 }

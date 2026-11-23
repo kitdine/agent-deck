@@ -47,6 +47,7 @@ import {
   formatTokens,
   formatWeekdayDate,
   relativeTime,
+  spokenMaskedEmail,
 } from "./i18n.js";
 import { HEALTH_RECOVERY } from "./healthRecovery.js";
 import { ModelLabel, modelKey } from "./ModelLabel.jsx";
@@ -579,25 +580,254 @@ function windowTitle(window, dict) {
   return window.label ? `${window.label} · ${span}` : span;
 }
 
+const CONTEXT_REASON_KEY = {
+  context_changed: "changed",
+  signed_out: "signedOut",
+  non_subscription: "nonSubscription",
+  identity_key_reset: "keyReset",
+};
+
 // 缺失字段的唯一渲染方式。带原因，不带原因就不该调用它。
-// 三个词对应三件事，选词由原因决定，不由调用点各自判断：
+// 四个词对应四件事，选词由原因或上下文失效决定，不由调用点各自判断：
 //   not_official   不适用——产品故意没问，provider 不是 official
 //   probe_disabled 未读取——用户把读取关了，谁也没问
+//   invalidated    已失效——曾读到过，因已知登录变化被主动丢弃
 //   其余           不可用——问了，客户端没答上来
 // 把选词收在这里，是因为散在各个调用点的布尔标志迟早会有一处写反，
 // 而写反的代价是告诉用户「坏了」，其实什么都没坏。
-export function missingWord(reason, dict) {
+export function missingWord(reason, dict, invalidatedReason = null) {
+  if (invalidatedReason || CONTEXT_REASON_KEY[reason]) return dict.quota.discarded;
   if (reason === "not_official") return dict.quota.notApplicable;
   if (reason === "probe_disabled") return dict.quota.readingOff;
   return dict.quota.unavailable;
 }
 
-function QuotaMissing({ label, reason, dict }) {
+function contextInvalidatedText(invalidatedReason, dict) {
+  const key = CONTEXT_REASON_KEY[invalidatedReason];
+  return (key && dict.quota.context?.[key]) ?? dict.quota.context?.changed ?? invalidatedReason;
+}
+
+function QuotaMissing({ label, reason, detail = null, invalidatedReason = null, dict }) {
+  const detailText =
+    !invalidatedReason && reason === "parse_failed" && detail
+      ? dict.quota.parseDetail?.[detail] ?? null
+      : null;
   return (
     <div className="quota-missing">
       <span>{label}</span>
-      <b>{missingWord(reason, dict)}</b>
-      <small>{dict.quota.reasons[reason] ?? reason}</small>
+      <b>{missingWord(reason, dict, invalidatedReason)}</b>
+      <small>
+        {invalidatedReason
+          ? contextInvalidatedText(invalidatedReason, dict)
+          : dict.quota.reasons[reason] ?? reason}
+      </small>
+      {detailText && <small className="quota-missing-detail">{detailText}</small>}
+    </div>
+  );
+}
+
+function planDisplayInfo(planDisplay, fallbackPlan, dict, lang) {
+  if (planDisplay === undefined) {
+    if (!fallbackPlan) return null;
+    return {
+      text: fallbackPlan,
+      fullName: fallbackPlan,
+      help: fallbackPlan,
+      conflict: false,
+      missing: false,
+      isCompact: fallbackPlan.length <= 16,
+    };
+  }
+  if (planDisplay === null) return null;
+  if (planDisplay.state === "conflict") {
+    const rawList = (planDisplay.raw ?? [])
+      .map((item) => `${item.field}: ${dict.quota.planDisplay.raw(item.value)}`)
+      .join(" · ");
+    const help = rawList
+      ? lang === "zh"
+        ? `${dict.quota.planDisplay.conflict}（${rawList}）`
+        : `${dict.quota.planDisplay.conflict} (${rawList})`
+      : dict.quota.planDisplay.conflict;
+    return {
+      text: dict.quota.planDisplay.conflict,
+      fullName: dict.quota.planDisplay.conflict,
+      help,
+      conflict: true,
+      missing: false,
+      isCompact: false,
+    };
+  }
+  if (planDisplay.state === "missing" || !planDisplay.short_name) {
+    return {
+      text: null,
+      fullName: null,
+      help: null,
+      conflict: false,
+      missing: true,
+      missingReason: planDisplay.reason ?? null,
+      isCompact: false,
+    };
+  }
+  const text = planDisplay.short_name;
+  const fullName = planDisplay.name ?? text;
+  const rawValue = planDisplay.raw?.[0]?.value;
+  const help = rawValue
+    ? lang === "zh"
+      ? `${fullName}（${dict.quota.planDisplay.raw(rawValue)}）`
+      : `${fullName} (${dict.quota.planDisplay.raw(rawValue)})`
+    : fullName;
+  return {
+    text,
+    fullName,
+    help,
+    conflict: false,
+    missing: false,
+    isCompact: text.length <= 16,
+  };
+}
+
+function plansMatch(a, b) {
+  if (!a || !b || a.missing || b.missing || a.conflict || b.conflict) return false;
+  return (a.text ?? a.fullName) === (b.text ?? b.fullName);
+}
+
+function QuotaIdentity({ entry, lang, now }) {
+  const dict = useDict(lang);
+  const identity = entry.identity;
+  if (!identity) return null;
+
+  const hasEmail =
+    !!identity.email_masked && (identity.state === "identified" || identity.state === "unknown");
+  const hasPastStatus =
+    identity.freshness === "last_read" &&
+    (identity.state === "signed_out" || identity.state === "non_subscription");
+  const isExpiredOrLastRead =
+    hasPastStatus ||
+    (hasEmail &&
+      (identity.state === "unknown" ||
+        identity.freshness === "last_read" ||
+        (typeof identity.current_until === "number" && now >= identity.current_until)));
+  const rowALabel = isExpiredOrLastRead ? dict.quota.identity.lastKnown : dict.quota.identity.title;
+  const statusWord =
+    identity.state === "signed_out"
+      ? dict.quota.identity.signedOut
+      : identity.state === "non_subscription"
+        ? dict.quota.identity.nonSubscription
+        : dict.quota.identity.unknown;
+  const statusLabel = hasPastStatus ? dict.quota.identity.pastStatus(statusWord) : statusWord;
+
+  const orgName = hasEmail && identity.organization_name ? identity.organization_name : null;
+  const orgKindLabel =
+    identity.organization_kind === "workspace"
+      ? dict.quota.identity.workspace
+      : identity.organization_kind === "organization"
+        ? dict.quota.identity.organization
+        : null;
+  const orgDisplay = orgName ? (orgKindLabel ? `${orgKindLabel}: ${orgName}` : orgName) : null;
+
+  const quotaPlan = planDisplayInfo(entry.plan_display, entry.plan, dict, lang);
+  const idPlan = hasEmail ? planDisplayInfo(identity.plan_display, null, dict, lang) : null;
+  const showIdPlan =
+    !!idPlan &&
+    !idPlan.missing &&
+    (idPlan.conflict || !quotaPlan || quotaPlan.missing || !plansMatch(idPlan, quotaPlan));
+  const showRowB = hasEmail && (!!orgDisplay || showIdPlan);
+
+  const idAgo = identity.observed_at == null ? null : plainAgo(now - identity.observed_at, lang);
+  const timeText =
+    identity.observed_at == null
+      ? null
+      : isExpiredOrLastRead
+        ? dict.quota.identity.lastRead(idAgo ?? dict.quota.justRead)
+        : idAgo == null
+          ? dict.quota.justRead
+          : dict.quota.observedAt(idAgo);
+  const reasonText = identity.unknown_reason
+    ? dict.quota.identity.reasons[identity.unknown_reason] ?? identity.unknown_reason
+    : null;
+  const timeSummary = [timeText, reasonText].filter(Boolean).join(" · ") || null;
+
+  const showAssoc = entry.client === "codex" && hasEmail;
+  const assocText = showAssoc
+    ? !isExpiredOrLastRead && identity.quota_association === "confirmed"
+      ? dict.quota.identity.associationConfirmed
+      : dict.quota.identity.associationUnconfirmed
+    : null;
+
+  const comma = lang === "zh" ? "，" : ", ";
+  const colon = lang === "zh" ? "：" : ": ";
+  const semi = lang === "zh" ? "；" : "; ";
+  const name = hasEmail
+    ? `${rowALabel}${colon}${spokenMaskedEmail(identity.email_masked, dict)}`
+    : statusLabel;
+  const head = `${dict.clients[entry.client]} ${name}`;
+  const planSpeech = showIdPlan ? `${dict.quota.identity.planPrefix}${colon}${idPlan.fullName}` : null;
+  const details = isExpiredOrLastRead
+    ? [timeSummary, orgDisplay, planSpeech].filter(Boolean)
+    : [orgDisplay, planSpeech, timeSummary].filter(Boolean);
+  const body = details.length ? `${head}${comma}${details.join(comma)}` : head;
+  const ariaLabel = assocText ? `${body}${semi}${assocText}` : body;
+
+  const metaNode = (timeText || reasonText) && (
+    <div
+      className={`quota-identity-meta${isExpiredOrLastRead ? " is-adjacent" : ""}`}
+      aria-hidden="true"
+    >
+      {timeText && <span className="quota-identity-time">{timeText}</span>}
+      {reasonText && (
+        <span className="quota-identity-reason">
+          {timeText ? `· ${reasonText}` : reasonText}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="quota-identity" role="group" aria-label={ariaLabel}>
+      <div className="quota-identity-row" aria-hidden="true">
+        {hasEmail ? (
+          <>
+            <span className="quota-identity-label">{rowALabel}</span>
+            <b
+              className={`quota-identity-email${isExpiredOrLastRead ? " is-dim" : ""}`}
+              title={identity.email_masked}
+            >
+              {identity.email_masked}
+            </b>
+          </>
+        ) : (
+          <b className="quota-identity-status">{statusLabel}</b>
+        )}
+      </div>
+
+      {isExpiredOrLastRead && metaNode}
+
+      {showRowB && (
+        <div className="quota-identity-context" aria-hidden="true">
+          {orgDisplay && (
+            <span className="quota-identity-org" title={orgDisplay}>
+              {orgDisplay}
+            </span>
+          )}
+          {orgDisplay && showIdPlan && <span className="quota-identity-sep">·</span>}
+          {showIdPlan && (
+            <span
+              className={`quota-identity-plan${idPlan.conflict ? " is-conflict" : ""}`}
+              title={idPlan.help}
+            >
+              {`${dict.quota.identity.planPrefix}: ${idPlan.text}`}
+            </span>
+          )}
+        </div>
+      )}
+
+      {!isExpiredOrLastRead && metaNode}
+
+      {assocText && (
+        <p className="quota-identity-assoc" aria-hidden="true">
+          {assocText}
+        </p>
+      )}
     </div>
   );
 }
@@ -618,6 +848,16 @@ function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, cred
   // 那一拍，进入明细会把它取消掉。
   const hideCredits = () => credits.length > 0 && closeCredits();
   const notApplicable = !entry.applicable;
+  const invalidatedReason = entry.quota_context?.reason ?? null;
+  const quotaPlan = planDisplayInfo(entry.plan_display, entry.plan, dict, lang);
+  const hasQuotaPlan = !!quotaPlan?.text && !quotaPlan.conflict;
+  const planReason = quotaPlan?.missingReason ?? entry.plan_reason ?? "not_reported";
+  const missingPlanReason =
+    planReason === "unsafe_value"
+      ? "plan_unsafe"
+      : planReason === "not_reported"
+        ? "plan_not_reported"
+        : planReason;
   const ago = entry.observed_at == null ? null : plainAgo(now - entry.observed_at, lang);
   const age = entry.observed_at == null ? null : ago == null ? dict.quota.justRead : dict.quota.observedAt(ago);
 
@@ -640,13 +880,25 @@ function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, cred
     <div className="card quota-client" data-client={entry.client}>
       <div className="card-head">
         <strong>{dict.clients[entry.client]}</strong>
-        {entry.plan ? (
-          <span className="quota-plan">{entry.plan}</span>
+        {hasQuotaPlan ? (
+          <span
+            className={`quota-plan${quotaPlan.isCompact ? " is-compact" : ""}`}
+            title={quotaPlan.help}
+            aria-label={quotaPlan.help}
+          >
+            {quotaPlan.text}
+          </span>
         ) : null}
         <small>
-          {entry.source ? dict.quota.sources[entry.source] : "—"}
-          {age == null ? "" : ` · ${age}`}
-          {entry.stale ? ` · ${dict.quota.stale}` : ""}
+          {invalidatedReason ? (
+            "—"
+          ) : (
+            <>
+              {entry.source ? dict.quota.sources[entry.source] : "—"}
+              {age == null ? "" : ` · ${age}`}
+              {entry.stale ? ` · ${dict.quota.stale}` : ""}
+            </>
+          )}
         </small>
       </div>
 
@@ -657,10 +909,18 @@ function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, cred
         <p className="quota-attribution">{dict.quota.attributionUnconfirmed}</p>
       )}
 
-      {entry.windows.length === 0 ? (
+      {invalidatedReason ? (
+        <QuotaMissing
+          label={dict.quota.title}
+          reason={entry.failure}
+          invalidatedReason={invalidatedReason}
+          dict={dict}
+        />
+      ) : entry.windows.length === 0 ? (
         <QuotaMissing
           label={dict.quota.noWindows}
           reason={entry.failure ?? (notApplicable ? "not_official" : "not_reported")}
+          detail={entry.failure_detail}
           dict={dict}
         />
       ) : (
@@ -714,13 +974,15 @@ function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, cred
         </div>
       )}
 
-      {entry.plan == null && (
+      {!hasQuotaPlan && (
         <QuotaMissing
           label={dict.quota.plan}
-          reason={entry.plan_reason ?? "not_reported"}
+          reason={missingPlanReason}
           dict={dict}
         />
       )}
+
+      <QuotaIdentity entry={entry} lang={lang} now={now} />
     </div>
   );
 }

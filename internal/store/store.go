@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 35
+	CurrentSchemaVersion   = 36
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -671,6 +671,20 @@ type Lock struct {
 	released bool
 }
 
+// AcquiredIn compares the open directory handles. It does not prove that
+// the acquired lock entry is still present.
+func (l *Lock) AcquiredIn(dir *os.File) bool {
+	if l == nil || l.dir == nil || dir == nil {
+		return false
+	}
+	acquired, err := l.dir.Stat()
+	if err != nil {
+		return false
+	}
+	want, err := dir.Stat()
+	return err == nil && os.SameFile(acquired, want)
+}
+
 // ownedLockRecord identifies the directory entry a lock was acquired at: the
 // directory holding it, the name it was created under and the file it names.
 type ownedLockRecord struct {
@@ -877,6 +891,31 @@ func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time
 	return acquireNamedLock(ctx, stateRoot, "quota-refresh.lock", timeout)
 }
 
+// AcquireQuotaRefreshLockBefore keeps the quota command's original cutoff
+// through directory validation, stale-owner checks and polling wakeups.
+func AcquireQuotaRefreshLockBefore(ctx context.Context, stateRoot string, cutoff time.Time) (*Lock, error) {
+	if cutoff.IsZero() || !time.Now().Before(cutoff) {
+		return nil, ErrStateBusy
+	}
+	return acquireNamedLockBefore(ctx, stateRoot, "quota-refresh.lock", time.Until(cutoff), lockProcessAlive, tryLockReclaimFile, cutoff, time.After)
+}
+
+// CheckQuotaRefreshLock verifies the lock is still held for this core.
+func (s *Store) CheckQuotaRefreshLock(lock *Lock) error {
+	if s.readOnly || lock == nil || lock.token == "" ||
+		lock.path != filepath.Join(filepath.Dir(s.path), "quota-refresh.lock") {
+		return ErrLockLost
+	}
+	entry, _, err := readLockFile(lock.path)
+	if err != nil {
+		return errors.Join(ErrLockLost, err)
+	}
+	if !entry.owned || entry.token != lock.token {
+		return ErrLockLost
+	}
+	return nil
+}
+
 // AcquireDerivedSnapshotCacheLock serializes cache publishers without sharing
 // the scan or state-mutation lock domains.
 func AcquireDerivedSnapshotCacheLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
@@ -940,6 +979,10 @@ func createLockEntry(path, token string) (*Lock, error) {
 }
 
 func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (*Lock, error) {
+	return acquireNamedLockBefore(ctx, stateRoot, name, timeout, processAlive, tryReclaimLock, time.Time{}, time.After)
+}
+
+func acquireNamedLockBefore(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock, cutoff time.Time, after func(time.Duration) <-chan time.Time) (*Lock, error) {
 	stateRoot, err := platform.GuardStateRoot(stateRoot)
 	if err != nil {
 		return nil, err
@@ -950,7 +993,18 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 		return nil, err
 	}
 	deadline := time.Now().Add(timeout)
+	if !cutoff.IsZero() {
+		deadline = cutoff
+	}
 	for {
+		if !cutoff.IsZero() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if time.Now().After(cutoff) {
+				return nil, ErrStateBusy
+			}
+		}
 		lock, err := createLockEntry(path, token)
 		if err == nil {
 			return lock, nil
@@ -971,7 +1025,7 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(min(25*time.Millisecond, time.Until(deadline))):
+		case <-after(min(25*time.Millisecond, time.Until(deadline))):
 		}
 	}
 }

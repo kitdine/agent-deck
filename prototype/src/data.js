@@ -554,6 +554,7 @@ export const meta = { today: TODAY, days: DAYS, firstDate: daily[0].date, lastDa
 // Claude 不报 plan 与重置次数，这是产品事实，不是数据没准备好。
 
 const QUOTA_NOW = Date.UTC(2026, 7, 18, 14, 30) / 1000; // 与 TODAY 同一天，便于对齐倒计时
+const LONG_PLAN_NAME = "A".repeat(64);
 
 // 未报告的原因取值。闭集，界面据此选文案，不接受自由文本。
 export const QUOTA_REASONS = [
@@ -575,6 +576,41 @@ function codexClient(overrides = {}) {
     stale: false,
     plan: "prolite",
     plan_reason: null,
+    plan_display: {
+      state: "known",
+      name: "ChatGPT Pro 100",
+      short_name: "Pro 100",
+      basis: "mapping",
+      source: "codex_rate_limits",
+      raw: [{ field: "planType", value: "prolite" }],
+      reason: null,
+    },
+    failure_detail: null,
+    quota_context: null,
+    identity: {
+      state: "identified",
+      unknown_reason: null,
+      freshness: "current",
+      current_until: QUOTA_NOW + 600,
+      observed_at: QUOTA_NOW - 120,
+      attempted_at: QUOTA_NOW - 120,
+      failure: null,
+      failure_at: null,
+      source: "codex_account_read",
+      email_masked: "a***e@example.test",
+      organization_name: "Acme Studio",
+      organization_kind: "workspace",
+      quota_association: "unconfirmed",
+      plan_display: {
+        state: "known",
+        name: "ChatGPT Pro 100",
+        short_name: "Pro 100",
+        basis: "mapping",
+        source: "codex_account_read",
+        raw: [{ field: "planType", value: "prolite" }],
+        reason: null,
+      },
+    },
     windows: [
       {
         key: "codex",
@@ -631,6 +667,33 @@ function claudeClient(overrides = {}) {
     stale: false,
     plan: null,
     plan_reason: "not_reported",
+    plan_display: null,
+    failure_detail: null,
+    quota_context: null,
+    identity: {
+      state: "identified",
+      unknown_reason: null,
+      freshness: "current",
+      current_until: QUOTA_NOW + 600,
+      observed_at: QUOTA_NOW - 120,
+      attempted_at: QUOTA_NOW - 120,
+      failure: null,
+      failure_at: null,
+      source: "claude_auth_status",
+      email_masked: "c***e@example.test",
+      organization_name: "Kitdine Labs",
+      organization_kind: "organization",
+      quota_association: null,
+      plan_display: {
+        state: "known",
+        name: "Claude Pro",
+        short_name: "Pro",
+        basis: "mapping",
+        source: "claude_auth_status",
+        raw: [{ field: "subscriptionType", value: "pro" }],
+        reason: null,
+      },
+    },
     windows: [
       { key: "five_hour", label: null, window_minutes: 300, used_percent: 22, resets_at: QUOTA_NOW + 3 * 3600 + 20 * 60 },
       { key: "seven_day", label: null, window_minutes: 10080, used_percent: 3, resets_at: QUOTA_NOW + 6 * 86400 + 5 * 3600 },
@@ -668,6 +731,9 @@ const CODEX_NOT_OFFICIAL = codexClient({
   source: null,
   plan: null,
   plan_reason: "not_official",
+  plan_display: null,
+  identity: null,
+  quota_context: null,
   windows: [],
   reset_allowance: null,
   reset_allowance_reason: "not_official",
@@ -681,6 +747,39 @@ const CODEX_NOT_OFFICIAL = codexClient({
 // 只回了 7 天窗，照着它写死会得到一个「主限额没有 5 小时窗」的错误契约。
 const CODEX_PLUS = codexClient({
   plan: "plus",
+  plan_display: {
+    state: "raw_only",
+    name: "plus",
+    short_name: "plus",
+    basis: "raw",
+    source: "codex_rate_limits",
+    raw: [{ field: "planType", value: "plus" }],
+    reason: null,
+  },
+  identity: {
+    state: "identified",
+    unknown_reason: null,
+    freshness: "current",
+    current_until: QUOTA_NOW + 600,
+    observed_at: QUOTA_NOW - 120,
+    attempted_at: QUOTA_NOW - 120,
+    failure: null,
+    failure_at: null,
+    source: "codex_account_read",
+    email_masked: "a***e@example.test",
+    organization_name: "Acme Studio",
+    organization_kind: "workspace",
+    quota_association: "unconfirmed",
+    plan_display: {
+      state: "raw_only",
+      name: "plus",
+      short_name: "plus",
+      basis: "raw",
+      source: "codex_account_read",
+      raw: [{ field: "planType", value: "plus" }],
+      reason: null,
+    },
+  },
   windows: [
     { key: "codex_primary", label: null, window_minutes: 300, used_percent: 45, resets_at: QUOTA_NOW + 3 * 3600 + 10 * 60 },
     { key: "codex_secondary", label: null, window_minutes: 10080, used_percent: 62, resets_at: QUOTA_NOW + 4 * 86400 },
@@ -717,6 +816,37 @@ export const QUOTA_VARIANTS = {
         source: "claude_usage_prose",
         windows: [],
         failure: "parse_failed",
+        failure_detail: "shape_invalid",
+        observed_at: QUOTA_NOW - 30,
+      }),
+    ],
+  },
+
+  // M7b：缺少约定的额度行
+  parseFailedMissingLine: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: "claude_usage_prose",
+        windows: [],
+        failure: "parse_failed",
+        failure_detail: "missing_line",
+        observed_at: QUOTA_NOW - 30,
+      }),
+    ],
+  },
+
+  // M7c：重置时间或时区无法解析
+  parseFailedTimezone: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: "claude_usage_prose",
+        windows: [],
+        failure: "parse_failed",
+        failure_detail: "timezone_unresolved",
         observed_at: QUOTA_NOW - 30,
       }),
     ],
@@ -742,6 +872,9 @@ export const QUOTA_VARIANTS = {
         windows: [],
         plan: null,
         plan_reason: "probe_disabled",
+        plan_display: null,
+        identity: null,
+        quota_context: null,
         reset_allowance: null,
         reset_allowance_reason: "probe_disabled",
         billing: null,
@@ -752,6 +885,9 @@ export const QUOTA_VARIANTS = {
         source: null,
         observed_at: null,
         windows: [],
+        plan_display: null,
+        identity: null,
+        quota_context: null,
         reset_allowance_reason: "probe_disabled",
         failure: "probe_disabled",
       }),
@@ -768,6 +904,9 @@ export const QUOTA_VARIANTS = {
         windows: [],
         plan: null,
         plan_reason: "never_probed",
+        plan_display: null,
+        identity: null,
+        quota_context: null,
         reset_allowance: null,
         reset_allowance_reason: "never_probed",
         billing: null,
@@ -778,8 +917,382 @@ export const QUOTA_VARIANTS = {
         source: null,
         observed_at: null,
         windows: [],
+        plan_display: null,
+        identity: null,
+        quota_context: null,
         reset_allowance_reason: "never_probed",
         failure: "never_probed",
+      }),
+    ],
+  },
+
+  // M1：两端身份已识别；Codex 与额度的账号关联未确认
+  identityUnconfirmed: {
+    routes: OFFICIAL_ROUTES,
+    clients: [codexClient(), claudeClient()],
+  },
+
+  // M2：共同键当前未证实，仅用于状态覆盖
+  identityConfirmed: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        identity: {
+          ...codexClient().identity,
+          quota_association: "confirmed",
+        },
+      }),
+      claudeClient(),
+    ],
+  },
+
+  // M3：身份未知 / 上次读取（Codex 有旧值但本轮探测失败，Claude 无旧值且字段不完整）
+  identityUnknown: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        identity: {
+          ...codexClient().identity,
+          state: "unknown",
+          unknown_reason: "probe_failed",
+          freshness: "last_read",
+          current_until: null,
+          observed_at: QUOTA_NOW - 3 * 3600,
+          attempted_at: QUOTA_NOW - 60,
+          failure: "probe_failed",
+          failure_at: QUOTA_NOW - 60,
+          quota_association: null,
+        },
+      }),
+      claudeClient({
+        identity: {
+          state: "unknown",
+          unknown_reason: "incomparable",
+          freshness: "last_read",
+          current_until: null,
+          observed_at: null,
+          attempted_at: QUOTA_NOW - 60,
+          failure: "incomparable",
+          failure_at: QUOTA_NOW - 60,
+          source: "claude_auth_status",
+          email_masked: null,
+          organization_name: null,
+          organization_kind: null,
+          quota_association: null,
+          plan_display: null,
+        },
+      }),
+    ],
+  },
+
+  // 邮箱过期（无探测失败，但 current_until 已过）：Widget large 隐藏邮箱，Popover 标为上次识别的登录
+  expiredMailbox: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        identity: {
+          ...codexClient().identity,
+          freshness: "current",
+          current_until: QUOTA_NOW - 60,
+          observed_at: QUOTA_NOW - 3 * 3600,
+          attempted_at: QUOTA_NOW - 3 * 3600,
+        },
+      }),
+      claudeClient({
+        identity: {
+          ...claudeClient().identity,
+          freshness: "current",
+          current_until: QUOTA_NOW - 60,
+          observed_at: QUOTA_NOW - 3 * 3600,
+          attempted_at: QUOTA_NOW - 3 * 3600,
+        },
+      }),
+    ],
+  },
+
+  // M4：Claude 登录上下文变化，旧额度已失效并被主动丢弃
+  contextChanged: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance: null,
+        reset_allowance_reason: "not_reported",
+        observed_reset_at: null,
+        quota_context: {
+          invalidated_at: QUOTA_NOW - 60,
+          reason: "context_changed",
+        },
+        identity: {
+          state: "identified",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 60,
+          attempted_at: QUOTA_NOW - 60,
+          failure: null,
+          failure_at: null,
+          source: "claude_auth_status",
+          email_masked: "n***w@example.test",
+          organization_name: "Kitdine Labs",
+          organization_kind: "organization",
+          quota_association: null,
+          plan_display: {
+            state: "known",
+            name: "Claude Pro",
+            short_name: "Pro",
+            basis: "mapping",
+            source: "claude_auth_status",
+            raw: [{ field: "subscriptionType", value: "pro" }],
+            reason: null,
+          },
+        },
+      }),
+    ],
+  },
+
+  // M5b：Claude 切换为 API key / 非订阅登录（旧额度失效）；Codex 仍有效（D3）
+  claudeApiKey: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance: null,
+        reset_allowance_reason: "not_reported",
+        observed_reset_at: null,
+        quota_context: {
+          invalidated_at: QUOTA_NOW - 60,
+          reason: "non_subscription",
+        },
+        identity: {
+          state: "non_subscription",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 60,
+          attempted_at: QUOTA_NOW - 60,
+          failure: null,
+          failure_at: null,
+          source: "claude_auth_status",
+          email_masked: null,
+          organization_name: null,
+          organization_kind: null,
+          quota_association: null,
+          plan_display: null,
+        },
+      }),
+    ],
+  },
+
+  // 关联秘密重置导致无法与此前登录比较（identity_key_reset）
+  contextKeyReset: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance: null,
+        reset_allowance_reason: "not_reported",
+        observed_reset_at: null,
+        quota_context: {
+          invalidated_at: QUOTA_NOW - 60,
+          reason: "identity_key_reset",
+        },
+        identity: {
+          state: "identified",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 60,
+          attempted_at: QUOTA_NOW - 60,
+          failure: null,
+          failure_at: null,
+          source: "claude_auth_status",
+          email_masked: "n***w@example.test",
+          organization_name: "Kitdine Labs",
+          organization_kind: "organization",
+          quota_association: null,
+          plan_display: {
+            state: "known",
+            name: "Claude Pro",
+            short_name: "Pro",
+            basis: "mapping",
+            source: "claude_auth_status",
+            raw: [{ field: "subscriptionType", value: "pro" }],
+            reason: null,
+          },
+        },
+      }),
+    ],
+  },
+
+  // A5.6：失效后首次成功获取新鲜 usage（清空 quota_context，恢复新窗口且归属仍未确认）
+  contextRecovered: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: "claude_usage_prose",
+        observed_at: QUOTA_NOW - 15,
+        quota_context: null,
+        windows: [
+          { key: "five_hour", label: null, window_minutes: 300, used_percent: 8, resets_at: QUOTA_NOW + 4 * 3600 + 45 * 60 },
+          { key: "seven_day", label: null, window_minutes: 10080, used_percent: 2, resets_at: QUOTA_NOW + 6 * 86400 + 22 * 3600 },
+        ],
+        identity: {
+          state: "identified",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 15,
+          attempted_at: QUOTA_NOW - 15,
+          failure: null,
+          failure_at: null,
+          source: "claude_auth_status",
+          email_masked: "n***w@example.test",
+          organization_name: "Kitdine Labs",
+          organization_kind: "organization",
+          quota_association: null,
+          plan_display: {
+            state: "known",
+            name: "Claude Pro",
+            short_name: "Pro",
+            basis: "mapping",
+            source: "claude_auth_status",
+            raw: [{ field: "subscriptionType", value: "pro" }],
+            reason: null,
+          },
+        },
+      }),
+    ],
+  },
+
+  // M5：Claude 退出订阅登录（旧额度失效）；Codex 切为非订阅（D3：额度不失效）
+  signedOut: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        identity: {
+          state: "non_subscription",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 60,
+          attempted_at: QUOTA_NOW - 60,
+          failure: null,
+          failure_at: null,
+          source: "codex_account_read",
+          email_masked: null,
+          organization_name: null,
+          organization_kind: null,
+          quota_association: null,
+          plan_display: null,
+        },
+      }),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance: null,
+        reset_allowance_reason: "not_reported",
+        observed_reset_at: null,
+        quota_context: {
+          invalidated_at: QUOTA_NOW - 60,
+          reason: "signed_out",
+        },
+        identity: {
+          state: "signed_out",
+          unknown_reason: null,
+          freshness: "current",
+          current_until: QUOTA_NOW + 600,
+          observed_at: QUOTA_NOW - 60,
+          attempted_at: QUOTA_NOW - 60,
+          failure: null,
+          failure_at: null,
+          source: "claude_auth_status",
+          email_masked: null,
+          organization_name: null,
+          organization_kind: null,
+          quota_association: null,
+          plan_display: null,
+        },
+      }),
+    ],
+  },
+
+  // M6：Claude 套餐来源冲突
+  planConflict: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        identity: {
+          ...claudeClient().identity,
+          plan_display: {
+            state: "conflict",
+            name: null,
+            short_name: null,
+            basis: null,
+            source: "claude_auth_status",
+            raw: [
+              { field: "subscriptionType", value: "pro" },
+              { field: "planTier", value: "max_5x" },
+            ],
+            reason: null,
+          },
+        },
+      }),
+    ],
+  },
+
+  // F1：合成的 64 字符官方展示名，用于验证窄宽度省略。
+  longPlan: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        plan_display: {
+          state: "known",
+          name: LONG_PLAN_NAME,
+          short_name: LONG_PLAN_NAME,
+          basis: "vendor_display_name",
+          source: "codex_rate_limits",
+          raw: [{ field: "planType", value: "prolite" }],
+          reason: null,
+        },
+        identity: {
+          ...codexClient().identity,
+          plan_display: {
+            state: "known",
+            name: LONG_PLAN_NAME,
+            short_name: LONG_PLAN_NAME,
+            basis: "vendor_display_name",
+            source: "codex_account_read",
+            raw: [{ field: "planType", value: "prolite" }],
+            reason: null,
+          },
+        },
+      }),
+      claudeClient({
+        identity: {
+          ...claudeClient().identity,
+          plan_display: {
+            state: "known",
+            name: LONG_PLAN_NAME,
+            short_name: LONG_PLAN_NAME,
+            basis: "vendor_display_name",
+            source: "claude_auth_status",
+            raw: [{ field: "subscriptionType", value: "pro" }],
+            reason: null,
+          },
+        },
       }),
     ],
   },

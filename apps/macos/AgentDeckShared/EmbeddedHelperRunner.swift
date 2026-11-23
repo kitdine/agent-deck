@@ -1960,7 +1960,12 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 		if manual { arguments.append("--manual") }
 		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments, requestTimeout: Self.quotaRefreshTimeout)
 		guard case let .decoded(result) = outcome else { return [] }
-		return result.alerts
+		// Bind candidates to this response only. The proof is never a path.
+		return result.alerts.map {
+			var alert = $0
+			alert.stateRootID = result.stateRootID
+			return alert
+		}
 	}
 
 	public func acknowledgeQuotaAlerts(ids: [String]) async {
@@ -1977,15 +1982,18 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 }
 
 public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
+	public let stateRootID: String?
 	public let gateReasons: [String: String?]
 	public let alerts: [DesktopQuotaAlertV1]
 
 	enum CodingKeys: String, CodingKey {
 		case gateReasons = "gate_reasons"
+		case stateRootID = "state_root_id"
 		case alerts
 	}
 
-	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1]) {
+	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1], stateRootID: String? = nil) {
+		self.stateRootID = stateRootID
 		self.gateReasons = gateReasons
 		self.alerts = alerts
 	}
@@ -1993,6 +2001,7 @@ public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		gateReasons = try container.decodeIfPresent([String: String?].self, forKey: .gateReasons) ?? [:]
+		stateRootID = try? container.decode(String.self, forKey: .stateRootID)
 		alerts = try container.decodeIfPresent([DesktopQuotaAlertV1].self, forKey: .alerts) ?? []
 	}
 }
@@ -2013,14 +2022,26 @@ public struct DesktopQuotaAlertV1: Codable, Equatable, Sendable {
 	public let windowMinutes: Int?
 	public let usedPercent: Double
 	public let threshold: Double?
+	public let generation: Int64?
+	public fileprivate(set) var stateRootID: String? = nil
 
 	enum CodingKeys: String, CodingKey {
-		case id, kind, client, label, threshold
+		case id, kind, client, label, threshold, generation
 		case windowMinutes = "window_minutes"
 		case usedPercent = "used_percent"
 	}
 
-	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil) {
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		self.init(id: try c.decode(String.self, forKey: .id), kind: try c.decode(Kind.self, forKey: .kind),
+		          client: try c.decode(String.self, forKey: .client), label: try c.decodeIfPresent(String.self, forKey: .label),
+		          windowMinutes: try c.decodeIfPresent(Int.self, forKey: .windowMinutes), usedPercent: try c.decode(Double.self, forKey: .usedPercent),
+		          threshold: try c.decodeIfPresent(Double.self, forKey: .threshold), generation: try? c.decode(Int64.self, forKey: .generation))
+	}
+
+	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil, generation: Int64? = nil, stateRootID: String? = nil) {
+		self.generation = generation
+		self.stateRootID = stateRootID
 		self.id = id
 		self.kind = kind
 		self.client = client
@@ -2705,15 +2726,10 @@ public final class DesktopRefreshCoordinator {
 		publicationHolds = max(0, publicationHolds - 1)
 		guard publicationHolds == 0, let prepared = heldPublication else { return }
 		heldPublication = nil
-		installServingPublication(prepared)
-		// A refresh that finished while held published its success and widget
-		// snapshot with the previous data; bring the widget up to date.
-		if case .succeeded = fullAttempt, let latestSnapshot {
-			Task { await publishWidgetSnapshot(latestSnapshot) }
-		}
+		installServingPublication(prepared, releasingHold: true)
 	}
 
-	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+	private func installServingPublication(_ prepared: DesktopServingSnapshotV2, releasingHold: Bool = false) {
 		if publicationHolds > 0, let current = servingHeader?.generation {
 			let new = prepared.header.generation
 			if current.stateIdentity == new.stateIdentity, current.coreEpoch == new.coreEpoch,
@@ -2754,11 +2770,21 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		update(\.servingHeader, prepared.header)
-		update(\.latestSnapshot, prepared.payload)
+		let installed = installSubscription(prepared.payload.data.subscription, into: prepared.payload)
+		let subscriptionChanged = latestSnapshot?.data.subscription != installed.data.subscription
+		update(\.latestSnapshot, installed)
 		if case .running = fullAttempt {
-			update(\.state, .refreshing(previous: prepared.payload))
+			update(\.state, .refreshing(previous: installed))
 		} else {
-			update(\.state, .ready(prepared.payload))
+			update(\.state, .ready(installed))
+		}
+		let publishFull: Bool
+		if releasingHold, case .succeeded = fullAttempt { publishFull = true } else { publishFull = false }
+		if snapshotPublisher != nil, publishFull || (subscriptionChanged && installed.data.subscription.projection.value != nil) {
+			Task {
+				guard latestSnapshot == installed else { return }
+				await publishWidgetSnapshot(installed, collectsSessionScope: publishFull)
+			}
 		}
 		PerfTrace.end(.servingInstall, since: installStarted)
 		markPublicationBound()
@@ -2892,7 +2918,8 @@ public final class DesktopRefreshCoordinator {
 			fullQuotaPhaseCompleted = true
 			if let result = await quotaTask.value, let subscription = result.subscription,
 				currentGeneration == generation, !Task.isCancelled, let baseline = latestSnapshot {
-				let updated = baseline.replacingSubscription(subscription)
+				let updated = installSubscription(subscription, into: baseline)
+				guard updated != baseline else { return }
 				update(\.latestSnapshot, updated)
 				switch state {
 				case .ready: update(\.state, .ready(updated))
@@ -2906,7 +2933,7 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		let quotaStarted = PerfTrace.begin()
-		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
+		let quotaResult = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
 		PerfTrace.end(.quota, since: quotaStarted)
 		fullQuotaPhaseCompleted = true
 		guard currentGeneration == generation, !Task.isCancelled else { return }
@@ -2918,7 +2945,11 @@ public final class DesktopRefreshCoordinator {
 				}
 			}
 			guard currentGeneration == generation, !Task.isCancelled else { return }
-			await publishSuccess(envelope, generation: currentGeneration)
+			var installed = installSubscription(envelope.data.subscription, into: envelope)
+			if let candidate = quotaResult.subscription, candidate.projection.value != nil {
+				installed = installSubscription(candidate, into: installed, current: installed.data.subscription)
+			}
+			await publishSuccess(installed, generation: currentGeneration)
 		} catch is CancellationError {
 			return
 		} catch let error as HelperExecutionError {
@@ -2941,10 +2972,9 @@ public final class DesktopRefreshCoordinator {
 
 		quotaOperationSequence &+= 1
 		let id = QuotaOperationID(rawValue: quotaOperationSequence)
-		let baseline = latestSnapshot
 		let task = Task { @MainActor [weak self] in
 			guard let self else { return QuotaOperationResult(id: id, subscription: nil) }
-			return await self.performQuotaOperation(id: id, priority: priority, mode: mode, baseline: baseline)
+			return await self.performQuotaOperation(id: id, priority: priority, mode: mode)
 		}
 		activeQuotaID = id
 		activeQuotaOperation = task
@@ -2959,8 +2989,7 @@ public final class DesktopRefreshCoordinator {
 	private func performQuotaOperation(
 		id: QuotaOperationID,
 		priority: QuotaRequestPriority,
-		mode: QuotaPublicationMode,
-		baseline: DesktopWireEnvelopeV1?
+		mode: QuotaPublicationMode
 	) async -> QuotaOperationResult {
 		guard let quotaRefresher else {
 			return QuotaOperationResult(id: id, subscription: nil)
@@ -2973,20 +3002,50 @@ public final class DesktopRefreshCoordinator {
 		let subscription = await quotaRefresher.fetchSubscription()
 		let result = QuotaOperationResult(id: id, subscription: subscription)
 		if case .standalone = mode {
-			await publishStandaloneQuota(result, baseline: baseline)
+			await publishStandaloneQuota(result)
 		}
 		return result
 	}
 
-	private func publishStandaloneQuota(
-		_ result: QuotaOperationResult,
-		baseline: DesktopWireEnvelopeV1?
-	) async {
+	private func installSubscription(_ candidate: DesktopSubscriptionSnapshotV1, into envelope: DesktopWireEnvelopeV1,
+	                                 current: DesktopSubscriptionSnapshotV1? = nil) -> DesktopWireEnvelopeV1 {
+		let installed = current ?? latestSnapshot?.data.subscription
+		let previous = installed?.projection.value
+		let accept: Bool
+		if let key = candidate.projection.value {
+			if let epoch = servingHeader?.generation.coreEpoch, epoch != key.coreEpoch {
+				accept = false
+			} else if let previous {
+				if key.coreEpoch != previous.coreEpoch {
+					accept = servingHeader?.generation.coreEpoch == key.coreEpoch
+				} else {
+					accept = key.revision > previous.revision || (key.revision == previous.revision
+						&& key.boot == previous.boot && key.mono > previous.mono)
+				}
+			} else { accept = true }
+		} else {
+			accept = previous == nil
+		}
+		return envelope.replacingSubscription(accept ? candidate : installed ?? .unavailable)
+	}
+
+	private func publishStandaloneQuota(_ result: QuotaOperationResult) async {
 		guard let subscription = result.subscription,
-			let baseline,
-			latestSnapshot == baseline
+			let baseline = latestSnapshot
 		else { return }
-		let updated = baseline.replacingSubscription(subscription)
+		let updated = installSubscription(subscription, into: baseline)
+		guard updated != baseline else {
+			// A rejected older response isn't a retry. An equal response can
+			// finish a write that failed after the menu data was installed.
+			if subscription == baseline.data.subscription {
+				switch widgetPublication {
+				case .failedBeforeCommit, .indeterminateAfterCommit:
+					await publishWidgetSnapshot(baseline, collectsSessionScope: false)
+				default: break
+				}
+			}
+			return
+		}
 		update(\.latestSnapshot, updated)
 		switch state {
 		case .ready:

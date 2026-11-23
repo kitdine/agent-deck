@@ -400,6 +400,15 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 	if old.UsageRevision != final.UsageRevision || old.SessionRevision != final.SessionRevision || old.CoreSchema != final.CoreSchema {
 		snapshot.Header.Freshness = "stale"
 	}
+	// The cached subscription can predate an identity invalidation even at
+	// the same schema. Only this section is disposable on reprojection failure.
+	snapshot.Payload.Data.Subscription = unavailableSubscription()
+	if core, err := store.OpenReadOnly(ctx, s.StateRoot); err == nil {
+		defer core.Close()
+		if sub, err := s.BuildSubscription(ctx, core, time.Time{}); err == nil && (sub.Projection == nil || sub.Projection.CoreEpoch == final.CoreEpoch) {
+			snapshot.Payload.Data.Subscription = sub
+		}
+	}
 	// Revision differences retain readable, honestly dated data. Native consumers
 	// use the committed generation and coverage rather than treating it as fresh.
 	return snapshot, nil
