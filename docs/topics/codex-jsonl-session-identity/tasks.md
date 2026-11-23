@@ -21,7 +21,7 @@ created: 2026-11-17
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `native-source-proof` | [ ] | [ ] |
+| 1. `native-source-proof` | [x] | [x] |
 | 2. `fenced-state-layout` | [ ] | [ ] |
 | 3. `usage-ledger-replay` | [ ] | [ ] |
 | 4. `otel-ownership-receipts` | [ ] | [ ] |

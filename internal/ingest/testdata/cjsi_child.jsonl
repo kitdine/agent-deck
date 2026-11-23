@@ -1,0 +1,12 @@
+{"timestamp":"2026-01-02T09:01:00Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000002","session_id":"00000000-0000-4000-8000-000000000001","parent_thread_id":"00000000-0000-4000-8000-000000000001","root_turn_id":"root-turn","timestamp":"2026-01-02T10:00:00+01:00"}}
+{"timestamp":"2026-01-02T08:00:00Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001"}}
+{"type":"turn_context","payload":{"turn_id":"parent-turn","model":"parent-model"}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"inherited-synthetic"}]}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":20},"total_token_usage":{"input_tokens":100,"output_tokens":20}}}}
+{"type":"turn_context","payload":{"turn_id":"child-turn","model":"child-model"}}
+{"type":"response_item","payload":{"item":{"type":"message","role":"user","content":[{"type":"input_text","text":"local-user-synthetic"}]}}}
+{"type":"response_item","payload":{"type":"function_call","name":"synthetic","call_id":"child-call","arguments":"private-argument-synthetic /private/path-synthetic"}}
+{"timestamp":"2026-01-02T09:04:00Z","type":"token_usage_record","payload":{"thread_id":"00000000-0000-4000-8000-000000000002","turn_id":"child-turn","session_id":"00000000-0000-4000-8000-000000000001","root_turn_id":"root-turn","response_id":"child-response","usage":{"input_tokens":30,"cached_input_tokens":10,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":2,"total_tokens":35},"turn_token_usage":{"input_tokens":30,"output_tokens":5},"thread_token_usage":{"input_tokens":90,"output_tokens":25}}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"local-final-synthetic"}]}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"child-call","output":"private-tool-output-synthetic"}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"child-turn"}}

@@ -350,15 +350,9 @@ func ReadDetails(path, client, sessionID string) ([]Detail, error) {
 // ReadDetailsPage scans a source once, retaining only the requested earliest
 // details while accumulating a complete safe summary for the selected session.
 func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) (Page, error) {
-	if page < 1 || limit < 1 || limit > 100 {
-		return Page{}, fmt.Errorf("page must be positive and limit must be between 1 and 100")
-	}
-	keep := limit
-	if !all {
-		if page > maxPageCandidates/limit {
-			return Page{}, fmt.Errorf("activity page exceeds bounded window of %d rows", maxPageCandidates)
-		}
-		keep = page * limit
+	keep, err := activityPageWindow(page, limit, all)
+	if err != nil {
+		return Page{}, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -429,6 +423,24 @@ func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) 
 		appendDetail(detail)
 	}
 	sort.Slice(selected, func(i, j int) bool { return detailBefore(selected[i], selected[j]) })
+	return finishActivityPage(selected, summary, durations, page, limit, all), nil
+}
+
+func activityPageWindow(page, limit int, all bool) (int, error) {
+	if page < 1 || limit < 1 || limit > 100 {
+		return 0, fmt.Errorf("page must be positive and limit must be between 1 and 100")
+	}
+	if all {
+		return limit, nil
+	}
+	if page > maxPageCandidates/limit {
+		return 0, fmt.Errorf("activity page exceeds bounded window of %d rows", maxPageCandidates)
+	}
+	return page * limit, nil
+}
+
+// selected holds the earliest requested window, or all details for --all.
+func finishActivityPage(selected []Detail, summary Summary, durations, page, limit int, all bool) Page {
 	if durations > 0 {
 		average := summary.TotalDurationMS / int64(durations)
 		summary.AverageDurationMS = &average
@@ -436,12 +448,12 @@ func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) 
 	result := Page{Details: selected, Page: page, Limit: limit, Total: summary.Total, Shown: len(selected), Summary: summary}
 	if all {
 		result.Page, result.Limit = 1, len(selected)
-		return result, nil
+		return result
 	}
 	start := (page - 1) * limit
 	if start >= summary.Total {
 		result.Details, result.Shown = []Detail{}, 0
-		return result, nil
+		return result
 	}
 	end := min(start+limit, len(selected))
 	result.Details = selected[start:end]
@@ -450,7 +462,7 @@ func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) 
 	if result.HasMore {
 		result.NextPage = page + 1
 	}
-	return result, nil
+	return result
 }
 
 func detailBefore(left, right Detail) bool {
