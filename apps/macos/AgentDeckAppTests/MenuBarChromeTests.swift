@@ -1618,7 +1618,30 @@ extension MenuBarChromeTests {
 		return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: JSONSerialization.data(withJSONObject: json))
 	}
 
-	private func quotaAccessibilityLabels(_ element: Any, depth: Int = 0) -> [String] {
+	private func quotaAccessibilityLabels(_ element: Any) -> [String] {
+		// SwiftUI does not build an NSHostingView's accessibility tree until an
+		// accessibility query triggers it, and in some test hosts (observed on
+		// CI) a direct traversal returns no children. Enabling
+		// AXEnhancedUserInterface on NSApp forces the tree to be built.
+		let getter = Selector(("accessibilityEnhancedUserInterfaceAttribute"))
+		let setter = Selector(("accessibilitySetEnhancedUserInterfaceAttribute:"))
+		let app = NSApplication.shared
+		XCTAssertTrue(app.responds(to: setter), "AXEnhancedUserInterface setter is missing; the accessibility tree may not be built")
+		let wasEnhanced = (app.responds(to: getter)
+			? (app.perform(getter)?.takeUnretainedValue() as? NSNumber)?.boolValue
+			: nil) ?? false
+		if !wasEnhanced, app.responds(to: setter) {
+			app.perform(setter, with: NSNumber(value: true))
+		}
+		defer {
+			if !wasEnhanced, app.responds(to: setter) {
+				app.perform(setter, with: NSNumber(value: false))
+			}
+		}
+		return collectQuotaAccessibilityLabels(element, depth: 0)
+	}
+
+	private func collectQuotaAccessibilityLabels(_ element: Any, depth: Int) -> [String] {
 		guard depth < 40, let object = element as? NSObject else { return [] }
 		var labels: [String] = []
 		if object.responds(to: #selector(NSAccessibilityProtocol.accessibilityLabel)),
@@ -1627,13 +1650,29 @@ extension MenuBarChromeTests {
 		}
 		if object.responds(to: #selector(NSAccessibilityProtocol.accessibilityChildren)),
 			let children = object.perform(#selector(NSAccessibilityProtocol.accessibilityChildren))?.takeUnretainedValue() as? [Any] {
-			for child in children { labels += quotaAccessibilityLabels(child, depth: depth + 1) }
+			for child in children { labels += collectQuotaAccessibilityLabels(child, depth: depth + 1) }
 		}
 		return labels
 	}
 
 	private func renderedQuotaText(_ hosting: NSView, language: String) throws -> [String] {
-		let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+		// Rasterize at a fixed 3x scale rather than the host screen's backing
+		// scale; at 1x (as on CI) small caption and CJK glyphs lose detail and
+		// cause Vision OCR misreads.
+		let scale = 3
+		let bitmap = try XCTUnwrap(NSBitmapImageRep(
+			bitmapDataPlanes: nil,
+			pixelsWide: max(1, Int(ceil(hosting.bounds.width)) * scale),
+			pixelsHigh: max(1, Int(ceil(hosting.bounds.height)) * scale),
+			bitsPerSample: 8,
+			samplesPerPixel: 4,
+			hasAlpha: true,
+			isPlanar: false,
+			colorSpaceName: .deviceRGB,
+			bytesPerRow: 0,
+			bitsPerPixel: 0
+		))
+		bitmap.size = hosting.bounds.size
 		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
 		let request = VNRecognizeTextRequest()
 		request.recognitionLevel = .accurate

@@ -15,10 +15,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
+	"golang.org/x/sys/unix"
 	"modernc.org/sqlite"
 )
 
@@ -661,8 +663,162 @@ func (s *Store) secureFiles() error {
 }
 
 type Lock struct {
-	path  string
-	token string
+	mu       sync.Mutex
+	path     string
+	dir      *os.File // acquisition directory, kept open through the last release attempt
+	token    string
+	info     os.FileInfo
+	released bool
+}
+
+// AcquiredIn compares the open directory handles. It does not prove that
+// the acquired lock entry is still present.
+func (l *Lock) AcquiredIn(dir *os.File) bool {
+	if l == nil || l.dir == nil || dir == nil {
+		return false
+	}
+	acquired, err := l.dir.Stat()
+	if err != nil {
+		return false
+	}
+	want, err := dir.Stat()
+	return err == nil && os.SameFile(acquired, want)
+}
+
+// ownedLockRecord identifies the directory entry a lock was acquired at: the
+// directory holding it, the name it was created under and the file it names.
+type ownedLockRecord struct {
+	dir  os.FileInfo
+	name string
+	info os.FileInfo
+}
+
+var ownedLocks = struct {
+	mu      sync.Mutex
+	records map[string]ownedLockRecord
+}{
+	records: make(map[string]ownedLockRecord),
+}
+
+func registerOwnedLock(token string, record ownedLockRecord) {
+	ownedLocks.mu.Lock()
+	ownedLocks.records[token] = record
+	ownedLocks.mu.Unlock()
+}
+
+func unregisterOwnedLock(token string) {
+	ownedLocks.mu.Lock()
+	delete(ownedLocks.records, token)
+	ownedLocks.mu.Unlock()
+}
+
+// isOwnedLockAt reports whether one observation of the entry name in dir is
+// the entry this process acquired with the observed token. Entries are
+// compared as the file system resolves them, not as strings: the same
+// directory, the same file, and the same directory entry even if the caller
+// uses another spelling on a case-insensitive volume.
+func isOwnedLockAt(dir *os.File, name string, entry lockEntry) bool {
+	if dir == nil || entry.dir == nil || entry.info == nil {
+		return false
+	}
+	pid, ok := lockOwnerPID(entry.token)
+	if !ok || pid != os.Getpid() {
+		return false
+	}
+	ownedLocks.mu.Lock()
+	rec, exists := ownedLocks.records[entry.token]
+	ownedLocks.mu.Unlock()
+	if !exists || rec.dir == nil || !os.SameFile(rec.dir, entry.dir) || !os.SameFile(rec.info, entry.info) {
+		return false
+	}
+	if name == rec.name {
+		return true
+	}
+	if !strings.EqualFold(name, rec.name) {
+		return false
+	}
+	created, err := statLockEntryAt(dir, rec.name)
+	if err != nil || !sameLockFile(created, entry.info) {
+		return false
+	}
+	if lockLinkCount(entry.info) == 1 {
+		return true
+	}
+	// All acquired lock names are ASCII. An equally long EqualFold match can
+	// therefore differ only in ASCII case. With multiple links this proves
+	// one entry only if this directory's lookup ignores those differences.
+	return len(name) == len(rec.name) && platform.DirectoryIgnoresASCIICase(dir)
+}
+
+// statLockEntryAt describes the entry name in dir without following a
+// symlink, resolved from that directory descriptor rather than a path.
+func statLockEntryAt(dir *os.File, name string) (unix.Stat_t, error) {
+	var st unix.Stat_t
+	err := atLockDir(dir, func(dirFD int) error {
+		for {
+			err := unix.Fstatat(dirFD, name, &st, unix.AT_SYMLINK_NOFOLLOW)
+			if !errors.Is(err, unix.EINTR) {
+				return err
+			}
+		}
+	})
+	return st, err
+}
+
+func sameLockFile(st unix.Stat_t, info os.FileInfo) bool {
+	other, ok := info.Sys().(*syscall.Stat_t)
+	return ok && st.Mode&unix.S_IFMT == unix.S_IFREG &&
+		uint64(st.Dev) == uint64(other.Dev) && uint64(st.Ino) == uint64(other.Ino)
+}
+
+// atLockDir runs op with the raw descriptor of the open directory dir.
+func atLockDir(dir *os.File, op func(dirFD int) error) error {
+	conn, err := dir.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var opErr error
+	if err := conn.Control(func(fd uintptr) { opErr = op(int(fd)) }); err != nil {
+		return err
+	}
+	return opErr
+}
+
+// openLockDir opens the directory holding the lock entry at path, so creating,
+// observing and identifying the entry all resolve from one directory.
+func openLockDir(path string) (*os.File, os.FileInfo, error) {
+	dir, err := os.OpenFile(filepath.Dir(path), os.O_RDONLY|unix.O_DIRECTORY|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := dir.Stat()
+	if err != nil {
+		_ = dir.Close()
+		return nil, nil, err
+	}
+	return dir, info, nil
+}
+
+// openLockEntryAt opens name in dir, retrying an interrupted open.
+func openLockEntryAt(dir *os.File, name string, flags int, mode uint32) (int, error) {
+	fd := -1
+	err := atLockDir(dir, func(dirFD int) error {
+		for {
+			var err error
+			fd, err = unix.Openat(dirFD, name, flags|unix.O_CLOEXEC, mode)
+			if !errors.Is(err, unix.EINTR) {
+				return err
+			}
+		}
+	})
+	return fd, err
+}
+
+func lockLinkCount(info os.FileInfo) uint64 {
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		return uint64(stat.Nlink)
+	}
+	return 0
 }
 
 func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
@@ -750,11 +906,11 @@ func (s *Store) CheckQuotaRefreshLock(lock *Lock) error {
 		lock.path != filepath.Join(filepath.Dir(s.path), "quota-refresh.lock") {
 		return ErrLockLost
 	}
-	contents, err := os.ReadFile(lock.path)
+	entry, _, err := readLockFile(lock.path)
 	if err != nil {
 		return errors.Join(ErrLockLost, err)
 	}
-	if string(contents) != lock.token {
+	if !entry.owned || entry.token != lock.token {
 		return ErrLockLost
 	}
 	return nil
@@ -785,6 +941,43 @@ func acquireNamedLockWithProcessCheck(ctx context.Context, stateRoot, name strin
 
 type reclaimFileLock func(*os.File) (bool, error)
 
+// lockCreatedHook, when set by a test, runs after a lock entry has been
+// created and before its identity is recorded.
+var lockCreatedHook func(path string)
+
+// createLockEntry exclusively creates the lock entry at path holding token.
+// The directory is opened once; the entry is created relative to it and both
+// identities recorded for ownership come from that one resolution, so a
+// directory moved or replaced meanwhile cannot mix two resolutions. An
+// existing entry fails with an error matching fs.ErrExist.
+func createLockEntry(path, token string) (*Lock, error) {
+	dir, dirInfo, err := openLockDir(path)
+	if err != nil {
+		return nil, err
+	}
+	name := filepath.Base(path)
+	fd, err := openLockEntryAt(dir, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, uint32(platform.FileMode.Perm()))
+	if err != nil {
+		_ = dir.Close()
+		return nil, &fs.PathError{Op: "open", Path: path, Err: err}
+	}
+	file := os.NewFile(uintptr(fd), path)
+	_, writeErr := file.WriteString(token)
+	info, statErr := file.Stat()
+	if err := errors.Join(writeErr, statErr, file.Close()); err != nil {
+		if info != nil {
+			_ = unlinkLockEntry(dir, name, info)
+		}
+		_ = dir.Close()
+		return nil, err
+	}
+	if lockCreatedHook != nil {
+		lockCreatedHook(path)
+	}
+	registerOwnedLock(token, ownedLockRecord{dir: dirInfo, name: name, info: info})
+	return &Lock{path: path, dir: dir, token: token, info: info}, nil
+}
+
 func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (*Lock, error) {
 	return acquireNamedLockBefore(ctx, stateRoot, name, timeout, processAlive, tryReclaimLock, time.Time{}, time.After)
 }
@@ -812,17 +1005,9 @@ func acquireNamedLockBefore(ctx context.Context, stateRoot, name string, timeout
 				return nil, ErrStateBusy
 			}
 		}
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, platform.FileMode)
+		lock, err := createLockEntry(path, token)
 		if err == nil {
-			if _, writeErr := file.WriteString(token); writeErr != nil {
-				_ = file.Close()
-				_ = os.Remove(path)
-				return nil, writeErr
-			}
-			if err := file.Close(); err != nil {
-				return nil, err
-			}
-			return &Lock{path: path, token: token}, nil
+			return lock, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
@@ -845,53 +1030,149 @@ func acquireNamedLockBefore(ctx context.Context, stateRoot, name string, timeout
 	}
 }
 
-// ClassifyLock inspects the lock file at path without mutating it or holding locks.
-func ClassifyLock(path string, check LockProcessCheck) (LockReason, error) {
-	const maxLockTokenBytes = 64
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", fs.ErrNotExist
-	}
-	if err != nil || !info.Mode().IsRegular() {
-		return LockReasonOwnerUnknown, nil
-	}
-	if info.Size() > maxLockTokenBytes {
-		return LockReasonLegacy, nil
-	}
-	file, err := os.Open(path)
+const maxLockTokenBytes = 64
+
+type lockFileState int
+
+const (
+	lockFileOK lockFileState = iota
+	lockFileLegacy
+	lockFileOwnerUnknown
+)
+
+// lockEntry is one observation of a lock's directory entry: the directory
+// holding it, the regular file it names, and the token read from that file.
+type lockEntry struct {
+	dir   os.FileInfo
+	info  os.FileInfo
+	token string
+	owned bool
+}
+
+// errLockEntryIrregular reports an entry that is not a regular file, such as a
+// symlink, FIFO or directory: it cannot be a lock this protocol wrote.
+var errLockEntryIrregular = errors.New("lock entry is not a regular file")
+
+// openLockEntry opens the entry at path for reading without blocking. The
+// directory is opened first and the entry relative to it, so both identities
+// come from the same resolution; the final component is not followed, and
+// O_NONBLOCK keeps a FIFO swapped in from waiting for a writer. Only a regular
+// file is returned, open, together with its open directory; the caller closes
+// both. An entry that cannot be opened because it is not a regular file, such
+// as a Unix socket Darwin refuses to open, is reported as irregular after a
+// no-follow look at the same directory; any other failure stays as it is.
+func openLockEntry(path string) (*os.File, *os.File, lockEntry, error) {
+	dir, dirInfo, err := openLockDir(path)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", fs.ErrNotExist
+		if errors.Is(err, unix.ENOTDIR) {
+			return nil, nil, lockEntry{}, errLockEntryIrregular
 		}
-		return LockReasonOwnerUnknown, nil
+		return nil, nil, lockEntry{}, err
 	}
+	file, info, err := openRegularLockEntry(dir, path)
+	if err != nil {
+		_ = dir.Close()
+		return nil, nil, lockEntry{}, err
+	}
+	return dir, file, lockEntry{dir: dirInfo, info: info}, nil
+}
+
+func openRegularLockEntry(dir *os.File, path string) (*os.File, os.FileInfo, error) {
+	name := filepath.Base(path)
+	fd, openErr := openLockEntryAt(dir, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+	if openErr != nil {
+		if errors.Is(openErr, unix.ELOOP) {
+			return nil, nil, errLockEntryIrregular
+		}
+		if !errors.Is(openErr, unix.ENOENT) {
+			if st, err := statLockEntryAt(dir, name); err == nil && st.Mode&unix.S_IFMT != unix.S_IFREG {
+				return nil, nil, errLockEntryIrregular
+			}
+		}
+		return nil, nil, &fs.PathError{Op: "open", Path: path, Err: openErr}
+	}
+	file := os.NewFile(uintptr(fd), path)
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = file.Close()
+		return nil, nil, errLockEntryIrregular
+	}
+	return file, info, nil
+}
+
+// readLockFile makes one bounded observation of the lock entry at path,
+// including whether it is the entry this process acquired, decided while the
+// directory of that same observation is still open.
+func readLockFile(path string) (lockEntry, lockFileState, error) {
+	dir, file, entry, err := openLockEntry(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return lockEntry{}, lockFileOwnerUnknown, fs.ErrNotExist
+	}
+	if err != nil {
+		return lockEntry{}, lockFileOwnerUnknown, nil
+	}
+	defer dir.Close()
 	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return LockReasonOwnerUnknown, nil
+	if entry.info.Size() > maxLockTokenBytes {
+		return lockEntry{}, lockFileLegacy, nil
 	}
 	contents, err := io.ReadAll(io.LimitReader(file, maxLockTokenBytes+1))
 	if err != nil {
-		return LockReasonOwnerUnknown, nil
+		return lockEntry{}, lockFileOwnerUnknown, nil
 	}
 	if len(contents) > maxLockTokenBytes {
-		return LockReasonLegacy, nil
+		return lockEntry{}, lockFileLegacy, nil
 	}
-	pid, ok := lockOwnerPID(string(contents))
+	entry.token = string(contents)
+	entry.owned = isOwnedLockAt(dir, filepath.Base(path), entry)
+	return entry, lockFileOK, nil
+}
+
+// ClassifyLock inspects the lock file at path without mutating it or holding locks.
+func ClassifyLock(path string, check LockProcessCheck) (LockReason, error) {
+	reason, _, err := classifyLock(path, check, false)
+	return reason, err
+}
+
+// ClassifyLockOwnership inspects the lock file at path in a single read and
+// reports both its liveness reason and whether it is genuinely held by this process.
+func ClassifyLockOwnership(path string, check LockProcessCheck) (LockReason, bool, error) {
+	return classifyLock(path, check, true)
+}
+
+func classifyLock(path string, check LockProcessCheck, checkOwnership bool) (LockReason, bool, error) {
+	entry, state, err := readLockFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	switch state {
+	case lockFileLegacy:
+		return LockReasonLegacy, false, nil
+	case lockFileOwnerUnknown:
+		return LockReasonOwnerUnknown, false, nil
+	}
+	pid, ok := lockOwnerPID(entry.token)
 	if !ok {
-		return LockReasonLegacy, nil
+		return LockReasonLegacy, false, nil
 	}
 	if check == nil {
 		check = lockProcessAlive
 	}
 	alive, known := check(pid)
 	if !known {
-		return LockReasonOwnerUnknown, nil
+		return LockReasonOwnerUnknown, false, nil
 	}
-	if alive {
-		return LockReasonLive, nil
+	if !alive {
+		return LockReasonReclaimable, false, nil
 	}
-	return LockReasonReclaimable, nil
+	if checkOwnership {
+		return LockReasonLive, entry.owned, nil
+	}
+	return LockReasonLive, false, nil
 }
 
 func reclaimLockFromDeadProcess(path string, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (bool, error) {
@@ -955,17 +1236,71 @@ func reclaimLockFromDeadProcess(path string, processAlive lockProcessCheck, tryR
 }
 
 func (l *Lock) Release() error {
-	contents, err := os.ReadFile(l.path)
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.released {
+		return nil
+	}
+	err := l.releaseOnce()
+	if err == nil || errors.Is(err, ErrLockLost) {
+		l.released = true
+		unregisterOwnedLock(l.token)
+		if l.dir != nil {
+			_ = l.dir.Close()
+		}
+	}
+	return err
+}
+
+func (l *Lock) releaseOnce() error {
+	if l.dir == nil {
+		return ErrLockLost
+	}
+	file, info, err := openRegularLockEntry(l.dir, l.path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
+	if errors.Is(err, errLockEntryIrregular) {
+		// Not a regular file, however it failed to open: it cannot be the
+		// lock this handle wrote, so the lock is lost and forgotten.
+		return ErrLockLost
+	}
 	if err != nil {
+		// Permission and transient I/O failures prove nothing about the
+		// entry; the release stays retryable and the lock registered.
 		return err
+	}
+	defer file.Close()
+	if !os.SameFile(l.info, info) {
+		return ErrLockLost
+	}
+	contents, readErr := io.ReadAll(io.LimitReader(file, maxLockTokenBytes+1))
+	if readErr != nil {
+		return readErr
 	}
 	if string(contents) != l.token {
 		return ErrLockLost
 	}
-	return os.Remove(l.path)
+	return unlinkLockEntry(l.dir, filepath.Base(l.path), info)
+}
+
+// Recheck the name against the opened file before unlinking it. Both lookups
+// stay relative to the acquisition directory even if its old path is reused.
+func unlinkLockEntry(dir *os.File, name string, info os.FileInfo) error {
+	st, err := statLockEntryAt(dir, name)
+	if err == nil {
+		if !sameLockFile(st, info) {
+			return ErrLockLost
+		}
+		err = atLockDir(dir, func(fd int) error { return unix.Unlinkat(fd, name, 0) })
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func newLockToken() (string, error) {
@@ -974,6 +1309,17 @@ func newLockToken() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("v1:%d:%s", os.Getpid(), hex.EncodeToString(bytes)), nil
+}
+
+// LockOwnedByCurrentProcess reports whether path names the lock entry this
+// process acquired and still holds: the same directory entry and file
+// identity, carrying the full token it wrote.
+func LockOwnedByCurrentProcess(path string) bool {
+	entry, state, err := readLockFile(path)
+	if err != nil || state != lockFileOK {
+		return false
+	}
+	return entry.owned
 }
 
 func lockOwnerPID(token string) (int, bool) {

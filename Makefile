@@ -2,6 +2,7 @@ GO ?= go
 GOCACHE ?= /private/tmp/agent-deck-go-build
 GOMODCACHE ?= /private/tmp/agent-deck-go-mod
 GO_TEST_RUNNER := scripts/run-go-test.sh
+GO_RACE_PACKAGES ?= ./...
 DIST_DIR ?= dist
 PACKAGE := ./cmd/agentdeck
 ARM64_MAX_BYTES ?= 26214400
@@ -66,7 +67,7 @@ test:
 # Race-instrumented SQLite suites compete heavily for runner resources. Bound
 # package concurrency and budget the full CLI suite; keep individual deadlines.
 test-race:
-	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race -p 1 -timeout=20m ./...
+	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race -p 1 -timeout=20m $(GO_RACE_PACKAGES)
 
 test-macos-app:
 	bash scripts/test-macos-app.sh

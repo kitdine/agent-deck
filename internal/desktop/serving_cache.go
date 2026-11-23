@@ -169,6 +169,13 @@ func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Req
 		return ServingSnapshot{}, err
 	}
 	if snapshot, err := s.ReadServingSnapshot(ctx); err == nil {
+		s.refreshLockHealth(&snapshot.Payload.Data.Health)
+		// A persisted publication may carry null or absent checks; native
+		// readers decode them as a required array. Serve [] without
+		// touching the summary or the persisted bytes.
+		if snapshot.Payload.Data.Health.Checks == nil {
+			snapshot.Payload.Data.Health.Checks = []HealthCheck{}
+		}
 		sessions := &snapshot.Payload.Data.Sessions
 		if view := snapshot.Payload.Data.SessionScopeView; view != nil && request.RecentLimit < len(view.Recent) {
 			view.Recent = view.Recent[:request.RecentLimit]

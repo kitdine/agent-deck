@@ -24,12 +24,12 @@ created: 2026-11-17
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `quota-storage-compatibility` | [x] | [x] |
-| 2. `identity-adapters` | [ ] | [ ] |
+| 2. `identity-adapters` | [x] | [x] |
 | 3. `quota-delivery-guard` | [x] | [x] |
 | 4. `quota-refresh-publication` | [x] | [x] |
 | 5. `menubar-subscription-identity` | [x] | [x] |
 | 6. `widget-subscription-identity` | [x] | [x] |
-| 7. `subscription-identity-acceptance` | [ ] | [ ] |
+| 7. `subscription-identity-acceptance` | [x] | [x] |
 
 | Anchor | 依赖 | 验证 |
 | --- | --- | --- |
