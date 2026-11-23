@@ -244,8 +244,10 @@ modified regular, non-executable Markdown in declared documentation locations
 qualifies. Renames, deletes, mixed changes, fixtures, generated inputs,
 executable specimens, unknown paths or an unavailable base/classifier run the
 original product checks. The required `verify` and `desktop` jobs still finish
-with explicit documentation-only success paths after L0 succeeds. Push and PR
-runs remain separate; stale runs on the same event/ref may be cancelled.
+with explicit documentation-only success paths after L0 succeeds. Push CI runs
+on `main` and `release/**` while feature and fix branches run via
+`pull_request`; push and PR concurrency groups remain separate, and stale runs
+on the same event/ref may be cancelled.
 Document checks and the CI/parser regression suite also run for mixed changes
 and first deployment without a base classifier. A known range checks changed
 Markdown, both sides of rename/copy/delete/type changes, complete affected topic
