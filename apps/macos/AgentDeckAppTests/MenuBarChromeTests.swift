@@ -1733,6 +1733,52 @@ extension MenuBarChromeTests {
 		XCTAssertFalse(text.contains(t(DesktopCopy.quotaIdentityTitle)), text)
 	}
 
+	func testOpenQuotaCardWithdrawsExpiredAssociation() async throws {
+		let now = Date()
+		let stamp = quotaStamp(4, from: now)
+		let deadline = try XCTUnwrap(DesktopFormat.timestamp(stamp))
+		let client = try quotaClient("codex", extra: ["identity": identityJSON(
+			state: "identified", freshness: "current", currentUntil: stamp,
+			observedAt: quotaStamp(-60, from: now), email: "a***e@expiry.example.test",
+			association: "confirmed", source: "codex_account_read"
+		)])
+		let language = QuotaIdentityPunctuation.isChinese ? "zh-Hans" : "en"
+		let confirmed = t(DesktopCopy.quotaIdentityAssociationConfirmed)
+		let lastKnown = t(DesktopCopy.quotaIdentityLastKnown)
+		let unconfirmed = t(DesktopCopy.quotaIdentityAssociationUnconfirmed)
+		let hosting = NSHostingView(rootView: QuotaPanelView(clients: [client])
+			.frame(width: 396)
+			.frame(width: 420, height: 440, alignment: .top)
+			.background(Color.white)
+			.environment(\.colorScheme, .light))
+		let bounds = NSRect(x: 0, y: 0, width: 420, height: 440)
+		let window = NSWindow(contentRect: bounds, styleMask: [.titled], backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentView = hosting
+		window.orderFront(nil)
+		defer { window.close() }
+		hosting.layoutSubtreeIfNeeded()
+		try await Task.sleep(for: .milliseconds(100))
+
+		XCTAssertLessThan(Date(), deadline)
+		XCTAssertTrue(quotaAccessibilityLabels(hosting).contains { $0.contains(confirmed) })
+		XCTAssertTrue(try renderedQuotaText(hosting, language: language).joined(separator: " ").contains(confirmed))
+
+		let limit = deadline.addingTimeInterval(2)
+		var labels = quotaAccessibilityLabels(hosting)
+		while Date() < limit && !labels.contains(where: { $0.contains(lastKnown) && $0.contains(unconfirmed) }) {
+			try await Task.sleep(for: .milliseconds(50))
+			labels = quotaAccessibilityLabels(hosting)
+		}
+		XCTAssertGreaterThanOrEqual(Date(), deadline)
+		XCTAssertTrue(labels.contains { $0.contains(lastKnown) && $0.contains(unconfirmed) }, "\(labels)")
+		XCTAssertFalse(labels.contains { $0.contains(confirmed) }, "\(labels)")
+		let text = try renderedQuotaText(hosting, language: language).joined(separator: " ")
+		XCTAssertTrue(text.contains(lastKnown), text)
+		XCTAssertTrue(text.contains(unconfirmed), text)
+		XCTAssertFalse(text.contains(confirmed), text)
+	}
+
 	func testWideRawQuotaPlanLeavesSourceAndReadTimeVisibleAt280Points() throws {
 		try withQuotaLocale("en") {
 			let now = Date()
@@ -1792,9 +1838,9 @@ extension MenuBarChromeTests {
 
 	func testQuotaIdentityCurrentAndLastKnownSignInInBothLanguages() throws {
 		let now = Date()
-		let expected: [String: (title: String, lastKnown: String, hidden: String)] = [
-			"en": ("Signed in", "Last known sign-in", "partly hidden"),
-			"zh-Hans": ("当前登录", "上次识别的登录", "部分隐藏"),
+		let expected: [String: (title: String, lastKnown: String, unconfirmed: String, confirmed: String, hidden: String)] = [
+			"en": ("Signed in", "Last known sign-in", "Not confirmed as the account behind this quota", "Same account as this quota", "partly hidden"),
+			"zh-Hans": ("当前登录", "上次识别的登录", "与此卡额度的账号关联未确认", "与此卡额度为同一账号", "部分隐藏"),
 		]
 		for (language, copy) in expected {
 			try withQuotaLocale(language) {
@@ -1807,15 +1853,22 @@ extension MenuBarChromeTests {
 				XCTAssertEqual(presented.lead, .email(label: copy.title, masked: "a***e@example.test", lastKnown: false), language)
 				XCTAssertTrue(presented.isCurrent)
 				XCTAssertFalse(presented.metaAdjacent)
+				XCTAssertEqual(presented.association, copy.unconfirmed, language)
+				XCTAssertEqual(presented.organization, t(DesktopCopy.quotaIdentityWorkspace) + QuotaIdentityPunctuation.colon + "Acme Research")
 				XCTAssertTrue(presented.accessibilityLabel.hasPrefix("Codex " + copy.title), presented.accessibilityLabel)
 				XCTAssertTrue(presented.accessibilityLabel.contains("a \(copy.hidden) e@example.test"), presented.accessibilityLabel)
 				XCTAssertFalse(presented.accessibilityLabel.contains("***"), "the spoken name must not read the mask as asterisks")
+				XCTAssertTrue(presented.accessibilityLabel.hasSuffix(QuotaIdentityPunctuation.semicolon + copy.unconfirmed), presented.accessibilityLabel)
 
+				// A confirmed association is only stated while the identity is
+				// still current at the rendering instant.
 				let confirmed = try quotaClient("codex", extra: ["identity": identityJSON(
 					state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now),
 					observedAt: quotaStamp(-60, from: now), email: "a***e@example.test", association: "confirmed", source: "codex_account_read"
 				)])
+				XCTAssertEqual(QuotaIdentityPresentation.make(confirmed, now: now)?.association, copy.confirmed, language)
 				let expiredRender = try XCTUnwrap(QuotaIdentityPresentation.make(confirmed, now: now.addingTimeInterval(601)))
+				XCTAssertEqual(expiredRender.association, copy.unconfirmed, "an expired current_until must withdraw the confirmation")
 				XCTAssertEqual(expiredRender.lead, .email(label: copy.lastKnown, masked: "a***e@example.test", lastKnown: true))
 				XCTAssertTrue(expiredRender.metaAdjacent)
 				XCTAssertFalse(expiredRender.isCurrent)
@@ -1851,6 +1904,7 @@ extension MenuBarChromeTests {
 			)])
 			let out = try XCTUnwrap(QuotaIdentityPresentation.make(signedOut, now: now))
 			XCTAssertEqual(out.lead, .status("Not signed in to a subscription"), "a signed-out state never shows a mailbox")
+			XCTAssertNil(out.association, "Claude never states an account association")
 			XCTAssertNil(out.organization)
 			XCTAssertTrue(out.accessibilityLabel.hasPrefix("Claude Not signed in to a subscription"), out.accessibilityLabel)
 			XCTAssertFalse(out.accessibilityLabel.contains("stale"))
@@ -1869,6 +1923,7 @@ extension MenuBarChromeTests {
 			)])
 			let codexOut = try XCTUnwrap(QuotaIdentityPresentation.make(codexSignedOut, now: now))
 			XCTAssertEqual(codexOut.lead, .status("Not signed in to a subscription"))
+			XCTAssertNil(codexOut.association, "no mailbox, no association row")
 			XCTAssertNil(QuotaPanelView(clients: []).quotaDiscardedLabel(codexSignedOut), "Codex sign-out never discards quota (D3)")
 
 			let never = try quotaClient("codex", extra: ["identity": identityJSON(
@@ -1910,6 +1965,14 @@ extension MenuBarChromeTests {
 		let panel = QuotaPanelView(clients: [])
 		let now = Date()
 		try withQuotaLocale("en") {
+			// M1/Pro 100: the pill shows the compact name; help and the
+			// accessibility name carry the full name and the safe raw value.
+			let codex = try quotaClient("codex")
+			let pill = try XCTUnwrap(panel.planPill(codex))
+			XCTAssertEqual(pill.text, "Pro 100")
+			XCTAssertEqual(pill.help, "ChatGPT Pro 100 (raw value prolite)")
+			XCTAssertNil(panel.planUnavailableLabel(codex))
+
 			// Legacy producer: only a missing `plan_display` key falls back.
 			let legacy = try quotaClient("codex", omit: ["plan_display", "identity", "quota_context", "failure_detail"])
 			XCTAssertEqual(panel.planPill(legacy)?.text, "prolite")
@@ -1949,6 +2012,15 @@ extension MenuBarChromeTests {
 			XCTAssertEqual(presented.planHelp, "Plan sources disagree (planTier: raw value pro · subscriptionType: raw value max)")
 			XCTAssertEqual(presented.organization, "Organization: Acme")
 
+			// Identity plan equal to the quota pill is not repeated; a different
+			// one is shown with its prefix.
+			let same = try quotaClient("codex", extra: ["identity": identityJSON(
+				state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
+				email: "a***e@example.test",
+				plan: planJSON("known", name: "ChatGPT Pro 100", short: "Pro 100", source: "codex_account_read", raw: [("planType", "prolite")]),
+				association: "unconfirmed", source: "codex_account_read"
+			)])
+			XCTAssertNil(QuotaIdentityPresentation.make(same, now: now)?.plan)
 			let claudePro = try quotaClient("claude", extra: ["identity": identityJSON(
 				state: "identified", freshness: "current", currentUntil: quotaStamp(600, from: now), observedAt: quotaStamp(-60, from: now),
 				email: "c***e@example.test", plan: planJSON("known", name: "Claude Pro", short: "Pro", source: "claude_auth_status", raw: [("planTier", "pro")]),
@@ -1959,6 +2031,7 @@ extension MenuBarChromeTests {
 			XCTAssertTrue(claudeIdentity.accessibilityLabel.contains("Sign-in plan: Claude Pro"), claudeIdentity.accessibilityLabel)
 		}
 		try withQuotaLocale("zh-Hans") {
+			XCTAssertEqual(panel.planPill(try quotaClient("codex"))?.help, "ChatGPT Pro 100（原值 prolite）")
 			XCTAssertEqual(panel.planUnavailableLabel(try quotaClient("claude")), "额度来源不提供套餐")
 		}
 	}
@@ -2123,6 +2196,7 @@ extension MenuBarChromeTests {
 						if panel.name == "pro100-and-recovered" {
 							XCTAssertTrue(joined.contains("example.test"), "\(label): \(lines)")
 							XCTAssertTrue(lines.contains { $0.contains("Pro 100") }, "\(label): `Pro 100` must render on one line: \(lines)")
+							XCTAssertTrue(joined.contains(language == "en" ? "Same account as this quota" : "与此卡额度为同一账号"), "\(label): \(lines)")
 						} else {
 							XCTAssertTrue(lines.contains { line in
 								guard let start = line.range(of: "avery", options: .caseInsensitive) else { return false }

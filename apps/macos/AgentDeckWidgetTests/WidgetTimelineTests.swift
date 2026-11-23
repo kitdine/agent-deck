@@ -3,6 +3,45 @@ import XCTest
 import WidgetKit
 
 final class WidgetTimelineTests: XCTestCase {
+	func testLargeCodexPlanFallbackAndScopedAssociation() throws {
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date("2026-08-13T10:00:00Z"))
+		let plans: [(Any?, String?)] = [
+			(nil, "prolite"), (NSNull(), nil), (["state": "known", "short_name": "Pro 100"], "Pro 100"),
+			(["state": "raw_only", "short_name": "future plan"], "future plan"), (["state": "known"], nil),
+			(["state": "known", "short_name": NSNull()], nil), (["state": "future", "short_name": "hidden"], nil),
+		]
+		for (plan, expected) in plans {
+			let snapshot = try identityWidgetFixture { clients in
+				for i in clients.indices { clients[i]["plan_display"] = plan }
+			}
+			let entry = AgentDeckWidgetEntry(date: now, outcome: .loaded(snapshot), kind: .quota, client: .codex, period: .today)
+			let model = WidgetSurfaceModel(entry: entry, now: now)
+			for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+				for client in snapshot.subscription.clients {
+					XCTAssertEqual(model.quotaPlan(client, family: family), family == .systemLarge && client.client == "codex" ? expected : nil)
+				}
+			}
+		}
+
+		let associations: [Any?] = [nil, NSNull(), "unconfirmed", "future", "confirmed"]
+		for value in associations {
+			let snapshot = try identityWidgetFixture { clients in
+				for i in clients.indices {
+					var id = clients[i]["identity"] as! [String: Any]
+					id["quota_association"] = value
+					clients[i]["identity"] = id
+				}
+			}
+			let entry = AgentDeckWidgetEntry(date: now, outcome: .loaded(snapshot), kind: .quota, client: .claude, period: .today)
+			let model = WidgetSurfaceModel(entry: entry, now: now)
+			for client in snapshot.subscription.clients {
+				let login = try XCTUnwrap(model.quotaLogin(client, family: .systemLarge))
+				let unconfirmed = client.client == "codex" && value as? String != "confirmed"
+				XCTAssertEqual(login.associationUnconfirmed, unconfirmed)
+			}
+		}
+	}
+
 	func testSpokenMailboxNormalizesWhitespaceInBothLanguages() throws {
 		// Deliberately vary whitespace at the formatting boundary so trimming
 		// just the ends would leave the repeated interior spaces audible.

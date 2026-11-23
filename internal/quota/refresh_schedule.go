@@ -20,7 +20,7 @@ const (
 	refreshProcessExit     = 500 * time.Millisecond
 	refreshPreparation     = refreshWriteAndCleanup + refreshReconcileBudget
 	refreshProbes          = max(
-		DefaultCodexTimeout+refreshProcessExit+refreshWriteAndCleanup,
+		DefaultCodexTimeout+codexIdentityTimeout+refreshProcessExit+refreshWriteAndCleanup,
 		DefaultClaudeAuthTimeout+DefaultClaudeProseTimeout+2*refreshProcessExit+refreshGuardWait+3*refreshWriteAndCleanup,
 	)
 
@@ -113,43 +113,67 @@ func (s Scheduler) RunRefresh(ctx context.Context, root *RefreshCore, lock *stor
 	return cycle, guard, guardErr
 }
 
-// Schedule the existing Codex usage probe and commit its result once in this cycle.
+// Codex's two sides share a transport, never a cadence. Read their inputs
+// together, then commit the adapter result (including its private proof)
+// once, even when only one side succeeded.
 func (s Scheduler) runScheduledCodex(ctx context.Context, c RefreshCycle, trigger Trigger) {
 	if _, busy := quotaProbeInFlight.LoadOrStore(ClientCodex, struct{}{}); busy {
 		return
 	}
 	defer quotaProbeInFlight.Delete(ClientCodex)
-	rec, found, err := s.Store.Envelope(ctx, ClientCodex)
+	state, err := s.scheduleState(ctx, ClientCodex)
 	if err != nil {
 		return
 	}
-	if !s.due(trigger, rec, found, c.at) {
+	i := state.identity
+	idDue := !c.at.Before(i.BackoffUntil) && (trigger == TriggerManual || i.AttemptedAt.IsZero() || !c.at.Before(i.AttemptedAt.Add(s.Interval)))
+	usageDue := s.due(trigger, state.usage.Envelope, state.hasUsage, c.at)
+	// A legacy injected probe simulates usage only; it cannot report an
+	// identity attempt and must never fall through to an installed binary.
+	if s.ProbeCodexCycle == nil && s.ProbeCodex != nil {
+		idDue = false
+	}
+	if !idDue && !usageDue {
 		return
 	}
 	work := DefaultCodexTimeout + refreshProcessExit + refreshWriteAndCleanup
+	if idDue && usageDue {
+		work += codexIdentityTimeout
+	}
 	if !hasRefreshBudget(ctx, work) {
 		return
 	}
 	var result CodexCycleResult
-	usage, err := s.probeCodex(ctx, c.at)
-	if err != nil {
-		result.Failure = &UsageFailure{Reason: codexFailureReason(err)}
+	if s.ProbeCodexCycle != nil {
+		result = s.ProbeCodexCycle(ctx, c.at, idDue, usageDue)
+	} else if s.ProbeCodex == nil {
+		result = ProbeCodexCycle(ctx, c.at, idDue, usageDue)
 	} else {
-		result.Usage = &usage
+		usage, e := s.probeCodex(ctx, c.at)
+		if e != nil {
+			result.Failure = &UsageFailure{Reason: codexFailureReason(e)}
+		} else {
+			result.Usage = &usage
+		}
 	}
 	if !hasRefreshBudget(ctx, refreshWriteAndCleanup) {
 		return
 	}
 	at := s.now()
+	var base, until time.Time
+	if result.Identity != nil && result.Identity.Failure != "" {
+		base = at
+		until = base.Add(s.nextBackoff(EnvelopeRecord{FailureAt: i.BackoffBaseAt, BackoffUntil: i.BackoffUntil}, true))
+	}
 	if result.Failure != nil {
 		f := result.Failure
 		f.Trigger, f.FailureObservedAt = trigger, at
 		if trigger == TriggerBackground {
 			f.FailureAt = at
-			f.BackoffUntil = at.Add(s.nextBackoff(rec, found))
+			f.BackoffUntil = at.Add(s.nextBackoff(state.usage.Envelope, state.hasUsage))
 		}
 	}
-	_, _ = s.Store.CommitCodexCycle(ctx, c, result, time.Time{}, time.Time{})
+	_, _ = s.Store.CommitCodexCycle(ctx, c, result, base, until)
 }
 
 type clientScheduleState struct {

@@ -307,6 +307,18 @@ struct WidgetSurfaceModel {
 		}
 	}
 
+	func quotaPlan(_ client: AppGroupQuotaClient, family: WidgetFamily) -> String? {
+		guard family == .systemLarge, client.client == "codex",
+			entry.snapshot?.subscription.reading == true, client.applicable,
+			client.failure != .probeDisabled, client.quotaContext.value == nil else { return nil }
+		switch client.planDisplay {
+		case .absent: return client.plan
+		case .null: return nil
+		case let .value(plan):
+			return plan.state == .known || plan.state == .rawOnly ? plan.shortName.value : nil
+		}
+	}
+
 	struct Login {
 		let email: String
 		let expires: Date
@@ -321,7 +333,7 @@ struct WidgetSurfaceModel {
 			let expires = AppGroupQuotaClient.timestamp(raw), entry.date < expires
 		else { return nil }
 		return Login(email: email, expires: expires,
-			associationUnconfirmed: client.client == "codex")
+			associationUnconfirmed: client.client == "codex" && id.quotaAssociation.value != .confirmed)
 	}
 
 	/// The header's scope label for a quota widget. Small and medium narrow

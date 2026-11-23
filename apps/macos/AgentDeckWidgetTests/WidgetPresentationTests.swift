@@ -41,6 +41,12 @@ final class WidgetPresentationTests: XCTestCase {
 	}
 
 	@MainActor
+	func testOnlyExactCodexConfirmationSuppressesVisibleAndSpokenHint() throws {
+		try assertCodexLoginHint(association: "confirmed", expected: false)
+		try assertCodexLoginHint(association: "future", expected: true)
+	}
+
+	@MainActor
 	private func assertCodexLoginHint(association: String?, expected: Bool,
 		file: StaticString = #filePath, line: UInt = #line) throws {
 		let snapshot = try identityWidgetFixture { clients in
@@ -114,7 +120,9 @@ final class WidgetPresentationTests: XCTestCase {
 
 	@MainActor
 	func testQuotaLoginAndWindowsStayWithinEachNativeSize() throws {
-		let snapshot = try identityWidgetFixture()
+		let snapshot = try identityWidgetFixture { clients in
+			clients[0]["plan_display"] = ["state": "raw_only", "short_name": String(repeating: "W", count: 64)]
+		}
 		let date = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
 		for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
 			for selection in [WidgetClient.codex, .claude] {
@@ -130,6 +138,9 @@ final class WidgetPresentationTests: XCTestCase {
 				let canvas = try XCTUnwrap(capture.frames["canvas"]).insetBy(dx: -1, dy: -1)
 				for name in ["codex", "claude"] {
 					let shown = family == .systemLarge || selection.rawValue == name
+					let plan = capture.frames["plan.\(name).absolute"]
+					XCTAssertEqual(plan != nil, family == .systemLarge && name == "codex")
+					if let plan { XCTAssertTrue(canvas.contains(plan)); XCTAssertGreaterThan(plan.width, 0) }
 					let login = capture.frames["login.\(name).absolute"]
 					XCTAssertEqual(login != nil, family == .systemLarge)
 					if let login {

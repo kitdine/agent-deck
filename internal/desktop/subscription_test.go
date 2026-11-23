@@ -453,7 +453,7 @@ func seedQuota(t *testing.T, root string) {
 		}
 	}
 	if err := qs.PutEnvelope(ctx, quota.EnvelopeRecord{
-		Client: quota.ClientCodex, AccountID: "fixture-account", Applicable: true, Source: quota.SourceCodex, ObservedAt: observed, Plan: "pro",
+		Client: quota.ClientCodex, AccountID: "fixture-account", Applicable: true, Source: quota.SourceCodex, ObservedAt: observed, Plan: "prolite",
 		ResetAllowance: quota.ResetAllowance{TotalReason: quota.ReasonNotReported, Remaining: 3, HasRemaining: true,
 			Credits: []quota.ResetCredit{{Title: "Full reset", Status: "available", GrantedAt: fixtureNow.Add(-5 * 24 * time.Hour), ExpiresAt: fixtureNow.Add(25 * 24 * time.Hour)}}},
 	}); err != nil {

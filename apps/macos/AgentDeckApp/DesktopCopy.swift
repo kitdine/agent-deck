@@ -622,8 +622,11 @@ enum DesktopCopy {
 	static let quotaIdentitySignedOut = "Not signed in to a subscription"
 	static let quotaIdentityNonSubscription = "Not a subscription sign-in"
 	static let quotaIdentityLastRead = "last read %@"
+	static let quotaIdentityWorkspace = "Workspace"
 	static let quotaIdentityOrganization = "Organization"
 	static let quotaIdentityPlanPrefix = "Sign-in plan"
+	static let quotaIdentityAssociationUnconfirmed = "Not confirmed as the account behind this quota"
+	static let quotaIdentityAssociationConfirmed = "Same account as this quota"
 	static let quotaIdentityReasonNeverProbed = "Identity not read yet"
 	static let quotaIdentityReasonProbeFailed = "Identity read failed"
 	static let quotaIdentityReasonParseFailed = "Identity output not recognized"
@@ -666,7 +669,8 @@ enum DesktopCopy {
 		quotaSourceCodexAppServer, quotaSourceClaudeStatusLine, quotaSourceClaudeUsageProse,
 		quotaIdentityTitle, quotaIdentityLastKnown, quotaIdentityPastStatus, quotaIdentityUnknown,
 		quotaIdentitySignedOut, quotaIdentityNonSubscription, quotaIdentityLastRead,
-		quotaIdentityOrganization, quotaIdentityPlanPrefix,
+		quotaIdentityWorkspace, quotaIdentityOrganization, quotaIdentityPlanPrefix,
+		quotaIdentityAssociationUnconfirmed, quotaIdentityAssociationConfirmed,
 		quotaIdentityReasonNeverProbed, quotaIdentityReasonProbeFailed, quotaIdentityReasonParseFailed,
 		quotaIdentityReasonIncomparable, quotaIdentityMaskedSpoken,
 		quotaPlanDisplayConflict, quotaPlanDisplayRaw, quotaReasonPlanNotReported, quotaReasonPlanUnsafe,

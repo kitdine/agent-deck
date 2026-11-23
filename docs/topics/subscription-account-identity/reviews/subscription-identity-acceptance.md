@@ -96,3 +96,19 @@ N3 PASS；N2 的系统 VoiceOver 部分按用户授权跳过，记为未执行�
 - **N2。** 渲染、绑定状态栏及中英文观察沿用 Round 2 记录。系统 VoiceOver 观察由用户明确授权跳过，记为未执行，不作为本轮阻塞。
 - **回执。** 受控 AgentDeck-Acceptance Handoffs 目录 `v075-e21-sai-task7-n3-desktop-19f3a581`，HANDOFF.md SHA-256 `1576f82ef413c6ca02ffb1a7ca7e105432b7fc9d2cd10710f7564ea1e1b14da0`，SHA256SUMS `36e8ede05c1840f931d1d3493bd3cd9a1fcc08e6755e15e91732689b0d9e87aa`，136 项主控复核全部一致。
 - **补丁恢复与门禁。** 树 `19f3a581` 的三路径锁修复补丁原存于 /private/tmp，主机重启后丢失，已从 OpenCode 与 Codex 会话记录精确恢复：修复前树 `32999f846ccd6632ebfe5e3f4f8c89bbe9ea33d9`（`1f80036` 与 `929e952` 的合并解决结果）加补丁（SHA-256 `d3b89a0fdb1bf2267607fe5208b68b4f05539550d4f784bffd58f225278efb4e`）重放得到 `19f3a581c21abca5b60d2e114f1eb45337a12c5b`。CEv1 在该精确树上 7/7 满足：N3 证据记录桌面观察；N2 证据注明 VoiceOver 部分经用户豁免未执行。
+
+## Round 4 — 2026-11-23，Codex 增量独立评审与原生验收
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+对象为 `fix/codex-quota-plan-display`，以 main `6b3790d`（已合并的 Claude 共享基线）为基准的 Codex 专属增量。
+
+- **独立评审。** Claude Sonnet 5.5 首轮 FAIL：P2-1 Codex 增量替换了 Claude 共享测试与金标，丢失 Claude 身份投影覆盖；P3-1 身份迟到用例在负载下偶发超时。Codex 修复（`27bce52`）恢复 main 的 Claude 断言与金标，Codex 仅作为额外客户端，并以协议顺序证明超时。复评 PASS，两项关闭，三项变异均被检出。逐 anchor 核对复用迁移、`account/read` 单 reader 与 `prolite`→Pro 100 仅作用于文案、不走 Claude 世代失效、双请求不串线、菜单栏与 Widget 的 Codex 专属呈现，以及隐私边界，均通过。
+- **原生验收（候选 `27bce52`）。** 隔离签名测试 App 与 Widget（Developer ID，Team N2FZ2FNRTU，独立 App Group）。
+  - **N1 通过。** GUI 刷新经内嵌 helper 拉起合成 codex app-server，同一进程依次收到 initialize、initialized、`account/read`（`refreshToken:false`）与 `account/rateLimits/read`。库内保留 `prolite`，菜单显示 Pro 100，无障碍文本带原值；已用 89%。换账号、换工作区、退出、身份失败与“上次识别的登录”均由 GUI 触发，换账号后旧额度不串线。偏差：App 启动 helper 的 PATH 固定，验收用同 PID 的 PATH 垫片指向合成 codex，“默认 PATH 下找到 codex”未实测。
+  - **N2 通过。** 真实菜单栏面板中英文 × 280/420 pt × 浅/深色截图，含套餐、脱敏邮箱、工作区、来源与时间、关联提示，并读取无障碍文本。系统 VoiceOver 按用户常设授权跳过，记为未执行。
+  - **N3 通过。** 真实桌面 large 显示 Pro 100 与登录及“额度关联未确认”提示，已确认时提示去除；small/medium 无账号，任何尺寸无工作区；到期后登录行在 21 秒内消失、额度保留。“已确认”状态由夹具写入隔离库，因生产账号比对键当前不可达（与 UX M2 一致）。
+  - **N4 部分，按授权跳过。** helper 产生合格 Codex 提醒（7 天窗 89% ≥ 75，提醒无账号信息）；正向提交需授予测试 App 通知权限，属用户授权跳过的通知权限操作，记为未执行。
+- **回执。** 受控 AgentDeck-Acceptance Handoffs 目录 `v075-e21-codex-plan-27bce52`，HANDOFF.md SHA-256 `625d91d43fe7a6bd53118103d82e5a98ae49e79f32177d792ab8139c9e9913fd`，SHA256SUMS `a3ec4020b6299e9d116674b675259d8380e1f3c5deaeadd0b23df7f26c2fd81d`，211 项主控复核全部一致。测试小组件、进程与登记已清理，正式 App 与真实 App Group 未接触。

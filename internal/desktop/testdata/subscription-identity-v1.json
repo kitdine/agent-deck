@@ -10,20 +10,48 @@
   "clients": [
     {
       "plan_display": {
-        "state": "raw_only",
-        "name": "pro",
-        "short_name": "pro",
-        "basis": "raw",
+        "state": "known",
+        "name": "ChatGPT Pro 100",
+        "short_name": "Pro 100",
+        "basis": "mapping",
         "source": "codex_rate_limits",
         "raw": [
           {
             "field": "planType",
-            "value": "pro"
+            "value": "prolite"
           }
         ],
         "reason": null
       },
-      "identity": null,
+      "identity": {
+        "state": "identified",
+        "unknown_reason": null,
+        "freshness": "current",
+        "current_until": "2026-11-18T12:10:00Z",
+        "observed_at": "2026-11-18T12:00:00Z",
+        "attempted_at": "2026-11-18T12:00:00Z",
+        "failure": null,
+        "failure_at": null,
+        "source": "codex_account_read",
+        "email_masked": "a***e@example.test",
+        "organization_kind": "workspace",
+        "organization_name": "Test workspace",
+        "plan_display": {
+          "state": "known",
+          "name": "ChatGPT Pro 100",
+          "short_name": "Pro 100",
+          "basis": "mapping",
+          "source": "codex_account_read",
+          "raw": [
+            {
+              "field": "planType",
+              "value": "prolite"
+            }
+          ],
+          "reason": null
+        },
+        "quota_association": "confirmed"
+      },
       "failure_detail": null,
       "quota_context": null,
       "client": "codex",
@@ -33,7 +61,7 @@
       "observed_at": "2026-11-18T12:00:00Z",
       "stale": false,
       "attribution_confirmed": true,
-      "plan": "pro",
+      "plan": "prolite",
       "plan_reason": null,
       "windows": [],
       "tightest_window_key": null,

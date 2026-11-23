@@ -10,9 +10,10 @@ final class DesktopWireTests: XCTestCase {
 		let original = try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: bytes)
 		XCTAssertEqual(original.projection.value?.coreEpoch, 11)
 		let codex = original.clients[0]
-		XCTAssertEqual(codex.plan, "pro")
-		XCTAssertEqual(codex.displayPlanShortName, "pro")
-		XCTAssertEqual(codex.identity, .null)
+		XCTAssertEqual(codex.plan, "prolite")
+		XCTAssertEqual(codex.displayPlanShortName, "Pro 100")
+		XCTAssertEqual(codex.identity.value?.quotaAssociation, .value(.confirmed))
+		XCTAssertEqual(codex.identity.value?.currentUntil, .value("2026-11-18T12:10:00Z"))
 		XCTAssertEqual(original.clients[1].planDisplay, .null)
 		XCTAssertEqual(original.clients[1].identity.value?.state, .identified)
 		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(original)), original)
@@ -47,9 +48,22 @@ final class DesktopWireTests: XCTestCase {
 		clients[0].removeValue(forKey: "plan_display")
 		object.removeValue(forKey: "projection")
 		let legacy = try read()
-		XCTAssertEqual(legacy.clients[0].displayPlanShortName, "pro")
+		XCTAssertEqual(legacy.clients[0].displayPlanShortName, "prolite")
 		XCTAssertEqual(legacy.projection, .absent)
 		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(legacy)), legacy)
+	}
+
+	func testCodexIdentityUnknownAssociation() throws {
+		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
+		var identity = try XCTUnwrap(clients[0]["identity"] as? [String: Any])
+		identity["quota_association"] = "future_association"
+		clients[0]["identity"] = identity
+		object["clients"] = clients
+		let data = try JSONSerialization.data(withJSONObject: object)
+		let changed = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: data)
+		XCTAssertEqual(changed.clients[0].identity.value?.quotaAssociation, .value(.unrecognized))
 	}
 
 	// MARK: session_scope_view
@@ -611,7 +625,7 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertEqual(codex.windows.map(\.key), ["codex", "codex_bengalfox"])
 		XCTAssertEqual(codex.tightestWindowKey, "codex")
 		XCTAssertEqual(codex.windows[1].label, "GPT-5.3-Codex-Spark")
-		XCTAssertEqual(codex.plan, "pro")
+		XCTAssertEqual(codex.plan, "prolite")
 		XCTAssertTrue(codex.attributionConfirmed)
 		XCTAssertEqual(codex.resetAllowance?.remaining, 3)
 		XCTAssertNil(codex.resetAllowance?.total)

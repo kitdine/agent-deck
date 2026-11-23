@@ -252,8 +252,8 @@ type Service struct {
 	// uses that package's own real probes. A test injects a fake here so it
 	// never risks invoking the real "codex" or "claude" binary, mirroring
 	// quota.Scheduler's own ProbeCodex/ProbeClaudeProse fields.
-	QuotaProbeCodex func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
-
+	QuotaProbeCodex          func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
+	QuotaProbeCodexCycle     func(ctx context.Context, observedAt time.Time, identityDue, usageDue bool) quota.CodexCycleResult
 	QuotaProbeClaudeIdentity func(context.Context, string) quota.IdentityObservation
 	QuotaProbeClaudeProse    func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
 }
@@ -358,7 +358,7 @@ func (s Service) RefreshQuotaCycle(ctx context.Context, root *quota.RefreshCore,
 	outcome := s.refreshGates(ctx, root.Core(), home, settings.ProbeEnabled, settings.ProbeClients)
 	scheduler := quota.Scheduler{
 		Store: root.Store(), Interval: settings.ProbeInterval, MaxBackoff: maxBackoff, Now: s.now,
-		ProbeCodex:       s.QuotaProbeCodex,
+		ProbeCodex: s.QuotaProbeCodex, ProbeCodexCycle: s.QuotaProbeCodexCycle,
 		ProbeClaudeProse: s.QuotaProbeClaudeProse, ProbeClaudeIdentity: s.QuotaProbeClaudeIdentity,
 	}
 	c, g, err := scheduler.RunRefresh(ctx, root, lock, trigger, outcome)

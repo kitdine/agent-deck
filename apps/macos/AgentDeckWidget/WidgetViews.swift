@@ -510,6 +510,11 @@ private struct QuotaWidgetView: View {
 		return VStack(alignment: .leading, spacing: 5) {
 			HStack {
 				Text(DesktopPresentationModelV1.clientDisplayLabel(client.client)).font(.system(size: 11, weight: .semibold))
+				if let plan = model.quotaPlan(client, family: family) {
+					Text(verbatim: plan).font(.system(size: 10)).foregroundStyle(.secondary)
+						.lineLimit(1).truncationMode(.tail)
+						.background(quotaGeometry("plan.\(client.client)"))
+				}
 				if family == .systemLarge, needsQuotaAttribution(client) { quotaAttribution(client) }
 				Spacer(minLength: 0)
 			}
