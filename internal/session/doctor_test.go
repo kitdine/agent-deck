@@ -166,3 +166,21 @@ func TestFullCheckHealthCountsUnreadableSourcesWithoutLeakingSourceDetails(t *te
 		}
 	}
 }
+
+func TestCheckHealthRefusesNonSQLiteFenceWithoutMutatingFile(t *testing.T) {
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "sessions.sqlite3")
+	fence := append([]byte("AgentDeck CJSI legacy session index fence\n"), make([]byte, 4097-len("AgentDeck CJSI legacy session index fence\n"))...)
+	if err := os.WriteFile(dbPath, fence, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := fileDigest(t, dbPath)
+
+	health, err := CheckHealth(context.Background(), root, false)
+	if err == nil {
+		t.Fatalf("CheckHealth accepted non-SQLite fence: %+v", health)
+	}
+	if after := fileDigest(t, dbPath); after != before {
+		t.Fatal("CheckHealth mutated the fence file")
+	}
+}

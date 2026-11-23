@@ -10,12 +10,15 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/platform"
 )
 
 type readPoolKey struct{ path, profile string }
 
 type readPoolEntry struct {
 	file    os.FileInfo
+	root    legacyRootID
 	db      *sql.DB
 	ready   chan struct{}
 	err     error
@@ -37,6 +40,10 @@ type readPoolCache struct {
 var processReadPools = readPoolCache{limit: 32}
 
 func (p *readPoolCache) acquire(ctx context.Context, path, profile string, open func() (*sql.DB, error)) (*sql.DB, func() error, error) {
+	return p.acquireRoot(ctx, path, profile, legacyRootID{}, open)
+}
+
+func (p *readPoolCache) acquireRoot(ctx context.Context, path, profile string, root legacyRootID, open func() (*sql.DB, error)) (*sql.DB, func() error, error) {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, err
@@ -82,7 +89,7 @@ func (p *readPoolCache) acquire(ctx context.Context, path, profile string, open 
 		if previous := p.entries[key]; previous != nil {
 			delete(p.entries, key)
 			previous.retired = true
-			if previous.users == 0 {
+			if previous.users == 0 && previous.ready == nil {
 				closeDB = previous.db
 			}
 		}
@@ -90,7 +97,7 @@ func (p *readPoolCache) acquire(ctx context.Context, path, profile string, open 
 			var oldest *readPoolEntry
 			var oldestKey readPoolKey
 			for candidateKey, candidate := range p.entries {
-				if candidate.users == 0 && (oldest == nil || candidate.used < oldest.used) {
+				if candidate.users == 0 && candidate.ready == nil && (oldest == nil || candidate.used < oldest.used) {
 					oldest, oldestKey = candidate, candidateKey
 				}
 			}
@@ -103,7 +110,7 @@ func (p *readPoolCache) acquire(ctx context.Context, path, profile string, open 
 			}
 		}
 		p.clock++
-		entry := &readPoolEntry{file: file, users: 1, used: p.clock, ready: make(chan struct{})}
+		entry := &readPoolEntry{file: file, root: root, users: 1, used: p.clock, ready: make(chan struct{})}
 		if len(p.entries) < p.limit {
 			p.entries[key] = entry
 		} else {
@@ -155,22 +162,65 @@ func (p *readPoolCache) acquire(ctx context.Context, path, profile string, open 
 // Active leases are retired and close their connections when released.
 func CloseReadPools() error { return processReadPools.close() }
 
+// CloseLegacyReadPools retires and closes idle process-owned read pools for
+// one guarded state root without disturbing unrelated roots.
+func CloseLegacyReadPools(stateRoot string) error {
+	root, err := platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return err
+	}
+	a, err := openLegacyRoot(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	id := a.root
+	closeErr := a.close()
+	return errors.Join(closeErr, closeReadDBs(processReadPools.retireLegacy(id)))
+}
+
+func closeReadDBs(databases []*sql.DB) error {
+	var result error
+	for _, db := range databases {
+		result = errors.Join(result, db.Close())
+	}
+	return result
+}
+
+func (p *readPoolCache) retireLegacy(root legacyRootID) []*sql.DB {
+	if root.ino == 0 {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var databases []*sql.DB
+	for key, entry := range p.entries {
+		if entry.root != root {
+			continue
+		}
+		delete(p.entries, key)
+		entry.retired = true
+		if entry.users == 0 && entry.ready == nil && entry.db != nil {
+			databases = append(databases, entry.db)
+		}
+	}
+	return databases
+}
+
 func (p *readPoolCache) close() error {
 	p.mu.Lock()
 	var databases []*sql.DB
 	for key, entry := range p.entries {
 		delete(p.entries, key)
 		entry.retired = true
-		if entry.users == 0 && entry.db != nil {
+		if entry.users == 0 && entry.ready == nil && entry.db != nil {
 			databases = append(databases, entry.db)
 		}
 	}
 	p.mu.Unlock()
-	var result error
-	for _, db := range databases {
-		result = errors.Join(result, db.Close())
-	}
-	return result
+	return closeReadDBs(databases)
 }
 
 func (p *readPoolCache) contains(path string) bool {
@@ -208,7 +258,39 @@ func (p *readPoolCache) release(entry *readPoolEntry) func() error {
 // readOnlyBusyTimeout is the ordinary read-only profile's SQLite busy timeout.
 const readOnlyBusyTimeout = 5 * time.Second
 
+func acquireLegacyRead(ctx context.Context, path, profile string, open func(legacyRootID) (*sql.DB, error)) (*sql.DB, func() error, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	pin, err := admitLegacyFile(ctx, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer pin.close()
+	return processReadPools.acquireRoot(ctx, path, profile, pin.root, func() (*sql.DB, error) {
+		return open(pin.root)
+	})
+}
+
 func acquireReadOnlySQL(ctx context.Context, path, profile string) (*sql.DB, func() error, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	pragmas := fmt.Sprintf("busy_timeout(%d)&_pragma=foreign_keys(1)", readOnlyBusyTimeout.Milliseconds())
+	if profile == "identity" {
+		pragmas = "busy_timeout(20)"
+	}
+	return acquireLegacyRead(ctx, path, profile, func(root legacyRootID) (*sql.DB, error) {
+		return openLegacySQL(path, legacyURI(path, "mode=ro&_pragma="+pragmas), "", root)
+	})
+}
+
+// acquirePrivateVerifySQL opens a pooled read-only connection for verifying
+// a private session index seal without pinning the legacy root directory.
+// Callers either hold managed drain exclusion or their own bounded admission.
+func acquirePrivateVerifySQL(ctx context.Context, path, profile string) (*sql.DB, func() error, error) {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, err

@@ -22,7 +22,7 @@ created: 2026-11-17
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `native-source-proof` | [x] | [x] |
-| 2. `fenced-state-layout` | [ ] | [ ] |
+| 2. `fenced-state-layout` | [x] | [x] |
 | 3. `usage-ledger-replay` | [ ] | [ ] |
 | 4. `otel-ownership-receipts` | [ ] | [ ] |
 | 5. `session-effective-index` | [ ] | [ ] |

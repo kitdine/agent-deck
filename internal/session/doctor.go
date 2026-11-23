@@ -2,13 +2,12 @@ package session
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 type Health struct {
@@ -33,17 +32,14 @@ func CheckHealth(ctx context.Context, stateRoot string, full bool) (Health, erro
 	if err != nil {
 		return Health{}, err
 	}
-	path := filepath.Join(stateRoot, "sessions.sqlite3")
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+	s, err := store.OpenSessionDiagnosticsReadOnly(ctx, stateRoot)
+	if errors.Is(err, fs.ErrNotExist) {
 		return Health{Integrity: "not_requested"}, nil
 	} else if err != nil {
 		return Health{}, err
 	}
-	database, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
-	if err != nil {
-		return Health{}, err
-	}
-	defer database.Close()
+	defer s.Close()
+	database := s.DB
 	health := Health{Present: true, Integrity: "not_requested"}
 	var count int
 	if err = database.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_documents'").Scan(&count); err != nil {

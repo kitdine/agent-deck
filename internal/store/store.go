@@ -38,8 +38,8 @@ const writablePragmas = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pra
 // OpenSessions opens the separately purgeable session-search database. It is
 // deliberately not part of the core schema so deleting the index can never
 // delete providers, credentials, or usage data.
-func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
-	stateRoot, err := platform.GuardStateRoot(stateRoot)
+func OpenSessions(ctx context.Context, stateRoot string) (store *Store, err error) {
+	stateRoot, err = platform.GuardStateRoot(stateRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +47,19 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		return nil, err
 	}
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	pin, err := admitLegacyFile(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if store == nil {
+			err = errors.Join(err, pin.close())
+		}
+	}()
 	if err := preparePrivateSQLiteFiles(path); err != nil {
 		return nil, err
 	}
-	db, err := openWritableSQL(path+"?"+writablePragmas, "session")
+	db, err := openLegacySQL(path, legacyURI(path, "mode=rwc&"+writablePragmas), "session", pin.root)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +99,7 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{DB: db, path: path}
+	s := &Store{DB: db, path: path, releaseWriter: pin.close}
 	if err = s.secureFiles(); err != nil {
 		db.Close()
 		return nil, err
@@ -126,6 +135,42 @@ func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error)
 		}
 	}
 	return &Store{DB: db, path: path, readOnly: true, releaseReadPool: release}, nil
+}
+
+// OpenSessionDiagnosticsReadOnly opens an existing session-search index
+// read-only for health diagnostics without creating state, applying
+// migrations, changing permissions, or requiring session tables to exist.
+// Unlike an unguarded sql.Open, it participates in physical-root drain
+// admission and pins its physical SQLite connection until closed.
+func OpenSessionDiagnosticsReadOnly(ctx context.Context, stateRoot string) (store *Store, err error) {
+	stateRoot, err = platform.GuardStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	pin, err := admitLegacyFile(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if store == nil {
+			err = errors.Join(err, pin.close())
+		}
+	}()
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf("mode=ro&_pragma=busy_timeout(%d)", readOnlyBusyTimeout.Milliseconds())
+	db, err := openLegacySQL(path, legacyURI(path, query), "", pin.root)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.PingContext(ctx); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
+	return &Store{DB: db, path: path, readOnly: true, releaseWriter: pin.close}, nil
 }
 
 // Session indexes are rebuildable. The first source-level schema upgrade
@@ -275,6 +320,7 @@ type Store struct {
 	path            string
 	readOnly        bool
 	releaseReadPool func() error
+	releaseWriter   func() error
 	closeOnce       sync.Once
 	closeErr        error
 }
@@ -361,6 +407,10 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 		_ = release()
 		return nil, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
+	if err = checkNoPrematureCJSIJournal(ctx, db, version); err != nil {
+		_ = release()
+		return nil, err
+	}
 	return &Store{DB: db, path: path, readOnly: true, releaseReadPool: release}, nil
 }
 
@@ -371,6 +421,11 @@ func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
 	if err != nil {
 		return nil
 	}
+	pin, err := admitLegacy(ctx, stateRoot)
+	if err != nil {
+		return nil
+	}
+	defer pin.close()
 	path, cleanup, err := schemaProbeSnapshot(ctx, stateRoot)
 	if err != nil {
 		return nil
@@ -425,6 +480,15 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 	}()
 
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
+	pin, err := admitLegacyFile(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if store == nil {
+			err = errors.Join(err, pin.close())
+		}
+	}()
 	if create {
 		err = preparePrivateSQLiteFiles(path)
 	} else {
@@ -433,11 +497,11 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 	if err != nil {
 		return nil, err
 	}
-	databasePath := path + "?" + writablePragmas
+	mode := "rwc"
 	if !create {
-		databasePath = "file:" + path + "?mode=rw&" + writablePragmas
+		mode = "rw"
 	}
-	db, err := openWritableSQL(databasePath, "core")
+	db, err := openLegacySQL(path, legacyURI(path, "mode="+mode+"&"+writablePragmas), "core", pin.root)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +513,7 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 		db.Close()
 		return nil, err
 	}
-	store = &Store{DB: db, path: path}
+	store = &Store{DB: db, path: path, releaseWriter: pin.close}
 	if err := store.secureFiles(); err != nil {
 		db.Close()
 		return nil, err
@@ -473,6 +537,9 @@ func (s *Store) Close() error {
 		s.closeErr = errors.Join(s.closeErr, s.DB.Close())
 		if !s.readOnly {
 			s.closeErr = errors.Join(s.closeErr, s.secureFiles())
+		}
+		if s.releaseWriter != nil {
+			s.closeErr = errors.Join(s.closeErr, s.releaseWriter())
 		}
 	})
 	return s.closeErr
@@ -549,7 +616,16 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 // BackupSQLiteFile snapshots an existing SQLite database through the online
 // backup API. It never copies a live database or its WAL sidecars directly.
 func BackupSQLiteFile(ctx context.Context, source, destination string) error {
-	db, err := sql.Open("sqlite", "file:"+source+"?mode=ro")
+	source, err := filepath.Abs(source)
+	if err != nil {
+		return err
+	}
+	pin, err := admitLegacyFile(ctx, source)
+	if err != nil {
+		return err
+	}
+	defer pin.close()
+	db, err := openLegacySQL(source, legacyURI(source, "mode=ro"), "", pin.root)
 	if err != nil {
 		return err
 	}
@@ -558,6 +634,22 @@ func BackupSQLiteFile(ctx context.Context, source, destination string) error {
 }
 
 func backupDatabase(ctx context.Context, db *sql.DB, destination string) error {
+	destination, err := filepath.Abs(destination)
+	if err != nil {
+		return err
+	}
+	pin, err := admitLegacyFile(ctx, destination)
+	if err != nil {
+		return err
+	}
+	// The backup API owns a separate destination connection. An explicit
+	// close failure leaves its directory pin held until this process exits.
+	releaseDestination := true
+	defer func() {
+		if releaseDestination {
+			_ = pin.close()
+		}
+	}()
 	if err := preparePrivateSQLiteFiles(destination); err != nil {
 		return err
 	}
@@ -571,7 +663,7 @@ func backupDatabase(ctx context.Context, db *sql.DB, destination string) error {
 		type backuper interface {
 			NewBackup(string) (*sqlite.Backup, error)
 		}
-		backup, err := driverConn.(backuper).NewBackup(destination)
+		backup, err := driverConn.(backuper).NewBackup(legacyURI(destination, "mode=rw"))
 		if err != nil {
 			return err
 		}
@@ -583,7 +675,9 @@ func backupDatabase(ctx context.Context, db *sql.DB, destination string) error {
 		if err != nil {
 			return err
 		}
-		return destinationConn.Close()
+		closeErr := destinationConn.Close()
+		releaseDestination = closeErr == nil
+		return closeErr
 	})
 	if err != nil {
 		return err

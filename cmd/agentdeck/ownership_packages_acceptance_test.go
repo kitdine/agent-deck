@@ -41,7 +41,8 @@ import (
 var ownershipPackageCases = []string{
 	"platform.GuardStateRoot", "platform.RevalidateOwnership", "platform.EnsureStateRoot", "platform.EnsureStateRootWithFS",
 	"installation.StateRoot", "installation.StateRootWithHome",
-	"store.Open", "store.OpenExisting", "store.OpenReadOnly", "store.OpenWithLockHeld", "store.OpenSessions", "store.OpenSessionsReadOnly",
+	"store.Open", "store.OpenExisting", "store.OpenReadOnly", "store.OpenWithLockHeld", "store.OpenSessions", "store.OpenSessionsReadOnly", "store.OpenSessionDiagnosticsReadOnly",
+	"store.CloseLegacyReadPools", "store.WithCJSIIndexSnapshot",
 	"store.AcquireLock", "store.AcquireScanLock", "store.AcquireQuotaRefreshLock", "store.AcquireQuotaRefreshLockBefore", "store.AcquireDerivedSnapshotCacheLock", "store.AcquireServingSnapshotLock", "store.InspectScanLockContention", "store.OpenServingGenerationReader", "store.ReadServingGeneration",
 	"store.VerifyServingGeneration",
 	"credentialvault.Vault.Seal", "credentialvault.Vault.SealExisting", "credentialvault.Vault.Open", "credentialvault.Vault.InspectKey", "credentialvault.Vault.InspectKeyIDs", "credentialvault.Vault.InitializeNew",
@@ -108,6 +109,12 @@ func ownershipPackageProbe(name, root string) int {
 		database, err = store.OpenSessions(ctx, root)
 	case "store.OpenSessionsReadOnly":
 		database, err = store.OpenSessionsReadOnly(ctx, root)
+	case "store.OpenSessionDiagnosticsReadOnly":
+		database, err = store.OpenSessionDiagnosticsReadOnly(ctx, root)
+	case "store.CloseLegacyReadPools":
+		err = store.CloseLegacyReadPools(root)
+	case "store.WithCJSIIndexSnapshot":
+		err = store.WithCJSIIndexSnapshot(ctx, root, nil, nil)
 	case "store.AcquireLock":
 		lock, err = store.AcquireLock(ctx, root, time.Second)
 	case "store.AcquireScanLock":
@@ -404,5 +411,48 @@ func TestOwnershipPackageEntrypointInventory(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Fatalf("uncovered exported state-root consumers: %q", missing)
+	}
+}
+
+// Positive non-barrier controls for the Task 2 CJSI store entrypoints:
+// each entrypoint must succeed (or reach non-ownership validation) on an
+// unbarred isolated state root while refusing protected roots behind the barrier.
+func TestOwnershipCJSIEntrypointControls(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	diag, err := store.OpenSessionDiagnosticsReadOnly(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessionDiagnosticsReadOnly control failed: %v", err)
+	}
+	if err := diag.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CloseLegacyReadPools(root); err != nil {
+		t.Fatalf("CloseLegacyReadPools control failed: %v", err)
+	}
+	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	tx, err := core.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	err = store.WithCJSIIndexSnapshot(ctx, root, tx, func(store.CJSIIndexSnapshot) error { return nil })
+	var refused *platform.ErrStateOwnershipRefused
+	if errors.As(err, &refused) {
+		t.Fatalf("WithCJSIIndexSnapshot control falsely refused unbarred root: %v", err)
+	}
+	if !errors.Is(err, store.ErrCJSIIndexChanged) {
+		t.Fatalf("WithCJSIIndexSnapshot on unmigrated control root = %v, want ErrCJSIIndexChanged", err)
 	}
 }

@@ -694,6 +694,10 @@ func backfillCredentialMetadata(ctx context.Context, tx *sql.Tx) error {
 }
 
 func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
+	return migrateThrough(ctx, db, ordered, CurrentSchemaVersion)
+}
+
+func migrateThrough(ctx context.Context, db *sql.DB, ordered []migration, supported int) error {
 	fresh, err := schemaMetadataIsFresh(ctx, db)
 	if err != nil {
 		return err
@@ -705,7 +709,10 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 	if err != nil {
 		return err
 	}
-	if err := checkSchemaAhead(version, CurrentSchemaVersion); err != nil {
+	if err := checkSchemaAhead(version, supported); err != nil {
+		return err
+	}
+	if err := checkNoPrematureCJSIJournal(ctx, db, version); err != nil {
 		return err
 	}
 	for _, migration := range ordered {
@@ -746,6 +753,24 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 func checkSchemaAhead(version, supported int) error {
 	if version > supported {
 		return &SchemaAhead{Stored: version, Supported: supported}
+	}
+	return nil
+}
+
+// checkNoPrematureCJSIJournal rejects colliding pre-release cores that carry a
+// CJSI layout journal below the approved CJSI core schema version (e.g., an
+// unmerged pre-release schema-36 root that predates quota v36).
+func checkNoPrematureCJSIJournal(ctx context.Context, db *sql.DB, version int) error {
+	if version >= cjsiLayoutCoreSchemaVersion {
+		return nil
+	}
+	var journaled bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM main.sqlite_master
+		WHERE type='table' AND name='cjsi_layout_journal')`).Scan(&journaled); err != nil {
+		return err
+	}
+	if journaled {
+		return fmt.Errorf("%w: unexpected cjsi_layout_journal at schema version %d", ErrUnknownSchema, version)
 	}
 	return nil
 }
