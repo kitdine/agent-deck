@@ -1472,3 +1472,28 @@ func TestDocumentsPageUsesDeterministicStoragePagination(t *testing.T) {
 		t.Fatalf("documents = %#v", documents)
 	}
 }
+
+func TestCJSISearchFractionalSecondOrder(t *testing.T) {
+	db, err := store.OpenSessions(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stamps := []string{"", "2026-01-01T01:00:00Z", "2026-01-01T01:00:00.5Z", "invalid", "2026-01-01T01:00:00.500000001Z", "2026-01-01T03:00:00.500+02:00", "2026-01-01T01:00:00.51Z"}
+	var docs []Document
+	for i, stamp := range stamps {
+		docs = append(docs, Document{Client: "codex", SessionID: "s", Kind: "user_prompt", EventAt: stamp, Text: fmt.Sprintf("needle %d", i)})
+	}
+	if err := ReplaceDocuments(t.Context(), db.DB, "codex", "s", docs); err != nil {
+		t.Fatal(err)
+	}
+	want := []Document{docs[6], docs[4], docs[2], docs[5], docs[1], docs[0], docs[3]}
+	got, err := Search(t.Context(), db.DB, "needle")
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("search = %+v, %v; want %+v", got, err, want)
+	}
+	page, p, err := Paginate(got, 2, 2, false)
+	if err != nil || p.Total != len(want) || p.NextPage != 3 || !reflect.DeepEqual(page, want[2:4]) {
+		t.Fatalf("page across equivalent instants = %+v, %+v, %v", page, p, err)
+	}
+}

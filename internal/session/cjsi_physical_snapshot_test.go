@@ -571,7 +571,7 @@ func TestCJSIDocumentEventTimeParity(t *testing.T) {
 	}
 	input := `{"type":"session_meta","payload":{"id":"` + adapterThread + `","timestamp":"2026-01-01T00:00:00Z"}}
 {"type":"response_item","timestamp":"2026-01-01T01:00:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"needle earlier"}]}}
-{"type":"response_item","payload":{"timestamp":"2026-01-01T05:00:00+02:00","type":"message","role":"user","content":[{"type":"input_text","text":"needle later"}]}}
+{"type":"response_item","payload":{"timestamp":"2026-01-01T03:00:00.5+02:00","type":"message","role":"user","content":[{"type":"input_text","text":"needle later"}]}}
 `
 	if err := os.WriteFile(path, []byte(input), 0600); err != nil {
 		t.Fatal(err)
@@ -588,8 +588,8 @@ func TestCJSIDocumentEventTimeParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(want) != 2 || want[0].Text != "needle later" || want[0].EventAt != "2026-01-01T03:00:00Z" {
-		t.Fatalf("invalid legacy reference %+v", want)
+	if len(want) != 2 || want[0].Text != "needle later" || want[0].EventAt != "2026-01-01T01:00:00.5Z" {
+		t.Errorf("invalid legacy order %+v", want)
 	}
 	legacyMeta, err := ShowMetadata(ctx, legacy.DB, "codex", adapterThread)
 	if err != nil {
@@ -627,6 +627,9 @@ func TestCJSIDocumentEventTimeParity(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		if len(got) != 2 || got[0].Text != "needle later" || got[0].EventAt != "2026-01-01T01:00:00.5Z" {
+			t.Errorf("invalid CJSI order %+v", got)
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Error("search event_at or order changed for identical proved local documents")
 		}

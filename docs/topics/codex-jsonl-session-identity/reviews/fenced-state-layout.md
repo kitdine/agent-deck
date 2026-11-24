@@ -401,3 +401,13 @@ Task 3 后续候选写入必须从真实 C1 binding 保存工作集 ID，Task 8 
 - **验证。** `TestCJSIFencedStateLayout` 36/36、`TestCJSIQuota36PrerequisiteValidation` 66/66；`internal/store` 普通与 race 各 438 通过、3 跳过（与既往相同的环境性跳过），无 data race；vet 干净。HOME、XDG、TMPDIR、GOCACHE 全部隔离。
 - **非阻塞 P3。** CJSI-LAYOUT-R6-F1：`internal/store/cjsi_quota36_schema.go:267-268` 整类跳过 `sqlite_` 前缀对象，含触发器与 view；仅能经 `PRAGMA writable_schema` 构造。修复契约：只放行 `sqlite_sequence`、`sqlite_stat1`–`sqlite_stat4` 及 sql 为空的 `sqlite_autoindex_*`，其余 `sqlite_` 对象返回 `ErrUnknownSchema`，补 36/37 拒绝与 ANALYZE 接受两条回归。-> open `ad-bug-cjsi-quota36-sqlite-prefix-objects`，按用户 2026-11-23 的延后决定以 C 通道载体跟踪。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:fenced-state-layout` 在该补丁状态上独立评审、L2 验证、范围与隐私 3/3 满足。实际写者、读者组合与同代发布由 Task 3–8 集成验证。
+
+## Round 22 — 2026-11-24，延后 P3 修复评审
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+用户 2026-11-24 决定在 v0.7.5 内修复此前延后的四个 P3（重新分诊为 Lane A，只恢复既有契约）。作者 Codex `gpt-6.2-astra` high；独立评审 Claude Sonnet 5.5 medium（档位经 Decisions 评估）。补丁 SHA-256 `19b28f424247067037f8930b3526de62a01a8ad0e020da9ee763e2273cd95962`，9 个路径，基于 `230d688`（与 `bbb06da` 对这些路径无差异）。评审在 `bbb06da` + 补丁的隔离副本运行 `internal/ingest`、`internal/session`、`internal/store` 全包与 `cmd/agentdeck` 的 `TestSessionSearch*`，带 fixture 标签的读者用例通过；gofmt、vet 干净；新回归在旧代码上失败，四个变异均被拦截。
+
+- **CJSI-LAYOUT-R6-F1 CLOSED。** `cjsi_quota36_schema.go` 去掉 SQL 层的 `sqlite_` 整类过滤，改为大小写折叠的白名单：`sqlite_sequence`、`sqlite_stat1`–`sqlite_stat4`（限表）及 SQL 为空的 `sqlite_autoindex_*`（限索引）；其余 `sqlite_` 对象在 36 与 37 均返回 `ErrUnknownSchema`。ANALYZE 后 36→37 升级与校验通过（载体 `ad-bug-cjsi-quota36-sqlite-prefix-objects` 关闭）。白名单与此前一样不校验这些内部表的定义 SQL，不是回归。

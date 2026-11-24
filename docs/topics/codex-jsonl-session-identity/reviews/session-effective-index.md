@@ -246,3 +246,14 @@ Codex `gpt-6.2-astra`，T3 配置 `reasoningEffort=xhigh`，请求 `v075-e21-cjs
 - **R5 复评（Claude Opus medium）PASS。** R14-F1 closed：FIFO 替换的实库测试覆盖读回调与 `ActivityPage`，以有界超时解除阻塞，连续 5 次稳定，RM4 被杀。R14-F2 closed：裸快照拒绝回归杀死 `SQL-1004`，同类 `SQL-1002/1003/1005` 改判成立。相对 R4 只改两个测试文件，生产代码字节不变。本轮无新发现。
 - **验证。** 变异清单 1048 项：1001 捕获、42 等价、5 不可达、0 未结案；评审者抽查等价理由与新变异全部成立。两锚点、`internal/session`/`ingest`/`activity` 普通与 race、106 项实库夹具、`internal/usage`/`store` 全包均通过；gofmt、vet 干净；测试仅用隔离目录。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:session-effective-index` 在该补丁状态上独立评审、L2 验证、范围与隐私 3/3 满足。Task 6 绑定与 Task 8 同代开放、恢复 CAS 由后续 Task 联合验收。
+
+## Round 10 — 2026-11-24，搜索小数秒排序修复评审
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+用户 2026-11-24 决定在 v0.7.5 内修复此前延后的四个 P3（重新分诊为 Lane A，只恢复既有契约）。作者 Codex `gpt-6.2-astra` high；独立评审 Claude Sonnet 5.5 medium（档位经 Decisions 评估）。补丁 SHA-256 `19b28f424247067037f8930b3526de62a01a8ad0e020da9ee763e2273cd95962`，9 个路径，基于 `230d688`（与 `bbb06da` 对这些路径无差异）。评审在 `bbb06da` + 补丁的隔离副本运行 `internal/ingest`、`internal/session`、`internal/store` 全包与 `cmd/agentdeck` 的 `TestSessionSearch*`，带 fixture 标签的读者用例通过；gofmt、vet 干净；新回归在旧代码上失败，四个变异均被拦截。
+
+- **既存缺陷关闭（载体 `ad-bug-session-search-fractional-second-order`）。** 旧路径与 CJSI 读者共用的 `visitHits` 改为 `ORDER BY event_at COLLATE agentdeck_event_instant DESC`，按解析后的 RFC3339 瞬时比较到纳秒，同瞬时仍按 client、session、文档 ID 决胜；游标格式与分页不变，两条路径一致，符合 cli-design.md:2025-2027。
+- **评审 P3 观察（已处置）。** CJSI-SI-R15-F1：collation 每次比较解析两个时间，大命中集下为 O(n log n) 次解析；`MustRegisterCollationUtf8` 同名重复注册会 panic，目前全仓仅一处注册。当前规模可接受，按评审最小契约保持现状，关闭；性能由 Task 10 综合验收观察。CJSI-SI-R15-F2：空 `event_at` 与无法解析的值现在同列末尾并按稳定决胜排序，此前无效值按字典序混在有效值之间——这是 cli-design.md:2027「无效值保持稳定顺序」所要求的可见变化，记录于此，关闭。CJSI-SI-R15-F3：读者排序的实体用例 `TestCJSIDocumentEventTimeParity` 受 `cjsi_adapter_fixture` 标签与 overlay 门控，默认运行不执行；默认运行由 `TestCJSISearchFractionalSecondOrder` 覆盖共享 SQL。已写入 tasks.md 的 source-issue-acceptance 最终验收命令，关闭。

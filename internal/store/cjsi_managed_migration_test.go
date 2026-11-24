@@ -1249,3 +1249,54 @@ func TestCJSIQuota36PrerequisiteValidation(t *testing.T) {
 		})
 	})
 }
+
+// Present an inert catalog row to the verifier without modifying SQLite's catalog.
+type cjsiCatalogFixture struct {
+	*sql.DB
+	kind, name, ddl string
+}
+
+func (q cjsiCatalogFixture) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if strings.Contains(query, "main.sqlite_master") {
+		query = strings.Replace(query, "main.sqlite_master", "(SELECT type,name,tbl_name,sql FROM main.sqlite_master UNION ALL SELECT ?,?,'quota_cycle',?)", 1)
+		args = append([]any{q.kind, q.name, q.ddl}, args...)
+	}
+	return q.DB.QueryContext(ctx, query, args...)
+}
+
+func TestCJSIReservedCatalogObjects(t *testing.T) {
+	ctx := t.Context()
+	c := newCJSIMigrationCapsule(t)
+	c.seed36(t)
+	db := c.openCore(t, "rw")
+	defer db.Close()
+	refs, err := cjsiCanonicalSchemaReferences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{36, 37} {
+		ref := refs.quota36
+		if version == 37 {
+			if err := migrateCJSICore(ctx, c.root, db); err != nil {
+				t.Fatalf("migrate analyzed schema: %v", err)
+			}
+			ref = refs.layout37
+		}
+		cjsiFixtureExec(t, db, "ANALYZE")
+		assertCJSIMigrationNumber(t, db, "SELECT version FROM schema_metadata", version)
+		assertCJSIMigrationNumber(t, db, "SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'", 1)
+		if err := verifyCJSICoreSchema(ctx, db, ref); err != nil {
+			t.Fatalf("analyzed schema %d: %v", version, err)
+		}
+		for _, row := range []cjsiCatalogFixture{
+			{db, "trigger", "sqlite_fixture", ""},
+			{db, "view", "SQLITE_Stat1", ""},
+			{db, "index", "sqlite_autoindex_fixture_1", "explicit index"},
+			{db, "table", "sqlite_stat5", ""},
+		} {
+			if err := verifyCJSICoreSchema(ctx, row, ref); !errors.Is(err, ErrUnknownSchema) {
+				t.Errorf("schema %d accepted %s %s: %v", version, row.kind, row.name, err)
+			}
+		}
+	}
+}

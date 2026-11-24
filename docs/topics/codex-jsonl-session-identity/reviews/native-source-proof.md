@@ -240,3 +240,15 @@ Task 5 重建 R4 的变异扫描发现两处相对旧读面的回归，归属定
 - **CJSI-NSP-R14-F2（P2）closed。** 迁移的 Claude 检查点只有已证前缀可读时，选中读者返回空活动。新增 `ReadDetailsPrefix` / `ReadDetailsPagePrefix`，以调用方已打开文件的 `SectionReader` 复用原有解析、排序与分页，丢弃截断的未换行尾行；`ReadDetails` / `ReadDetailsPage` 签名与行为不变。
 - **评审。** 两处修复与 Task 5 一并经过 R4（AGY Gemini 4 Neon high）与 R5（Claude Opus）冷复评：红绿复跑关闭两项；`internal/ingest`、`internal/activity` 普通与 race 通过；已提交的 Task 3/4 在 `internal/usage`、`internal/store` 全包回归中不受影响；评审者变异 RM3、RM5 被杀。无新发现。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:native-source-proof` 在跟进补丁状态上追加独立评审、L2 验证、范围与隐私证据。
+
+## Round 15 — 2026-11-24，延后 P3 修复评审
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+用户 2026-11-24 决定在 v0.7.5 内修复此前延后的四个 P3（重新分诊为 Lane A，只恢复既有契约）。作者 Codex `gpt-6.2-astra` high；独立评审 Claude Sonnet 5.5 medium（档位经 Decisions 评估）。补丁 SHA-256 `19b28f424247067037f8930b3526de62a01a8ad0e020da9ee763e2273cd95962`，9 个路径，基于 `230d688`（与 `bbb06da` 对这些路径无差异）。评审在 `bbb06da` + 补丁的隔离副本运行 `internal/ingest`、`internal/session`、`internal/store` 全包与 `cmd/agentdeck` 的 `TestSessionSearch*`，带 fixture 标签的读者用例通过；gofmt、vet 干净；新回归在旧代码上失败，四个变异均被拦截。
+
+- **CJSI-NSP-R13-F1 CLOSED。** 已验证与未验证分支共用 `stageCodexWorksetProof`，统一深拷贝并以 `codexCaptureVisitError` 包装 sink 错误，`errors.Is`/`errors.As` 可达原错误且只 Abort 一次（载体 `ad-bug-cjsi-workset-unverified-branch-copy` 关闭）。
+- **CJSI-NSP-R13-F2 CLOSED。** `ReadCodexJSONL` 在非空范围且 visit 为 nil 时于读取前返回范围错误，不消费输入；空范围行为不变（载体 `ad-bug-cjsi-read-codex-jsonl-nil-visit` 关闭）。
+- **评审 P3 观察（已处置，不改代码）。** CJSI-NSP-R15-F1：`TestCJSIWorksetSinkOwnsProofSpans` 只覆盖已验证分支，在旧代码上也通过；未验证记录当前不带可变 span 指针，深拷贝差异不可观测，该用例定位为回归护栏，F1 的修复由 `TestCJSIUnverifiedWorksetSink` 证明。按评审最小契约保持现状，关闭。

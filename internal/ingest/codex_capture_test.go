@@ -245,3 +245,17 @@ func TestCJSIBoundedCodexCapture(t *testing.T) {
 		}
 	})
 }
+
+func TestCJSINilCodexVisitor(t *testing.T) {
+	for _, end := range []int64{8, 9} {
+		reader := strings.NewReader("x")
+		got, err := ReadCodexJSONL(t.Context(), reader, CodexCaptureBounds{Start: 8, End: end, MaxLineBytes: 16}, false, nil)
+		var wantErr error
+		if end > 8 {
+			wantErr = errCodexRange
+		}
+		if !errors.Is(err, wantErr) || got != (CodexReadProgress{ReadEnd: 8, CompleteEnd: 8}) || reader.Len() != 1 {
+			t.Errorf("end=%d: progress=%+v, unread=%d, err=%v; want unconsumed range and %v", end, got, reader.Len(), err, wantErr)
+		}
+	}
+}

@@ -124,7 +124,7 @@ var errCodexRange = errors.New("invalid Codex capture range")
 // with a verified prefix. Use includeVisible only for a document consumer.
 func ReadCodexJSONL(ctx context.Context, r io.Reader, bounds CodexCaptureBounds, includeVisible bool, visit func(CodexRecord, *CodexVisible) error) (CodexReadProgress, error) {
 	progress := CodexReadProgress{ReadEnd: bounds.Start, CompleteEnd: bounds.Start}
-	if bounds.Start < 0 || bounds.End < bounds.Start || bounds.MaxLineBytes <= 0 {
+	if bounds.Start < 0 || bounds.End < bounds.Start || bounds.MaxLineBytes <= 0 || (bounds.End > bounds.Start && visit == nil) {
 		return progress, errCodexRange
 	}
 	if err := ctx.Err(); err != nil {

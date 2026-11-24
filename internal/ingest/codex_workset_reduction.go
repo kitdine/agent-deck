@@ -131,7 +131,7 @@ func (r *CodexCheckpointReplay) ReduceWorkset(ctx context.Context, limits CodexW
 			checkpoint.ReplayFrom = 0
 		}
 		if err := r.scanWorkset(ctx, func(record CodexRecord) error {
-			return sink.StageCodexProof(ctx, CodexResolvedRecord{Record: record})
+			return stageCodexWorksetProof(ctx, sink, CodexResolvedRecord{Record: record})
 		}); err != nil {
 			return CodexWorksetReduction{}, err
 		}
@@ -147,6 +147,13 @@ func (r *CodexCheckpointReplay) ReduceWorkset(ctx context.Context, limits CodexW
 	}
 	complete = true
 	return CodexWorksetReduction{capture: r.workset.capture, source: source, checkpoint: checkpoint}, nil
+}
+
+func stageCodexWorksetProof(ctx context.Context, sink CodexWorksetProofSink, record CodexResolvedRecord) error {
+	if err := sink.StageCodexProof(ctx, copyCodexResolvedRecord(record)); err != nil {
+		return codexCaptureVisitError{cause: err}
+	}
+	return nil
 }
 
 func (r *CodexCheckpointReplay) scanWorkset(ctx context.Context, visit func(CodexRecord) error) error {
@@ -225,8 +232,8 @@ func (r *CodexCheckpointReplay) reduceWorksetSegments(ctx context.Context, limit
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := sink.StageCodexProof(ctx, copyCodexResolvedRecord(record)); err != nil {
-				return codexCaptureVisitError{cause: err}
+			if err := stageCodexWorksetProof(ctx, sink, record); err != nil {
+				return err
 			}
 		}
 		if err := sink.StageCodexSegment(ctx, copyCodexSegmentProof(piece.Segments[0])); err != nil {

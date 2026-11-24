@@ -6,10 +6,32 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"modernc.org/sqlite"
 
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/store"
 )
+
+// FTS stores timestamps as text. Compare the full instant, including nanos,
+// and leave equal or unparseable values to the existing source-order keys.
+func init() {
+	sqlite.MustRegisterCollationUtf8("agentdeck_event_instant", func(left, right string) int {
+		a, errA := time.Parse(time.RFC3339Nano, left)
+		b, errB := time.Parse(time.RFC3339Nano, right)
+		switch {
+		case errA == nil && errB == nil:
+			return a.Compare(b)
+		case errA == nil:
+			return 1
+		case errB == nil:
+			return -1
+		default:
+			return 0
+		}
+	})
+}
 
 // indexReadView borrows one transaction for the entire read. The three SELECTs
 // are trusted adapter queries, never caller input. copies contains protected,
@@ -163,7 +185,7 @@ func (v indexReadView) visitHits(ctx context.Context, query string, visit func(D
 	}
 	rows, err := v.tx.QueryContext(ctx, v.selection()+", hits AS ("+v.matches+`) SELECT d.client,d.session_id,d.event_at,d.kind,d.text,d.doc_id
 		FROM hits d JOIN ranked r USING (source_path,client,session_id) WHERE r.choice=1
-		ORDER BY CASE WHEN d.event_at='' THEN 1 ELSE 0 END,d.event_at DESC,d.client,d.session_id,d.doc_id`, sql.Named("query", query))
+		ORDER BY d.event_at COLLATE agentdeck_event_instant DESC,d.client,d.session_id,d.doc_id`, sql.Named("query", query))
 	if err != nil {
 		return err
 	}

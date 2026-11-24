@@ -262,3 +262,61 @@ func TestCJSICodexWorksetRetiredBeforeEOF(t *testing.T) {
 	t.Logf("retired reader after %d staged records: aborts=%d retained records=%d segments=%d",
 		staged, proofs.aborts, len(proofs.records), len(proofs.segments))
 }
+
+type failingWorksetProofSink struct {
+	cjsiWorksetProofs
+	err error
+}
+
+func (s *failingWorksetProofSink) StageCodexProof(context.Context, CodexResolvedRecord) error {
+	return s.err
+}
+
+func TestCJSIUnverifiedWorksetSink(t *testing.T) {
+	const input = `{"type":"turn_context","payload":{"turn_id":"unverified"}}` + "\n"
+	file, path := cjsiCheckpointFile(t, input)
+	version := CodexCheckpointVersion{Generation: 1, Parser: 1, MaxLineBytes: 256}
+	replay, _, _ := cjsiVerifiedWorkset(t, file, path, int64(len(input)), 64, version, nil)
+	limits := CodexWorksetLimits{SegmentRecords: 2, Turns: 1}
+	proofs := &cjsiWorksetProofs{}
+	result, err := replay.ReduceWorkset(t.Context(), limits, proofs)
+	if err != nil || result.Source().State == CodexSourceVerified || len(proofs.records) != 1 || proofs.records[0].Local() {
+		t.Fatalf("unverified proof setup: source=%v, records=%v, err=%v", result.Source(), proofs.records, err)
+	}
+	sink := &failingWorksetProofSink{err: errors.New("private sink detail")}
+	got, err := replay.ReduceWorkset(t.Context(), limits, sink)
+	var wrapped codexCaptureVisitError
+	if !errors.As(err, &wrapped) || !errors.Is(err, sink.err) || strings.Contains(err.Error(), sink.err.Error()) || sink.aborts != 1 || got != (CodexWorksetReduction{}) {
+		t.Fatalf("unverified sink failure: err=%v, aborts=%d, result=%v", err, sink.aborts, got)
+	}
+}
+
+func TestCJSIWorksetSinkOwnsProofSpans(t *testing.T) {
+	data, err := os.ReadFile("testdata/cjsi_child.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, path := cjsiCheckpointFile(t, string(data))
+	version := CodexCheckpointVersion{Generation: 1, Parser: 1, MaxLineBytes: 4096}
+	replay, _, _ := cjsiVerifiedWorkset(t, file, path, int64(len(data)), 128, version, nil)
+	proofs := &cjsiWorksetProofs{}
+	if _, err := replay.ReduceWorkset(t.Context(), CodexWorksetLimits{SegmentRecords: 12, Turns: 4}, proofs); err != nil {
+		t.Fatal(err)
+	}
+	// Several records refer to the same source span. Editing the sink's
+	// copy of one proof must leave every other staged proof intact.
+	seen := make(map[*CodexSpan]bool)
+	for _, r := range proofs.records {
+		for _, span := range []*CodexSpan{r.Context, r.RightAnchor, r.ToolStart} {
+			if span != nil {
+				if seen[span] {
+					t.Fatalf("sink proofs share a mutable span %+v", *span)
+				}
+				seen[span] = true
+			}
+		}
+	}
+	if len(seen) < 2 {
+		t.Fatal("fixture did not emit multiple proof spans")
+	}
+}

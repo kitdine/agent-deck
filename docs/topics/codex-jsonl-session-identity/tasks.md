@@ -150,7 +150,7 @@ scripts/run-go-test.sh ./internal/backup ./internal/doctor ./internal/session -r
 
 **依赖与所有权。** 1–9。只拥有 `cmd/agentdeck/cjsi_source_issue_acceptance_test.go` 及专用合成 fixture/harness 文件；使用已有 CLI/test helper。真实缺陷修复交回上游对应代码 owner，新的最终差分重新核对受影响证据。此锚独占旧/新二进制跨入口证据、最终 A1–A7 汇总及综合候选 L3；主控负责正式证据和提交动作。
 
-**交付与验证（L3）。** 按下节逐行验收。各包命令是范围内快速门，最终一次完整 Go 回归、相关 race、vet 和二进制构建；精确复用当前候选已有结果。若状态/CAS 受平台差异影响，在主控目标支持平台运行对应 fixture；交叉编译只说明构建，不能背书运行时恢复。实际 rollout、native 安装与 App 交互不在验收内。
+**交付与验证（L3）。** 按下节逐行验收。各包命令是范围内快速门，最终一次完整 Go 回归、相关 race、vet 和二进制构建；精确复用当前候选已有结果。带 `cjsi_adapter_fixture` 标签与 Task 5 fixture overlay 的实体读者用例（含 `TestCJSIDocumentEventTimeParity` 搜索排序）须在最终 L3 中一并运行，默认运行不会执行它们（来源：CJSI-SI-R15-F3）。若状态/CAS 受平台差异影响，在主控目标支持平台运行对应 fixture；交叉编译只说明构建，不能背书运行时恢复。实际 rollout、native 安装与 App 交互不在验收内。
 
 ## 需求、回归与发布验收映射
 

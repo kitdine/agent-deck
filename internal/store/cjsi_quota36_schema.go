@@ -265,7 +265,6 @@ func captureCJSISchemaSnapshot(ctx context.Context, q cjsiQueryer, inspectSingle
 	}
 	masterRows, err := func() ([]masterRow, error) {
 		rows, err := q.QueryContext(ctx, `SELECT type, name, tbl_name, coalesce(sql, '') FROM main.sqlite_master
-			WHERE substr(name, 1, 7) COLLATE NOCASE <> 'sqlite_'
 			ORDER BY type COLLATE NOCASE, name COLLATE NOCASE`)
 		if err != nil {
 			return nil, cjsiClassifySchemaQueryErr(ctx, err, "read sqlite_master")
@@ -276,6 +275,17 @@ func captureCJSISchemaSnapshot(ctx context.Context, q cjsiQueryer, inspectSingle
 			var r masterRow
 			if err := rows.Scan(&r.kind, &r.name, &r.table, &r.rawSQL); err != nil {
 				return nil, cjsiClassifySchemaQueryErr(ctx, err, "scan sqlite_master")
+			}
+			name := cjsiFoldSQLiteIdent(r.name)
+			if strings.HasPrefix(name, "sqlite_") {
+				switch {
+				case r.kind == "table" && (name == "sqlite_sequence" || name == "sqlite_stat1" || name == "sqlite_stat2" || name == "sqlite_stat3" || name == "sqlite_stat4"):
+					continue
+				case r.kind == "index" && strings.HasPrefix(name, "sqlite_autoindex_") && r.rawSQL == "":
+					continue
+				default:
+					return nil, fmt.Errorf("%w: unexpected %s %q", ErrUnknownSchema, r.kind, r.name)
+				}
 			}
 			out = append(out, r)
 		}
