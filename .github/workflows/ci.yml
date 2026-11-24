@@ -3,7 +3,8 @@ name: CI
 on:
   push:
     branches:
-      - "**"
+      - main
+      - 'release/**'
   pull_request:
 
 permissions:
@@ -115,18 +116,18 @@ jobs:
 
   race:
     name: Go race (${{ matrix.shard }})
-    needs: classify
-    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true') }}
+    needs: [classify, go_checks]
+    if: ${{ !cancelled() && needs.go_checks.result == 'success' && (needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true') }}
     runs-on: macos-15
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
-        shard: [0, 1, 2]
+        shard: [0, 1]
     # A matrix result can omit a shard that never acquired a runner.
     outputs:
       shard_0: ${{ steps.tests.outputs.shard_0 }}
       shard_1: ${{ steps.tests.outputs.shard_1 }}
-      shard_2: ${{ steps.tests.outputs.shard_2 }}
     env:
       AGENTDECK_GO_TEST_REPORT_PACKAGES: "1"
     steps:
@@ -165,8 +166,8 @@ jobs:
           RACE_RESULT: ${{ needs.race.result }}
           RACE_SHARD_0: ${{ needs.race.outputs.shard_0 }}
           RACE_SHARD_1: ${{ needs.race.outputs.shard_1 }}
-          RACE_SHARD_2: ${{ needs.race.outputs.shard_2 }}
         run: |
+          test "$CLASSIFY_RESULT" = success
           test "$DOCUMENTATION_RESULT" = success
           if [[ "$CLASSIFY_RESULT" == success && "$DOCS_ONLY" == true ]]; then
             echo 'Document L0, links, document set and review-record checks passed.'
@@ -175,7 +176,7 @@ jobs:
           test "$PORTABLE_RESULT" = success
           test "$GO_CHECKS_RESULT" = success
           test "$RACE_RESULT" = success
-          for shard in 0 1 2; do
+          for shard in 0 1; do
             result="RACE_SHARD_$shard"
             if [[ "${!result}" != success ]]; then
               echo "Race shard $shard did not report success." >&2

@@ -2,14 +2,32 @@ name: Cask real Homebrew
 
 on:
   push:
-    branches: ['feature/installed-state-ownership', main]
-  pull_request:
+    branches:
+      - main
     paths:
+      - 'apps/macos/**'
       - 'cmd/agentdeck/**'
-      - 'internal/installation/**'
-      - 'internal/platform/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'vendor/**'
       - 'packaging/homebrew/**'
       - 'scripts/*cask*'
+      - 'scripts/build-macos-app.sh'
+      - 'scripts/check-macos-widget-intents.sh'
+      - '.github/workflows/cask-real-brew.yml'
+  pull_request:
+    paths:
+      - 'apps/macos/**'
+      - 'cmd/agentdeck/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'vendor/**'
+      - 'packaging/homebrew/**'
+      - 'scripts/*cask*'
+      - 'scripts/build-macos-app.sh'
+      - 'scripts/check-macos-widget-intents.sh'
       - '.github/workflows/cask-real-brew.yml'
   workflow_dispatch:
 
