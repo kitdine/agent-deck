@@ -150,5 +150,5 @@ Cask 项关闭。本地表达式求值器仍有三处缺口：字符串比较区
 
 - **关闭项。** 省略 `shell` 时按 runner 选择 `bash -e {0}`（无 bash 回退 `sh -e {0}`），显式 `shell: bash` 才启用 `pipefail`；参数模板、工作目录、三层 `env` 与首 step 条件求值与 actions/runner `1b67e217` 的 `ScriptHandler.cs`、`ScriptHandlerHelpers.cs`、`StepsRunner.cs` 逐项一致。`runs-on` 经 Ruby 标准库 Psych 解码，五种合法等价写法通过，空序列、重复或额外标签、group 映射与重复键被拒。本机 `BASH_ENV` 导致的四项误失败已消除。
 - **验证。** `make check-ci-docs-tools` 72 + 93 通过，`go_race_packages_test.py` 3/3，`make check-whitespace` 与 `git diff --check` 无输出。官方表达式库 17/17 对照一致；23 项变异与探针符合预期，其中 7 项为复评者新设计，包括 `| cat` 管道绕过、首 step `if: failure()`、job 级 `env` 覆盖与缺失工作目录。Ruby 与 Psych 为 ubuntu-latest 与 macOS 预装，仓库既有发布工作流已依赖，无新增依赖。
-- **非阻断 P3。** 内置 shell 列表未含 `pwsh`；`env` 不支持混合文本插值；空映射与 `env` 上下文大小写语义有局部偏差。三项均 fail-closed，且当前工作流未使用这些语法，留待工作流引入时补齐。
+- **非阻断 P3。** 三项均 fail-closed，且当前工作流未使用这些语法；按用户 2026-11-23 的延后决定以 C 通道载体跟踪。CI-DUP-R7-F1：内置 shell 列表未含 `pwsh` -> open `ad-bug-ci-local-runner-pwsh-shell`。CI-DUP-R7-F2：`env` 不支持混合文本插值 -> open `ad-bug-ci-local-expression-interpolation`。CI-DUP-R7-F3：空映射与 `env` 上下文大小写语义有局部偏差 -> open `ad-bug-ci-local-yaml-empty-map-env-case`。
 - **门禁。** CEv1 WorkUnit `fix:ci-duplicate-runs-and-macos-concurrency` 在该候选上独立评审与本地验证满足。托管 Actions 的实际排队与门禁输出由 PR 检查验证。
