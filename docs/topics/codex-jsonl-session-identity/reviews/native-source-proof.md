@@ -225,5 +225,5 @@ C1 冻结开放 Task 3 和 Task 5 两路实施。Task 4 在 Task 3 的发布资�
 
 - **独立评审。** AGY Gemini 4 Neon high 冷评审，与作者不同 harness。逐路径核对 22 个文件的 SHA-256 与 blob，与补丁逐字节一致。逐条核对 Round 1–12 的发现，均未复发。在隔离副本中做 9 项单点变异，全部被测试断言击杀。
 - **验证。** 入口 `TestCJSINativeSourceProof` 非空执行（ingest 1 个顶层与 30 个子测试，activity 1 个顶层）。`internal/ingest` 50+95、`internal/activity` 20+45 在普通与 race 下全部通过，0 跳过；vet 与 gofmt 干净。隐私扫描 0 命中，正文仅在 `includeVisible` 下瞬态传递。
-- **非阻塞 P3。** `codex_workset_reduction.go:133-137` 未验证源分支未深拷贝记录、未包装 sink 错误，与已验证分支不一致；`codex_lex.go:123-127` 的导出 `ReadCodexJSONL` 在非空范围未拒绝 `visit == nil`。两项留待后续 Task 触及时统一收口。
+- **非阻塞 P3。** CJSI-NSP-R13-F1：`codex_workset_reduction.go:133-137` 未验证源分支未深拷贝记录、未包装 sink 错误，与已验证分支不一致 -> open `ad-bug-cjsi-workset-unverified-branch-copy`。CJSI-NSP-R13-F2：`codex_lex.go:123-127` 的导出 `ReadCodexJSONL` 在非空范围未拒绝 `visit == nil` -> open `ad-bug-cjsi-read-codex-jsonl-nil-visit`。两项按用户 2026-11-23 的延后决定以 C 通道载体跟踪。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:native-source-proof` 在该补丁状态上独立评审、L2 验证、范围与隐私 3/3 满足。双消费见证使用内存工作集，生产 SQLite 选择与跨库发布由后续 Task 集成验证。
