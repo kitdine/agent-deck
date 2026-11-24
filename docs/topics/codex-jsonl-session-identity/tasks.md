@@ -26,7 +26,7 @@ created: 2026-11-17
 | 3. `usage-ledger-replay` | [x] | [x] |
 | 4. `otel-ownership-receipts` | [x] | [x] |
 | 5. `session-effective-index` | [x] | [x] |
-| 6. `session-origin-bindings` | [ ] | [ ] |
+| 6. `session-origin-bindings` | [x] | [x] |
 | 7. `scoped-usage-aggregation` | [ ] | [ ] |
 | 8. `same-generation-publication` | [ ] | [ ] |
 | 9. `portable-state-recovery` | [ ] | [ ] |

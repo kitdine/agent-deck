@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -213,20 +214,74 @@ type sessionSelectionReader struct {
 	// sessionsErr is why the session index could not be opened when
 	// sessions is nil; it stays the cause of the unavailable selection.
 	sessionsErr error
+	borrowed    bool
+}
+
+// The request dispatcher lends an admitted core handle for schema 37.
+// Keeping that capability request-local prevents ordinary legacy opens or
+// maintenance/configuration callers from promoting a root to managed mode.
+type originCommandKey struct{}
+type publishedOriginCommand struct {
+	root string
+	core *store.Store
+}
+
+func withPublishedOriginCommand(ctx context.Context, root string, core *store.Store) context.Context {
+	return context.WithValue(ctx, originCommandKey{}, publishedOriginCommand{root, core})
+}
+func publishedOriginCore(ctx context.Context, root string) (*store.Store, bool, error) {
+	p, ok := ctx.Value(originCommandKey{}).(publishedOriginCommand)
+	if !ok {
+		return nil, false, nil
+	}
+	if p.root != root || p.core == nil || p.core.DB == nil {
+		return nil, true, sessionorigin.ErrGenerationUnavailable
+	}
+	return p.core, true, nil
 }
 
 func openSessionSelectionReader(ctx context.Context, stateRoot string, sessions *store.Store) *sessionSelectionReader {
+	if core, managed, err := publishedOriginCore(ctx, stateRoot); managed {
+		return &sessionSelectionReader{stateRoot: stateRoot, core: core, coreErr: err, borrowed: true}
+	}
 	core, err := store.OpenReadOnly(ctx, stateRoot)
 	return &sessionSelectionReader{stateRoot: stateRoot, sessions: sessions, core: core, coreErr: err}
 }
 
 func (r *sessionSelectionReader) Close() {
-	if r != nil && r.core != nil {
+	if r != nil && r.core != nil && !r.borrowed {
 		_ = r.core.Close()
 	}
 }
 
+// Called only after classification failed, for an explicit All result.
+// The fallback must independently admit the complete effective index and
+// its protections; it must not use a bare session DB (or a cached result).
+func (r *sessionSelectionReader) publishedAll(ctx context.Context, query string) (session.IndexSnapshot, error) {
+	if r.coreErr != nil {
+		return session.IndexSnapshot{}, r.coreErr
+	}
+	tx, err := r.core.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return session.IndexSnapshot{}, err
+	}
+	defer tx.Rollback()
+	return sessionorigin.NewPublishedOriginReader(r.stateRoot, tx).ReadIndexSnapshot(ctx, query)
+}
+
 func (r *sessionSelectionReader) selectSessions(ctx context.Context, selection sessionorigin.Selection, attach func(context.Context, *sessionorigin.Snapshot) error) (sessionorigin.Snapshot, error) {
+	if r.borrowed {
+		if r.coreErr != nil {
+			return sessionorigin.Snapshot{}, r.coreErr
+		}
+		tx, err := r.core.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return sessionorigin.Snapshot{}, err
+		}
+		defer tx.Rollback()
+		p := sessionorigin.NewPublishedOriginReader(r.stateRoot, tx)
+		return (sessionorigin.Reader{Published: &p}).Select(ctx, selection, attach)
+	}
 	if r.sessions == nil {
 		if r.sessionsErr != nil {
 			return sessionorigin.Snapshot{}, fmt.Errorf("%w: %v", sessionorigin.ErrSessionsUnavailable, r.sessionsErr)
@@ -571,7 +626,21 @@ const sessionClassifyRequestHelp = "agentdeck session classify --request <reques
 // locateClassifiedSession finds one visible canonical session. Without a
 // client the ID must be unique across clients; an ambiguous ID writes nothing.
 func locateClassifiedSession(ctx context.Context, opts *commandOptions, reader *sessionSelectionReader, client, sessionID string) (sessionorigin.SelectedSession, error) {
-	snapshot, err := reader.selectSessions(ctx, sessionorigin.Selection{Scope: sessionorigin.ScopeAll, Client: client}, nil)
+	var snapshot sessionorigin.Snapshot
+	var err error
+	if reader.borrowed {
+		if reader.coreErr != nil {
+			return sessionorigin.SelectedSession{}, reader.coreErr
+		}
+		tx, e := reader.core.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if e != nil {
+			return sessionorigin.SelectedSession{}, e
+		}
+		defer tx.Rollback()
+		snapshot, err = sessionorigin.NewPublishedOriginReader(reader.stateRoot, tx).Lookup(ctx, client, sessionID)
+	} else {
+		snapshot, err = reader.selectSessions(ctx, sessionorigin.Selection{Scope: sessionorigin.ScopeAll, Client: client}, nil)
+	}
 	if err != nil {
 		return sessionorigin.SelectedSession{}, &errSessionSelectionUnavailable{scope: "classification", err: err}
 	}
@@ -675,11 +744,18 @@ func runClassifyQueryOrSet(ctx context.Context, opts *commandOptions, client, se
 	if err != nil {
 		return err
 	}
-	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
+	managedCore, managed, err := publishedOriginCore(ctx, stateRoot)
 	if err != nil {
-		return &errSessionSelectionUnavailable{scope: "classification", err: fmt.Errorf("%w: %v", sessionorigin.ErrSessionsUnavailable, err)}
+		return err
 	}
-	defer sessions.Close()
+	var sessions *store.Store
+	if !managed {
+		sessions, err = store.OpenSessionsReadOnly(ctx, stateRoot)
+		if err != nil {
+			return &errSessionSelectionUnavailable{scope: "classification", err: fmt.Errorf("%w: %v", sessionorigin.ErrSessionsUnavailable, err)}
+		}
+		defer sessions.Close()
+	}
 	reader := openSessionSelectionReader(ctx, stateRoot, sessions)
 	defer reader.Close()
 	target, err := locateClassifiedSession(ctx, opts, reader, client, sessionID)
@@ -691,26 +767,23 @@ func runClassifyQueryOrSet(ctx context.Context, opts *commandOptions, client, se
 		data := classificationQuery{Target: sessionorigin.Target{Client: target.Client, SessionID: target.SessionID}, ClassificationAvailable: true, Origin: &origin}
 		return writeOriginEnvelope(opts, "session.classify", data, false, nil, func(w io.Writer) error { return renderClassificationQuery(w, data) })
 	}
-	binding, err := sessionorigin.ResolveBinding(ctx, sessions, target.Client, target.SessionID)
-	if err != nil {
-		return &originCommandError{code: sessionorigin.CodeIdentityUnavailable, message: "The session identity is not confirmed; no override was written.", exit: 1, err: err}
-	}
+	// Binding, target and expected revision are from one selected view.
+	binding := &target.Binding
 	reader.Close()
-	core, _, err := opts.openStore(ctx)
-	if err != nil {
-		return err
+	core := managedCore
+	if !managed {
+		core, _, err = opts.openStore(ctx)
+		if err != nil {
+			return err
+		}
+		defer core.Close()
 	}
-	defer core.Close()
 	service := sessionorigin.Service{Store: core}
 	request := sessionorigin.OverrideSetRequest{RequestID: requestID, Client: target.Client, SessionID: target.SessionID, Value: set, Binding: binding}
 	if expected != nil {
 		request.ExpectedRevision = *expected
 	} else {
-		revision, revisionErr := service.OverrideRevision(ctx, target.Client, target.SessionID)
-		if revisionErr != nil {
-			return originServiceError(revisionErr)
-		}
-		request.ExpectedRevision, request.ImplicitExpected = revision, true
+		request.ExpectedRevision, request.ImplicitExpected = target.Origin.Revision, true
 	}
 	receipt, err := service.SetOverride(ctx, request)
 	if err != nil {
@@ -723,11 +796,21 @@ func runClassifyQueryOrSet(ctx context.Context, opts *commandOptions, client, se
 }
 
 func runClassifyClear(ctx context.Context, opts *commandOptions, client, sessionID, requestID string, expected *int64) error {
-	core, stateRoot, err := opts.openStore(ctx)
+	stateRoot, err := opts.stateRoot()
 	if err != nil {
 		return err
 	}
-	defer core.Close()
+	core, managed, err := publishedOriginCore(ctx, stateRoot)
+	if err != nil {
+		return err
+	}
+	if !managed {
+		core, _, err = opts.openStore(ctx)
+		if err != nil {
+			return err
+		}
+		defer core.Close()
+	}
 	result, err := (sessionorigin.Service{Store: core}).ClearOverride(ctx, sessionorigin.OverrideClearRequest{RequestID: requestID, Client: client, SessionID: sessionID, ExpectedRevision: expected})
 	if err != nil {
 		return originServiceError(err)
@@ -736,15 +819,17 @@ func runClassifyClear(ctx context.Context, opts *commandOptions, client, session
 	// an override. When the index is readable, refresh the automatic result
 	// after the durable receipt; a refresh failure cannot undo that receipt.
 	refreshPending := false
-	if sessions, openErr := store.OpenSessionsReadOnly(ctx, stateRoot); openErr == nil {
-		home, homeErr := userHomeDir()
-		if homeErr == nil {
-			_, homeErr = sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home})
+	if !managed {
+		if sessions, openErr := store.OpenSessionsReadOnly(ctx, stateRoot); openErr == nil {
+			home, homeErr := userHomeDir()
+			if homeErr == nil {
+				_, homeErr = sessionorigin.Reconcile(ctx, core, sessions, sessionorigin.ReconcileOptions{StateRoot: stateRoot, Home: home})
+			}
+			sessions.Close()
+			refreshPending = homeErr != nil
+		} else if !errors.Is(openErr, os.ErrNotExist) {
+			refreshPending = true
 		}
-		sessions.Close()
-		refreshPending = homeErr != nil
-	} else if !errors.Is(openErr, os.ErrNotExist) {
-		refreshPending = true
 	}
 	if refreshPending {
 		result.Warnings = append(result.Warnings, "classification_refresh_pending")
@@ -767,15 +852,30 @@ func openOriginCoreReadOnly(ctx context.Context, opts *commandOptions) (*store.S
 	return core, nil
 }
 
+func classifyCoreReadOnly(ctx context.Context, opts *commandOptions) (*store.Store, func(), error) {
+	root, err := opts.stateRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+	if core, managed, err := publishedOriginCore(ctx, root); managed {
+		return core, func() {}, err
+	}
+	core, err := openOriginCoreReadOnly(ctx, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return core, func() { _ = core.Close() }, nil
+}
+
 func runClassifyReadBack(ctx context.Context, opts *commandOptions, requestID string) error {
 	if !sessionorigin.ValidRequestID(requestID) {
 		return originInputError("--request must be 1-128 letters, digits, '.', '_', ':' or '-'")
 	}
-	core, err := openOriginCoreReadOnly(ctx, opts)
+	core, closeCore, err := classifyCoreReadOnly(ctx, opts)
 	if err != nil {
 		return err
 	}
-	defer core.Close()
+	defer closeCore()
 	read, err := (sessionorigin.Service{Store: core}).ReadReceipt(ctx, requestID)
 	if err != nil {
 		return originServiceError(err)
@@ -803,12 +903,22 @@ func runClassifyList(ctx context.Context, opts *commandOptions, page, limit int)
 	if limit < 1 || limit > sessionorigin.MaxOverrideLimit || page < 1 {
 		return originInputError("page must be positive and limit must be between 1 and 200")
 	}
-	core, err := openOriginCoreReadOnly(ctx, opts)
+	core, closeCore, err := classifyCoreReadOnly(ctx, opts)
 	if err != nil {
 		return err
 	}
-	defer core.Close()
-	result, err := (sessionorigin.Service{Store: core}).ListOverrides(ctx, page, limit)
+	defer closeCore()
+	var result sessionorigin.OverridePage
+	if admission, managed := ctx.Value(originCommandKey{}).(publishedOriginCommand); managed {
+		tx, e := core.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if e != nil {
+			return originServiceError(&sessionorigin.Error{Code: sessionorigin.CodeReadFailed, Err: e})
+		}
+		defer tx.Rollback()
+		result, err = sessionorigin.NewPublishedOriginReader(admission.root, tx).ListOverrides(ctx, page, limit)
+	} else {
+		result, err = (sessionorigin.Service{Store: core}).ListOverrides(ctx, page, limit)
+	}
 	if err != nil {
 		return originServiceError(err)
 	}
@@ -1546,16 +1656,26 @@ func scopedSessionList(ctx context.Context, opts *commandOptions, sessions *stor
 	if err == nil {
 		meta.fill(snapshot)
 		items := listItemsFromSnapshot(snapshot)
-		return items, len(items) == 0 && sessionIndexEmpty(ctx, sessions), nil
+		return items, snapshot.IndexEmpty(), nil
 	}
 	if errors.Is(err, sessionorigin.ErrInvalidArgument) {
 		return nil, false, &inputError{err: err}
 	}
-	if scope != sessionorigin.ScopeAll {
+	if scope != sessionorigin.ScopeAll || reader.borrowed && !errors.Is(err, sessionorigin.ErrClassificationUnavailable) {
 		return nil, false, &errSessionSelectionUnavailable{scope: scope, err: err}
 	}
 	meta.unavailable(err)
-	all, listErr := session.List(ctx, sessions.DB)
+	var all []session.Metadata
+	var listErr error
+	if reader.borrowed {
+		var index session.IndexSnapshot
+		index, listErr = reader.publishedAll(ctx, "")
+		for _, s := range index.Sessions {
+			all = append(all, s.Metadata)
+		}
+	} else {
+		all, listErr = session.List(ctx, sessions.DB)
+	}
 	if listErr != nil {
 		return nil, false, listErr
 	}
@@ -1569,11 +1689,8 @@ func scopedSessionList(ctx context.Context, opts *commandOptions, sessions *stor
 }
 
 func sessionIndexEmpty(ctx context.Context, sessions *store.Store) bool {
-	var exists bool
-	if err := sessions.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM session_metadata)`).Scan(&exists); err != nil {
-		return false
-	}
-	return !exists
+	all, err := session.List(ctx, sessions.DB)
+	return err == nil && len(all) == 0
 }
 
 func scopedSessionSearch(ctx context.Context, opts *commandOptions, sessions *store.Store, scope, client, query string, meta *sessionSelectionMeta) ([]sessionDocumentItem, error) {
@@ -1591,6 +1708,9 @@ func scopedSessionSearch(ctx context.Context, opts *commandOptions, sessions *st
 	if errors.Is(err, sessionorigin.ErrInvalidArgument) {
 		return nil, &inputError{err: err}
 	}
+	if reader.borrowed && (scope != sessionorigin.ScopeAll || !errors.Is(err, sessionorigin.ErrClassificationUnavailable)) {
+		return nil, &errSessionSelectionUnavailable{scope: scope, err: err}
+	}
 	if scope != sessionorigin.ScopeAll || !errors.Is(err, sessionorigin.ErrClassificationUnavailable) {
 		if scope == sessionorigin.ScopeAll && errors.Is(err, sessionorigin.ErrSessionsUnavailable) {
 			// An invalid FTS query surfaces here; keep the historical error.
@@ -1601,7 +1721,15 @@ func scopedSessionSearch(ctx context.Context, opts *commandOptions, sessions *st
 		return nil, &errSessionSelectionUnavailable{scope: scope, err: err}
 	}
 	meta.unavailable(err)
-	documents, searchErr := session.Search(ctx, sessions.DB, query)
+	var documents []session.Document
+	var searchErr error
+	if reader.borrowed {
+		var index session.IndexSnapshot
+		index, searchErr = reader.publishedAll(ctx, query)
+		documents = index.Documents
+	} else {
+		documents, searchErr = session.Search(ctx, sessions.DB, query)
+	}
 	if searchErr != nil {
 		return nil, searchErr
 	}
@@ -1628,6 +1756,14 @@ func scopedSignals(ctx context.Context, opts *commandOptions, core *store.Store,
 		return usage.SignalReport{}, err
 	}
 	var report usage.SignalReport
+	if _, managed, err := publishedOriginCore(ctx, stateRoot); managed {
+		// The legacy callback reads a live usage store. Task 8 attaches
+		// signals directly to the scoped selection in its pinned core view.
+		if err == nil {
+			err = sessionorigin.ErrGenerationUnavailable
+		}
+		return report, &errSessionSelectionUnavailable{scope: scope, err: err}
+	}
 	if stateDatabaseAbsent(stateRoot, sessionDatabaseName) {
 		// No session index was ever created: no session can be auxiliary,
 		// so Work and All select everything and Auxiliary selects nothing.

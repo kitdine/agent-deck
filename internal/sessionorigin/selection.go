@@ -105,7 +105,8 @@ type Origin struct {
 // SelectedSession is one session of a selection.
 type SelectedSession struct {
 	session.Metadata
-	Origin Origin `json:"origin"`
+	Origin  Origin              `json:"origin"`
+	Binding store.OriginBinding `json:"-"`
 }
 
 // Counts are non-additive figures recomputed from the selected set.
@@ -136,7 +137,12 @@ type Snapshot struct {
 	// not empty, even though none of those sessions is in its own set.
 	CoverageGaps map[string]int
 	auxiliary    []usage.SessionKey
+	published    *store.CJSIIndexStamp
+	indexEmpty   bool
 }
+
+// IndexEmpty is the pre-filter emptiness of the same index enumeration.
+func (s Snapshot) IndexEmpty() bool { return s.indexEmpty }
 
 // CoverageGapReasons are the diagnostic reasons that mean classification input
 // was missing or stale rather than confirmed: a session with one of them might
@@ -172,6 +178,9 @@ func (s Snapshot) SessionFilter() *usage.SessionFilter {
 // StateRoot's serving generation under the same bound as the selection's own
 // reads, not the startup identity budget.
 type Reader struct {
+	// Published is the managed request's borrowed core/index view. An
+	// ordinary attach callback may read live state and is not admissible.
+	Published *PublishedOriginReader
 	Core      *store.Store
 	Sessions  *store.Store
 	StateRoot string
@@ -190,6 +199,12 @@ var beforeSelectionVerify = func(attempt int) {}
 func (r Reader) Select(ctx context.Context, selection Selection, attach func(context.Context, *Snapshot) error) (Snapshot, error) {
 	if err := selection.Validate(); err != nil {
 		return Snapshot{}, err
+	}
+	if r.Published != nil {
+		if attach != nil {
+			return Snapshot{}, ErrGenerationUnavailable
+		}
+		return r.Published.Select(ctx, selection)
 	}
 	verify := r.Verify
 	if verify == nil {
@@ -257,6 +272,7 @@ type sessionKey struct{ client, sessionID string }
 // then classification, then client, time and scope, and only then counts.
 func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.OriginSelectionState) Snapshot {
 	selection := snapshot.Selection
+	snapshot.indexEmpty = len(index.Sessions) == 0
 	origins := make(map[sessionKey]store.SessionOrigin, len(state.Origins))
 	for _, item := range state.Origins {
 		origins[sessionKey{item.Client, item.SessionID}] = item
@@ -278,7 +294,9 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 		if item, ok := overrides[key]; ok {
 			override = &item
 		}
-		classified := classify(indexed, origin, override, state.SchemaVersion == 34)
+		binding := indexedBinding(indexed)
+		binding.Selection = snapshot.published
+		classified := classifyBound(indexed, origin, override, state.SchemaVersion == 34, binding)
 		if classified.Effective == ClassAuxiliary {
 			snapshot.auxiliary = append(snapshot.auxiliary, usage.SessionKey{Client: indexed.Client, SessionID: indexed.SessionID})
 		}
@@ -292,7 +310,7 @@ func assemble(snapshot Snapshot, index session.IndexSnapshot, state store.Origin
 			continue
 		}
 		selected[key] = true
-		snapshot.Sessions = append(snapshot.Sessions, SelectedSession{Metadata: indexed.Metadata, Origin: classified})
+		snapshot.Sessions = append(snapshot.Sessions, SelectedSession{Metadata: indexed.Metadata, Origin: classified, Binding: binding})
 	}
 	if selection.Query != "" {
 		snapshot.Documents = []session.Document{}
@@ -355,11 +373,21 @@ func Classify(indexed session.IndexedSession, origin *store.SessionOrigin, overr
 }
 
 func classify(indexed session.IndexedSession, origin *store.SessionOrigin, override *store.OriginOverride, legacySchema bool) Origin {
-	generations := make([]SourceGeneration, 0, len(indexed.Copies))
+	return classifyBound(indexed, origin, override, legacySchema, indexedBinding(indexed))
+}
+
+func indexedBinding(indexed session.IndexedSession) store.OriginBinding {
 	sources := make([]store.SessionOriginSource, 0, len(indexed.Copies))
 	for _, copy := range indexed.Copies {
+		sources = append(sources, store.SessionOriginSource{FirstAt: copy.FirstAt})
+	}
+	return BindingFor(indexed.Client, indexed.SessionID, BirthOf(sources))
+}
+
+func classifyBound(indexed session.IndexedSession, origin *store.SessionOrigin, override *store.OriginOverride, legacySchema bool, binding store.OriginBinding) Origin {
+	generations := make([]SourceGeneration, 0, len(indexed.Copies))
+	for _, copy := range indexed.Copies {
 		generations = append(generations, SourceGeneration{Identity: copy.Identity, PrefixHash: copy.PrefixHash, ParserVersion: copy.ParserVersion})
-		sources = append(sources, store.SessionOriginSource{Client: indexed.Client, SessionID: indexed.SessionID, Identity: copy.Identity, PrefixHash: copy.PrefixHash, ParserVersion: copy.ParserVersion, FirstAt: copy.FirstAt})
 	}
 	result := Origin{Automatic: ClassUnknown, ReasonCode: ReasonOriginMetadataMissing, RuleVersion: ReducerVersion}
 	if origin != nil {
@@ -384,7 +412,7 @@ func classify(indexed session.IndexedSession, origin *store.SessionOrigin, overr
 		return result
 	}
 	state := OverrideState{Value: *override.Value, BindingStatus: BindingUnmatched, BindingLimited: override.BindingLimited}
-	if override.BindingState == BindingMatched && override.BindingDigest == BindingFor(indexed.Client, indexed.SessionID, BirthOf(sources)).Digest {
+	if override.BindingState == BindingMatched && override.BindingDigest == binding.Digest && override.BindingLimited == binding.Limited {
 		state.BindingStatus, state.Applied = BindingMatched, true
 		result.Effective = *override.Value
 	}

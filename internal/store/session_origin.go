@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -188,8 +189,11 @@ func (e *OriginCommitUnknownError) Unwrap() error { return e.Err }
 
 // OriginBinding is a verified stable-birth binding; it never contains a path.
 type OriginBinding struct {
-	Digest  string
-	Limited bool
+	// Selection is checked under the mutation's core write reservation. It
+	// is an internal precondition, not part of a user's idempotency payload.
+	Selection *CJSIIndexStamp `json:"-"`
+	Digest    string
+	Limited   bool
 }
 
 // OriginMutation is one idempotent write. PayloadHash covers everything the
@@ -299,11 +303,16 @@ func (s *Store) OriginOverrides(ctx context.Context, offset, limit int) ([]Origi
 	if err != nil || absent {
 		return nil, 0, err
 	}
-	var total int
-	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_overrides WHERE value IS NOT NULL`).Scan(&total); err != nil {
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT client,session_id,value,binding_digest,binding_limited,binding_state,revision,updated_at FROM origin_overrides WHERE value IS NOT NULL ORDER BY client,session_id LIMIT ? OFFSET ?`, limit, offset)
+	defer tx.Rollback()
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM origin_overrides WHERE value IS NOT NULL`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT client,session_id,value,binding_digest,binding_limited,binding_state,revision,updated_at FROM origin_overrides WHERE value IS NOT NULL ORDER BY client,session_id LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -316,7 +325,13 @@ func (s *Store) OriginOverrides(ctx context.Context, offset, limit int) ([]Origi
 		}
 		out = append(out, override)
 	}
-	return out, total, rows.Err()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 type rowScanner interface{ Scan(...any) error }
@@ -405,6 +420,11 @@ func (s *Store) ApplyOriginMutation(ctx context.Context, m OriginMutation) (Orig
 	if err = injectOriginFault("before_commit"); err != nil {
 		return OriginReceipt{}, err
 	}
+	if m.Kind == OriginMutationOverrideSet {
+		if err := verifyOriginSetSelection(ctx, conn, m.Binding.Selection); err != nil {
+			return OriginReceipt{}, err
+		}
+	}
 	_, err = conn.ExecContext(ctx, "COMMIT")
 	if err == nil {
 		committed = true
@@ -417,6 +437,59 @@ func (s *Store) ApplyOriginMutation(ctx context.Context, m OriginMutation) (Orig
 		return receipt, fmt.Errorf("%w: %v", ErrOriginSecureFilesFailed, err)
 	}
 	return receipt, nil
+}
+
+// The core reservation serializes head changes and the user CAS. Read the
+// private protection and physical identity again immediately before COMMIT:
+// a protection can already be durable while its core mirror is unchanged.
+// The joint writer must serialize the remaining check-to-COMMIT interval
+// with private protection installation.
+func verifyOriginSetSelection(ctx context.Context, writer *sql.Conn, want *CJSIIndexStamp) error {
+	if want == nil {
+		var version int
+		if err := writer.QueryRowContext(ctx, "SELECT version FROM main.schema_metadata WHERE singleton=1").Scan(&version); err != nil {
+			return err
+		}
+		if version >= cjsiLayoutCoreSchemaVersion {
+			return ErrOriginProjectionStale
+		}
+		return nil
+	}
+	head, err := cjsiReadIndexHead(ctx, writer)
+	if err != nil {
+		return err
+	}
+	logical := *want
+	logical.Device, logical.Inode = 0, 0
+	if head != logical {
+		return ErrOriginProjectionStale
+	}
+	var path string
+	if err := writer.QueryRowContext(ctx, "SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path); err != nil {
+		return err
+	}
+	// Use a separate read handle: the caller's sole connection can be held
+	// by BEGIN IMMEDIATE. The guard itself compares the committed head.
+	db, release, err := acquireReadOnlySQL(ctx, path, "origin-set-selection")
+	if err != nil {
+		return err
+	}
+	defer release()
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	err = WithCJSIIndexSnapshot(ctx, filepath.Dir(path), tx, func(s CJSIIndexSnapshot) error {
+		if s.Selection() != *want {
+			return ErrOriginProjectionStale
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Join(ErrOriginProjectionStale, err)
+	}
+	return nil
 }
 
 func validateOriginMutation(m OriginMutation) error {
@@ -609,6 +682,21 @@ func (s *Store) ReplaceOriginDerivation(ctx context.Context, d OriginDerivation)
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
 		}
 	}()
+	if err := writeOriginDerivation(ctx, conn, d); err != nil {
+		return err
+	}
+	if err = injectOriginFault("derivation_before_commit"); err != nil {
+		return err
+	}
+	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return s.secureFiles()
+}
+
+func writeOriginDerivation(ctx context.Context, conn originConn, d OriginDerivation) error {
+	var err error
 	for start := 0; start < len(d.SessionIDs); start += 200 {
 		batch := d.SessionIDs[start:min(start+200, len(d.SessionIDs))]
 		args := []any{d.Adapter, d.Client}
@@ -642,14 +730,62 @@ func (s *Store) ReplaceOriginDerivation(ctx context.Context, d OriginDerivation)
 			return err
 		}
 	}
-	if err = injectOriginFault("derivation_before_commit"); err != nil {
+	return nil
+}
+
+var ErrOriginProjectionStale = errors.New("classification changed after preparation")
+
+// ApplyOriginProjectionTx is a participant in the caller's final core CAS.
+// Compare even a missing override or a no-op: a first set, clear, or rebind
+// invalidates the prepared classification. User revision/time/receipts are
+// not backfill fields. The caller rolls back its entire tx on any error.
+func ApplyOriginProjectionTx(ctx context.Context, tx *sql.Tx, id string, expected *OriginOverride, digest, state string, d *OriginDerivation) error {
+	if tx == nil || id == "" {
+		return errOriginInvalidMutation
+	}
+	if d != nil {
+		if d.Client != "codex" || len(d.SessionIDs) != 1 || d.SessionIDs[0] != id || d.Adapter != "codex-otel-background" || d.Run != nil {
+			return errOriginInvalidMutation
+		}
+		for _, e := range d.Evidence {
+			if e.Client != d.Client || e.SessionID != id || e.Adapter != d.Adapter {
+				return errOriginInvalidMutation
+			}
+		}
+		for _, o := range d.Origins {
+			if o.Client != d.Client || o.SessionID != id {
+				return errOriginInvalidMutation
+			}
+		}
+	}
+	o, err := scanOriginOverride(tx.QueryRowContext(ctx, `SELECT client,session_id,value,binding_digest,binding_limited,binding_state,revision,updated_at FROM origin_overrides WHERE client='codex' AND session_id=?`, id))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
-		return err
+	if (expected == nil) != errors.Is(err, sql.ErrNoRows) {
+		return ErrOriginProjectionStale
 	}
-	committed = true
-	return s.secureFiles()
+	if expected != nil {
+		if (o.Value == nil) != (expected.Value == nil) || (o.Value != nil && *o.Value != *expected.Value) {
+			return ErrOriginProjectionStale
+		}
+		o.Value = expected.Value
+		if o != *expected {
+			return ErrOriginProjectionStale
+		}
+		if o.BindingDigest != digest || o.BindingState != state {
+			if o.Value == nil || o.BindingState != "matched" || digest == "" || (state != "matched" && (state != "unmatched" || o.BindingDigest != digest)) {
+				return errOriginInvalidMutation
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE origin_overrides SET binding_digest=?,binding_state=? WHERE client='codex' AND session_id=?`, digest, state, id); err != nil {
+				return err
+			}
+		}
+	}
+	if d != nil {
+		return writeOriginDerivation(ctx, tx, *d)
+	}
+	return nil
 }
 
 // UnmatchedOriginOverrides lists the effective overrides that wait for their

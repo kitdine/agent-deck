@@ -16,6 +16,11 @@ type SessionSourceReader interface {
 // so the caller reports the target as unconfirmed instead of binding to it.
 // Visibility (exclusions) stays with the caller's existing session lookup.
 func ResolveBinding(ctx context.Context, index SessionSourceReader, client, sessionID string) (*store.OriginBinding, error) {
+	if published, ok := index.(interface {
+		resolveBinding(context.Context, string, string) (*store.OriginBinding, error)
+	}); ok {
+		return published.resolveBinding(ctx, client, sessionID)
+	}
 	sources, err := index.SessionOriginSourcesFor(ctx, client, sessionID)
 	if err != nil || len(sources) == 0 {
 		return nil, err

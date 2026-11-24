@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/sessionorigin/adapters/claudemem"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -19,6 +20,14 @@ type ReconcileOptions struct {
 	Now  func() time.Time
 	// ReadClaudeMem replaces the claude-mem adapter in tests.
 	ReadClaudeMem func(ctx context.Context, home, dataDir string, candidates []string) claudemem.Result
+	// Published prepares one affected Codex group on two coordinator-owned
+	// views. Only the final ticket transaction can apply the returned plan.
+	Published *OriginReconciliation
+}
+
+type OriginReconciliation struct {
+	SessionID string
+	View      OriginView[OriginChangeInputs]
 }
 
 // ReconcileSummary reports one pass.
@@ -30,6 +39,7 @@ type ReconcileSummary struct {
 	// by this pass and which therefore apply again.
 	Reactivated int
 	ClaudeMem   *store.OriginAdapterRun
+	Prepared    *PreparedOrigin
 }
 
 type originKey struct{ client, sessionID string }
@@ -59,26 +69,40 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 	if options.Now != nil {
 		now = options.Now().UTC()
 	}
+	if options.Published != nil {
+		p, err := PrepareEffectiveOrigin(ctx, options.Published.SessionID, now, options.Published.View)
+		if err != nil {
+			return summary, err
+		}
+		summary.Prepared = &p
+		return summary, nil
+	}
+	if core == nil || sessions == nil {
+		return summary, ErrSessionsUnavailable
+	}
 	observedAt := now.Format(time.RFC3339Nano)
 	readClaudeMem := options.ReadClaudeMem
 	if readClaudeMem == nil {
 		readClaudeMem = claudemem.Read
 	}
 
-	sources, err := sessions.SessionOriginSources(ctx)
+	index, err := session.ReadIndexSnapshot(ctx, sessions.DB, "")
 	if err != nil {
 		return summary, err
 	}
 	generations := map[originKey][]SourceGeneration{}
 	copies := map[originKey][]store.SessionOriginSource{}
 	byClient := map[string][]string{}
-	for _, source := range sources {
-		key := originKey{source.Client, source.SessionID}
-		if _, seen := generations[key]; !seen {
-			byClient[source.Client] = append(byClient[source.Client], source.SessionID)
+	for _, indexed := range index.Sessions {
+		for _, copy := range indexed.Copies {
+			source := store.SessionOriginSource{Client: indexed.Client, SessionID: indexed.SessionID, Identity: copy.Identity, PrefixHash: copy.PrefixHash, ParserVersion: copy.ParserVersion, FirstAt: copy.FirstAt}
+			key := originKey{source.Client, source.SessionID}
+			if _, seen := generations[key]; !seen {
+				byClient[source.Client] = append(byClient[source.Client], source.SessionID)
+			}
+			generations[key] = append(generations[key], SourceGeneration{Identity: source.Identity, PrefixHash: source.PrefixHash, ParserVersion: source.ParserVersion})
+			copies[key] = append(copies[key], source)
 		}
-		generations[key] = append(generations[key], SourceGeneration{Identity: source.Identity, PrefixHash: source.PrefixHash, ParserVersion: source.ParserVersion})
-		copies[key] = append(copies[key], source)
 	}
 	summary.Sessions = len(generations)
 
@@ -154,21 +178,9 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 		return changes[client]
 	}
 	for key, gens := range generations {
-		assessment := assessments[key]
-		result := Reduce(assessment)
-		evidence := make([]store.OriginEvidence, 0, len(assessment.Evidence))
-		for _, item := range assessment.Evidence {
-			evidence = append(evidence, store.OriginEvidence{Adapter: item.Adapter, RuleVersion: item.RuleVersion, Client: key.client, SessionID: key.sessionID,
-				SourceToken: item.SourceToken, Purpose: item.Purpose, ValidatedVersion: item.ValidatedVersion, ObservedAt: observedAt})
-		}
 		previous, had := storedOrigins[key]
-		evidenceSame := keepObservedAt(evidence, storedEvidence[key])
-		origin := store.SessionOrigin{Client: key.client, SessionID: key.sessionID, Automatic: result.Automatic, ReasonCode: result.ReasonCode,
-			RuleVersion: result.RuleVersion, InputToken: InputToken(key.client, key.sessionID, gens, nil), EvidenceRevision: previous.EvidenceRevision}
-		if !evidenceSame {
-			origin.EvidenceRevision++
-		}
-		if had && evidenceSame && previous == origin {
+		origin, evidence := deriveOrigin(key, gens, assessments[key], previous, storedEvidence[key], observedAt)
+		if had && previous == origin {
 			continue
 		}
 		c := changeFor(key.client)
@@ -216,6 +228,21 @@ func Reconcile(ctx context.Context, core, sessions *store.Store, options Reconci
 	}
 	summary.Reactivated, err = reactivateOverrides(ctx, core, copies)
 	return summary, err
+}
+
+func deriveOrigin(key originKey, gens []SourceGeneration, assessment Assessment, previous store.SessionOrigin, priorEvidence []store.OriginEvidence, observedAt string) (store.SessionOrigin, []store.OriginEvidence) {
+	result := Reduce(assessment)
+	evidence := make([]store.OriginEvidence, 0, len(assessment.Evidence))
+	for _, item := range assessment.Evidence {
+		evidence = append(evidence, store.OriginEvidence{Adapter: item.Adapter, RuleVersion: item.RuleVersion, Client: key.client, SessionID: key.sessionID,
+			SourceToken: item.SourceToken, Purpose: item.Purpose, ValidatedVersion: item.ValidatedVersion, ObservedAt: observedAt})
+	}
+	origin := store.SessionOrigin{Client: key.client, SessionID: key.sessionID, Automatic: result.Automatic, ReasonCode: result.ReasonCode,
+		RuleVersion: result.RuleVersion, InputToken: InputToken(key.client, key.sessionID, gens, nil), EvidenceRevision: previous.EvidenceRevision}
+	if !keepObservedAt(evidence, priorEvidence) {
+		origin.EvidenceRevision++
+	}
+	return origin, evidence
 }
 
 // reactivateOverrides re-applies the overrides a portable restore left

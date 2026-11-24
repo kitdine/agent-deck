@@ -4,9 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 // Publication reasons for a selection view that is stale or unavailable.
@@ -34,6 +37,9 @@ func NewPublication(snapshot Snapshot, now time.Time) Publication {
 		"usage_revision=" + strconv.FormatInt(snapshot.Vector.UsageRevision, 10),
 		"session_epoch=" + strconv.FormatInt(snapshot.Vector.SessionEpoch, 10),
 		"session_revision=" + strconv.FormatInt(snapshot.Vector.SessionRevision, 10)}
+	if snapshot.published != nil {
+		lines = append(lines, fmt.Sprintf("selected=%v", *snapshot.published))
+	}
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n") + "\n"))
 	return Publication{ID: hex.EncodeToString(sum[:]), GeneratedAt: now.UTC().Format(time.RFC3339Nano), Snapshot: snapshot}
 }
@@ -88,6 +94,26 @@ type View struct {
 // for another selection is not a result for this one. The returned
 // publication is the one to retain.
 func Publish(selection Selection, previous, candidate *Publication, buildErr error, observed *Vector) (View, *Publication) {
+	return PublishAt(selection, previous, candidate, buildErr, observed, nil)
+}
+
+// PublishAt requires explicit re-admission of a managed result. The four
+// legacy generation counters cannot certify an unchanged privacy overlay.
+func PublishAt(selection Selection, previous, candidate *Publication, buildErr error, observed *Vector, stamp *store.CJSIIndexStamp) (View, *Publication) {
+	admitted := func(p *Publication) bool {
+		if p == nil {
+			return true
+		}
+		got := p.Snapshot.published
+		return got == nil && stamp == nil || got != nil && stamp != nil && *got == *stamp && observed != nil && *observed == p.Snapshot.Vector
+	}
+	if !admitted(previous) {
+		previous = nil
+	}
+	if !admitted(candidate) {
+		candidate = nil
+		buildErr = ErrSessionsUnavailable
+	}
 	if previous != nil && previous.Snapshot.Selection.key() != selection.key() {
 		previous = nil
 	}
