@@ -1,8 +1,12 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kitdine/agent-deck/internal/store"
+	ledger "github.com/kitdine/agent-deck/internal/usage/cjsiledger"
+	"path/filepath"
 	"strings"
 )
 
@@ -135,4 +139,20 @@ func codexInjectedContext(text string) bool {
 		}
 	}
 	return false
+}
+
+func sourceParserOutdated(e InventoryEntry, version int, managed bool) bool {
+	if managed && e.Client == "codex" && filepath.Ext(e.Path) == ".jsonl" {
+		return version != ledger.Parser
+	}
+	return usageParserOutdated(e.Client, version)
+}
+func (s *Service) usageInventoryState(ctx context.Context, entries []InventoryEntry) (CJSIUsageInventory, error) {
+	if s.cjsiManaged {
+		if s.CJSIPublication == nil {
+			return CJSIUsageInventory{}, store.ErrTelemetrySourceIdentityPending
+		}
+		return s.CJSIPublication.InventoryState(ctx, entries)
+	}
+	return CJSIUsageInventory{Fingerprint: inventoryFingerprint(entries)}, nil
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
+	ledger "github.com/kitdine/agent-deck/internal/usage/cjsiledger"
 )
 
 //go:embed model-prices.json
@@ -333,10 +334,13 @@ type ScanProgressReporter interface {
 }
 
 type Service struct {
-	ProcessAlive func(int) bool
-	Store        *store.Store
-	Home         string
-	Now          func() time.Time
+	cjsiManaged     bool
+	CJSIReaders     CJSIUsageReaders
+	CJSIPublication CJSIUsagePublication
+	ProcessAlive    func(int) bool
+	Store           *store.Store
+	Home            string
+	Now             func() time.Time
 	// ClientProcesses is injectable so overlap handling has deterministic tests.
 	ClientProcesses         func(string) ([]int, error)
 	beforeSessionRouteWrite func()
@@ -709,8 +713,11 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 	if progress != nil {
 		progress.Update(ScanProgress{Total: len(inventory.Entries), Reason: reason})
 	}
+	pending := false
 	for _, path := range inventory.Removed {
-		if err := s.detachSource(ctx, path); err != nil {
+		if err := s.detachSource(ctx, path); errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+			pending = true
+		} else if err != nil {
 			return nil, err
 		}
 	}
@@ -758,15 +765,22 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 		for key, value := range stats {
 			out[key] += value
 		}
-	}); err != nil {
+	}); errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+		pending = true
+	} else if err != nil {
 		return nil, err
 	}
 	if recovering && !s.CoverageBatch {
 		removed, cleanupErr := s.cleanupOrphanedEvents(ctx)
-		if cleanupErr != nil {
+		if errors.Is(cleanupErr, store.ErrTelemetrySourceIdentityPending) {
+			pending = true
+		} else if cleanupErr != nil {
 			return nil, cleanupErr
 		}
 		out["removed"] += removed
+	}
+	if pending {
+		return out, store.ErrTelemetrySourceIdentityPending
 	}
 	if !s.CoverageBatch {
 		if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
@@ -802,7 +816,9 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 	}
 	warningSet := map[string]bool{}
 	for _, path := range inventory.Removed {
-		if err = s.detachSource(ctx, path); err != nil {
+		if err = s.detachSource(ctx, path); errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+			warningSet["scan_incomplete"] = true
+		} else if err != nil {
 			warningSet["usage_source_rebuild_failed"] = true
 		}
 	}
@@ -815,7 +831,9 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 		stats, rebuildErr := s.scanFileMode(ctx, entry, true)
 		if rebuildErr != nil {
 			warning := "usage_source_rebuild_failed"
-			if errors.Is(rebuildErr, errUsageSourceChanged) {
+			if errors.Is(rebuildErr, store.ErrTelemetrySourceIdentityPending) {
+				warning = "scan_incomplete"
+			} else if errors.Is(rebuildErr, errUsageSourceChanged) {
 				warning = "usage_source_unstable"
 			}
 			warningSet[warning] = true
@@ -858,7 +876,8 @@ func (s *Service) InventoryFingerprint() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return inventoryFingerprint(entries), nil
+	state, err := s.usageInventoryState(context.Background(), entries)
+	return state.Fingerprint, err
 }
 
 func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
@@ -866,7 +885,15 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 	if err != nil {
 		return Inventory{}, err
 	}
-	inventory := Inventory{Entries: entries, Fingerprint: inventoryFingerprint(entries)}
+	state, err := s.usageInventoryState(ctx, entries)
+	if err != nil {
+		return Inventory{}, err
+	}
+	inventory := Inventory{Entries: entries, Fingerprint: state.Fingerprint}
+	managed, err := managedUsage(ctx, s.Store.DB)
+	if err != nil {
+		return Inventory{}, err
+	}
 	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,changed_at,parser_version FROM usage_source_files")
 	if err != nil {
 		return Inventory{}, err
@@ -896,11 +923,13 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		switch {
 		case !found:
 			inventory.Added = append(inventory.Added, entry.Path)
-		case usageParserOutdated(entry.Client, previous.parserVersion):
+		case sourceParserOutdated(entry, previous.parserVersion, managed):
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
 			if entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt {
 				parserVersionRereads++
 			}
+		case state.Replay[entry.Path]:
+			inventory.Mutated = append(inventory.Mutated, entry.Path)
 		case entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt:
 		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
 			inventory.Appended = append(inventory.Appended, entry.Path)
@@ -973,6 +1002,13 @@ func (s *Service) plannedAppendStart(ctx context.Context, entry InventoryEntry) 
 	}
 	if err != nil {
 		return 0, err
+	}
+	managed, err := managedUsage(ctx, s.Store.DB)
+	if err != nil {
+		return 0, err
+	}
+	if managed && entry.Client == "codex" {
+		return 0, nil
 	}
 	if identity != entry.Identity || usageParserOutdated(entry.Client, parserVersion) || cursor <= 0 || cursor >= entry.Size {
 		return 0, nil
@@ -1074,6 +1110,9 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		return prepared.r, err
 	}
 	defer prepared.close()
+	if prepared.pending {
+		return prepared.r, store.ErrTelemetrySourceIdentityPending
+	}
 	if prepared.unchanged {
 		return prepared.r, s.commitUnchangedSourceCoverage(ctx, entry)
 	}
@@ -1095,6 +1134,9 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	finishCommit := perftrace.Span(perftrace.UsageCommit)
 	err = tx.Commit()
 	finishCommit()
+	if err == nil && prepared.pending {
+		return prepared.r, store.ErrTelemetrySourceIdentityPending
+	}
 	return prepared.r, err
 }
 
@@ -1102,6 +1144,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 // its captured range and the checkpoint snapshot the parse started from. It
 // holds no transaction; the writer publishes it in inventory order.
 type preparedSource struct {
+	pending      bool
+	candidate    *CJSIUsageCandidate
 	entry        InventoryEntry
 	forceRebuild bool
 	r            map[string]int
@@ -1240,6 +1284,29 @@ func (s *Service) prepareSource(ctx context.Context, entry InventoryEntry, force
 	checkpoint, err := loadUsageCheckpoint(ctx, s.Store.DB, path)
 	if err != nil {
 		return p, err
+	}
+	p.checkpoint = checkpoint
+	if client == "codex" {
+		managed, err := managedUsage(ctx, s.Store.DB)
+		if err != nil {
+			return p, err
+		}
+		if managed {
+			if coordinator != nil {
+				coordinator.Skip(path, ingest.ConsumerUsage)
+			}
+			c, err := s.prepareManagedUsage(ctx, entry)
+			if errors.Is(err, store.ErrTelemetrySourceIdentityPending) || errors.Is(err, ingest.ErrCodexWorksetBudget) {
+				p.pending = true
+				return p, nil
+			}
+			if err != nil {
+				return p, err
+			}
+			p.validateCaptured = func() error { return c.validateCurrent(ctx) }
+			p.candidate = &c
+			return p, nil
+		}
 	}
 	cursor := checkpoint.cursor
 	state := parseState{codexCumulative: map[string]map[string]int64{}, session: checkpoint.session, turn: checkpoint.turn, model: checkpoint.model}
@@ -1472,17 +1539,7 @@ func (s *Service) prepareSource(ctx context.Context, entry InventoryEntry, force
 
 // publishFacts writes events and tool calls of one source, through the cold
 // bulk path when cold allows it, and adds their logical changes to r.
-//
-// threads is the thread identity of the source. Before any fact is written,
-// OTel ownership of those threads is retracted in the same transaction, so a
-// child thread whose facts are accounted under its parent's session ID is
-// never counted from both JSONL and OTel, in any block of any publication.
-func publishFacts(ctx context.Context, tx *sql.Tx, path string, threads []string, cold bool, events []Event, tools []activity.Record, r map[string]int) error {
-	if len(threads) > 0 {
-		if _, err := store.RetractTelemetryForJSONLThreads(ctx, tx, threads, time.Now()); err != nil {
-			return err
-		}
-	}
+func publishFacts(ctx context.Context, tx *sql.Tx, path string, cold bool, events []Event, tools []activity.Record, r map[string]int) error {
 	if cold {
 		handled, imported, updated, err := publishColdSource(ctx, tx, path, events, tools)
 		if err != nil {
@@ -1526,6 +1583,16 @@ func publishFacts(ctx context.Context, tx *sql.Tx, path string, threads []string
 // caller has validated the captured range and owns the commit.
 func (s *Service) publishPrepared(ctx context.Context, tx *sql.Tx, p *preparedSource) error {
 	defer perftrace.Span(perftrace.UsagePublication)()
+	if p.candidate != nil {
+		if s.CJSIPublication == nil {
+			return store.ErrTelemetrySourceIdentityPending
+		}
+		pending, err := s.CJSIPublication.Publish(ctx, tx, p.entry, *p.candidate, func(registered []ledger.OldRow) error {
+			return p.candidate.ApplySelectedRequests(ctx, tx, p.candidate.Proposal().Stamp(), registered)
+		})
+		p.pending = pending
+		return err
+	}
 	r, path, client, entry, state := p.r, p.entry.Path, p.entry.Client, p.entry, p.state
 	reset, sourceMutated, found, cursor := p.reset, p.sourceMutated, p.found, p.cursor
 	affected, err := affectedSessions(ctx, tx, path)
@@ -1564,7 +1631,7 @@ func (s *Service) publishPrepared(ctx context.Context, tx *sql.Tx, p *preparedSo
 	for _, event := range p.events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
 	}
-	if err = publishFacts(ctx, tx, path, p.sourceThreads(), !found, p.events, p.tools, r); err != nil {
+	if err = p.publishOrdinaryFacts(ctx, tx, !found, p.events, p.tools); err != nil {
 		return err
 	}
 	for _, signal := range state.signals {
@@ -1635,13 +1702,7 @@ func (s *Service) commitUnchangedCoverageBlock(ctx context.Context, entries []In
 	}
 	defer release()
 	for _, entry := range entries {
-		var cursor int64
-		if err = tx.QueryRowContext(ctx, `SELECT cursor FROM usage_source_files WHERE path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, entry.Path, entry.Identity, entry.Size, ParserVersion, entry.ModifiedAt, entry.ChangedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
-			return errUsageSourceChanged
-		} else if err != nil {
-			return err
-		}
-		if err = store.CommitSourceCoverage(ctx, tx, s.CoverageInventoryID, entry.Path, entry.Identity, entry.Size, cursor); err != nil {
+		if err = s.commitUnchangedCoverageTx(ctx, tx, entry); err != nil {
 			return err
 		}
 	}
@@ -2035,7 +2096,7 @@ func eventRunBindingsForSource(ctx context.Context, tx *sql.Tx, path string) ([]
 
 func restoreEventRunBindings(ctx context.Context, tx *sql.Tx, path string, bindings []eventRunBinding) error {
 	for _, binding := range bindings {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_run_bindings(event_key,run_id) SELECT ?,? WHERE EXISTS (SELECT 1 FROM usage_events WHERE event_key=? AND source_path=?)`, binding.eventKey, binding.runID, binding.eventKey, path); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_run_bindings(event_key,run_id) SELECT ?,? WHERE EXISTS (SELECT 1 FROM usage_events e JOIN usage_runs r ON r.id=? AND r.client=e.client AND r.exact=1 AND r.ended_at IS NOT NULL WHERE e.event_key=? AND e.source_path=?)`, binding.eventKey, binding.runID, binding.runID, binding.eventKey, path); err != nil {
 			return err
 		}
 	}
@@ -2044,12 +2105,12 @@ func restoreEventRunBindings(ctx context.Context, tx *sql.Tx, path string, bindi
 
 func restoreEventRunBindingsForSourceRange(ctx context.Context, tx *sql.Tx, path string) error {
 	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO usage_run_bindings(event_key,run_id)
-		SELECT e.event_key,r.run_id
+		SELECT e.event_key,MIN(r.run_id)
 		FROM usage_events e
 		JOIN usage_run_sources r ON r.path=e.source_path
 		JOIN usage_runs u ON u.id=r.run_id AND u.client=e.client
 		WHERE e.source_path=? AND r.end_offset IS NOT NULL AND e.source_offset>=r.start_offset AND e.source_offset<r.end_offset
-		ORDER BY r.run_id,e.source_offset,e.event_key`, path)
+		AND u.exact=1 AND u.ended_at IS NOT NULL GROUP BY e.event_key HAVING COUNT(DISTINCT r.run_id)=1`, path)
 	return err
 }
 
@@ -2102,6 +2163,16 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 		return err
 	}
 	defer tx.Rollback()
+	protect, err := s.protectMissingUsage(ctx, tx, path)
+	if err != nil {
+		return err
+	}
+	if protect {
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		return store.ErrTelemetrySourceIdentityPending
+	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
 		return err
 	}
@@ -2181,7 +2252,16 @@ func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
 	}
 	affected := map[string][2]string{}
 	var removed int64
+	protected := false
 	for _, path := range paths {
+		protect, err := s.protectMissingUsage(ctx, tx, path)
+		if err != nil {
+			return 0, err
+		}
+		if protect {
+			protected = true
+			continue
+		}
 		keys, err := affectedSessions(ctx, tx, path)
 		if err != nil {
 			return 0, err
@@ -2208,9 +2288,19 @@ func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
 	if err = tx.Commit(); err != nil {
 		return 0, err
 	}
+	if protected {
+		return int(removed), store.ErrTelemetrySourceIdentityPending
+	}
 	return int(removed), nil
 }
 func (s *Service) Diagnose(ctx context.Context) (map[string]any, error) {
+	readers, readErr := s.usageReaders(ctx)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if readers != nil {
+		return readers.Diagnose(ctx)
+	}
 	out := map[string]any{}
 	for k, q := range map[string]string{"files": "SELECT COUNT(*) FROM usage_source_files", "events": "SELECT COUNT(*) FROM usage_events", "sessions": "SELECT COUNT(*) FROM usage_sessions", "tool_calls": "SELECT COUNT(*) FROM usage_tool_calls", "exact_runs": "SELECT COUNT(*) FROM usage_runs WHERE ended_at IS NULL"} {
 		var n int
@@ -2843,6 +2933,13 @@ type storedEvent struct {
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
+	readers, readErr := s.usageReaders(ctx)
+	if readErr != nil {
+		return Summary{}, readErr
+	}
+	if readers != nil {
+		return readers.Summary(ctx, time.Time{}, time.Time{})
+	}
 	events, err := s.events(ctx, "", "")
 	if err != nil {
 		return Summary{}, err
@@ -2851,6 +2948,13 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 }
 
 func (s *Service) SummaryRange(ctx context.Context, from, to time.Time) (Summary, error) {
+	readers, readErr := s.usageReaders(ctx)
+	if readErr != nil {
+		return Summary{}, readErr
+	}
+	if readers != nil {
+		return readers.Summary(ctx, from, to)
+	}
 	events, err := s.eventsRange(ctx, from, to, "", "")
 	if err != nil {
 		return Summary{}, err
@@ -3864,6 +3968,13 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 }
 
 func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport, error) {
+	readers, readErr := s.usageReaders(ctx)
+	if readErr != nil {
+		return StatsReport{}, readErr
+	}
+	if readers != nil {
+		return readers.Stats(ctx, options)
+	}
 	location := options.Location
 	if location == nil {
 		location = time.Local
@@ -4189,6 +4300,13 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 }
 
 func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
+	readers, readErr := s.usageReaders(ctx)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if readers != nil {
+		return readers.Sessions(ctx)
+	}
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,first_at,last_at FROM usage_sessions ORDER BY first_at DESC, client, session_id`)
 	if err != nil {
 		return nil, err

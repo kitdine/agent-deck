@@ -113,6 +113,9 @@ func (w *usageWriter) write(p *preparedSource, nextReady bool) (bool, error) {
 }
 
 func (w *usageWriter) publish(p *preparedSource) error {
+	if p.pending {
+		return nil
+	}
 	current, err := w.s.checkpointCurrent(w.ctx, w.tx, p)
 	if err != nil {
 		return err
@@ -145,6 +148,9 @@ func (w *usageWriter) publish(p *preparedSource) error {
 			return errUsageSourceChanged
 		}
 	}
+	if p.pending {
+		return nil
+	}
 	if p.unchanged {
 		return w.s.commitUnchangedCoverageTx(w.ctx, w.tx, p.entry)
 	}
@@ -165,7 +171,7 @@ func (w *usageWriter) publish(p *preparedSource) error {
 // imports the source again over the committed prefix. A rewritten or reset
 // source is never split: its replacement must not become visible in parts.
 func (w *usageWriter) publishPrefix(p *preparedSource) error {
-	if p.found || p.reset || len(p.events)+len(p.tools) <= writeTxRows {
+	if p.candidate != nil || p.found || p.reset || len(p.events)+len(p.tools) <= writeTxRows {
 		return nil
 	}
 	if err := w.commit(); err != nil {
@@ -188,7 +194,7 @@ func (w *usageWriter) publishPrefix(p *preparedSource) error {
 			w.abort()
 			return err
 		}
-		if err := publishFacts(w.ctx, w.tx, p.entry.Path, p.sourceThreads(), true, events, tools, p.r); err != nil {
+		if err := p.publishOrdinaryFacts(w.ctx, w.tx, true, events, tools); err != nil {
 			w.abort()
 			return err
 		}
@@ -248,7 +254,8 @@ func (s *Service) scanSources(ctx context.Context, entries []InventoryEntry, for
 		options.Abort = func() { s.Coordinator.ConsumerDone(ingest.ConsumerUsage) }
 	}
 	writer := &usageWriter{s: s, ctx: ctx}
-	return ingest.Ordered(ctx, len(entries), options,
+	pending := false
+	err := ingest.Ordered(ctx, len(entries), options,
 		func(index int) ingest.Reduced[*preparedSource] {
 			entry := entries[index]
 			finish := perftrace.Span(perftrace.IngestReduce)
@@ -263,12 +270,17 @@ func (s *Service) scanSources(ctx context.Context, entries []InventoryEntry, for
 		func(_ int, p *preparedSource, nextReady bool) (bool, error) {
 			committed, err := writer.write(p, nextReady)
 			if err == nil {
+				pending = pending || p.pending
 				stats(p.r)
 			}
 			return committed, err
 		},
 		writer.commit,
 	)
+	if err == nil && pending {
+		return store.ErrTelemetrySourceIdentityPending
+	}
+	return err
 }
 
 // commitUnchangedCoverageTx is commitUnchangedSourcesCoverage for one entry
@@ -277,8 +289,18 @@ func (s *Service) commitUnchangedCoverageTx(ctx context.Context, tx *sql.Tx, ent
 	if s.CoverageInventoryID == "" {
 		return nil
 	}
+	managed, err := managedUsage(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if managed && entry.Client == "codex" {
+		if s.CJSIPublication == nil {
+			return store.ErrTelemetrySourceIdentityPending
+		}
+		return s.CJSIPublication.UnchangedCoverage(ctx, tx, entry, s.CoverageInventoryID)
+	}
 	var cursor int64
-	if err := tx.QueryRowContext(ctx, `SELECT cursor FROM usage_source_files WHERE path=? AND identity=? AND size=? AND parser_version=? AND modified_at=? AND changed_at=?`, entry.Path, entry.Identity, entry.Size, ParserVersion, entry.ModifiedAt, entry.ChangedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT cursor FROM usage_source_files WHERE path=? AND identity=? AND size=? AND (parser_version=? OR (?='claude' AND parser_version=7)) AND modified_at=? AND changed_at=?`, entry.Path, entry.Identity, entry.Size, ParserVersion, entry.Client, entry.ModifiedAt, entry.ChangedAt).Scan(&cursor); errors.Is(err, sql.ErrNoRows) {
 		return errUsageSourceChanged
 	} else if err != nil {
 		return err

@@ -194,3 +194,12 @@ func (b *coldSQLBatch) flush(ctx context.Context) error {
 	b.args, b.rows, b.bytes = b.args[:0], 0, 0
 	return err
 }
+
+// publishOrdinaryFacts is shared by first-import blocks and final ordinary
+// writes. Managed Codex candidates use their selected transaction instead.
+func (p *preparedSource) publishOrdinaryFacts(ctx context.Context, tx *sql.Tx, cold bool, events []Event, tools []activity.Record) error {
+	if err := p.legacyOwnership(ctx, tx, len(events) > 0); err != nil {
+		return err
+	}
+	return publishFacts(ctx, tx, p.entry.Path, cold, events, tools, p.r)
+}

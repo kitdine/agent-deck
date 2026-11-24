@@ -3,12 +3,14 @@ package usage
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -33,6 +35,12 @@ const (
 // Whether settlement may promote afterwards is the store's decision
 // (TelemetrySourceIdentityReady), which the settle transaction applies itself.
 func (s *Service) PrepareSourceIdentities(ctx context.Context) (changed bool, err error) {
+	if s.cjsiManaged {
+		if s.CJSIPublication == nil {
+			return false, store.ErrTelemetrySourceIdentityPending
+		}
+		return s.CJSIPublication.PrepareSourceIdentities(ctx)
+	}
 	through, err := s.Store.LastUnassessedSourcePath(ctx)
 	if err != nil {
 		return changed, err
@@ -162,4 +170,26 @@ func firstSessionThread(head []byte, whole bool) (thread string, decided bool) {
 		}
 	}
 	return "", whole && records > 0 && len(bytes.TrimSpace(head)) == 0
+}
+
+// legacyOwnership preserves the schema-36 settlement protocol. Schema 37 can
+// only publish a Codex group through its selected proposal and final CAS.
+func (p *preparedSource) legacyOwnership(ctx context.Context, tx *sql.Tx, hasCalls bool) error {
+	if p.entry.Client != "codex" {
+		return nil
+	}
+	managed, err := managedUsage(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if managed {
+		return store.ErrTelemetrySourceIdentityPending
+	}
+	if !hasCalls {
+		return nil
+	}
+	if threads := p.sourceThreads(); len(threads) != 0 {
+		_, err = store.RetractTelemetryForJSONLThreads(ctx, tx, threads, time.Now())
+	}
+	return err
 }
