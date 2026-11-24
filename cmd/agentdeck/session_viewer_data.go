@@ -23,22 +23,9 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 		case viewerOverview:
 			return sessionViewerOverviewPage(metadata), nil
 		case viewerDocuments:
-			documents, pagination, err := session.DocumentsPage(ctx, database.DB, metadata, page, limit, false)
-			if err != nil {
-				return sessionViewerPage{}, err
-			}
-			// A projected OTel source is not a file and is never stale.
-			var sourceErr error
-			if !session.IsTelemetrySource(metadata.SourcePath) {
-				_, sourceErr = os.Stat(metadata.SourcePath)
-			}
-			return sessionViewerPage{
-				Rows:  sessionViewerDocumentRows(metadata, documents, pagination.Page, pagination.Limit),
-				Empty: "No approved visible documents are indexed for this session.",
-				Page:  pagination.Page,
-				Total: pagination.Total,
-				Stale: os.IsNotExist(sourceErr),
-			}, nil
+			return loadViewerDocuments(ctx, metadata, page, limit, func(ctx context.Context, m session.Metadata, page, limit int) ([]session.Document, session.Pagination, error) {
+				return session.DocumentsPage(ctx, database.DB, m, page, limit, false)
+			})
 		case viewerActivity:
 			if session.IsTelemetrySource(metadata.SourcePath) {
 				return sessionViewerPage{Empty: "No safe activity details are available.", Page: page}, nil
@@ -86,6 +73,25 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 			return sessionViewerPage{}, fmt.Errorf("unknown viewer section")
 		}
 	}
+}
+
+func loadViewerDocuments(ctx context.Context, metadata session.Metadata, page, limit int, read func(context.Context, session.Metadata, int, int) ([]session.Document, session.Pagination, error)) (sessionViewerPage, error) {
+	documents, pagination, err := read(ctx, metadata, page, limit)
+	if err != nil {
+		return sessionViewerPage{}, err
+	}
+	// A projected OTel source is not a file and is never stale.
+	var sourceErr error
+	if !session.IsTelemetrySource(metadata.SourcePath) {
+		_, sourceErr = os.Stat(metadata.SourcePath)
+	}
+	return sessionViewerPage{
+		Rows:  sessionViewerDocumentRows(metadata, documents, pagination.Page, pagination.Limit),
+		Empty: "No approved visible documents are indexed for this session.",
+		Page:  pagination.Page,
+		Total: pagination.Total,
+		Stale: os.IsNotExist(sourceErr),
+	}, nil
 }
 
 func sessionViewerOverviewPage(metadata session.Metadata) sessionViewerPage {

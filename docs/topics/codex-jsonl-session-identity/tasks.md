@@ -25,7 +25,7 @@ created: 2026-11-17
 | 2. `fenced-state-layout` | [x] | [x] |
 | 3. `usage-ledger-replay` | [x] | [x] |
 | 4. `otel-ownership-receipts` | [x] | [x] |
-| 5. `session-effective-index` | [ ] | [ ] |
+| 5. `session-effective-index` | [x] | [x] |
 | 6. `session-origin-bindings` | [ ] | [ ] |
 | 7. `scoped-usage-aggregation` | [ ] | [ ] |
 | 8. `same-generation-publication` | [ ] | [ ] |
@@ -130,7 +130,7 @@ scripts/run-go-test.sh ./internal/usage ./internal/store ./internal/desktop -run
 
 **依赖与所有权。** 3、4、5、6、7。独占 `internal/scanruntime/` 的现有 round/serving 编排和恢复、`internal/store/serving_generation.go`、`derived_generation.go`、`source_coverage.go` 以及私有协调实现；`internal/desktop/serving_cache.go`、`session_scope.go`；`internal/watch/watch.go`、`internal/ingest/metrics.go` 的发布诊断接线与必要 `internal/perftrace/` 固定观测。独占 `cmd/agentdeck/main.go` 及通用 `source_coverage.go` 的 CLI 接线，承接 show、token/活动、watch/fingerprint、purge 及 backup/doctor 包调用；包行为归各 owner，8 只在此写共享入口。对接 `BuildToday`、`prepareServingSnapshot`、`writeServingSnapshot`、`OpenServingGenerationReader`、`ReadSourceCoverage`、`AcquireMaintenance`、`markEnd`。8 统筹最终 CAS，4 保有 OTel 换侧函数，2 保有迁移/路径，5 保有索引视图/compact，7 保有聚合。
 
-**交付与验证（L3）。** 同一差分依合同 seal，计算/序列化/文件和目录 fsync 均在阻塞写者的锁外；最终 CAS 与 OTel/coverage/binding 原子开放，晚到、崩溃与旧缓存按原语义，并发非依赖写入继续。usage-only 不打开 index，异常持有走既有 `ErrTelemetrySourceIdentityPending`、`scan_pending` / `source_identity_pending`；会话 source/watch 路径以同票读法判定可用。基线 watch 的取消/释放不回退。拥有 scanruntime、desktop、watch、store 和 CLI 中本锚的 `cjsi_publication_test.go`，独立故障屏障断言不以墙钟阈值判断锁。
+**交付与验证（L3）。** 同一差分依合同 seal，计算/序列化/文件和目录 fsync 均在阻塞写者的锁外；最终 CAS 与 OTel/coverage/binding 原子开放，晚到、崩溃与旧缓存按原语义，并发非依赖写入继续。usage-only 不打开 index，异常持有走既有 `ErrTelemetrySourceIdentityPending`、`scan_pending` / `source_identity_pending`；会话 source/watch 路径以同票读法判定可用。恢复与 CAS 依据 5 已认证计划中的 `(旧路径, 旧身份)` 撤回清单与旧基底核对删除：同票原路径被另一身份复用时，私库在该 `(ticket, attempt, source_path)` 只持久化一条替换 upsert 并遮蔽旧身份，不得要求每个逻辑删除都有独立 `op=delete` 行；仅凭同名路径不能授权保留文档 ID（来源：Task 5 CJSI-SI-R13-F5）。基线 watch 的取消/释放不回退。拥有 scanruntime、desktop、watch、store 和 CLI 中本锚的 `cjsi_publication_test.go`，独立故障屏障断言不以墙钟阈值判断锁。
 
 ```sh
 scripts/run-go-test.sh ./internal/scanruntime ./internal/desktop ./internal/watch ./internal/store ./cmd/agentdeck -run '^TestCJSI(PublicationLifecycle|SlotDurability|WatchResume|ReaderConsistency)$'

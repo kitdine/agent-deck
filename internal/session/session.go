@@ -1628,6 +1628,9 @@ func ReplaceDocuments(ctx context.Context, db *sql.DB, client, sessionID string,
 		return err
 	}
 	defer tx.Rollback()
+	if err := requireLegacyIndex(ctx, tx); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?)", replaceDocumentsSourcePath, replaceDocumentsSourceIdentity, 0, []byte{}, 0, 0, "", 1, ParserVersion, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}
@@ -1640,26 +1643,21 @@ func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, errors.New("search query is required")
 	}
-	return searchDocuments(ctx, db, query)
-}
-
-const searchSQL = `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 AND session_documents MATCH ? ORDER BY CASE WHEN d.event_at='' THEN 1 ELSE 0 END,d.event_at DESC,d.client,d.session_id,d.rowid`
-
-func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
-	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.*,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT client,session_id,project,source_path,model,first_at,last_at FROM visible WHERE n=1 ORDER BY last_at DESC,client,session_id`)
+	tx, err := legacyReadTransaction(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := make([]Metadata, 0)
-	for rows.Next() {
-		var m Metadata
-		if err = rows.Scan(&m.Client, &m.SessionID, &m.Project, &m.SourcePath, &m.Model, &m.FirstAt, &m.LastAt); err != nil {
-			return nil, err
-		}
-		out = append(out, m)
+	defer tx.Rollback()
+	return legacyIndexView(tx).Search(ctx, query)
+}
+
+func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
+	tx, err := legacyReadTransaction(ctx, db)
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	defer tx.Rollback()
+	return legacyIndexView(tx).list(ctx)
 }
 func Show(ctx context.Context, db *sql.DB, client, id string) (Result, error) {
 	return ShowWithActivity(ctx, db, client, id, false)
@@ -1667,88 +1665,50 @@ func Show(ctx context.Context, db *sql.DB, client, id string) (Result, error) {
 
 // ShowMetadata returns the selected authoritative source metadata for one session.
 func ShowMetadata(ctx context.Context, db *sql.DB, client, id string) (Metadata, error) {
-	var metadata Metadata
-	err := db.QueryRowContext(ctx, `SELECT m.client,m.session_id,m.project,m.source_path,m.model,m.first_at,m.last_at FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path WHERE m.client=? AND m.session_id=? ORDER BY s.priority DESC,m.source_path LIMIT 1`, client, id).Scan(&metadata.Client, &metadata.SessionID, &metadata.Project, &metadata.SourcePath, &metadata.Model, &metadata.FirstAt, &metadata.LastAt)
-	return metadata, err
+	tx, err := legacyReadTransaction(ctx, db)
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer tx.Rollback()
+	return legacyIndexView(tx).selectedMetadata(ctx, client, id)
 }
 
 // DocumentsPage returns a deterministic selected-source page without retaining
 // off-page approved document text.
 func DocumentsPage(ctx context.Context, db *sql.DB, metadata Metadata, page, limit int, all bool) ([]Document, Pagination, error) {
-	if page < 1 || limit < 1 || limit > MaxPageLimit {
-		return nil, Pagination{}, fmt.Errorf("page must be positive and limit must be between 1 and %d", MaxPageLimit)
-	}
-	var total int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_documents WHERE source_path=? AND client=? AND session_id=?`, metadata.SourcePath, metadata.Client, metadata.SessionID).Scan(&total); err != nil {
-		return nil, Pagination{}, err
-	}
-	pagination := Pagination{Page: page, Limit: limit, Total: total}
-	offset, queryLimit := 0, limit
-	if all {
-		pagination.Page, pagination.Limit = 1, total
-		queryLimit = total
-	} else {
-		if page-1 > total/limit {
-			return []Document{}, pagination, nil
-		}
-		offset = (page - 1) * limit
-	}
-	if total == 0 {
-		return []Document{}, pagination, nil
-	}
-	rows, err := db.QueryContext(ctx, `SELECT client,session_id,event_at,kind,text FROM session_documents WHERE source_path=? AND client=? AND session_id=? ORDER BY rowid LIMIT ? OFFSET ?`, metadata.SourcePath, metadata.Client, metadata.SessionID, queryLimit, offset)
+	tx, err := legacyReadTransaction(ctx, db)
 	if err != nil {
 		return nil, Pagination{}, err
 	}
-	defer rows.Close()
-	documents := make([]Document, 0, queryLimit)
-	for rows.Next() {
-		var document Document
-		if err := rows.Scan(&document.Client, &document.SessionID, &document.EventAt, &document.Kind, &document.Text); err != nil {
-			return nil, Pagination{}, err
-		}
-		documents = append(documents, document)
-	}
-	if err := rows.Err(); err != nil {
+	defer tx.Rollback()
+	view := legacyIndexView(tx)
+	selected, err := view.selectedMetadata(ctx, metadata.Client, metadata.SessionID)
+	if err != nil {
 		return nil, Pagination{}, err
 	}
-	pagination.Shown = len(documents)
-	pagination.HasMore = offset+len(documents) < total
-	if pagination.HasMore {
-		pagination.NextPage = page + 1
+	if selected.SourcePath != metadata.SourcePath {
+		return nil, Pagination{}, sql.ErrNoRows
 	}
-	return documents, pagination, nil
+	return view.readPage(ctx, selected, page, limit, all)
 }
 
 func ShowWithActivity(ctx context.Context, db *sql.DB, client, id string, includeActivity bool) (Result, error) {
-	var r Result
-	if err := db.QueryRowContext(ctx, `SELECT m.client,m.session_id,m.project,m.source_path,m.model,m.first_at,m.last_at FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path WHERE m.client=? AND m.session_id=? ORDER BY s.priority DESC,m.source_path LIMIT 1`, client, id).Scan(&r.Client, &r.SessionID, &r.Project, &r.SourcePath, &r.Model, &r.FirstAt, &r.LastAt); err != nil {
-		return r, err
-	}
-	docs, err := db.QueryContext(ctx, "SELECT client,session_id,kind,text FROM session_documents WHERE source_path=? AND client=? AND session_id=? ORDER BY rowid", r.SourcePath, client, id)
+	tx, err := legacyReadTransaction(ctx, db)
 	if err != nil {
-		return r, err
+		return Result{}, err
 	}
-	defer docs.Close()
-	for docs.Next() {
-		var d Document
-		if err = docs.Scan(&d.Client, &d.SessionID, &d.Kind, &d.Text); err != nil {
-			return r, err
-		}
-		r.Documents = append(r.Documents, d)
+	defer tx.Rollback()
+	result, err := legacyIndexView(tx).ShowWithActivity(ctx, client, id, includeActivity)
+	// Preserve the legacy show wire representation.
+	for i := range result.Documents {
+		result.Documents[i].EventAt = ""
 	}
-	if err = docs.Err(); err != nil {
-		return r, err
+	if len(result.Documents) == 0 {
+		result.Documents = nil
 	}
-	// A projected OTel source has no file, so it has no activity details.
-	if includeActivity && !IsTelemetrySource(r.SourcePath) {
-		r.Activity, err = activity.ReadDetails(r.SourcePath, client, id)
-		if err == nil {
-			r.ActivitySummary = SummarizeActivity(r.Activity)
-		}
-	}
-	return r, err
+	return result, err
 }
+
 func Exclude(ctx context.Context, db *sql.DB, kind, value string) error {
 	if kind != "project" && kind != "path" && kind != "session" && kind != "client" {
 		return errors.New("exclusion kind must be project, path, session, or client")
@@ -1764,6 +1724,9 @@ func Exclude(ctx context.Context, db *sql.DB, kind, value string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := requireLegacyIndex(ctx, tx); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO session_exclusions(kind,value) VALUES(?,?)", kind, value); err != nil {
 		return err
 	}
@@ -1826,6 +1789,9 @@ func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options Sc
 		return ScanResult{}, err
 	}
 	defer tx.Rollback()
+	if err := requireLegacyIndex(ctx, tx); err != nil {
+		return ScanResult{}, err
+	}
 	if _, err = tx.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
 		return ScanResult{}, err
 	}

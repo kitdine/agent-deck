@@ -45,6 +45,9 @@ func ProjectTelemetrySessions(ctx context.Context, db *sql.DB, sessions []Teleme
 		return err
 	}
 	defer tx.Rollback()
+	if err := requireLegacyIndex(ctx, tx); err != nil {
+		return err
+	}
 	restoreCoverage, err := store.PreserveSourceCoverage(ctx, tx)
 	if err != nil {
 		return err

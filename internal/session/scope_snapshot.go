@@ -55,7 +55,7 @@ var ErrIndexGenerationMissing = errors.New("session index generation is missing"
 // query also returns Search's matches from the same transaction.
 func ReadIndexSnapshot(ctx context.Context, db *sql.DB, query string) (IndexSnapshot, error) {
 	var snapshot IndexSnapshot
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := legacyReadTransaction(ctx, db)
 	if err != nil {
 		return snapshot, err
 	}
@@ -109,32 +109,11 @@ func ReadIndexSnapshot(ctx context.Context, db *sql.DB, query string) (IndexSnap
 	if strings.TrimSpace(query) == "" {
 		return snapshot, errors.New("search query is required")
 	}
-	snapshot.Documents, err = searchDocuments(ctx, tx, query)
+	snapshot.Documents, err = legacyIndexView(tx).Search(ctx, query)
 	if err != nil {
 		return snapshot, err
 	}
 	return snapshot, tx.Commit()
-}
-
-type documentQueryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
-
-func searchDocuments(ctx context.Context, q documentQueryer, query string) ([]Document, error) {
-	rows, err := q.QueryContext(ctx, searchSQL, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]Document, 0)
-	for rows.Next() {
-		var d Document
-		if err := rows.Scan(&d.Client, &d.SessionID, &d.EventAt, &d.Kind, &d.Text); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, rows.Err()
 }
 
 // ProjectGroup is the project identity sessions are counted under, and its
@@ -154,4 +133,41 @@ func ProjectGroup(value string) (identity, label string) {
 		return "chatgpt-work://referenced-conversation", "ChatGPT Work"
 	}
 	return identity, label
+}
+
+// ReadIndexSnapshot returns classification inputs and optional MATCH results
+// from the same guarded private transaction and logical revision.
+func (r CJSIReader) ReadIndexSnapshot(ctx context.Context, query string) (IndexSnapshot, error) {
+	return snapshotResult(r.snapshot(ctx), func(v indexReadView) (IndexSnapshot, error) {
+		result := IndexSnapshot{Epoch: v.stamp.IndexEpoch, Revision: v.stamp.SessionRevision}
+		rows, err := v.tx.QueryContext(ctx, v.selection()+`
+        SELECT winner.client,winner.session_id,winner.project,winner.source_path,winner.model,winner.first_at,winner.last_at,
+            c.identity,c.prefix_hash,c.parser_version,c.first_at
+        FROM ranked winner JOIN ranked c USING(client,session_id) WHERE winner.choice=1
+        ORDER BY winner.last_at DESC,winner.client,winner.session_id,c.identity,c.prefix_hash,c.parser_version,c.first_at`)
+		if err != nil {
+			return IndexSnapshot{}, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m Metadata
+			var copy SourceCopy
+			if err := rows.Scan(&m.Client, &m.SessionID, &m.Project, &m.SourcePath, &m.Model, &m.FirstAt, &m.LastAt, &copy.Identity, &copy.PrefixHash, &copy.ParserVersion, &copy.FirstAt); err != nil {
+				return IndexSnapshot{}, err
+			}
+			n := len(result.Sessions)
+			if n == 0 || result.Sessions[n-1].Client != m.Client || result.Sessions[n-1].SessionID != m.SessionID {
+				result.Sessions = append(result.Sessions, IndexedSession{Metadata: m})
+				n++
+			}
+			result.Sessions[n-1].Copies = append(result.Sessions[n-1].Copies, copy)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return IndexSnapshot{}, err
+		}
+		if query != "" {
+			result.Documents, err = v.Search(ctx, query)
+		}
+		return result, err
+	})
 }
