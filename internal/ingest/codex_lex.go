@@ -100,6 +100,8 @@ type CodexVisible struct {
 	Span CodexSpan
 	Kind CodexVisibleKind
 	Text string
+	// EventAt is the normalized document time; it never supplies execution evidence.
+	EventAt string
 }
 
 type CodexReadProgress struct {
@@ -321,7 +323,8 @@ func lexCodex(line []byte, span CodexSpan, includeVisible bool) (CodexRecord, *C
 	if item == nil {
 		item = payload
 	}
-	record.At = codexTime(envelope.field("timestamp"))
+	outerAt, timeErr := time.Parse(time.RFC3339Nano, envelope.field("timestamp"))
+	record.At = outerAt.UTC()
 	typ, event := envelope.field("type"), payload.field("type")
 	if _, supplied := envelope["payload"]; payload == nil && (supplied || typ == "session_meta") {
 		record.Kind = CodexMalformed
@@ -389,7 +392,15 @@ func lexCodex(line []byte, span CodexSpan, includeVisible bool) (CodexRecord, *C
 	if !includeVisible || kind == CodexNoDocument {
 		return record, nil
 	}
-	return record, &CodexVisible{Span: span, Kind: kind, Text: text}
+	docAt := outerAt
+	if timeErr != nil {
+		docAt, timeErr = time.Parse(time.RFC3339Nano, payload.field("timestamp"))
+	}
+	var eventAt string
+	if timeErr == nil {
+		eventAt = docAt.UTC().Format(time.RFC3339Nano)
+	}
+	return record, &CodexVisible{Span: span, Kind: kind, Text: text, EventAt: eventAt}
 }
 
 func readCodexHead(record *CodexRecord, payload codexObject) {

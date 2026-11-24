@@ -227,3 +227,16 @@ C1 冻结开放 Task 3 和 Task 5 两路实施。Task 4 在 Task 3 的发布资�
 - **验证。** 入口 `TestCJSINativeSourceProof` 非空执行（ingest 1 个顶层与 30 个子测试，activity 1 个顶层）。`internal/ingest` 50+95、`internal/activity` 20+45 在普通与 race 下全部通过，0 跳过；vet 与 gofmt 干净。隐私扫描 0 命中，正文仅在 `includeVisible` 下瞬态传递。
 - **非阻塞 P3。** CJSI-NSP-R13-F1：`codex_workset_reduction.go:133-137` 未验证源分支未深拷贝记录、未包装 sink 错误，与已验证分支不一致 -> open `ad-bug-cjsi-workset-unverified-branch-copy`。CJSI-NSP-R13-F2：`codex_lex.go:123-127` 的导出 `ReadCodexJSONL` 在非空范围未拒绝 `visit == nil` -> open `ad-bug-cjsi-read-codex-jsonl-nil-visit`。两项按用户 2026-11-23 的延后决定以 C 通道载体跟踪。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:native-source-proof` 在该补丁状态上独立评审、L2 验证、范围与隐私 3/3 满足。双消费见证使用内存工作集，生产 SQLite 选择与跨库发布由后续 Task 集成验证。
+
+## Round 14 — 2026-11-23，Task 5 扫描发现的回归跟进
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+Task 5 重建 R4 的变异扫描发现两处相对旧读面的回归，归属定为 Task 1 跟进、由 Task 5 作者（Codex `gpt-6.2-astra`）在同一轮实现，补丁 SHA-256 `9b77a74a9f50641e45c02ce52a2f30521dc4d8bf93b2f0a847d792026b9212d1`，4 个路径（`internal/ingest/codex_lex.go`、`codex_visible_time_test.go`、`internal/activity/activity.go`、`prefix_test.go`），基于 HEAD `3b71a07`。
+
+- **CJSI-NSP-R14-F1（P2）closed。** 仅带 `payload.timestamp` 的本地可见消息在新读面丢失 `event_at` 并排错位，违背 `docs/specs/cli-design.md` 与旧 `normalizedEventAt(outer, payload)` 合同。修复为 `CodexVisible.EventAt`：同一次白名单解码中外层时间优先、解析失败再取载荷时间并规范为 UTC；`CodexRecord.At`、birth、计量、checkpoint 与 workset 证明语义不变。
+- **CJSI-NSP-R14-F2（P2）closed。** 迁移的 Claude 检查点只有已证前缀可读时，选中读者返回空活动。新增 `ReadDetailsPrefix` / `ReadDetailsPagePrefix`，以调用方已打开文件的 `SectionReader` 复用原有解析、排序与分页，丢弃截断的未换行尾行；`ReadDetails` / `ReadDetailsPage` 签名与行为不变。
+- **评审。** 两处修复与 Task 5 一并经过 R4（AGY Gemini 4 Neon high）与 R5（Claude Opus）冷复评：红绿复跑关闭两项；`internal/ingest`、`internal/activity` 普通与 race 通过；已提交的 Task 3/4 在 `internal/usage`、`internal/store` 全包回归中不受影响；评审者变异 RM3、RM5 被杀。无新发现。
+- **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:native-source-proof` 在跟进补丁状态上追加独立评审、L2 验证、范围与隐私证据。

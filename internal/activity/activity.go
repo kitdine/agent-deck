@@ -4,10 +4,12 @@ package activity
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -321,9 +323,54 @@ func ReadDetails(path, client, sessionID string) ([]Detail, error) {
 		return nil, err
 	}
 	defer file.Close()
+	return detailsFromScanner(newActivityScanner(file), path, client, sessionID)
+}
+
+// ReadDetailsPrefix reads complete lines ending within [0,end). The caller
+// owns the descriptor and revalidates the selected file generation.
+func ReadDetailsPrefix(file *os.File, end int64, client, sessionID string) ([]Detail, error) {
+	scanner, err := activityPrefixScanner(file, end)
+	if err != nil {
+		return nil, err
+	}
+	return detailsFromScanner(scanner, file.Name(), client, sessionID)
+}
+
+func newActivityScanner(r io.Reader) *bufio.Scanner {
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 4096), 8<<20)
+	return s
+}
+
+func activityPrefixScanner(file *os.File, end int64) (*bufio.Scanner, error) {
+	if end < 0 {
+		return nil, fmt.Errorf("negative activity prefix length")
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if end > info.Size() {
+		return nil, io.ErrUnexpectedEOF
+	}
+	rangeReader := &io.LimitedReader{R: io.NewSectionReader(file, 0, end), N: end}
+	scanner := newActivityScanner(rangeReader)
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF {
+			if rangeReader.N > 0 {
+				return 0, nil, io.ErrUnexpectedEOF
+			}
+			if bytes.IndexByte(data, '\n') < 0 {
+				return len(data), nil, nil
+			}
+		}
+		return bufio.ScanLines(data, atEOF)
+	})
+	return scanner, nil
+}
+
+func detailsFromScanner(scanner *bufio.Scanner, path, client, sessionID string) ([]Detail, error) {
 	parser := NewParser(client, path)
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
 	var records []Record
 	var offset int64
 	for scanner.Scan() {
@@ -334,7 +381,7 @@ func ReadDetails(path, client, sessionID string) ([]Detail, error) {
 		}
 		offset += int64(len(line) + 1)
 	}
-	if err = scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read session activity: %w", err)
 	}
 	details := Merge(records)
@@ -359,6 +406,24 @@ func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) 
 		return Page{}, err
 	}
 	defer file.Close()
+	return detailsPageFromScanner(newActivityScanner(file), path, client, sessionID, page, limit, keep, all)
+}
+
+// ReadDetailsPagePrefix applies the normal activity page window to complete
+// records in the selected prefix without moving the descriptor's offset.
+func ReadDetailsPagePrefix(file *os.File, end int64, client, sessionID string, page, limit int, all bool) (Page, error) {
+	keep, err := activityPageWindow(page, limit, all)
+	if err != nil {
+		return Page{}, err
+	}
+	scanner, err := activityPrefixScanner(file, end)
+	if err != nil {
+		return Page{}, err
+	}
+	return detailsPageFromScanner(scanner, file.Name(), client, sessionID, page, limit, keep, all)
+}
+
+func detailsPageFromScanner(scanner *bufio.Scanner, path, client, sessionID string, page, limit, keep int, all bool) (Page, error) {
 	parser := NewParser(client, path)
 	started := map[string]Detail{}
 	selected := make([]Detail, 0, keep)
@@ -383,8 +448,6 @@ func ReadDetailsPage(path, client, sessionID string, page, limit int, all bool) 
 			selected = selected[:keep]
 		}
 	}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
 	var offset int64
 	for scanner.Scan() {
 		line := scanner.Bytes()
