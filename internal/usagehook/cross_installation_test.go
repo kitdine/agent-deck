@@ -3,6 +3,8 @@ package usagehook
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -10,9 +12,12 @@ func TestSetupStatusLineRefusesAnotherInstallationWithoutMutation(t *testing.T) 
 	home := t.TempDir()
 	path := configPath(home, ClientClaude)
 	writeDocument(t, path, map[string]json.RawMessage{"statusLine": json.RawMessage(`{"type":"command","command":"printf prior"}`)}, privateFileMode)
-	stateA, stateB := t.TempDir(), t.TempDir()
-	a := New(Environment{Home: home, AgentDeckCommand: "agentdeck --state-dir " + stateA, StateDir: stateA})
-	b := New(Environment{Home: home, AgentDeckCommand: "agentdeck --state-dir " + stateB, StateDir: stateB})
+	newInstallation := func() *Manager {
+		state := filepath.Join(t.TempDir(), "state root")
+		command := "agentdeck --state-dir '" + strings.ReplaceAll(state, "'", `'"'"'`) + "'"
+		return New(Environment{Home: home, AgentDeckCommand: command, StateDir: state})
+	}
+	a, b := newInstallation(), newInstallation()
 	if r, err := a.SetupStatusLine(); err != nil || r.Outcome != OutcomeConfigured {
 		t.Fatalf("setup A: %+v, %v", r, err)
 	}
