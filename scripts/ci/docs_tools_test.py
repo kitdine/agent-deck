@@ -109,13 +109,59 @@ def workflow_mapping(block, key, indent):
     return mapping
 
 
-def resolve_github_expression(value, context):
-    if not (value.startswith('${{') and value.endswith('}}')):
-        return value
-    result = evaluate_github_expression(value, needs=context.get('needs'), contexts=context)
+def _find_github_expression_end(text, start):
+    in_string = False
+    i = start
+    length = len(text)
+    while i < length:
+        ch = text[i]
+        if in_string:
+            if ch == "'":
+                if i + 1 < length and text[i + 1] == "'":
+                    i += 2
+                    continue
+                in_string = False
+            i += 1
+            continue
+        if ch == "'":
+            in_string = True
+            i += 1
+            continue
+        if text[i:i + 2] == '}}':
+            return i
+        i += 1
+    raise ValueError(f'unclosed GitHub expression in {text!r}')
+
+
+def _format_github_expression_value(result):
     if isinstance(result, bool):
         return str(result).lower()
     return '' if result is None else str(result)
+
+
+def resolve_github_expression(value, context, *, runner_os=None):
+    if not isinstance(value, str) or '${{' not in value:
+        return value
+    parts = []
+    pos = 0
+    while True:
+        start = value.find('${{', pos)
+        if start == -1:
+            parts.append(value[pos:])
+            break
+        if start > pos:
+            parts.append(value[pos:start])
+        end = _find_github_expression_end(value, start + 3)
+        inner = value[start + 3:end]
+        result = evaluate_github_expression(
+            inner,
+            needs=context.get('needs'),
+            contexts=context,
+            runner_os=runner_os,
+        )
+        parts.append(_format_github_expression_value(result))
+        pos = end + 2
+    return ''.join(parts)
 
 
 def github_path_pattern_regex(pattern):
@@ -204,7 +250,8 @@ _COERCE_DEC_RE = re.compile(r'^[+-]?(?:(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+
 def _parse_workflow_yaml(text):
     # Psych is the same standard-library YAML parser used by the repository's
     # workflow checks. Read scalar *text* so "on" and expressions are not
-    # implicitly converted under YAML 1.1, and reject duplicate mapping keys.
+    # implicitly converted under YAML 1.1, normalize omitted mapping values
+    # (plain untagged empty scalars) to {}, and reject duplicate mapping keys.
     reader = """
       def value(node)
         case node
@@ -216,7 +263,7 @@ def _parse_workflow_yaml(text):
           node.children.each_slice(2).each_with_object({}) do |(key, item), result|
             name = key.value
             raise "duplicate YAML key #{name.inspect} at line #{key.start_line + 1}" if result.key?(name)
-            result[name] = value(item)
+            result[name] = (item.is_a?(Psych::Nodes::Scalar) && item.plain && !item.quoted && item.tag.nil? && item.anchor.nil? && item.value.empty?) ? {} : value(item)
           end
         else
           raise "unsupported workflow node #{node.class}"
@@ -235,30 +282,133 @@ def parsed_workflow(filename='ci.yml'):
 
 def runner_labels(job):
     value = job['runs-on']
-    return [value] if isinstance(value, str) else value
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        unknown_keys = set(value) - {'group', 'labels'}
+        if unknown_keys:
+            raise ValueError(f'unsupported runs-on keys: {sorted(unknown_keys)!r}')
+        if 'group' in value:
+            group = value['group']
+            if not isinstance(group, str) or not group.strip():
+                raise ValueError(f'expected non-empty string for runs-on group, got {group!r}')
+        if 'labels' in value:
+            labels = value['labels']
+            if isinstance(labels, str):
+                return [labels]
+            if isinstance(labels, list) and all(isinstance(item, str) for item in labels):
+                return labels
+            raise ValueError(f'expected string or list of strings for runs-on labels, got {labels!r}')
+        if 'group' in value:
+            return []
+        raise ValueError(f'expected runs-on mapping with labels or group, got {value!r}')
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise ValueError(f'expected list of strings for runs-on, got {value!r}')
+        return value
+    raise ValueError(f'expected string, list, or mapping for runs-on, got {value!r}')
 
 
 def named_step(job, name):
     return next(step for step in job['steps'] if step.get('name') == name)
 
 
+def _as_mapping(value):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f'expected mapping, got {value!r}')
+    return value
+
+
+_WINDOWS_RUNNER_LABELS = frozenset({
+    'windows',
+    'windows-latest',
+    'windows-2025',
+    'windows-2022',
+    'windows-2019',
+    'windows-11-arm',
+    'windows-2025-vs2026',
+    'windows-11-vs2026-arm',
+})
+
+
+def _explicit_runner_os(runner_os=None, contexts=None):
+    if runner_os is not None:
+        return str(runner_os)
+    if isinstance(contexts, dict):
+        runner_ctx = contexts.get('runner')
+        if isinstance(runner_ctx, dict) and 'os' in runner_ctx:
+            return str(runner_ctx.get('os', ''))
+        if 'runner_os' in contexts:
+            return str(contexts.get('runner_os', ''))
+    return None
+
+
+def _is_windows_runner_os(runner_os=None, contexts=None):
+    explicit = _explicit_runner_os(runner_os, contexts)
+    return explicit is not None and explicit.casefold() == 'windows'
+
+
+def _job_runner_os(job, *, needs=None, contexts=None):
+    explicit = _explicit_runner_os(contexts=contexts)
+    if not isinstance(job, dict) or 'runs-on' not in job:
+        if explicit is not None:
+            return 'Windows' if explicit.casefold() == 'windows' else explicit
+        return None
+    expr_contexts = {
+        key: val for key, val in (contexts or {}).items()
+        if str(key).lower() not in ('runner', 'runner_os')
+    }
+    base_ctx = {'github': {}, 'matrix': {}, 'needs': needs or {}, **expr_contexts}
+    labels = runner_labels(job)
+    raw_runs_on = job['runs-on']
+    if isinstance(raw_runs_on, dict) and 'group' in raw_runs_on:
+        resolved_group = resolve_github_expression(raw_runs_on['group'], base_ctx)
+        if not isinstance(resolved_group, str) or not resolved_group.strip():
+            raise ValueError(f'expected non-empty runs-on group after evaluation, got {resolved_group!r}')
+    resolved_labels = [resolve_github_expression(label, base_ctx) for label in labels]
+    if explicit is not None:
+        return 'Windows' if explicit.casefold() == 'windows' else explicit
+    if any(label.casefold() in _WINDOWS_RUNNER_LABELS for label in resolved_labels):
+        return 'Windows'
+    return 'Linux'
+
+
 def workflow_run_settings(job_name, step_name, *, needs=None, contexts=None, filename='ci.yml'):
-    workflow = parsed_workflow(filename)
-    job = workflow['jobs'][job_name]
-    step = named_step(job, step_name)
+    workflow = _as_mapping(parsed_workflow(filename))
+    job = _as_mapping(_as_mapping(workflow.get('jobs')).get(job_name))
+    step = _as_mapping(named_step(job, step_name))
+    runner_os = _job_runner_os(job, needs=needs, contexts=contexts)
+    windows_env = _is_windows_runner_os(runner_os, contexts)
     settings = {}
     env = {}
     for scope in (workflow, job):
-        settings.update(scope.get('defaults', {}).get('run', {}))
+        defaults = _as_mapping(scope.get('defaults'))
+        settings.update(_as_mapping(defaults.get('run')))
     for scope in (workflow, job, step):
-        context = {'github': {}, 'matrix': {}, 'needs': needs or {}, **(contexts or {}), 'env': env}
-        env.update({key: resolve_github_expression(expr, context)
-                    for key, expr in scope.get('env', {}).items()})
-    return {**settings, **step, 'shell': step.get('shell') or settings.get('shell'), 'env': env}
+        context = {'github': {}, 'matrix': {}, 'needs': needs or {}, **(contexts or {}), 'env': dict(env)}
+        for key, expr in _as_mapping(scope.get('env')).items():
+            if isinstance(expr, (dict, list)):
+                raise ValueError(f'expected scalar env value for {key!r}, got {expr!r}')
+            resolved = resolve_github_expression(expr, context, runner_os=runner_os)
+            if windows_env:
+                existing_key = next((k for k in env if str(k).casefold() == str(key).casefold()), key)
+                if existing_key != key and existing_key in env:
+                    del env[existing_key]
+            env[key] = resolved
+    return {**settings, **step, 'shell': step.get('shell') or settings.get('shell'), 'env': env, 'runner_os': runner_os}
 
 
 def resolve_effective_shell(job_name, step_name, filename='ci.yml'):
     return workflow_run_settings(job_name, step_name, filename=filename).get('shell')
+
+
+def _script_extension_for_shell(shell_spec):
+    command, _, _ = (shell_spec or '').strip().partition(' ')
+    if Path(command).stem.lower() in ('pwsh', 'powershell'):
+        return '.ps1'
+    return '.sh'
 
 
 def _shell_argv_for_script(shell_spec, script_path):
@@ -266,15 +416,18 @@ def _shell_argv_for_script(shell_spec, script_path):
     if not shell_spec:
         # ScriptHandler selects bash if present but uses the sh argument format.
         shell_spec = 'bash -e {0}' if shutil.which('bash') else 'sh -e {0}'
-    command, _, arguments = shell_spec.partition(' ')
+    command, _, arguments = shell_spec.strip().partition(' ')
     executable = shutil.which(command)
     if executable is None:
         raise FileNotFoundError(f'workflow shell not found: {command}')
     if not arguments.strip():
         defaults = {'bash': ['--noprofile', '--norc', '-e', '-o', 'pipefail'],
-                    'sh': ['-e'], 'python': []}
+                    'sh': ['-e'], 'python': [], 'pwsh': ['-command', ". '{0}'"]}
         if command.lower() in defaults:
-            return [executable, *defaults[command.lower()], path]
+            default_args = defaults[command.lower()]
+            if any('{0}' in arg for arg in default_args):
+                return [executable, *(arg.replace('{0}', path) for arg in default_args)]
+            return [executable, *default_args, path]
     if '{0}' not in arguments:
         raise ValueError(f'expected a built-in Linux shell or a format containing {{0}}: {shell_spec!r}')
     return [executable, *(arg.replace('{0}', path) for arg in shlex.split(arguments))]
@@ -287,12 +440,13 @@ def run_workflow_script(settings, *, workspace=None, runner_env=None):
         if workspace is None:
             workspace = Path(temp) / 'workspace'
             workspace.mkdir()
-        script_path = Path(temp) / 'step.sh'
+        shell_spec = settings.get('shell')
+        script_path = Path(temp) / f'step{_script_extension_for_shell(shell_spec)}'
         script_path.write_text(settings['run'])
         env = {'PATH': os.environ.get('PATH', os.defpath), 'TMPDIR': temp, **(runner_env or {}),
                **settings['env'], 'GITHUB_WORKSPACE': str(workspace), 'RUNNER_TEMP': temp}
         return subprocess.run(
-            _shell_argv_for_script(settings.get('shell'), script_path),
+            _shell_argv_for_script(shell_spec, script_path),
             cwd=workspace / settings.get('working-directory', ''), env=env,
             capture_output=True, text=True,
         )
@@ -346,8 +500,11 @@ def _github_is_truthy(value):
 
 def _strip_github_expression_wrapper(value):
     expr = value.strip()
-    if expr.startswith('${{') and expr.endswith('}}'):
-        expr = expr[3:-2].strip()
+    if expr.startswith('${{'):
+        end = _find_github_expression_end(expr, 3)
+        if end + 2 != len(expr):
+            raise ValueError(f'unexpected trailing content after GitHub expression: {expr[end + 2:]!r}')
+        return expr[3:end].strip()
     return expr
 
 
@@ -541,24 +698,32 @@ def _extract_ancestor_statuses(ancestor_results):
     return [str(item) for item in ancestor_results]
 
 
-def _resolve_context_path(parts, contexts):
+def _resolve_context_path(parts, contexts, *, runner_os=None):
     current = contexts
-    for part in parts:
+    is_env_context = bool(parts) and str(parts[0]).casefold() == 'env'
+    env_case_sensitive = is_env_context and not _is_windows_runner_os(runner_os, contexts)
+    for idx, part in enumerate(parts):
         if not isinstance(current, dict):
             return ''
-        target = part.casefold()
         matched_key = None
-        for key in current:
-            if str(key).casefold() == target:
-                matched_key = key
-                break
+        if idx > 0 and env_case_sensitive:
+            for key in current:
+                if str(key) == part:
+                    matched_key = key
+                    break
+        else:
+            target = part.casefold()
+            for key in current:
+                if str(key).casefold() == target:
+                    matched_key = key
+                    break
         if matched_key is None:
             return ''
         current = current[matched_key]
     return '' if current is None else current
 
 
-def evaluate_github_expression(value, *, needs=None, cancelled=False, ancestor_results=None, contexts=None, step_status=None):
+def evaluate_github_expression(value, *, needs=None, cancelled=False, ancestor_results=None, contexts=None, step_status=None, runner_os=None):
     ast = _parse_github_expression(value)
     needs_map = {} if needs is None else needs
     provided_contexts = {'needs': needs_map}
@@ -618,7 +783,7 @@ def evaluate_github_expression(value, *, needs=None, cancelled=False, ancestor_r
         if kind == 'literal':
             return node[1]
         if kind == 'context':
-            return _resolve_context_path(node[1], provided_contexts)
+            return _resolve_context_path(node[1], provided_contexts, runner_os=runner_os)
         if kind == 'not':
             return not _github_is_truthy(eval_node(node[1]))
         if kind == 'and':
@@ -662,13 +827,14 @@ def evaluate_github_expression(value, *, needs=None, cancelled=False, ancestor_r
     return eval_node(ast)
 
 
-def evaluate_workflow_if(condition, needs, *, cancelled=False, ancestor_results=None, step_status=None, contexts=None):
+def evaluate_workflow_if(condition, needs, *, cancelled=False, ancestor_results=None, step_status=None, contexts=None, runner_os=None):
     condition = condition or 'success()'
     if not _has_status_check_function(condition):
         condition = f'success() && ({_strip_github_expression_wrapper(condition)})'
     return _github_is_truthy(evaluate_github_expression(
         condition, needs=needs, cancelled=cancelled,
         ancestor_results=ancestor_results, step_status=step_status, contexts=contexts,
+        runner_os=runner_os,
     ))
 
 
@@ -988,7 +1154,7 @@ class CIWorkflowPathTest(unittest.TestCase):
         # StepsRunner starts a new job at success. Failed upstream jobs remain
         # available through needs, but are not this first step's job status.
         step_status = 'cancelled' if cancelled else 'success'
-        if not evaluate_workflow_if(settings.get('if'), needs, step_status=step_status, contexts={'env': settings['env']}):
+        if not evaluate_workflow_if(settings.get('if'), needs, step_status=step_status, contexts={'env': settings['env']}, runner_os=settings.get('runner_os')):
             return True, 'success', None
         try:
             code = run_workflow_script(settings).returncode
@@ -1453,6 +1619,39 @@ class VerifyRunnerBehaviorTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'format containing'):
                     run_workflow_script({'shell': 'python -I', 'run': 'raise SystemExit(17)', 'env': {}})
 
+    def test_pwsh_builtin_shell_uses_dot_source_command_and_ps1_extension(self):
+        with tempfile.TemporaryDirectory() as temp:
+            pwsh_stub = Path(temp) / 'pwsh'
+            pwsh_stub.write_text(
+                '#!/usr/bin/env python3\n'
+                'import pathlib, re, sys\n'
+                'assert sys.argv[1].lower() == "-command", sys.argv\n'
+                'match = re.fullmatch(r"\\. \'(.+\\.ps1)\'", sys.argv[2])\n'
+                'assert match is not None, sys.argv\n'
+                'script = pathlib.Path(match.group(1))\n'
+                'assert script.is_file(), script\n'
+                'print(f"{script.suffix}:{script.read_text().strip()}")\n'
+                'raise SystemExit(23)\n'
+            )
+            pwsh_stub.chmod(0o755)
+            path_env = str(temp) + os.pathsep + os.environ.get('PATH', os.defpath)
+            with mock.patch.dict(os.environ, {'PATH': path_env}):
+                sample_script = Path(temp) / 'step.ps1'
+                self.assertEqual(
+                    _shell_argv_for_script('pwsh', sample_script),
+                    [str(pwsh_stub), '-command', f". '{sample_script}'"],
+                )
+                for shell in ('pwsh', 'PWSH', "pwsh -command \". '{0}'\""):
+                    with self.subTest(shell=shell):
+                        result = run_workflow_script(
+                            {'shell': shell, 'run': 'Write-Output "hello-pwsh"\n', 'env': {}},
+                            runner_env={'PATH': path_env},
+                        )
+                        self.assertEqual(result.returncode, 23, result.stderr)
+                        self.assertEqual(result.stdout.strip(), '.ps1:Write-Output "hello-pwsh"')
+                with self.assertRaisesRegex(ValueError, 'format containing'):
+                    run_workflow_script({'shell': 'pwsh -NoProfile', 'run': 'Write-Output "nope"\n', 'env': {}})
+
     def test_runner_labels_preserve_decoded_values_and_cardinality(self):
         cases = (
             ('ubuntu-latest # runner', ['ubuntu-latest']),
@@ -1688,6 +1887,369 @@ class GitHubExpressionEvaluatorTest(unittest.TestCase):
             with self.subTest(bad_expr=bad):
                 with self.assertRaises(ValueError):
                     evaluate_github_expression(bad, needs={'classify': {'result': 'success'}})
+
+    def test_resolve_github_expression_interpolates_mixed_text_and_multiple_segments(self):
+        context = {
+            'github': {'workflow': 'CI', 'event_name': 'push', 'ref': 'refs/heads/main'},
+            'matrix': {'shard': 1},
+            'needs': {'classify': {'result': 'success', 'outputs': {'docs_only': 'false'}}},
+            'env': {'A': 'alpha', 'B': 'beta', 'EMPTY': None},
+        }
+        with self.subTest(case='mixed_text'):
+            self.assertEqual(
+                resolve_github_expression('foo-${{ env.A }}-${{ env.B }}', context),
+                'foo-alpha-beta',
+            )
+        with self.subTest(case='multi_segment_wrapped'):
+            self.assertEqual(
+                resolve_github_expression('${{ env.A }}-${{ env.B }}', context),
+                'alpha-beta',
+            )
+        with self.subTest(case='concurrency_group_and_types'):
+            self.assertEqual(
+                resolve_github_expression(
+                    parsed_workflow()['concurrency']['group'],
+                    context,
+                ),
+                'ci-CI-push-refs/heads/main',
+            )
+            self.assertEqual(
+                resolve_github_expression(
+                    "shard=${{ matrix.shard }},docs=${{ needs.classify.outputs.docs_only == 'true' }},empty=${{ env.EMPTY }},brace=${{ 'a}}b' }}",
+                    context,
+                ),
+                'shard=1,docs=false,empty=,brace=a}}b',
+            )
+
+        with self.subTest(case='workflow_run_settings_env'):
+            workflow = {
+                'env': {'WF': 'root'},
+                'jobs': {
+                    'verify': {
+                        'runs-on': 'ubuntu-latest',
+                        'env': {'JOB': '${{ env.WF }}-job'},
+                        'steps': [
+                            {
+                                'name': 'gate',
+                                'env': {'STEP': 'prefix-${{ env.JOB }}-${{ needs.build.result }}-suffix'},
+                                'run': 'test "$STEP" = "prefix-root-job-failure-suffix"\n',
+                            }
+                        ],
+                    }
+                },
+            }
+            with mock.patch(__name__ + '.parsed_workflow', return_value=workflow):
+                settings = workflow_run_settings('verify', 'gate', needs={'build': {'result': 'failure'}})
+                self.assertEqual(settings['env']['JOB'], 'root-job')
+                self.assertEqual(settings['env']['STEP'], 'prefix-root-job-failure-suffix')
+                self.assertEqual(run_workflow_script(settings).returncode, 0)
+
+        for bad_template in (
+            'foo-${{ env.A }}-${{ unknownFunc() }}',
+            '${{ env.A }}-${{ missingContext.val }}',
+            'foo-${{ inputs.unavailable }}-bar',
+            'foo-${{ env.A',
+            'foo-${{ }}-bar',
+        ):
+            with self.subTest(bad_template=bad_template):
+                with self.assertRaises(ValueError):
+                    resolve_github_expression(bad_template, context)
+
+    def test_empty_yaml_mappings_normalize_to_dicts_and_env_context_respects_runner_case(self):
+        yaml_text = (
+            'name: EmptyMappings\n'
+            'on:\n'
+            '  pull_request:\n'
+            'env:\n'
+            'defaults:\n'
+            '  run:\n'
+            'jobs:\n'
+            '  linux_job:\n'
+            '    runs-on: ubuntu-latest\n'
+            '    defaults:\n'
+            '    env:\n'
+            '      MixedCase: LinuxValue\n'
+            '      EMPTY_QUOTED: ""\n'
+            '    steps:\n'
+            '      - name: check empty step env\n'
+            '        env:\n'
+            '        run: test "$MixedCase" = LinuxValue\n'
+            '      - name: check case sensitive env\n'
+            '        env:\n'
+            '          EXACT_HIT: ${{ env.MixedCase }}\n'
+            '          WRONG_CASE_MISS: ${{ env.mixedcase }}\n'
+            '          UPPER_CTX_HIT: ${{ ENV.MixedCase }}\n'
+            '          NEEDS_CASEFOLD: ${{ needs.BUILD.RESULT }}\n'
+            '        run: test "$EXACT_HIT/$WRONG_CASE_MISS/$UPPER_CTX_HIT/$NEEDS_CASEFOLD" = "LinuxValue//LinuxValue/success"\n'
+            '  windows_job:\n'
+            '    runs-on: windows-latest\n'
+            '    env:\n'
+            '      MixedCase: WindowsValue\n'
+            '    steps:\n'
+            '      - name: check case insensitive env on windows\n'
+            '        env:\n'
+            '          LOWER_HIT: ${{ env.mixedcase }}\n'
+            '          UPPER_HIT: ${{ env.MIXEDCASE }}\n'
+            '        run: exit 0\n'
+        )
+        with self.subTest(aspect='empty_yaml_mappings'):
+            parsed = _parse_workflow_yaml(yaml_text)
+            with mock.patch(__name__ + '.parsed_workflow', return_value=parsed):
+                empty_step_settings = workflow_run_settings('linux_job', 'check empty step env')
+                self.assertEqual(empty_step_settings['env']['MixedCase'], 'LinuxValue')
+                self.assertEqual(run_workflow_script(empty_step_settings).returncode, 0)
+
+                linux_settings = workflow_run_settings(
+                    'linux_job',
+                    'check case sensitive env',
+                    needs={'build': {'result': 'success'}},
+                )
+                self.assertEqual(linux_settings['env']['EXACT_HIT'], 'LinuxValue')
+                self.assertEqual(linux_settings['env']['WRONG_CASE_MISS'], '')
+                self.assertEqual(linux_settings['env']['UPPER_CTX_HIT'], 'LinuxValue')
+                self.assertEqual(linux_settings['env']['NEEDS_CASEFOLD'], 'success')
+                self.assertEqual(run_workflow_script(linux_settings).returncode, 0)
+
+                windows_settings = workflow_run_settings('windows_job', 'check case insensitive env on windows')
+                self.assertEqual(windows_settings['env']['LOWER_HIT'], 'WindowsValue')
+                self.assertEqual(windows_settings['env']['UPPER_HIT'], 'WindowsValue')
+
+            self.assertEqual(parsed['on']['pull_request'], {})
+            self.assertEqual(parsed['env'], {})
+            self.assertEqual(parsed['defaults']['run'], {})
+            self.assertEqual(parsed['jobs']['linux_job']['defaults'], {})
+            self.assertEqual(parsed['jobs']['linux_job']['steps'][0]['env'], {})
+            self.assertEqual(parsed['jobs']['linux_job']['env']['EMPTY_QUOTED'], '')
+
+        with self.subTest(aspect='env_context_case'):
+            self.assertEqual(
+                evaluate_github_expression('env.FOO', contexts={'env': {'FOO': 'upper', 'foo': 'lower'}}),
+                'upper',
+            )
+            self.assertEqual(
+                evaluate_github_expression('env.foo', contexts={'env': {'FOO': 'upper', 'foo': 'lower'}}),
+                'lower',
+            )
+            self.assertEqual(
+                evaluate_github_expression('env.foo', contexts={'env': {'FOO': 'upper'}}),
+                '',
+            )
+            self.assertEqual(
+                evaluate_github_expression(
+                    'env.foo',
+                    contexts={'env': {'FOO': 'upper'}},
+                    runner_os='Windows',
+                ),
+                'upper',
+            )
+
+    def test_p3_1_runner_context_still_rejected_in_expressions(self):
+        with self.assertRaisesRegex(ValueError, "unsupported GitHub expression context: 'runner'"):
+            evaluate_github_expression('runner.os', contexts={'runner': {'os': 'Windows'}})
+        with self.assertRaisesRegex(ValueError, "unsupported GitHub expression context: 'runner'"):
+            resolve_github_expression('${{ runner.os }}', {})
+
+    def test_p3_2_same_layer_env_evaluation_uses_entry_snapshot(self):
+        workflow_yaml = (
+            "name: Same Layer Env\n"
+            "on: [push]\n"
+            "jobs:\n"
+            "  j:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    env:\n"
+            "      A: x\n"
+            "      B: ${{ env.A }}\n"
+            "    steps:\n"
+            "      - name: s\n"
+            "        run: echo ok\n"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            (tmp_root / '.github/workflows').mkdir(parents=True)
+            (tmp_root / '.github/workflows/ci.yml').write_text(workflow_yaml)
+            with mock.patch.object(sys.modules[__name__], 'ROOT', tmp_root):
+                _parse_workflow_yaml.cache_clear()
+                settings = workflow_run_settings('j', 's')
+        self.assertEqual(settings['env']['A'], 'x')
+        self.assertEqual(settings['env']['B'], '')
+
+    def test_p3_3_empty_mapping_normalization_preserves_type_checks_and_sequences(self):
+        parsed = _parse_workflow_yaml("items:\n  - \n  - x\nenv: \"\"\n")
+        self.assertEqual(parsed['items'], ['', 'x'])
+        self.assertEqual(parsed['env'], '')
+        with self.assertRaisesRegex(ValueError, 'expected mapping'):
+            _as_mapping(parsed['env'])
+
+        for tagged in ('env: !!str\n', 'env: !!null\n', 'env: !custom\n', 'env: &empty\n'):
+            with self.subTest(tagged=tagged.strip()):
+                self.assertEqual(_parse_workflow_yaml(tagged)['env'], '')
+
+        for empty_doc in ('', '# comment only\n'):
+            with self.subTest(empty_doc=repr(empty_doc)):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    _parse_workflow_yaml(empty_doc)
+        self.assertEqual(_parse_workflow_yaml('---\n'), '')
+
+        def workflow_with_env(env_spec):
+            return (
+                "name: EnvValidation\n"
+                "on: [push]\n"
+                "jobs:\n"
+                "  j:\n"
+                "    runs-on: ubuntu-latest\n"
+                f"    {env_spec}\n"
+                "    steps:\n"
+                "      - name: s\n"
+                "        run: exit 0\n"
+            )
+
+        bare_parsed = _parse_workflow_yaml(workflow_with_env('env:'))
+        self.assertEqual(bare_parsed['jobs']['j']['env'], {})
+        with mock.patch(__name__ + '.parsed_workflow', return_value=bare_parsed):
+            self.assertEqual(workflow_run_settings('j', 's')['env'], {})
+
+        for bad_env in (
+            'env: ""',
+            'env: !!str',
+            'env: &empty',
+            'env: {BAD: {}}',
+            'env: {BAD: [x]}',
+            'env: {BAD: {x: y}}',
+        ):
+            with self.subTest(bad_env=bad_env):
+                bad_parsed = _parse_workflow_yaml(workflow_with_env(bad_env))
+                with mock.patch(__name__ + '.parsed_workflow', return_value=bad_parsed):
+                    with self.assertRaises(ValueError):
+                        workflow_run_settings('j', 's')
+
+    def test_p3_4_step_if_receives_runner_os_for_env_case_sensitivity(self):
+        for label, expected in (
+            ('windows-latest', (True, 'failure', 17)),
+            ('ubuntu-latest', (True, 'success', None)),
+        ):
+            workflow_yaml = (
+                "name: Step If Runner OS\n"
+                "on: [push]\n"
+                "jobs:\n"
+                "  verify:\n"
+                f"    runs-on: {label}\n"
+                "    env:\n"
+                "      FOO: present\n"
+                "    steps:\n"
+                "      - name: Require applicable verification\n"
+                "        if: env.foo\n"
+                "        run: exit 17\n"
+            )
+            with self.subTest(label=label):
+                parsed = _parse_workflow_yaml(workflow_yaml)
+                with mock.patch(__name__ + '.parsed_workflow', return_value=parsed):
+                    result = CIWorkflowPathTest()._run_verify_via_workflow({})
+                self.assertEqual(result, expected)
+
+    def test_p3_5_custom_runner_label_with_windows_substring_is_not_windows(self):
+        def run_settings_for(runs_on_yaml):
+            workflow_yaml = (
+                "name: Runner Label Detection\n"
+                "on: [push]\n"
+                "jobs:\n"
+                "  j:\n"
+                f"    runs-on: {runs_on_yaml}\n"
+                "    env:\n"
+                "      FOO: yes\n"
+                "    steps:\n"
+                "      - name: s\n"
+                "        env:\n"
+                "          HIT: ${{ env.foo }}\n"
+                "        run: echo ok\n"
+            )
+            parsed = _parse_workflow_yaml(workflow_yaml)
+            with mock.patch(__name__ + '.parsed_workflow', return_value=parsed):
+                return workflow_run_settings('j', 's')
+
+        for runs_on in (
+            'windows',
+            'windows-latest',
+            'windows-2019',
+            'windows-2022',
+            'windows-2025',
+            'windows-11-arm',
+            'windows-2025-vs2026',
+            'windows-11-vs2026-arm',
+            '[self-hosted, Windows, ARM64]',
+            '{group: pool, labels: windows-latest}',
+            '{group: pool, labels: [self-hosted, Windows, ARM64]}',
+        ):
+            with self.subTest(windows_runs_on=runs_on):
+                settings = run_settings_for(runs_on)
+                self.assertEqual(settings['runner_os'], 'Windows')
+                self.assertEqual(settings['env']['HIT'], 'yes')
+
+        for runs_on in (
+            '[self-hosted, ubuntu-latest, no-windows-tools]',
+            'windows-tools',
+            'windows-foo',
+            'windows-2025-tools',
+            'windows-11-tools-arm',
+            '" windows-latest "',
+            '{group: windows-latest}',
+        ):
+            with self.subTest(non_windows_runs_on=runs_on):
+                settings = run_settings_for(runs_on)
+                self.assertEqual(settings['runner_os'], 'Linux')
+                self.assertEqual(settings['env']['HIT'], '')
+
+        for bad_runs_on in (
+            '{group: pool, labels: {}}',
+            '\n      group: pool\n      labels:',
+            '{group: pool, labels: [windows-latest, {}]}',
+            '[windows-latest, {}]',
+            '[windows-latest, [arm64]]',
+            '[windows-latest, "${{ runner.os }}"]',
+            '{group: pool, labels: [windows-latest, "${{ runner.os }}"]}',
+            '{group: ""}',
+            '{group: "  "}',
+            '{group: "${{ runner.os }}"}',
+            '{group: "${{ \'\' }}"}',
+            '{group: pool, lables: windows-latest}',
+            '{}',
+        ):
+            with self.subTest(bad_runs_on=bad_runs_on):
+                with self.assertRaises(ValueError):
+                    run_settings_for(bad_runs_on)
+
+        for bad_runs_on in (
+            '[windows-latest, "${{ runner.os }}"]',
+            '[windows-latest, [arm64]]',
+            '{group: "", labels: {}}',
+            '{group: "${{ runner.os }}"}',
+        ):
+            job = _parse_workflow_yaml(f'runs-on: {bad_runs_on}\n')
+            for explicit_ctx in ({'runner': {'os': 'Windows'}}, {'runner_os': 'Windows'}):
+                with self.subTest(bad_runs_on=bad_runs_on, explicit_ctx=explicit_ctx):
+                    with self.assertRaises(ValueError):
+                        _job_runner_os(job, contexts=explicit_ctx)
+
+        valid_job = _parse_workflow_yaml('runs-on: ubuntu-latest\n')
+        for explicit_ctx in ({'runner': {'os': 'Windows'}}, {'runner_os': 'Windows'}):
+            with self.subTest(valid_override=explicit_ctx):
+                self.assertEqual(_job_runner_os(valid_job, contexts=explicit_ctx), 'Windows')
+
+        for explicit_os, expected in (
+            ('Windows', 'hit'),
+            ('windows', 'hit'),
+            (' Windows ', ''),
+            ('Linux', ''),
+            ('no-windows-tools', ''),
+        ):
+            with self.subTest(explicit_os=explicit_os):
+                self.assertEqual(
+                    evaluate_github_expression(
+                        'env.foo',
+                        contexts={'env': {'FOO': 'hit'}},
+                        runner_os=explicit_os,
+                    ),
+                    expected,
+                )
 
 
 if __name__ == '__main__':
