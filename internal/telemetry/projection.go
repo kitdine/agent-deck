@@ -14,6 +14,13 @@ import (
 // panel read them. Core stays the source of truth; the index projection is
 // regenerated from it after any purge or rebuild.
 func ProjectSessionIndex(ctx context.Context, core, index *store.Store) error {
+	isCJSI, err := core.IsCJSICore(ctx)
+	if err != nil {
+		return err
+	}
+	if isCJSI {
+		return store.ErrCJSIOTelAuthorityRequired
+	}
 	owned, err := core.TelemetrySessions(ctx)
 	if err != nil {
 		return err
@@ -32,6 +39,14 @@ func ProjectSessionIndex(ctx context.Context, core, index *store.Store) error {
 // identities still projects its retractions and returns
 // store.ErrTelemetrySourceIdentityPending.
 func SettleAndProject(ctx context.Context, core, index *store.Store, now time.Time, prepare func(context.Context) (bool, error)) (bool, error) {
+	isCJSI, err := core.IsCJSICore(ctx)
+	if err != nil {
+		return false, err
+	}
+	// Combined publication must acquire authority before either side changes.
+	if isCJSI && index != nil {
+		return false, store.ErrCJSIOTelAuthorityRequired
+	}
 	var prepareErr error
 	var preparedChanged bool
 	if prepare != nil {
@@ -44,6 +59,9 @@ func SettleAndProject(ctx context.Context, core, index *store.Store, now time.Ti
 	}
 	if settleErr == nil {
 		settleErr = prepareErr
+	}
+	if isCJSI {
+		return result.Changed, settleErr
 	}
 	owned, err := core.TelemetrySessions(ctx)
 	if err != nil {

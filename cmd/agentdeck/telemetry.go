@@ -462,6 +462,16 @@ func newTelemetryImportCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			reconciler := &telemetry.Reconciler{Store: database, Now: time.Now, RefreshSessions: true, PrepareSources: usage.New(database, home).PrepareSourceIdentities, SessionsChanged: func(ctx context.Context) error {
+				isCJSI, err := database.IsCJSICore(ctx)
+				if err != nil {
+					return err
+				}
+				if isCJSI {
+					// Under CJSI schema 37, direct physical projection through
+					// legacy sessions.sqlite3 is forbidden; same-generation
+					// publication owns session-index and origin handoff.
+					return nil
+				}
 				index, err := store.OpenSessions(ctx, stateRoot)
 				if err != nil {
 					return err

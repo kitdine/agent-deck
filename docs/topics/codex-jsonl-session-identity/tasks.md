@@ -24,7 +24,7 @@ created: 2026-11-17
 | 1. `native-source-proof` | [x] | [x] |
 | 2. `fenced-state-layout` | [x] | [x] |
 | 3. `usage-ledger-replay` | [x] | [x] |
-| 4. `otel-ownership-receipts` | [ ] | [ ] |
+| 4. `otel-ownership-receipts` | [x] | [x] |
 | 5. `session-effective-index` | [ ] | [ ] |
 | 6. `session-origin-bindings` | [ ] | [ ] |
 | 7. `scoped-usage-aggregation` | [ ] | [ ] |

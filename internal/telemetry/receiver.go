@@ -190,6 +190,10 @@ type ServeOptions struct {
 	PrepareSources func(context.Context) (bool, error)
 	// ClassifySessions runs after a successful session index projection.
 	ClassifySessions func(context.Context, *store.Store) error
+	// ProjectSessions, when set, overrides the legacy direct session-index
+	// projection so CJSI same-generation publication can handle marker handoff
+	// without opening the fenced legacy sessions.sqlite3 path.
+	ProjectSessions func(context.Context) error
 }
 
 // ListenerErrorSourceIdentityPending is the listener diagnostic while settle
@@ -301,6 +305,19 @@ func Serve(ctx context.Context, options ServeOptions) error {
 	}
 	reconciler := &Reconciler{Store: options.Store, Journal: journal, Now: now, Batch: 500, RefreshSessions: options.ClassifySessions != nil, PrepareSources: options.PrepareSources,
 		SessionsChanged: func(ctx context.Context) error {
+			if options.ProjectSessions != nil {
+				return options.ProjectSessions(ctx)
+			}
+			isCJSI, err := options.Store.IsCJSICore(ctx)
+			if err != nil {
+				return err
+			}
+			if isCJSI {
+				// Under CJSI schema 37, the legacy sessions.sqlite3 path is
+				// fenced and direct physical projection is forbidden; the
+				// Published callback notifies the same-generation publisher.
+				return nil
+			}
 			index, err := store.OpenSessions(ctx, options.StateRoot)
 			if err != nil {
 				return err

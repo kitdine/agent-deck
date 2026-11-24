@@ -166,6 +166,10 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 			return result, ErrTelemetryCursorMoved
 		}
 	}
+	managed, err := isCJSICoreQuery(ctx, tx)
+	if err != nil {
+		return result, err
+	}
 	for _, observation := range batch {
 		if (observation.Metered || observation.State == "pending" || observation.State == "otel_owned") && (observation.InputTokens == nil || observation.OutputTokens == nil) {
 			observation.Metered, observation.SupportEntry = false, ""
@@ -180,17 +184,18 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 			continue
 		}
 		if observation.Metered && observation.ThreadID != "" && observation.RecordAt != "" {
-			conflict, err := telemetryConflicts(ctx, tx, observation)
+			match := " = ?"
+			if managed {
+				match = cjsiOTelMatch(observation.ThreadID)
+			}
+			conflict, err := telemetryConflicts(ctx, tx, observation, match)
 			if err != nil {
 				return result, err
 			}
 			if conflict {
 				observation.State, observation.Reason = "conflict", "token_counts_disagree"
-				var counted bool
-				if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_contributions c JOIN telemetry_observations o USING(observation_key) WHERE o.thread_id=? AND o.record_at=?)`, observation.ThreadID, observation.RecordAt).Scan(&counted); err != nil {
-					return result, err
-				}
-				if err := retractConflicting(ctx, tx, observation); err != nil {
+				counted, err := retractConflicting(ctx, tx, observation.ThreadID, observation.RecordAt, match)
+				if err != nil {
 					return result, err
 				}
 				result.Changed = result.Changed || counted
@@ -237,14 +242,28 @@ func (s *Store) ApplyTelemetryObservations(ctx context.Context, batch []Telemetr
 // TelemetryNeedsInventory reports pending observations that no completed finite
 // inventory has checked yet. It does not grant ownership or bypass settlement.
 func (s *Store) TelemetryNeedsInventory(ctx context.Context) (bool, error) {
+	isCJSI, err := isCJSICoreQuery(ctx, s.DB)
+	if err != nil {
+		return false, err
+	}
+	if isCJSI {
+		tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback()
+		return telemetryNeedsInventoryCJSI(ctx, tx)
+	}
 	var needed bool
-	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_observations o WHERE o.state='pending' AND NOT EXISTS(SELECT 1 FROM inventory_runs i WHERE i.state='complete' AND i.captured_at > o.received_at))`).Scan(&needed)
+	err = s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_observations o WHERE o.state='pending' AND NOT EXISTS(SELECT 1 FROM inventory_runs i WHERE i.state='complete' AND i.captured_at > o.received_at))`).Scan(&needed)
 	return needed, err
 }
 
-func telemetryConflicts(ctx context.Context, tx *sql.Tx, observation TelemetryObservation) (bool, error) {
+const telemetryConflictEligible = `metered=1 AND state NOT IN ('invalid','unmetered')`
+
+func telemetryConflicts(ctx context.Context, tx *sql.Tx, observation TelemetryObservation, match string) (bool, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT input_tokens, output_tokens, cached_tokens, cache_write_tokens, reasoning_tokens, total_tokens
- FROM telemetry_observations WHERE thread_id = ? AND record_at = ? AND metered = 1 AND state NOT IN ('invalid','unmetered')`, observation.ThreadID, observation.RecordAt)
+ FROM telemetry_observations WHERE thread_id`+match+` AND record_at = ? AND `+telemetryConflictEligible, observation.ThreadID, observation.RecordAt)
 	if err != nil {
 		return false, err
 	}
@@ -266,23 +285,28 @@ func telemetryConflicts(ctx context.Context, tx *sql.Tx, observation TelemetryOb
 
 // retractConflicting marks the disagreeing observations conflict and removes
 // any contribution one of them already made.
-func retractConflicting(ctx context.Context, tx *sql.Tx, observation TelemetryObservation) error {
-	keys, err := queryStrings(ctx, tx, `SELECT observation_key FROM telemetry_observations WHERE thread_id = ? AND record_at = ? AND metered = 1 AND state NOT IN ('invalid','unmetered')`, observation.ThreadID, observation.RecordAt)
+func retractConflicting(ctx context.Context, tx *sql.Tx, thread, recordAt, match string) (bool, error) {
+	keys, err := queryStrings(ctx, tx, `SELECT observation_key FROM telemetry_observations WHERE thread_id`+match+` AND record_at=? AND `+telemetryConflictEligible, thread, recordAt)
 	if err != nil {
-		return err
+		return false, err
+	}
+	var counted, marker bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM telemetry_contributions c JOIN telemetry_observations o USING(observation_key) WHERE o.thread_id`+match+` AND o.record_at=?),
+ EXISTS(SELECT 1 FROM telemetry_sessions WHERE client='codex' AND session_id`+match+`)`, thread, recordAt, thread).Scan(&counted, &marker); err != nil {
+		return false, err
 	}
 	for _, key := range keys {
 		if err := deleteContribution(ctx, tx, key); err != nil {
-			return err
+			return false, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state = 'conflict', reason = 'token_counts_disagree' WHERE observation_key = ?`, key); err != nil {
-			return err
+		if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state='conflict',reason='token_counts_disagree' WHERE observation_key=?`, key); err != nil {
+			return false, err
 		}
 	}
-	if len(keys) > 0 {
-		return syncTelemetrySession(ctx, tx, observation.ThreadID, time.Now())
+	if counted || marker {
+		err = syncTelemetrySession(ctx, tx, thread, match, time.Now())
 	}
-	return nil
+	return counted, err
 }
 
 func deleteContribution(ctx context.Context, tx *sql.Tx, observationKey string) error {
@@ -329,7 +353,28 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 	if err != nil {
 		return result, err
 	}
-	result.Retracted, err = retractIncompleteTelemetry(ctx, tx, now)
+	isCJSI, err := isCJSICoreQuery(ctx, tx)
+	if err != nil {
+		return result, err
+	}
+	if isCJSI {
+		var ready bool
+		result, ready, err = settleTelemetryCJSI(ctx, tx, now, settleAfter)
+		if err != nil {
+			return result, err
+		}
+		if err := restoreCoverage(); err != nil {
+			return result, err
+		}
+		if err := tx.Commit(); err != nil {
+			return result, err
+		}
+		if !ready {
+			return result, ErrTelemetrySourceIdentityPending
+		}
+		return result, nil
+	}
+	result.Retracted, err = retractIncompleteTelemetry(ctx, tx, now, false)
 	if err != nil {
 		return result, err
 	}
@@ -394,7 +439,7 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 				result.Changed = true
 			}
 		}
-		restored, err := ensureContributions(ctx, tx, thread)
+		restored, err := ensureContributions(ctx, tx, thread, " = ?")
 		if err != nil {
 			return result, err
 		}
@@ -402,7 +447,7 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 			result.Restored += restored
 			result.Changed = true
 		}
-		if err := syncTelemetrySession(ctx, tx, thread, now); err != nil {
+		if err := syncTelemetrySession(ctx, tx, thread, " = ?", now); err != nil {
 			return result, err
 		}
 	}
@@ -421,7 +466,7 @@ func (s *Store) SettleTelemetry(ctx context.Context, now time.Time, settleAfter 
 // Older receivers could store or count incomplete observations. Reclassify
 // those persisted records before ownership/restoration so no replay restores a
 // fabricated zero. Only actual removed contributions report a counted change.
-func retractIncompleteTelemetry(ctx context.Context, tx *sql.Tx, now time.Time) (int, error) {
+func retractIncompleteTelemetry(ctx context.Context, tx *sql.Tx, now time.Time, managed bool) (int, error) {
 	const incomplete = `state IN ('pending','otel_owned') AND (input_tokens IS NULL OR output_tokens IS NULL)`
 	threads, err := queryStrings(ctx, tx, `SELECT DISTINCT thread_id FROM telemetry_observations WHERE `+incomplete)
 	if err != nil {
@@ -445,7 +490,11 @@ func retractIncompleteTelemetry(ctx context.Context, tx *sql.Tx, now time.Time) 
 		if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state='capture_only',reason=?,metered=0,support_entry='' WHERE thread_id=? AND `+incomplete, TelemetryIncompleteCountsReason, thread); err != nil {
 			return 0, err
 		}
-		if err := syncTelemetrySession(ctx, tx, thread, now); err != nil {
+		match := " = ?"
+		if managed {
+			match = cjsiOTelMatch(thread)
+		}
+		if err := syncTelemetrySession(ctx, tx, thread, match, now); err != nil {
 			return 0, err
 		}
 		if counted {
@@ -457,9 +506,9 @@ func retractIncompleteTelemetry(ctx context.Context, tx *sql.Tx, now time.Time) 
 
 // ensureContributions writes the usage_events row of every otel_owned
 // observation of a conversation that does not have one.
-func ensureContributions(ctx context.Context, tx *sql.Tx, thread string) (int, error) {
+func ensureContributions(ctx context.Context, tx *sql.Tx, thread, match string) (int, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT o.observation_key, o.record_at, o.received_at, o.model, o.input_tokens, o.cached_tokens, o.output_tokens, o.cache_write_tokens
- FROM telemetry_observations o WHERE o.thread_id = ? AND o.state = 'otel_owned' AND o.input_tokens IS NOT NULL AND o.output_tokens IS NOT NULL
+ FROM telemetry_observations o WHERE o.thread_id`+match+` AND o.state = 'otel_owned' AND o.input_tokens IS NOT NULL AND o.output_tokens IS NOT NULL
  AND NOT EXISTS (SELECT 1 FROM telemetry_contributions c JOIN usage_events e ON e.event_key = c.event_key WHERE c.observation_key = o.observation_key)`, thread)
 	if err != nil {
 		return 0, err
@@ -502,37 +551,49 @@ func ensureContributions(ctx context.Context, tx *sql.Tx, thread string) (int, e
 // exactly the conversation's current OTel contributions: present with their
 // first/last times while any exist, absent otherwise. A usage_sessions row
 // that JSONL events also feed is left to the JSONL path.
-func syncTelemetrySession(ctx context.Context, tx *sql.Tx, thread string, now time.Time) error {
+func syncTelemetrySession(ctx context.Context, tx *sql.Tx, thread, match string, now time.Time) error {
 	var count int
-	var first, last, model sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT count(*), min(event_at), max(event_at),
- (SELECT model FROM usage_events WHERE client = 'codex' AND session_id = ? AND substr(source_path, 1, 5) = 'otel:' ORDER BY event_at DESC, event_key DESC LIMIT 1)
- FROM usage_events WHERE client = 'codex' AND session_id = ? AND substr(source_path, 1, 5) = 'otel:'`, thread, thread).Scan(&count, &first, &last, &model); err != nil {
+	var first, last, model, publicThread sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT count(*), min(event_at), max(event_at), min(session_id COLLATE BINARY),
+ (SELECT model FROM usage_events WHERE client = 'codex' AND session_id`+match+` AND substr(source_path, 1, 5) = 'otel:' ORDER BY event_at DESC, event_key DESC LIMIT 1)
+ FROM usage_events WHERE client = 'codex' AND session_id`+match+` AND substr(source_path, 1, 5) = 'otel:'`, thread, thread).Scan(&count, &first, &last, &publicThread, &model); err != nil {
 		return err
 	}
 	var jsonl int
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_events WHERE client = 'codex' AND session_id = ? AND substr(source_path, 1, 5) <> 'otel:')`, thread).Scan(&jsonl); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_events WHERE client = 'codex' AND session_id`+match+` AND substr(source_path, 1, 5) <> 'otel:')`, thread).Scan(&jsonl); err != nil {
 		return err
 	}
 	if count == 0 {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM telemetry_sessions WHERE client = 'codex' AND session_id = ?`, thread); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telemetry_sessions WHERE client = 'codex' AND session_id`+match, thread); err != nil {
 			return err
 		}
 		if jsonl == 0 {
-			_, err := tx.ExecContext(ctx, `DELETE FROM usage_sessions WHERE client = 'codex' AND session_id = ?`, thread)
+			_, err := tx.ExecContext(ctx, `DELETE FROM usage_sessions WHERE client = 'codex' AND session_id`+match, thread)
 			return err
 		}
 		return nil
 	}
+	// A legacy store may already have separate markers for UUID spellings.
+	// Use one stable event spelling and retire only the redundant OTel rows.
+	if match != " = ?" {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telemetry_sessions WHERE client='codex' AND session_id`+match+` AND session_id<>?`, thread, publicThread.String); err != nil {
+			return err
+		}
+		if jsonl == 0 {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM usage_sessions WHERE client='codex' AND session_id`+match+` AND session_id<>?`, thread, publicThread.String); err != nil {
+				return err
+			}
+		}
+	}
 	var support string
-	if err := tx.QueryRowContext(ctx, `SELECT support_entry FROM telemetry_observations WHERE thread_id = ? AND state = 'otel_owned' ORDER BY record_at DESC LIMIT 1`, thread).Scan(&support); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT support_entry FROM telemetry_observations WHERE thread_id`+match+` AND state = 'otel_owned' ORDER BY record_at DESC, observation_key LIMIT 1`, thread).Scan(&support); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO telemetry_sessions(client, session_id, source_kind, model, first_at, last_at, support_entry, settled_at)
  VALUES('codex', ?, ?, ?, ?, ?, ?, ?)
  ON CONFLICT(client, session_id) DO UPDATE SET model = excluded.model, first_at = excluded.first_at, last_at = excluded.last_at, support_entry = excluded.support_entry
  WHERE (telemetry_sessions.model, telemetry_sessions.first_at, telemetry_sessions.last_at, telemetry_sessions.support_entry) IS NOT (excluded.model, excluded.first_at, excluded.last_at, excluded.support_entry)`,
-		thread, TelemetrySessionSourceKind, model.String, first.String, last.String, support, formatTelemetryTime(now)); err != nil {
+		publicThread.String, TelemetrySessionSourceKind, model.String, first.String, last.String, support, formatTelemetryTime(now)); err != nil {
 		return err
 	}
 	if jsonl != 0 {
@@ -540,7 +601,7 @@ func syncTelemetrySession(ctx context.Context, tx *sql.Tx, thread string, now ti
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client, session_id, first_at, last_at) VALUES('codex', ?, ?, ?)
  ON CONFLICT(client, session_id) DO UPDATE SET first_at = excluded.first_at, last_at = excluded.last_at
- WHERE (usage_sessions.first_at, usage_sessions.last_at) IS NOT (excluded.first_at, excluded.last_at)`, thread, first.String, last.String)
+ WHERE (usage_sessions.first_at, usage_sessions.last_at) IS NOT (excluded.first_at, excluded.last_at)`, publicThread.String, first.String, last.String)
 	return err
 }
 

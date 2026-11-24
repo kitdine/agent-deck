@@ -91,6 +91,13 @@ func CodexRolloutThreadID(path string) (string, bool) {
 // whose facts the same transaction writes, so no committed state counts a
 // thread from both JSONL and OTel. It reports how many threads changed.
 func RetractTelemetryForJSONLThreads(ctx context.Context, tx *sql.Tx, threads []string, now time.Time) (int, error) {
+	isCJSI, err := isCJSICoreQuery(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	if isCJSI {
+		return 0, ErrCJSIOTelAuthorityRequired
+	}
 	retracted := 0
 	seen := map[string]bool{}
 	for _, raw := range threads {
@@ -126,7 +133,7 @@ func retractTelemetryThread(ctx context.Context, tx *sql.Tx, thread string, now 
 	if _, err := tx.ExecContext(ctx, `UPDATE telemetry_observations SET state = 'jsonl_owned', reason = 'jsonl_evidence' WHERE thread_id = ? AND state IN ('pending','otel_owned')`, thread); err != nil {
 		return err
 	}
-	return syncTelemetrySession(ctx, tx, thread, now)
+	return syncTelemetrySession(ctx, tx, thread, " = ?", now)
 }
 
 // orphanCodexFactPathsSQL lists Codex JSONL fact paths that have no source
@@ -214,6 +221,13 @@ func readTelemetrySourceThreads(ctx context.Context, q telemetryQueryer) (teleme
 // TelemetrySourceIdentityReady is the read-only form of the readiness check
 // SettleTelemetry applies inside its transaction.
 func (s *Store) TelemetrySourceIdentityReady(ctx context.Context) (bool, error) {
+	isCJSI, err := isCJSICoreQuery(ctx, s.DB)
+	if err != nil {
+		return false, err
+	}
+	if isCJSI {
+		return telemetrySourceIdentityReadyCJSI(ctx, s.DB)
+	}
 	state, err := readTelemetrySourceThreads(ctx, s.DB)
 	return state.ready, err
 }
@@ -332,6 +346,10 @@ func (s *Store) SaveSourceThreadIdentities(ctx context.Context, items []SourceTh
 	if err != nil {
 		return 0, err
 	}
+	isCJSI, err := isCJSICoreQuery(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
 	var threads []string
 	for _, item := range items {
 		result, err := tx.ExecContext(ctx, `UPDATE usage_source_files SET thread_id = ? WHERE path = ? AND identity = ? AND thread_id IS NULL`, item.ThreadID, item.Path, item.Identity)
@@ -341,14 +359,23 @@ func (s *Store) SaveSourceThreadIdentities(ctx context.Context, items []SourceTh
 		if n, _ := result.RowsAffected(); n == 0 {
 			continue
 		}
+		if isCJSI {
+			// Under CJSI schema 37, assessed header/rollout thread identities
+			// are recorded as candidate clues only; they never trigger OTel
+			// retraction outside receipt-bearing publication authority.
+			continue
+		}
 		threads = append(threads, item.ThreadID)
 		if id, ok := CodexRolloutThreadID(item.Path); ok {
 			threads = append(threads, id)
 		}
 	}
-	retracted, err := RetractTelemetryForJSONLThreads(ctx, tx, threads, now)
-	if err != nil {
-		return 0, err
+	retracted := 0
+	if !isCJSI {
+		retracted, err = RetractTelemetryForJSONLThreads(ctx, tx, threads, now)
+		if err != nil {
+			return 0, err
+		}
 	}
 	if err := restoreCoverage(); err != nil {
 		return 0, err
