@@ -1634,6 +1634,12 @@ class VerifyRunnerBehaviorTest(unittest.TestCase):
                 'raise SystemExit(23)\n'
             )
             pwsh_stub.chmod(0o755)
+            # Linux resolves executables case-sensitively, as the real runner
+            # does; provide the upper-case name too so the case-insensitive
+            # built-in argument lookup is exercised on every platform.
+            upper_stub = Path(temp) / 'PWSH'
+            if not upper_stub.exists():
+                shutil.copy2(pwsh_stub, upper_stub)
             path_env = str(temp) + os.pathsep + os.environ.get('PATH', os.defpath)
             with mock.patch.dict(os.environ, {'PATH': path_env}):
                 sample_script = Path(temp) / 'step.ps1'

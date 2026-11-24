@@ -77,3 +77,13 @@ Codex `gpt-6.2-sol` low 冷评审（作者 AGY Gemini 4 Argon high）。F1 PASS�
 - **验证。** 补丁与工作树一致；52 + 80 + 93 项通过；五份工作流与基线判定一致；新回归在上一候选 `90332b02` 上 15 处失败；四个变异中三个被拦截，一个为等价变异（见 F4）。
 - **非阻断 P3。** 均只影响本地测试模型的边界输入，按用户对第 4 轮的指示延后：CI-LOCAL-R4-F1 空 `runs-on`（`[]`、空串、空 `labels`）被当作 Linux 接受；CI-LOCAL-R4-F2 `runs-on` 求值透传 `env`、`steps` 等 GitHub 不允许的上下文；CI-LOCAL-R4-F3 显式 OS 键名大小写与空值处理不一致；CI-LOCAL-R4-F4 `runner_labels` 的空 group 检查缺直接单测 -> open `ad-bug-ci-local-runs-on-edge-validation`。
 - **门禁。** CEv1 WorkUnit `fix:ci-local-workflow-model` 在该候选上独立评审与本地验证满足。托管 CI 结果由 PR 检查验证。
+
+## Review — Round 6
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+PR 84 的 documentation 检查在 Linux runner 上失败：`test_pwsh_builtin_shell_uses_dot_source_command_and_ps1_extension` 的 `PWSH` 子用例报 `FileNotFoundError: workflow shell not found: PWSH`。测试只创建了 `pwsh` 桩，macOS 文件系统大小写不敏感所以本地通过。本地模型按原样大小写解析可执行文件、按小写匹配内置参数，与 actions/runner 的 `ScriptHandler`、`WhichUtil`、`ScriptHandlerHelpers` 一致，产品模型无需改动。主控只改测试：额外创建 `PWSH` 桩副本（大小写不敏感时已存在则跳过）。
+
+Codex `gpt-6.2-sol` low 冷评审（作者为主控，档位与 effort 经 Decisions 选择）PASS，无发现：在真实大小写敏感的 HFS+ 卷上基线复现该错误、候选通过；原有子进程、退出码、`.ps1` 内容与点源格式断言保持；`scripts/ci/` 下未发现其他依赖大小写不敏感的测试。`docs_tools_test.py` 52 项、`make check-ci-docs-tools` 80 + 93 项通过，`git diff --check` 干净。候选 SHA-256 `9a04ec71936750fce748a1ad835597401ee9ef545ce8ace5ddf968b71d1dda85`（`git diff --full-index 3f7f78a`，取于追加本轮记录之前）。CEv1 WorkUnit `fix:ci-local-workflow-model` 已在该候选上补记证据。
