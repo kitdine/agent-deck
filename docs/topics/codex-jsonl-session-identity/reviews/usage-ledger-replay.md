@@ -123,3 +123,16 @@ PASS 适用于本轮两个私有暂存发现。当前尚未注册整项 Task 3 �
 完成门禁：NOT_VERIFIED
 
 Task 8 单元 1 经主控授权从 `internal/usage/cjsi_ledger_staging.go` 抽出只读的 `VerifyStaged(ctx, tx, draft)`，`Stage` 复用它且语义不变；新增同包测试 `cjsi_verify_staged_test.go`。同代发布评审 Round 13–16（`same-generation-publication.md`）一并冷评审。最终补丁 SHA-256 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`（基线 `f5d93d9`），Claude `claude-opus-5-5` high 复评 PASS。store 包 `-p 1` 全量 655 项通过、3 项跳过；发布相关 race 通过；vet、gofmt 干净。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。
+
+## Round 6 — 2026-11-25，Task 8 单元 2a 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 2a 的修复轮经主控授权，把本锚的写入前置条件提取为共享只读实现，供开票前路径与真实写入共用，避免两份逻辑漂移：
+- `cjsi_ledger_publication.go` 的 `requestIdentity`、`checkReplacement`，以及等价抽出的 `applyVerifiedRequests`；
+- `cjsi_ledger_staging.go` 的 `verifyUsageStagingSchema`、`usageLiveAttemptSQL`；
+- `cjsi_checkpoint.go` 的 `checkpointStart`。
+
+`ApplySelectedRequests`、`writeRequest`、`VerifyStaged`、`writeCheckpoints` 的行为、错误、写入与 SQL 不变。同代发布评审 Round 17–19（`same-generation-publication.md`）一并冷评审，最终补丁 SHA-256 `c7b44ccad9a4d16b9c2309dd47a2eb2b3b2715649b27462d9d89ae580fd2a6a9` 复评 PASS。复评者对照 `3e3afb5` 逐行核对：原有入口的行为、错误、写入与 SQL 不变，相关包全量测试通过。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

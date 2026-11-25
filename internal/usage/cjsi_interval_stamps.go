@@ -58,25 +58,33 @@ func readIntervalStamp(ctx context.Context, tx *sql.Tx, h intervalStampHead, sco
 // The publisher must roll back that entire transaction on any error, including
 // failures after a preceding range was written. It alone commits on success.
 func writeIntervalStamps(ctx context.Context, tx *sql.Tx, h intervalStampHead, plan intervalImpactPlan) error {
+	ranges, err := intervalStampRanges(plan)
+	if err != nil {
+		return err
+	}
+	return store.WriteUsageIntervalDirtyRanges(ctx, tx, h.coreEpoch, h.ticket, ranges)
+}
+
+func intervalStampRanges(plan intervalImpactPlan) ([]store.IntervalDirtyRange, error) {
 	if plan == nil {
-		return errors.New("interval impact plan unavailable")
+		return nil, errors.New("interval impact plan unavailable")
 	}
 	ranges := make([]store.IntervalDirtyRange, 0, len(plan))
 	for _, r := range plan {
 		kind, err := intervalStampScopeKind(r.scope)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// The current planner emits Codex and All; an emitted model requires
 		// a nonempty whole-interval witness. Empty-model lookups remain valid.
 		if r.scope.kind != impactAllSummary && r.scope.client != "codex" || r.scope.kind == impactModel && r.scope.model == "" {
-			return errors.New("scope cannot be produced by the interval impact planner")
+			return nil, errors.New("scope cannot be produced by the interval impact planner")
 		}
 		first, startMidnight := store.UsageIntervalStampDay(r.from)
 		end, endMidnight := store.UsageIntervalStampDay(r.to)
 		// The day containing an event can begin at Go's zero instant.
 		if !startMidnight || !endMidnight || end <= first {
-			return errors.New("interval stamp plan requires increasing UTC day bounds")
+			return nil, errors.New("interval stamp plan requires increasing UTC day bounds")
 		}
 		ranges = append(ranges, store.IntervalDirtyRange{
 			ScopeKind: kind,
@@ -86,5 +94,5 @@ func writeIntervalStamps(ctx context.Context, tx *sql.Tx, h intervalStampHead, p
 			ToDay:     end,
 		})
 	}
-	return store.WriteUsageIntervalDirtyRanges(ctx, tx, h.coreEpoch, h.ticket, ranges)
+	return ranges, nil
 }

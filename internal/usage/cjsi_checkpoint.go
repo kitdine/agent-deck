@@ -23,9 +23,13 @@ type CJSIUsageCheckpoint struct {
 }
 
 func (c CJSIUsageCandidate) Checkpoints() []CJSIUsageCheckpoint { return slices.Clone(c.checkpoints) }
-func (c CJSIUsageCandidate) writeCheckpoints(ctx context.Context, tx *sql.Tx) error {
+func (c CJSIUsageCandidate) checkpointStart() (string, error) {
 	var headBirth, executionBirth time.Time
 	for _, p := range c.checkpoints {
+		e, s := p.Entry, p.Workset.Selected
+		if s.ThreadID != c.thread || s.Evidence.Progress.ReadEnd != p.Progress.ReadEnd || s.Evidence.Progress.CompleteEnd != p.Progress.CompleteEnd || p.Progress.ReadEnd != e.Size {
+			return "", ledger.ErrProposalMismatch
+		}
 		if !p.HeadAt.IsZero() && (headBirth.IsZero() || p.HeadAt.Before(headBirth)) {
 			headBirth = p.HeadAt
 		}
@@ -36,15 +40,19 @@ func (c CJSIUsageCandidate) writeCheckpoints(ctx context.Context, tx *sql.Tx) er
 	if headBirth.IsZero() {
 		headBirth = executionBirth
 	}
-	started := ""
-	if !headBirth.IsZero() {
-		started = headBirth.UTC().Format(sessionStartLayout)
+	if headBirth.IsZero() {
+		return "", nil
+	}
+	return headBirth.UTC().Format(sessionStartLayout), nil
+}
+
+func (c CJSIUsageCandidate) writeCheckpoints(ctx context.Context, tx *sql.Tx) error {
+	started, err := c.checkpointStart()
+	if err != nil {
+		return err
 	}
 	for _, p := range c.checkpoints {
-		e, s := p.Entry, p.Workset.Selected
-		if s.ThreadID != c.thread || s.Evidence.Progress.ReadEnd != p.Progress.ReadEnd || s.Evidence.Progress.CompleteEnd != p.Progress.CompleteEnd || p.Progress.ReadEnd != e.Size {
-			return ledger.ErrProposalMismatch
-		}
+		e := p.Entry
 		_, err := tx.ExecContext(ctx, `INSERT INTO main.usage_source_files
   (path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,modified_at,changed_at,thread_id)
   VALUES(?,?,?,?,?,?,'','',?,?,'{}',?,?,?)

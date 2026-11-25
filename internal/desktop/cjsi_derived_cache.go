@@ -36,6 +36,12 @@ type cjsiDerivedCacheKey struct{ header derivedSnapshotCacheHeader }
 // validUntil comes from the admitted view's price, route and other validity
 // boundaries. The clock boundary also limits reuse of date/hour projections.
 func newCJSIDerivedCacheKey(ctx context.Context, tx *sql.Tx, v cjsiDerivedView, now, validUntil time.Time, loc *time.Location) (cjsiDerivedCacheKey, error) {
+	return v.cacheKey(now, validUntil, loc, func(q usage.StatsOptions, coverage [32]byte) ([32]byte, error) {
+		return usage.ReadCJSIAggregateCacheStamp(ctx, tx, v.epoch, v.ticket, q, coverage)
+	})
+}
+
+func (v cjsiDerivedView) cacheKey(now, validUntil time.Time, loc *time.Location, stampFor func(usage.StatsOptions, [32]byte) ([32]byte, error)) (cjsiDerivedCacheKey, error) {
 	d := v.proof
 	zero := [32]byte{}
 	if loc == nil || loc.String() == "" || now.IsZero() || !now.Before(validUntil) || v.database == "" ||
@@ -44,7 +50,7 @@ func newCJSIDerivedCacheKey(ctx context.Context, tx *sql.Tx, v cjsiDerivedView, 
 		return cjsiDerivedCacheKey{}, errors.New("incomplete admitted desktop dependencies")
 	}
 	from, end := usage.CJSIPresentationWindow(now, loc)
-	stamp, err := usage.ReadCJSIAggregateCacheStamp(ctx, tx, v.epoch, v.ticket, usage.StatsOptions{From: from, To: end, Timezone: loc.String(), Location: loc}, d.Coverage)
+	stamp, err := stampFor(usage.StatsOptions{From: from, To: end, Timezone: loc.String(), Location: loc}, d.Coverage)
 	if err != nil {
 		return cjsiDerivedCacheKey{}, err
 	}

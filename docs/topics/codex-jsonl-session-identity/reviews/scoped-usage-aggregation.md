@@ -218,3 +218,17 @@ Codex `gpt-6.2-astra` 独立冷复评，T3 `reasoningEffort=xhigh`，请求 `v07
 - **R3 修复与复评（AGY Gemini 4 Neon medium，新会话）PASS。** 相对 R2 只改两个测试文件。R11-F1 closed：单区间无掩蔽回归锁定端点结转，独立复做的变异使其失败；R11-F2 closed：冲突偏移断言移到固定 `Local -08:00` 夹具，UTC、Asia/Tokyo、Pacific/Kiritimati、`:/etc/localtime` 均通过。本轮无新发现。
 - **验证。** 各轮复评在 `bbb06da`/`a0a13c2` + 补丁的隔离副本运行：三锚点非空、`internal/usage`、`internal/store`、`internal/desktop` 全包 `-p 1`、usage 与 desktop race、多时区测试均通过；gofmt、vet 干净；变异在各轮被对应回归拦截。测试仅用隔离目录。
 - **门禁与交接。** CEv1 WorkUnit `codex-jsonl-session-identity:scoped-usage-aggregation` 在该补丁状态上独立评审、L3 验证、范围与隐私 3/3 满足。Task 8 须按 handoff 以同一借用事务接入演示、会话、Stats 与 WorkSignals 读者，并在同票开放中绑定缓存戳。
+
+## Round 12 — 2026-11-25，Task 8 单元 2a 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 2a 经主控授权修改本锚的读者与缓存：
+- `internal/usage` 新增受管 proposed 分支入口，绑定父票、目标 ticket/attempt 与冻结差分，在父票只读事务中叠加差分后归约，产出开票前报告；
+- `cjsi_interval_stamps.go`、`cjsi_aggregate_cache_stamp.go` 新增目标聚合戳入口；
+- `cjsi_interval_reader.go`、`cjsi_scoped_summary_reader.go`、`presentation.go`、`session_usage.go` 做窄参数化提取；
+- `internal/desktop/cjsi_derived_cache.go` 改为可注入公开或 proposed 戳。
+
+已开放路径的 head、selection、opened 校验与原错误不变。基线 `usage.go` 与 `store/providers.go` 仅提取接受只读 queryer 的共享实现，原签名、SQL 与语义不变。同代发布评审 Round 17–19（`same-generation-publication.md`）一并冷评审，最终补丁 SHA-256 `c7b44ccad9a4d16b9c2309dd47a2eb2b3b2715649b27462d9d89ae580fd2a6a9` 复评 PASS。复评者对照 `3e3afb5` 逐行核对：原有入口的行为、错误、写入与 SQL 不变，相关包全量测试通过。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

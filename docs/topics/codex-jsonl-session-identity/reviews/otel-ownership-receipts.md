@@ -79,3 +79,16 @@ OpenCode Pro `openai/gpt-6.2-astra` 冷上下文独立复评，T3 `variant=xhigh
 - **R2 复评（AGY Gemini 4 Neon high）PASS。** R1R-F1 closed：拼写计数与冲突谓词一致，纯 `capture_only` 线程不进入状态机。R1R-F2 closed：部分释放按存活事件二进制最小 `session_id` 重算公开线程。上一轮 5 个与本轮 3 个新变异全部被杀；R0 五项、R1-F1/F2、Round 2 条件与合法路径（非 UUID 严格匹配、usage-only 结算、真实归因变化阻断释放、Codex 孤儿旧账保护）不回归。本轮无 finding；评审者另记一项观察：将释放时的 `min` 改为 `max` 只被其独立多存活探针杀死，仓库测试仅有单存活用例，生产逻辑已核对与 `syncTelemetrySession` 一致。
 - **主控复验。** 评审时依赖的是 Task 3 未定稿的 `cjsiledger` 快照。Task 3 提交为 `e2b7f20` 后，主控在 `e2b7f20` + 本补丁的隔离副本上复验：11 个路径 SHA-256 与清单一致；gofmt、vet 干净；`^TestCJSIOTel` 定向、`internal/telemetry` 与 `cmd/agentdeck` 的 Telemetry 回归、`internal/store` 与 `internal/usage` 全包（-p 1）均通过。HOME、TMPDIR、GOCACHE 隔离。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:otel-ownership-receipts` 在该状态上独立评审、L2 验证、范围与隐私 3/3 满足。实际 revision 写者、Task 5 物理投影与 Task 8 同代发布事务由后续 Task 联合验收。
+
+## Round 4 — 2026-11-25，Task 8 单元 2a 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 2a 经主控授权修改本锚：
+- `internal/store/cjsi_otel_report_effects.go` 新增 `(*CJSIOTelChange).ReportEffects` 与 `VerifyReportVacated`，在借用事务中返回 Apply 将产生的事件、运行绑定与会话增删；
+- 只读侧与 Apply 共用 Prepare 完成失效筛选后的同一 `edits`；
+- `cjsi_telemetry_receipts.go` 与 `cjsi_telemetry_rows.go` 把 vacate 检查提取为共享的 `checkVacated`，新增导出的只读视图接口 `CJSIOTelReadView`。
+
+Apply 与 vacate 的事务、SQL、错误和写入顺序不变。测试断言只读效果集与 Apply 后数据库的实际增删逐行相等。同代发布评审 Round 17–19（`same-generation-publication.md`）一并冷评审，最终补丁 SHA-256 `c7b44ccad9a4d16b9c2309dd47a2eb2b3b2715649b27462d9d89ae580fd2a6a9` 复评 PASS。复评者对照 `3e3afb5` 逐行核对：原有入口的行为、错误、写入与 SQL 不变，相关包全量测试通过。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

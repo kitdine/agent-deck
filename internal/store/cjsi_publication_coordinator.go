@@ -591,6 +591,9 @@ func (d CJSIPublicationDraft) FreezePublication(ctx context.Context, seal [32]by
 	return &CJSIFrozenPublication{d, p, h, slices.Clone(removed), groups, c}, nil
 }
 
+// DiffDigest names the frozen attempt including both component seals and the domain delta.
+func (f *CJSIFrozenPublication) DiffDigest() [32]byte { return f.proposal.diff }
+
 // Open revalidates or adopts a durable private slot and performs the final CAS.
 func (f *CJSIFrozenPublication) Open(ctx context.Context, contents []byte, built, validUntil time.Time) error {
 	if bound := f.draft.SlotValidUntil(); !bound.IsZero() && !validUntil.Equal(bound) {

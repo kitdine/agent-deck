@@ -64,6 +64,7 @@ type CJSIProposedView struct {
 	Groups              []CJSIPublicationGroup
 	Origins             []sessionorigin.PreparedOrigin
 	Digest              [32]byte
+	FrozenDiff          [32]byte // exact attempts.diff_digest, distinct from the domain change digest
 	Generation          store.ServingGeneration
 	Slot                [16]byte
 	BuiltAt, ValidUntil time.Time
@@ -139,7 +140,7 @@ func (p CJSIPublicationPlan) Publish(ctx context.Context) error {
 			return err
 		}
 		var err error
-		encode, err = p.Build(ctx, CJSIProposedView{Core: tx, Index: v, Groups: slices.Clone(p.Groups), Origins: slices.Clone(origins), Digest: c.Digest, Generation: p.Draft.ServingGenerationFor(v.Selection(), c.UsageRevision), Slot: p.Draft.SlotIdentity(), BuiltAt: p.BuiltAt, ValidUntil: p.ValidUntil})
+		encode, err = p.Build(ctx, CJSIProposedView{Core: tx, Index: v, Groups: slices.Clone(p.Groups), Origins: slices.Clone(origins), Digest: c.Digest, FrozenDiff: frozen.DiffDigest(), Generation: p.Draft.ServingGenerationFor(v.Selection(), c.UsageRevision), Slot: p.Draft.SlotIdentity(), BuiltAt: p.BuiltAt, ValidUntil: p.ValidUntil})
 		return err
 	})
 	if err != nil {

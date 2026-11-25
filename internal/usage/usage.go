@@ -3263,12 +3263,20 @@ type readPriceResolver struct {
 
 func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
 	defer perftrace.Span(perftrace.UsagePriceResolver)()
-	timeline, err := s.Store.LoadProviderTimeline(ctx)
+	return loadReportPriceResolver(ctx, s.Store.DB, current)
+}
+
+type reportQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadReportPriceResolver(ctx context.Context, db reportQueryer, current time.Time) (readPriceResolver, error) {
+	timeline, err := store.ReadProviderTimeline(ctx, db)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
 	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline, routes: map[string][]readSessionRoute{}}
-	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes ORDER BY client,session_id,id`)
+	routeRows, err := db.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes ORDER BY client,session_id,id`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
@@ -3298,7 +3306,7 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 		sortSessionRoutes(routes)
 		resolver.routes[key] = routes
 	}
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+	rows, err := db.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
@@ -4394,18 +4402,26 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 func (s *Service) eventsRangeFiltered(ctx context.Context, from, to time.Time, client, model string, exact bool) ([]storedEvent, error) {
 	defer perftrace.Span(perftrace.UsageEventsRange)()
 	s.eventsRangeReads.Add(1)
+	return readReportEvents(ctx, s.Store.DB, scopedRequestWindow{from: from, to: to, client: client}, model, exact)
+}
+
+func readReportEvents(ctx context.Context, db reportQueryer, w scopedRequestWindow, model string, exact bool) ([]storedEvent, error) {
 	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
-	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
-	if client != "" || exact {
+	args := []any{w.from.UTC().Format(time.RFC3339Nano), w.to.UTC().Format(time.RFC3339Nano)}
+	if w.client != "" || exact {
 		query += ` AND e.client=?`
-		args = append(args, client)
+		args = append(args, w.client)
 	}
 	if model != "" || exact {
 		query += ` AND e.model=?`
 		args = append(args, model)
 	}
+	if w.session != "" {
+		query += ` AND e.session_id=?`
+		args = append(args, w.session)
+	}
 	query += ` ORDER BY e.event_at,e.event_key`
-	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

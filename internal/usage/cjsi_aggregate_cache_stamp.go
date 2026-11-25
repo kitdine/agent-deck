@@ -125,6 +125,12 @@ func resolveAggregateTimezone(q StatsOptions) (displayZone, canonicalZone string
 // admitted factual coverage for this window, including partial or known empty.
 // A successful MAX over no stamp rows supplies no such proof by itself.
 func ReadCJSIAggregateCacheStamp(ctx context.Context, tx *sql.Tx, epoch, ticket int64, q StatsOptions, coverage [32]byte) ([32]byte, error) {
+	return aggregateCacheStamp(epoch, q, coverage, func(s intervalImpactScope) (int64, error) {
+		return readIntervalStamp(ctx, tx, intervalStampHead{epoch, ticket}, s, q.From, q.To)
+	})
+}
+
+func aggregateCacheStamp(epoch int64, q StatsOptions, coverage [32]byte, read func(intervalImpactScope) (int64, error)) ([32]byte, error) {
 	if !q.From.Before(q.To) || coverage == ([32]byte{}) || (q.Client != "" && q.Client != "codex" && q.Client != "claude") {
 		return [32]byte{}, errors.New("missing aggregate coverage or invalid scope")
 	}
@@ -132,14 +138,12 @@ func ReadCJSIAggregateCacheStamp(ctx context.Context, tx *sql.Tx, epoch, ticket 
 	if err != nil {
 		return [32]byte{}, err
 	}
-	head := intervalStampHead{epoch, ticket}
 	client := q.Client
 	summary := intervalImpactScope{kind: impactClientSummary, client: client}
 	if client == "" {
 		summary = intervalImpactScope{kind: impactAllSummary}
 		client = "codex" // CJSI intervals and their coverage belong to Codex.
 	}
-	read := func(s intervalImpactScope) (int64, error) { return readIntervalStamp(ctx, tx, head, s, q.From, q.To) }
 	// Even a model/provider slice uses the unfiltered token denominator.
 	total, err := read(summary)
 	if err != nil {

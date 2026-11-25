@@ -33,13 +33,21 @@ func intervalStageError(err error) error {
 // readSelectedIntervalMembers validates the pinned head and each selected
 // group, returning all decoded TokenInterval rows (with whole-interval proved
 // model when present). Disjoint non-Codex clients short-circuit before reading.
-func readSelectedIntervalMembers(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, scope StatsOptions, session string) ([]ledger.Member, error) {
+func readSelectedIntervalMembers(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, scope StatsOptions, session string) ([]ledger.Member, error) {
 	if !scope.From.Before(scope.To) {
 		return nil, errors.New("interval aggregation requires a nonempty window")
 	}
 	if scope.Client != "" && scope.Client != "codex" {
 		return []ledger.Member{}, nil
 	}
+	return selected.intervalMembers(ctx, tx, session)
+}
+
+type intervalMemberSelection interface {
+	intervalMembers(context.Context, *sql.Tx, string) ([]ledger.Member, error)
+}
+
+func (selected cjsiIntervalSelection) intervalMembers(ctx context.Context, tx *sql.Tx, session string) ([]ledger.Member, error) {
 	if tx == nil || selected.groups == nil || selected.coreEpoch <= 0 || selected.ticket < 0 {
 		return nil, ledger.ErrProposalMismatch
 	}
@@ -75,7 +83,7 @@ func readSelectedIntervalMembers(ctx context.Context, tx *sql.Tx, selected cjsiI
 // Only the interval contribution. The caller owns group/protection coverage,
 // the request side, and final admission; partial here is the reducer's slice
 // allocation result, not a verdict that the whole ledger is complete.
-func readScopedIntervals(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, scope StatsOptions, session string) (scopedIntervalSum, error) {
+func readScopedIntervals(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, scope StatsOptions, session string) (scopedIntervalSum, error) {
 	if !scope.From.Before(scope.To) || (scope.Client != "" && scope.Client != "codex") {
 		return reduceScopedIntervals(nil, scope, session)
 	}

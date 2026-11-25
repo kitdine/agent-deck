@@ -62,8 +62,8 @@ var cjsiMarkers = cjsiOTelTable[cjsiOTelMarker]{"telemetry_sessions", "client,se
 }}
 var cjsiSessions = cjsiOTelTable[cjsiOTelSession]{"usage_sessions", "client,session_id,first_at,last_at,started_at", func(r *cjsiOTelSession) []any { return []any{&r.Client, &r.Thread, &r.First, &r.Last, &r.Started} }}
 
-func (t cjsiOTelTable[T]) read(ctx context.Context, tx *sql.Tx, filter string, args ...any) ([]T, error) {
-	rows, err := tx.QueryContext(ctx, "SELECT "+t.columns+" FROM "+t.name+" WHERE "+filter, args...)
+func (t cjsiOTelTable[T]) read(ctx context.Context, q telemetryQueryer, filter string, args ...any) ([]T, error) {
+	rows, err := q.QueryContext(ctx, "SELECT "+t.columns+" FROM "+t.name+" WHERE "+filter, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,23 +127,29 @@ func cjsiOTelSessionMatch(thread string) string {
 	return "client='codex' AND session_id" + cjsiOTelMatch(thread)
 }
 
-func readCJSIOTelSummaries(ctx context.Context, tx *sql.Tx, thread string) ([]cjsiOTelSession, error) {
-	return cjsiSessions.read(ctx, tx, cjsiOTelSessionMatch(thread)+" ORDER BY session_id", thread)
+// CJSIOTelReadView queries a transaction or a read-only projection of its rows.
+type CJSIOTelReadView interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func readCJSIOTelSummaries(ctx context.Context, q telemetryQueryer, thread string) ([]cjsiOTelSession, error) {
+	return cjsiSessions.read(ctx, q, cjsiOTelSessionMatch(thread)+" ORDER BY session_id", thread)
 }
 
 // Any non-OTel fact of the canonical thread, whatever its key and whether or
 // not the preparation snapshot held it.
-func cjsiOTelJSONLRemains(ctx context.Context, tx *sql.Tx, thread string) (present bool, err error) {
-	err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE "+cjsiOTelSessionMatch(thread)+" AND substr(source_path,1,5)<>'otel:')", thread).Scan(&present)
+func cjsiOTelJSONLRemains(ctx context.Context, q CJSIOTelReadView, thread string) (present bool, err error) {
+	err = q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE "+cjsiOTelSessionMatch(thread)+" AND substr(source_path,1,5)<>'otel:')", thread).Scan(&present)
 	return
 }
 
 // Any OTel contribution, event, or marker that appeared for the canonical thread
 // after preparation (even if an erroneous writer bypassed revision bumping).
-func cjsiOTelUnexpectedOTelExists(ctx context.Context, tx *sql.Tx, thread string) (present bool, err error) {
+func cjsiOTelUnexpectedOTelExists(ctx context.Context, q CJSIOTelReadView, thread string) (present bool, err error) {
 	session := cjsiOTelSessionMatch(thread)
 	obs := "thread_id" + cjsiOTelMatch(thread)
-	err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE "+session+" AND substr(source_path,1,5)='otel:')"+
+	err = q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE "+session+" AND substr(source_path,1,5)='otel:')"+
 		" OR EXISTS(SELECT 1 FROM telemetry_sessions WHERE "+session+")"+
 		" OR EXISTS(SELECT 1 FROM telemetry_contributions WHERE observation_key IN (SELECT observation_key FROM telemetry_observations WHERE "+obs+"))",
 		thread, thread, thread).Scan(&present)

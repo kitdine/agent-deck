@@ -127,8 +127,15 @@ type ProviderTimeline struct {
 }
 
 func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, error) {
+	return ReadProviderTimeline(ctx, s.DB)
+}
+
+// ReadProviderTimeline loads metadata from the caller's database or pinned transaction.
+func ReadProviderTimeline(ctx context.Context, db interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}) (ProviderTimeline, error) {
 	timeline := ProviderTimeline{operationStates: map[string]string{}}
-	operationRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,COALESCE(client,''),state,started_at,updated_at FROM operations WHERE kind='provider.use'`)
+	operationRows, err := db.QueryContext(ctx, `SELECT id,provider_id,COALESCE(client,''),state,started_at,updated_at FROM operations WHERE kind='provider.use'`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}
@@ -155,7 +162,7 @@ func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, err
 	if err = operationRows.Close(); err != nil {
 		return ProviderTimeline{}, err
 	}
-	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at,prior_keyed FROM provider_selections`)
+	selectionRows, err := db.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at,prior_keyed FROM provider_selections`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}

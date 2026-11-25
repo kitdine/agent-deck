@@ -95,6 +95,10 @@ func (c CJSIUsageCandidate) ApplySelectedRequests(ctx context.Context, tx *sql.T
 	if err != nil {
 		return err
 	}
+	return c.applyVerifiedRequests(ctx, tx, v, d, old)
+}
+
+func (c CJSIUsageCandidate) applyVerifiedRequests(ctx context.Context, tx *sql.Tx, v ledger.Eligibility, d ledger.Delta, old map[string]ledger.OldImage) error {
 	if v.Gaps&ledger.OldSideHeld != 0 {
 		return nil
 	}
@@ -104,13 +108,13 @@ func (c CJSIUsageCandidate) ApplySelectedRequests(ctx context.Context, tx *sql.T
 		if !ok || image.Client != "codex" {
 			return ledger.ErrProposalMismatch
 		}
-		if _, err = tx.ExecContext(ctx, "DELETE FROM main.usage_events WHERE event_key=?", r.EventKey); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM main.usage_events WHERE event_key=?", r.EventKey); err != nil {
 			return err
 		}
 		affected[image.SessionID] = [2]string{"codex", image.SessionID}
 	}
 	if len(v.Members) > 0 {
-		if err = requireUsageRow(tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM main.usage_events WHERE client='codex' AND session_id=? AND source_path LIKE 'otel:%')`, c.thread)); err != nil {
+		if err := requireUsageRow(tx.QueryRowContext(ctx, requestWithoutOTelSQL("main.usage_events"), c.thread)); err != nil {
 			return err
 		}
 	}
@@ -118,23 +122,31 @@ func (c CJSIUsageCandidate) ApplySelectedRequests(ctx context.Context, tx *sql.T
 		if m.Key.Kind == ledger.TokenInterval {
 			continue
 		}
-		if err = c.writeRequest(ctx, tx, m, old); err != nil {
+		if err := c.writeRequest(ctx, tx, m, old); err != nil {
 			return err
 		}
 		affected[c.thread] = [2]string{"codex", c.thread}
 	}
-	if err = c.writeCheckpoints(ctx, tx); err != nil {
+	if err := c.writeCheckpoints(ctx, tx); err != nil {
 		return err
 	}
 	return rebuildSessions(ctx, tx, affected)
 }
 
-func (c CJSIUsageCandidate) writeRequest(ctx context.Context, tx *sql.Tx, m ledger.Member, old map[string]ledger.OldImage) error {
+func requestWithoutOTelSQL(events string) string {
+	return `SELECT NOT EXISTS(SELECT 1 FROM ` + events + ` WHERE client='codex' AND session_id=? AND source_path LIKE 'otel:%')`
+}
+
+type cjsiRequestIdentity struct {
+	key, id, path string
+	offset        int64
+}
+
+func (c CJSIUsageCandidate) requestIdentity(m ledger.Member) (cjsiRequestIdentity, error) {
 	if m.Key.Thread != c.thread || m.At.IsZero() || len(m.Proof) == 0 {
-		return ledger.ErrProposalMismatch
+		return cjsiRequestIdentity{}, ledger.ErrProposalMismatch
 	}
-	key := m.Key.EventKey()
-	eventID := m.Key.ID
+	key, eventID := m.Key.EventKey(), m.Key.ID
 	if m.Key.Kind == ledger.LegacyCall {
 		eventID = m.TurnID
 	}
@@ -155,19 +167,38 @@ func (c CJSIUsageCandidate) writeRequest(ctx context.Context, tx *sql.Tx, m ledg
 		}
 	}
 	if path == "" {
+		return cjsiRequestIdentity{}, ledger.ErrProposalMismatch
+	}
+	return cjsiRequestIdentity{key, eventID, path, offset}, nil
+}
+
+// Only the independently selected old set can authorize replacing a row
+// which survived the preceding ownership effects and request retractions.
+func (r cjsiRequestIdentity) checkReplacement(thread string, old map[string]ledger.OldImage, lookupErr error) error {
+	if errors.Is(lookupErr, sql.ErrNoRows) {
+		return nil
+	}
+	if lookupErr != nil {
+		return lookupErr
+	}
+	prior, ok := old[r.key]
+	if !ok || prior.Client != "codex" || prior.SessionID != thread || prior.EventID != r.id {
 		return ledger.ErrProposalMismatch
 	}
-	// Only the independently selected old set can authorize modifying a row.
-	_, err := ReadCJSIOldUsage(ctx, tx, key)
-	if err == nil {
-		prior, ok := old[key]
-		if !ok || prior.Client != "codex" || prior.SessionID != c.thread || prior.EventID != eventID {
-			return ledger.ErrProposalMismatch
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	return nil
+}
+
+func (c CJSIUsageCandidate) writeRequest(ctx context.Context, tx *sql.Tx, m ledger.Member, old map[string]ledger.OldImage) error {
+	r, err := c.requestIdentity(m)
+	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, upsertUsageEventSQL, key, "codex", c.thread, eventID, m.At.UTC().Format(time.RFC3339Nano), m.Model, nullableInt(m.TurnIndex), m.Tokens.Input, m.Tokens.Cached, m.Tokens.Output, 0, 0, 0, 0, m.Tokens.Write, path, offset)
+	key := r.key
+	_, lookupErr := ReadCJSIOldUsage(ctx, tx, key)
+	if err := r.checkReplacement(c.thread, old, lookupErr); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, upsertUsageEventSQL, key, "codex", c.thread, r.id, m.At.UTC().Format(time.RFC3339Nano), m.Model, nullableInt(m.TurnIndex), m.Tokens.Input, m.Tokens.Cached, m.Tokens.Output, 0, 0, 0, 0, m.Tokens.Write, r.path, r.offset)
 	if err != nil {
 		return err
 	}

@@ -301,7 +301,7 @@ func (s *Service) presentation(ctx context.Context, now time.Time, location *tim
 // exclusively from one caller-pinned read transaction and admitted selection
 // view, then reduces them into a PresentationReport. Neither requests nor
 // pricing ever query live s.Store.DB outside tx.
-func readScopedPresentation(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, now time.Time, location *time.Location, todayOnly bool, read readScopedRequests) (PresentationReport, error) {
+func readScopedPresentation(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, now time.Time, location *time.Location, todayOnly bool, read readScopedRequests) (PresentationReport, error) {
 	if tx == nil || read == nil {
 		return PresentationReport{}, errors.New("missing admitted presentation snapshot or request reader")
 	}

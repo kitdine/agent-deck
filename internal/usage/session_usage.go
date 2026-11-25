@@ -74,7 +74,7 @@ func (s *Service) SessionUsageSummary(ctx context.Context, client, sessionID str
 // exclusively from one caller-pinned read transaction and admitted selection.
 // FirstAt/LastAt come only from real requests, and SessionInvocations remains
 // strictly request-only.
-func readScopedSessionUsage(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, client, sessionID string, read readScopedRequests) (SessionSummary, error) {
+func readScopedSessionUsage(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, client, sessionID string, read readScopedRequests) (SessionSummary, error) {
 	if tx == nil || read == nil {
 		return SessionSummary{}, errors.New("missing admitted session snapshot or request reader")
 	}

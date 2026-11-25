@@ -38,6 +38,21 @@ func requireUsageRow(row *sql.Row) error {
 	return nil
 }
 
+// usageLiveAttemptSQL binds both per-group staging and whole-report proposals
+// to the live head, even when the publication stages no usage groups.
+const usageLiveAttemptSQL = `SELECT 1 FROM main.cjsi_publication_attempts a
+ JOIN main.cjsi_publication_head h ON h.singleton=1 AND a.base_ticket=h.ticket AND a.core_epoch=h.core_epoch
+ JOIN main.derived_snapshot_generation g ON g.singleton=1 AND g.epoch=h.core_epoch
+ WHERE julianday(a.accept_until)>julianday('now') AND EXISTS(SELECT 1 FROM main.cjsi_layout_journal WHERE phase=5)
+ AND h.index_epoch=a.index_epoch AND h.session_revision=a.session_revision AND h.coverage_revision=a.coverage_revision AND h.protection_revision=a.protection_revision`
+
+func verifyUsageStagingSchema(ctx context.Context, tx *sql.Tx) error {
+	if tx == nil {
+		return ledger.ErrProposalMismatch
+	}
+	return requireUsageRow(tx.QueryRowContext(ctx, "SELECT 1 FROM main.schema_metadata WHERE version=37 AND (SELECT foreign_keys FROM pragma_foreign_keys)=1"))
+}
+
 // checkDraft runs on the writing connection both for initial staging and for
 // reuse. In particular the published head alone cannot vouch for the live epoch.
 func (c CJSIUsageCandidate) checkDraft(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft) error {
@@ -49,11 +64,8 @@ func (c CJSIUsageCandidate) checkStagingInputs(ctx context.Context, tx *sql.Tx, 
 	if c.thread == "" || d.Stamp != st || d.Thread != c.thread || d.ExpectedOldRows == nil || len(c.old) != len(d.ExpectedOldRows) {
 		return ledger.ErrProposalMismatch
 	}
-	err := requireUsageRow(tx.QueryRowContext(ctx, `SELECT 1 FROM main.cjsi_publication_attempts a
- JOIN main.cjsi_publication_head h ON h.singleton=1 AND a.base_ticket=h.ticket AND a.core_epoch=h.core_epoch
- JOIN main.derived_snapshot_generation g ON g.singleton=1 AND g.epoch=h.core_epoch
- WHERE a.ticket=? AND a.attempt=? AND a.base_ticket=? AND a.core_epoch=? AND a.input_digest=? AND (`+stateSQL+`) AND julianday(a.accept_until)>julianday('now') AND EXISTS(SELECT 1 FROM main.cjsi_layout_journal WHERE phase=5)
- AND h.index_epoch=a.index_epoch AND h.session_revision=a.session_revision AND h.coverage_revision=a.coverage_revision AND h.protection_revision=a.protection_revision`, b.Ticket, b.Attempt, b.BaseTicket, b.CoreEpoch, b.InputDigest[:]))
+	err := requireUsageRow(tx.QueryRowContext(ctx, usageLiveAttemptSQL+`
+ AND a.ticket=? AND a.attempt=? AND a.base_ticket=? AND a.core_epoch=? AND a.input_digest=? AND (`+stateSQL+`)`, b.Ticket, b.Attempt, b.BaseTicket, b.CoreEpoch, b.InputDigest[:]))
 	if err != nil {
 		return err
 	}
@@ -226,10 +238,7 @@ func (c CJSIUsageCandidate) stagedImages(d CJSIUsageDraft) ([]usageStageTable, e
 // VerifyStaged checks the independently prepared candidate and exact old rows
 // on the caller's snapshot. It never stages, freezes, or commits a transaction.
 func (c CJSIUsageCandidate) VerifyStaged(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft) error {
-	if tx == nil {
-		return ledger.ErrProposalMismatch
-	}
-	if err := requireUsageRow(tx.QueryRowContext(ctx, "SELECT 1 FROM main.schema_metadata WHERE version=37 AND (SELECT foreign_keys FROM pragma_foreign_keys)=1")); err != nil {
+	if err := verifyUsageStagingSchema(ctx, tx); err != nil {
 		return err
 	}
 	if err := c.checkStagingInputs(ctx, tx, d, "a.state='draft' OR (a.state='sealed' AND a.diff_digest IS NOT NULL AND a.session_seal IS NOT NULL)"); err != nil {

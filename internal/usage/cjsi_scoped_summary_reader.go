@@ -29,7 +29,7 @@ type readScopedToolCalls func(context.Context, *sql.Tx, scopedRequestWindow) ([]
 
 // readScopedStats reads intervals, requests, pricing, and tool calls
 // exclusively from one caller-pinned read transaction and admitted selection.
-func readScopedStats(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, options StatsOptions, read readScopedRequests, readTools readScopedToolCalls) (StatsReport, bool, error) {
+func readScopedStats(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, options StatsOptions, read readScopedRequests, readTools readScopedToolCalls) (StatsReport, bool, error) {
 	if tx == nil || read == nil || readTools == nil {
 		return StatsReport{}, false, errors.New("missing admitted stats snapshot, request reader or tool call reader")
 	}
@@ -64,7 +64,7 @@ func readScopedStats(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelec
 
 // tx, selected and the request reader belong to one already admitted view.
 // Group/protection coverage and final admission are owned by the caller.
-func readScopedUsageSummary(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, scope StatsOptions, session string, read readScopedRequests) (jointUsageSummary, error) {
+func readScopedUsageSummary(ctx context.Context, tx *sql.Tx, selected intervalMemberSelection, scope StatsOptions, session string, read readScopedRequests) (jointUsageSummary, error) {
 	if tx == nil || read == nil {
 		return jointUsageSummary{}, errors.New("missing admitted usage snapshot or request reader")
 	}

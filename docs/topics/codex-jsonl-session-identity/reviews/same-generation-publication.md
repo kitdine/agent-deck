@@ -297,3 +297,74 @@ Claude `claude-opus-5-5` xhigh 冷复评，请求 `v075-e21-cjsi-rebuild-task8-u
 #### 📝 摘要
 
 Claude `claude-opus-5-5` high 冷复评，请求 `v075-e21-cjsi-rebuild-task8-unit1-r3-rereview-1a09ada1`，补丁 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`，作者 Codex `gpt-6.2-astra` xhigh 第 3/3 轮。验证结果：新用例通过；锚点 `TestCJSI(PublicationLifecycle|SlotDurability|ReaderConsistency)` 在 scanruntime 与 store 通过；store 包 `-p 1` 全量 655 项通过、3 项跳过，日志 SHA-256 `4957787933ee581610c3b7d3a3cbc46d726388ec733c30a9aa6e1788d715e617`；发布相关 race 37 个顶层用例通过、无 DATA RACE，日志 SHA-256 `505cf5f7694515f372ee2589b0adb666bfd7252f7d1555baf62ee560f0753858`；vet、gofmt 无输出。Task 8 整体门禁待单元 2（desktop、watch、ingest 指标、perftrace、CLI 接线）完成后联合验证。
+
+## Round 17 — 2026-11-25，单元 2a 报告读者与派生缓存
+
+### 📋 独立评审
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+#### 🔴 阻塞发现
+
+开票前的 proposed 路径没有执行真实写入路径的前置条件，真实 Apply 会拒绝的输入在这里被放行。每项都有评审探针复现。
+- **CJSI-PUB-U2A-R1-F1（P1）。** 变更线程已在 `cjsi_usage_selection` 却被父组遗漏时不拒绝，脏范围被漏算，聚合戳停在旧票。
+- **CJSI-PUB-U2A-R1-F2（P1）。** `RestoreOTel` 与恢复型变更不一致时仍放行；恢复前缺少与 Task 4 vacate 相同的残留检查，未撤回的 JSONL 与恢复的 OTel 双计（500 + 3）。
+- **CJSI-PUB-U2A-R1-F3（P1）。** 请求覆写未登记的既有 `event_key`，`ApplySelectedRequests` 会拒绝同一输入。
+- **CJSI-PUB-U2A-R1-F4（P2）。** 空变更组跳过 schema、layout、`accept_until` 与 revision 检查。
+- **CJSI-PUB-U2A-R1-F5（P2）。** 父票 head 校验、`SelectedRanges` 守卫、父票 0 脏范围检查无负例，三个评审变异存活。
+- **CJSI-PUB-U2A-R1-F6（P3）。** checkpoint 起始时刻推导重复实现，缺少一致性校验。
+
+#### 🟢 通过的范围
+
+四处授权上游修改未越界：Task 7 proposed 入口与目标聚合戳、`usage.go`/`providers.go` 只读 queryer 提取、`CJSIProposedView.FrozenDiff`、Task 4 `ReportEffects` 与 Apply 共用筛选。已开放路径与 Apply 的语义不变。洛杉矶跨日、价格、路由、工具归属与合法 OTel 部分恢复的 proposed 结果与 Open 后逐字段相等。desktop 编码在借用事务释放后进行，v1 缓存字节不变，缓存键绑定完整。
+
+#### 📝 摘要
+
+单元 2a 由 OpenCode `openai/gpt-6.2-astra` xhigh 实现。实现中两次遇到跨锚点阻塞（开票前读取边界、OTel 只读效果集），经主控授权后继续。AGY `gemini-4-neon` high 冷评审，请求 `v075-e21-cjsi-rebuild-task8-unit2a-review-c2e76500`，补丁 `c2e7650002e4d2bd0924304eb9ae395c1e25801a6f536f7dd299e965681e5096`，21 个路径。四包全量、发布回归、race、vet、gofmt 通过；作者 6 个变异被复核杀死。
+
+## Round 18 — 2026-11-25，单元 2a 第 1 轮修复复评
+
+### 📋 独立复评
+
+复评结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+#### 🟢 已关闭发现
+
+CJSI-PUB-U2A-R1-F1 至 F6 全部关闭。修复复用真实写入路径的判定，没有另写一份：Task 3 的 `requestIdentity`/`checkReplacement`、`verifyUsageStagingSchema`/`usageLiveAttemptSQL`、`checkpointStart`，以及 Task 4 的 `checkVacated`。复评者对照 `3e3afb5` 逐行核对，`ApplySelectedRequests`、`writeRequest`、`VerifyStaged`、`writeCheckpoints`、Apply 与 vacate 的行为、错误、写入和 SQL 均不变。冷评审探针全部通过，RM1–RM4 与作者 9 个新变异全部被杀。首次构建父票 0、仅撤回加删除、合法已登记覆写、洛杉矶跨日空组四个正向对拍未被新校验误拒。
+
+#### 🔴 剩余发现
+
+复评者报 PASS，但有 3 项 P3 未关闭，按规则退回修复：
+- **CJSI-PUB-U2A-R2-F1（P3）。** 导出方法 `VerifyReportVacated` 缺少 nil 守卫，且签名暴露未导出接口。
+- **CJSI-PUB-U2A-R2-F2（P3）。** 遗漏变更父组的拒绝断言只在 remove 子例执行，变异 R2M4 存活。
+- **CJSI-PUB-U2A-R2-F3（P3）。** 缺少能杀死 R2M5（仅区间成员与残留 `otel:` 行）与 R2M1（替换元数据校验）的测试。
+
+#### 📝 摘要
+
+原作者 OpenCode 额度耗尽，修复改由 Codex `gpt-6.2-sol` high 接手。AGY `gemini-4-neon` high 冷复评，请求 `v075-e21-cjsi-rebuild-task8-unit2a-r1-rereview-0d1fc06e`，补丁 `0d1fc06e4d5e008b6cb116cc8425f24ea690d66f4cfde6fafb024b71f38897f1`，28 个路径，修复轮 1/3。
+
+## Round 19 — 2026-11-25，单元 2a 第 2 轮修复复评
+
+### 📋 独立复评
+
+复评结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+#### 🟢 已关闭发现
+
+- **CJSI-PUB-U2A-R2-F1 CLOSED。** `VerifyReportVacated` 对 nil 视图返回前置条件错误。新导出的 `store.CJSIOTelReadView` 只含两个只读查询方法，不扩大写能力。
+- **CJSI-PUB-U2A-R2-F2 CLOSED。** replace 与 remove 两个子例都断言遗漏父组被拒，R2M4 被杀。
+- **CJSI-PUB-U2A-R2-F3 CLOSED。** 新测试杀死 R2M5 与 R2M1；四个正向对拍已纳入持久测试 `TestReportValidPublicationParity`。
+
+#### 🟢 通过的范围
+
+与上一候选相比，生产代码只有 nil 守卫、只读接口导出，以及从 `ApplySelectedRequests` 抽出等价的 `applyVerifiedRequests`，其余行为不变。抽查的旧变异仍被杀死。无新发现。
+
+#### 📝 摘要
+
+AGY `gemini-4-hydrogen` medium 冷复评，请求 `v075-e21-cjsi-rebuild-task8-unit2a-r2-rereview-c7b44cca`，补丁 `c7b44ccad9a4d16b9c2309dd47a2eb2b3b2715649b27462d9d89ae580fd2a6a9`，28 个路径，修复轮 2/3，作者 Codex `gpt-6.2-sol` high。usage、store、desktop、scanruntime 全量，单元 1 发布回归，vet（含 tagged）与 gofmt 均通过。作者 27 个变异全部被杀。Task 8 整体门禁待 2b 生产接线与联合证据。

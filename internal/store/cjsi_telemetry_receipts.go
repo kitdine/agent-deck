@@ -138,6 +138,7 @@ type cjsiOTelEdit struct {
 // CJSIOTelChange is a validated, prepared ownership transition ready to apply
 // inside the coordinator's core write transaction.
 type CJSIOTelChange struct {
+	before      cjsiOTelSide
 	otherEvents []string
 	guard       cjsiOTelGuard
 	previous    *cjsiOTelPeriod
@@ -191,6 +192,7 @@ func prepareCJSIOTel(ctx context.Context, tx *sql.Tx, thread string, p ledger.Pr
 		return nil, errCJSIOTelPrecondition
 	}
 	change.guard = cjsiOTelGuard{thread, s.Stamp, s.Revision}
+	change.before = current
 	change.previous = s.Period
 	return change, nil
 }
@@ -241,9 +243,15 @@ func (change *cjsiOTelChange) apply(ctx context.Context, tx *sql.Tx, receipts cj
 // retired by exact preimage match so the original OTel summary is reinstated
 // without overwriting a newer edit.
 func (change *cjsiOTelChange) vacate(ctx context.Context, tx *sql.Tx) error {
+	return change.checkVacated(ctx, tx, func(s cjsiOTelSession) error {
+		return cjsiSessions.remove(ctx, tx, s)
+	})
+}
+
+func (change *cjsiOTelChange) checkVacated(ctx context.Context, q CJSIOTelReadView, retire func(cjsiOTelSession) error) error {
 	for _, key := range change.otherEvents {
 		var present bool
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE event_key=?)", key).Scan(&present); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM usage_events WHERE event_key=?)", key).Scan(&present); err != nil {
 			return err
 		}
 		if present {
@@ -251,21 +259,21 @@ func (change *cjsiOTelChange) vacate(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	thread := change.guard.Thread
-	remains, err := cjsiOTelJSONLRemains(ctx, tx, thread)
+	remains, err := cjsiOTelJSONLRemains(ctx, q, thread)
 	if err != nil {
 		return err
 	}
 	if remains {
 		return errCJSIOTelPrecondition
 	}
-	unexpectedOTel, err := cjsiOTelUnexpectedOTelExists(ctx, tx, thread)
+	unexpectedOTel, err := cjsiOTelUnexpectedOTelExists(ctx, q, thread)
 	if err != nil {
 		return err
 	}
 	if unexpectedOTel {
 		return errCJSIOTelPrecondition
 	}
-	summaries, err := readCJSIOTelSummaries(ctx, tx, thread)
+	summaries, err := readCJSIOTelSummaries(ctx, q, thread)
 	if err != nil {
 		return err
 	}
@@ -276,8 +284,8 @@ func (change *cjsiOTelChange) vacate(ctx context.Context, tx *sql.Tx) error {
 		if !slices.Contains(change.summaries, s) {
 			return errCJSIOTelPrecondition
 		}
-		if change.retire {
-			if err := cjsiSessions.remove(ctx, tx, s); err != nil {
+		if change.retire && retire != nil {
+			if err := retire(s); err != nil {
 				return err
 			}
 		}
@@ -578,15 +586,10 @@ func releaseCJSIOTel(s cjsiOTelSelection) (*cjsiOTelChange, error) {
 }
 
 func (change cjsiOTelChange) applyRows(ctx context.Context, tx *sql.Tx) error {
-	for _, edit := range change.edits {
+	err := change.visitEdits(func(edit cjsiOTelEdit) error {
 		args := append([]any{edit.next.State, edit.next.Reason}, cjsiObservations.fields(&edit.old)...)
-		if err := cjsiOTelChanged(tx.ExecContext(ctx, "UPDATE telemetry_observations SET state=?,reason=? WHERE "+cjsiObservations.exact(), args...)); err != nil {
-			return err
-		}
-		s := edit.settled
-		if s == nil {
-			continue
-		}
+		return cjsiOTelChanged(tx.ExecContext(ctx, "UPDATE telemetry_observations SET state=?,reason=? WHERE "+cjsiObservations.exact(), args...))
+	}, func(s *cjsiOTelSettled) error {
 		if change.restoring {
 			if err := cjsiEvents.insert(ctx, tx, s.Event); err != nil {
 				return err
@@ -612,6 +615,10 @@ func (change cjsiOTelChange) applyRows(ctx context.Context, tx *sql.Tx) error {
 				return err
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	if change.marker == nil {
 		return nil
