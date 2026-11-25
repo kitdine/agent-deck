@@ -87,3 +87,40 @@ Codex `gpt-6.2-sol` low 冷评审（作者 AGY Gemini 4 Argon high）。F1 PASS�
 PR 84 的 documentation 检查在 Linux runner 上失败：`test_pwsh_builtin_shell_uses_dot_source_command_and_ps1_extension` 的 `PWSH` 子用例报 `FileNotFoundError: workflow shell not found: PWSH`。测试只创建了 `pwsh` 桩，macOS 文件系统大小写不敏感所以本地通过。本地模型按原样大小写解析可执行文件、按小写匹配内置参数，与 actions/runner 的 `ScriptHandler`、`WhichUtil`、`ScriptHandlerHelpers` 一致，产品模型无需改动。主控只改测试：额外创建 `PWSH` 桩副本（大小写不敏感时已存在则跳过）。
 
 Codex `gpt-6.2-sol` low 冷评审（作者为主控，档位与 effort 经 Decisions 选择）PASS，无发现：在真实大小写敏感的 HFS+ 卷上基线复现该错误、候选通过；原有子进程、退出码、`.ps1` 内容与点源格式断言保持；`scripts/ci/` 下未发现其他依赖大小写不敏感的测试。`docs_tools_test.py` 52 项、`make check-ci-docs-tools` 80 + 93 项通过，`git diff --check` 干净。候选 SHA-256 `9a04ec71936750fce748a1ad835597401ee9ef545ce8ace5ddf968b71d1dda85`（`git diff --full-index 3f7f78a`，取于追加本轮记录之前）。CEv1 WorkUnit `fix:ci-local-workflow-model` 已在该候选上补记证据。
+
+## Review — Round 7
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+用户在 PR 84 合并确认时指示 Round 5 延后的四项也要修掉（载体 `ad-bug-ci-local-runs-on-edge-validation` 重新打开）。修复轮 5 由 AGY Gemini 4 Hydrogen medium 完成：空 `runs-on`（`[]`、空串、空 `labels`）报错；`runs-on` 求值上下文限于 GitHub 允许集合；显式 OS 只认规范键且值须为非空字符串；补 `runner_labels` 空 group 的直接单测。Codex `gpt-6.2-sol` medium 复评关闭四项字面量情形，新发现：表达式结果为数组/对象时先被字符串化后才做非空检查；显式 `runner_os` 参数提前返回、跳过上下文校验；`runs-on` 接受 `success()` 等状态函数。
+
+## Review — Round 8
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+修复轮 6 由 AGY Gemini 4 Neon high 完成，改为显式策略表：19 个 workflow 键各自声明允许的上下文、特殊函数与结果类型，求值按调用点查表，未列组合 fail-closed；表达式结果按原始类型校验后再字符串化；OS 元数据先校验后应用优先级；`runs-on` 与非 `if` 键拒绝状态函数。Codex `gpt-6.2-sol` high 复评逐行对照 GitHub 官方上下文可用性表，未发现越权放行；新发现：`release.yml` 证书与签名步骤引用的 `secrets.*`、`runner.temp` 无法注入假值（基线既有限制）；带策略求值静默丢弃未知调用方上下文键（回退）；策略矩阵测试从被测表读取预期。
+
+## Review — Round 9
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+修复轮 7（同一 AGY Neon 线程）：测试可显式注入假 `secrets` 与 `runner.temp`，`runner.os` 仍只作内部元数据；12 个求值入口一致拒绝未知调用方上下文键；策略矩阵测试独立声明 19 行预期。Codex `gpt-6.2-sol` high 复评新发现：部分 fixture 缺字段时回退为空串；已知上下文在带/不带策略入口处理不一致；`runner` fixture 可扩展未建模字段。用户随后设定止点：再修一轮，之后若复评只报测试工具 fixture 接口类更深的 P3，则合并并以 Beads 载体收尾。
+
+## Review — Round 10
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+修复轮 8（同一 AGY Neon 线程），候选 SHA-256 `c09b6558a4d8d51adce113400af99978c19f6c973a92d327fbe575bd4b3c5682`（`git diff --full-index 3f7f78a`，取于追加本轮记录之前）：引用 `secrets.<name>` 或 `runner.temp` 时须显式注入非空字段；所有入口先经同一函数校验调用方键再按字段策略取值；表达式只开放 `runner.temp`。Codex `gpt-6.2-sol` high 冷复评（与作者不同 harness；effort 经 Decisions 选择）。
+
+- **关闭项。** Round 9 三项关闭；F1–F3、P3.1–P3.5、PWSH 大小写桩（真实大小写敏感 HFS+ 卷）、R4–R7 各项回归通过；策略表 19 行与 GitHub 官方表一致。
+- **验证。** `python3 scripts/ci/docs_tools_test.py` 59 项、`make check-ci-docs-tools` 87 + 93 项通过，`git diff --check` 干净。五份工作流 108 个触发与 27,972 个 `if` 判定与 `3f7f78a` 一致；79 个命名步骤运行设置除新增 `runner_os` 外一致，另 6 个引用 `secrets` 的步骤在完整假值 fixture 下可解析。新回归在上一候选 `ac53807d` 上 13 处失败、7 处错误；评审者独立变异两项均被拦截。Round 5 的 `ad-bug-ci-local-runs-on-edge-validation` 四项已在修复轮 5–8 关闭。
+- **按用户止点规则延后的 P3（均为 B 类：测试工具调用方 fixture 接口严格度，A 类与 C 类为 0）。** CI-LOCAL-R8-F1 直接求值入口在禁用表达式的字段上先查字段策略、后校验调用方 fixture 键，与插值入口错误优先级不一致；CI-LOCAL-R8-F2 `secrets` fixture 接受 casefold 后重名的键，取值依赖插入顺序 -> open `ad-bug-ci-local-fixture-contract-edges`。
+- **门禁。** CEv1 WorkUnit `fix:ci-local-workflow-model` 在该候选上补记独立评审、本地验证与范围证据。托管 CI 结果由 PR 检查验证。
