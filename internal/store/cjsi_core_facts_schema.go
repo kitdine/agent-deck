@@ -32,6 +32,7 @@ CREATE TABLE main.cjsi_publication_attempts (
     accept_until TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('draft','sealed','opened','retired')),
     PRIMARY KEY(ticket,attempt)
 ) STRICT, WITHOUT ROWID;
+CREATE INDEX main.cjsi_publication_attempts_slot_identity ON cjsi_publication_attempts(slot_identity) WHERE slot_identity IS NOT NULL;
 CREATE TABLE main.cjsi_usage_groups (
     ticket INTEGER NOT NULL, attempt INTEGER NOT NULL, thread TEXT NOT NULL CHECK(length(thread)>0),
     input_digest BLOB NOT NULL CHECK(length(input_digest)=32), diff_digest BLOB NOT NULL CHECK(length(diff_digest)=32),

@@ -292,8 +292,60 @@ func (s *Store) reclaimSupersededInventories(ctx context.Context) error {
 // ReadSourceCoverage is stored-only. Legacy absence is unknown; SQL failures
 // are errors, never manufactured complete coverage.
 func (s *Store) ReadSourceCoverage(ctx context.Context) (SourceCoverage, error) {
+	if name := filepath.Base(s.path); name == cjsiLegacyIndexName || name == cjsiPrivateIndexName {
+		return readSourceCoverage(ctx, s.DB, "session_index_generation")
+	}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return SourceCoverage{}, err
+	}
+	defer tx.Rollback()
+	var hasSchema bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_metadata')").Scan(&hasSchema); err != nil {
+		return SourceCoverage{}, err
+	}
+	if hasSchema {
+		var version int
+		if err = tx.QueryRowContext(ctx, "SELECT version FROM schema_metadata WHERE singleton=1").Scan(&version); err != nil {
+			return SourceCoverage{}, err
+		}
+		if version == cjsiLayoutCoreSchemaVersion {
+			return ReadPublishedSourceCoverage(ctx, tx)
+		}
+		if version > cjsiLayoutCoreSchemaVersion {
+			return SourceCoverage{}, ErrSchemaAhead
+		}
+	}
+	return readSourceCoverage(ctx, tx, "derived_snapshot_generation")
+}
+
+// ReadPublishedSourceCoverage borrows the same core snapshot as the report.
+// Pending/partial overlays survive a restart and never advance the fact ticket.
+func ReadPublishedSourceCoverage(ctx context.Context, tx *sql.Tx) (SourceCoverage, error) {
+	if tx == nil {
+		return SourceCoverage{}, ErrCJSIIndexChanged
+	}
+	coverage, err := readSourceCoverage(ctx, tx, "derived_snapshot_generation")
+	if err != nil {
+		return SourceCoverage{}, err
+	}
+	var pending, partial bool
+	err = tx.QueryRowContext(ctx, `SELECT coalesce(max(pending),0), coalesce(max(max(partial,masked)),0) FROM cjsi_scope_overlays WHERE domain='usage'`).Scan(&pending, &partial)
+	if err != nil {
+		return SourceCoverage{}, err
+	}
+	switch {
+	case partial || coverage.State == "partial":
+		coverage.State = "partial"
+	case pending:
+		coverage.State = "update_pending"
+	}
+	return coverage, nil
+}
+
+func readSourceCoverage(ctx context.Context, q cjsiRowQueryer, epochTable string) (SourceCoverage, error) {
 	var present int
-	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='domain_coverage_heads'`).Scan(&present); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='domain_coverage_heads'`).Scan(&present); err != nil {
 		return SourceCoverage{}, err
 	}
 	if present == 0 {
@@ -301,12 +353,8 @@ func (s *Store) ReadSourceCoverage(ctx context.Context) (SourceCoverage, error) 
 	}
 	var coverage SourceCoverage
 	var runState string
-	epochTable := "derived_snapshot_generation"
-	if filepath.Base(s.path) == "sessions.sqlite3" {
-		epochTable = "session_index_generation"
-	}
 	query := fmt.Sprintf(`SELECT i.inventory_id,i.captured_at,i.source_count,i.state,(SELECT count(*) FROM source_domain_checkpoints c WHERE c.inventory_id=i.inventory_id AND c.state='complete' AND c.committed_end=c.captured_end) FROM domain_coverage_heads h JOIN inventory_runs i ON i.inventory_id=h.inventory_id JOIN %s g ON g.singleton=h.singleton AND g.epoch=i.epoch WHERE h.singleton=1`, epochTable)
-	err := s.DB.QueryRowContext(ctx, query).Scan(&coverage.InventoryID, &coverage.ObservedAt, &coverage.Sources, &runState, &coverage.Committed)
+	err := q.QueryRowContext(ctx, query).Scan(&coverage.InventoryID, &coverage.ObservedAt, &coverage.Sources, &runState, &coverage.Committed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SourceCoverage{State: "unknown"}, nil
 	}

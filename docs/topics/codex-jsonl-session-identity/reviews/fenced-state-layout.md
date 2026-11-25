@@ -411,3 +411,11 @@ Task 3 后续候选写入必须从真实 C1 binding 保存工作集 ID，Task 8 
 用户 2026-11-24 决定在 v0.7.5 内修复此前延后的四个 P3（重新分诊为 Lane A，只恢复既有契约）。作者 Codex `gpt-6.2-astra` high；独立评审 Claude Sonnet 5.5 medium（档位经 Decisions 评估）。补丁 SHA-256 `19b28f424247067037f8930b3526de62a01a8ad0e020da9ee763e2273cd95962`，9 个路径，基于 `230d688`（与 `bbb06da` 对这些路径无差异）。评审在 `bbb06da` + 补丁的隔离副本运行 `internal/ingest`、`internal/session`、`internal/store` 全包与 `cmd/agentdeck` 的 `TestSessionSearch*`，带 fixture 标签的读者用例通过；gofmt、vet 干净；新回归在旧代码上失败，四个变异均被拦截。
 
 - **CJSI-LAYOUT-R6-F1 CLOSED。** `cjsi_quota36_schema.go` 去掉 SQL 层的 `sqlite_` 整类过滤，改为大小写折叠的白名单：`sqlite_sequence`、`sqlite_stat1`–`sqlite_stat4`（限表）及 SQL 为空的 `sqlite_autoindex_*`（限索引）；其余 `sqlite_` 对象在 36 与 37 均返回 `ErrUnknownSchema`。ANALYZE 后 36→37 升级与校验通过（载体 `ad-bug-cjsi-quota36-sqlite-prefix-objects` 关闭）。白名单与此前一样不校验这些内部表的定义 SQL，不是回归。
+
+## Round 23 — 2026-11-25，Task 8 单元 1 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 1 经主控授权修改本锚的 `internal/store/cjsi_core_facts_schema.go`：新增部分索引 `cjsi_publication_attempts_slot_identity`，用于同代发布按 slot_identity 查找试次；同步更新 store schema 测试与金标；不升 schema 版本。同代发布评审 Round 13–16（`same-generation-publication.md`）一并冷评审。最终补丁 SHA-256 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`（基线 `f5d93d9`），Claude `claude-opus-5-5` high 复评 PASS。store 包 `-p 1` 全量 655 项通过、3 项跳过；发布相关 race 通过；vet、gofmt 干净。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

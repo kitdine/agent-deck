@@ -257,3 +257,11 @@ Codex `gpt-6.2-astra`，T3 配置 `reasoningEffort=xhigh`，请求 `v075-e21-cjs
 
 - **既存缺陷关闭（载体 `ad-bug-session-search-fractional-second-order`）。** 旧路径与 CJSI 读者共用的 `visitHits` 改为 `ORDER BY event_at COLLATE agentdeck_event_instant DESC`，按解析后的 RFC3339 瞬时比较到纳秒，同瞬时仍按 client、session、文档 ID 决胜；游标格式与分页不变，两条路径一致，符合 cli-design.md:2025-2027。
 - **评审 P3 观察（已处置）。** CJSI-SI-R15-F1：collation 每次比较解析两个时间，大命中集下为 O(n log n) 次解析；`MustRegisterCollationUtf8` 同名重复注册会 panic，目前全仓仅一处注册。当前规模可接受，按评审最小契约保持现状，关闭；性能由 Task 10 综合验收观察。CJSI-SI-R15-F2：空 `event_at` 与无法解析的值现在同列末尾并按稳定决胜排序，此前无效值按字典序混在有效值之间——这是 cli-design.md:2027「无效值保持稳定顺序」所要求的可见变化，记录于此，关闭。CJSI-SI-R15-F3：读者排序的实体用例 `TestCJSIDocumentEventTimeParity` 受 `cjsi_adapter_fixture` 标签与 overlay 门控，默认运行不执行；默认运行由 `TestCJSISearchFractionalSecondOrder` 覆盖共享 SQL。已写入 tasks.md 的 source-issue-acceptance 最终验收命令，关闭。
+
+## Round 11 — 2026-11-25，Task 8 单元 1 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 1 经主控授权修改本锚的 `internal/session/cjsi_candidate.go`：新增深拷贝访问器 `Withdrawals()`；新增只读重启恢复入口 `RecoverCJSIIndex`，仅当 seal 重新计算相等时复用已暂存的 ordinal 与 doc_id；新增 `cjsi_candidate_recovery_test.go`。撤回集合完整性由同代发布 CJSI-PUB-U1-R1-F5 与 R3-F2 覆盖。同代发布评审 Round 13–16（`same-generation-publication.md`）一并冷评审。最终补丁 SHA-256 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`（基线 `f5d93d9`），Claude `claude-opus-5-5` high 复评 PASS。store 包 `-p 1` 全量 655 项通过、3 项跳过；发布相关 race 通过；vet、gofmt 干净。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

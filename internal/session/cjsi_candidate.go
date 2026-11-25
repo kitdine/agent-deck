@@ -107,6 +107,16 @@ type CJSIIndexCandidate struct {
 
 func (c CJSIIndexCandidate) Seal() [32]byte { return c.plan.Attempt.Seal }
 
+// Withdrawals returns the logical removals authenticated by Seal, including
+// moves and exclusions that the planner discovered while reading the base.
+func (c CJSIIndexCandidate) Withdrawals() []CJSISourceRemoval {
+	result := make([]CJSISourceRemoval, len(c.plan.DeletedSources))
+	for i, old := range c.plan.DeletedSources {
+		result[i] = CJSISourceRemoval(old)
+	}
+	return result
+}
+
 // DocumentChanges reports the public changed and removed document counts.
 func (c CJSIIndexCandidate) DocumentChanges() (int, int) { return c.changed, c.removed }
 
@@ -126,6 +136,93 @@ func indexDigest(value any) ([32]byte, error) {
 // present, is the complete settled OTel projection for the proposed ticket.
 // A nil candidate means no changes were supplied or the projection is current.
 func PlanCJSIIndex(ctx context.Context, snapshot store.CJSIIndexSnapshot, ticket, attempt, revision int64, prepared []CJSIPreparedSource, removed []CJSISourceRemoval, telemetry *[]TelemetrySession) (*CJSIIndexCandidate, error) {
+	return planCJSIIndex(ctx, snapshot, ticket, attempt, revision, prepared, removed, telemetry, false)
+}
+
+// RecoverCJSIIndex reconstructs a previously staged candidate using independent
+// source captures and the original compacted parent. Only the sealed attempt's
+// verified membership can supply allocated IDs. A missing attempt permits new
+// planning; an existing, inconsistent attempt must never take that fallback.
+func RecoverCJSIIndex(ctx context.Context, snapshot store.CJSIIndexSnapshot, ticket, attempt, revision int64, prepared []CJSIPreparedSource, removed []CJSISourceRemoval, telemetry *[]TelemetrySession) (*CJSIIndexCandidate, bool, error) {
+	h := snapshot.Selection()
+	if snapshot.Tx == nil || ticket <= h.Ticket || attempt <= 0 || revision < h.SessionRevision {
+		return nil, false, errIndexStage
+	}
+	var digest []byte
+	var matches bool
+	err := snapshot.Tx.QueryRowContext(ctx, `SELECT c.seal_digest,EXISTS(
+    SELECT 1 FROM cjsi_index_state s JOIN serving_generation g USING(singleton) JOIN session_index_generation i USING(singleton)
+    WHERE s.singleton=1 AND c.parent_ticket=? AND c.core_epoch=? AND c.index_epoch=? AND i.epoch=c.index_epoch
+    AND c.base_ticket=? AND c.base_attempt=? AND c.base_seal=? AND c.base_revision=?
+    AND (s.compacted_ticket,s.compacted_attempt,s.compacted_seal,s.base_revision)=(c.base_ticket,c.base_attempt,c.base_seal,c.base_revision)
+    AND g.revision=s.base_revision AND c.protection_revision=s.protection_revision AND c.protection_revision=?
+    AND c.coverage_revision=? AND c.session_revision=?)
+    FROM cjsi_session_candidates c WHERE c.ticket=? AND c.attempt=?`, h.Ticket, h.CoreEpoch, h.IndexEpoch, h.SessionTicket, h.SessionAttempt, h.SessionSeal[:], h.SessionRevision, h.ProtectionRevision, h.CoverageRevision, revision, ticket, attempt).Scan(&digest, &matches)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !matches || len(digest) != 32 || [32]byte(digest) == ([32]byte{}) {
+		return nil, true, errIndexStage
+	}
+	c, err := planCJSIIndex(ctx, snapshot, ticket, attempt, revision, prepared, removed, telemetry, true)
+	if err != nil {
+		return nil, true, err
+	}
+	if c == nil || c.Seal() != [32]byte(digest) {
+		return nil, true, errIndexStage
+	}
+	documents := 0
+	for _, r := range c.plan.Replacements {
+		documents += len(r.DocumentIDs)
+	}
+	var extra bool
+	if err = snapshot.Tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM cjsi_candidate_order WHERE ticket=? AND attempt=? LIMIT 1 OFFSET ?)", ticket, attempt, documents).Scan(&extra); err != nil {
+		return nil, true, err
+	}
+	if extra {
+		return nil, true, errIndexStage
+	}
+	return c, true, nil
+}
+
+func recoveredDocumentID(ctx context.Context, tx *sql.Tx, a indexStageAttempt, r indexReplacement, d nativeSessionDocument, baseID, water int64) (int64, error) {
+	var id int64
+	// baseDocument has independently verified every reused base row. Newly
+	// allocated IDs must point at an exact payload in this attempt's ordinal.
+	err := tx.QueryRowContext(ctx, `SELECT o.doc_id FROM cjsi_candidate_order o LEFT JOIN cjsi_candidate_payloads p ON p.doc_id=o.payload_id
+ WHERE o.ticket=? AND o.attempt=? AND o.source_path=? AND o.client='codex' AND o.session_id=? AND o.detail_ordinal=?
+ AND o.record_start=? AND o.record_end=? AND o.emission=0 AND o.doc_id BETWEEN 1 AND ?
+ AND ((o.doc_side='base' AND o.doc_id=?) OR (o.doc_side='candidate' AND ?=0 AND p.event_at=? AND p.kind=? AND p.text=?))`,
+		a.Ticket, a.Attempt, r.Selected.Path, d.SessionID, d.Ordinal, d.Span.Start, d.Span.End, water, baseID, baseID, d.EventAt, d.Kind, d.Text).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, errIndexStage
+	}
+	return id, err
+}
+
+func verifyRecoveredSource(ctx context.Context, tx *sql.Tx, a indexStageAttempt, r indexReplacement) error {
+	e, s, m := r.Material.Evidence, r.Selected, r.Metadata
+	var one int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM cjsi_candidate_sources s JOIN cjsi_candidate_groups g USING(ticket,attempt,source_path)
+ JOIN cjsi_candidate_ranges r USING(ticket,attempt,source_path,client,session_id)
+ WHERE s.ticket=? AND s.attempt=? AND s.source_path=? AND g.client='codex' AND g.session_id=? AND s.op='upsert' AND s.source_kind='codex-jsonl'
+ AND s.identity=? AND s.priority=? AND s.parser_version=? AND s.complete_end=? AND s.size=? AND s.modified_at=? AND s.changed_at=? AND s.prefix_hash=? AND s.scanned_at=?
+ AND g.op='replace' AND g.order_verified=1 AND g.sequence_id=? AND g.project=? AND g.model=? AND g.parser_version=? AND g.first_at=? AND g.last_at=? AND g.head_at=? AND g.birth=?
+ AND r.workset_round=? AND r.workset_attempt=? AND r.identity=s.identity AND r.selection_epoch=? AND r.generation=? AND r.replay_parser=?
+ AND r.max_line_bytes=? AND r.read_end=? AND r.complete_end=? AND r.replay_from=? AND r.published_end=? AND r.prefix_digest=?`,
+		a.Ticket, a.Attempt, s.Path, s.ThreadID, e.Identity, m.projectPriority, r.Material.ParserVersion, e.Progress.CompleteEnd, r.Size, r.ModifiedAt, r.ChangedAt, r.PrefixHash, r.ScannedAt,
+		r.Sequence[:], m.Project, m.Model, r.Material.ParserVersion, m.FirstAt, m.LastAt, stageTimestamp(r.Material.Source.HeadTime), stageTimestamp(r.Material.Source.Birth),
+		r.Round, r.WorksetAttempt, s.Epoch, e.Version.Generation, e.Version.Parser, e.MaxLineBytes, e.Progress.ReadEnd, e.Progress.CompleteEnd, r.Material.Checkpoint.ReplayFrom, r.PublishedEnd, e.Digest[:]).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errIndexStage
+	}
+	return err
+}
+
+func planCJSIIndex(ctx context.Context, snapshot store.CJSIIndexSnapshot, ticket, attempt, revision int64, prepared []CJSIPreparedSource, removed []CJSISourceRemoval, telemetry *[]TelemetrySession, recoverIDs bool) (*CJSIIndexCandidate, error) {
 	h := snapshot.Selection()
 	if snapshot.Tx == nil || ticket <= h.Ticket || attempt <= 0 || revision < h.SessionRevision {
 		return nil, errIndexStage
@@ -180,7 +277,12 @@ func PlanCJSIIndex(ctx context.Context, snapshot store.CJSIIndexSnapshot, ticket
 			if err != nil {
 				return nil, err
 			}
-			if id == 0 {
+			if recoverIDs {
+				id, err = recoveredDocumentID(ctx, snapshot.Tx, c.Attempt, r, d, id, water)
+				if err != nil {
+					return nil, err
+				}
+			} else if id == 0 {
 				if water == math.MaxInt64 {
 					return nil, errIndexStage
 				}
@@ -194,6 +296,11 @@ func PlanCJSIIndex(ctx context.Context, snapshot store.CJSIIndexSnapshot, ticket
 			return nil, err
 		}
 		r.Sequence = seq
+		if recoverIDs {
+			if err := verifyRecoveredSource(ctx, snapshot.Tx, c.Attempt, r); err != nil {
+				return nil, err
+			}
+		}
 		if !r.valid() {
 			return nil, errIndexStage
 		}

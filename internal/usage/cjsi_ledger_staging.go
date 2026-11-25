@@ -41,6 +41,9 @@ func requireUsageRow(row *sql.Row) error {
 // checkDraft runs on the writing connection both for initial staging and for
 // reuse. In particular the published head alone cannot vouch for the live epoch.
 func (c CJSIUsageCandidate) checkDraft(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft) error {
+	return c.checkStagingInputs(ctx, tx, d, "a.state='draft' AND a.diff_digest IS NULL")
+}
+func (c CJSIUsageCandidate) checkStagingInputs(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft, stateSQL string) error {
 	st := c.proposal.Stamp()
 	b := st.Basis
 	if c.thread == "" || d.Stamp != st || d.Thread != c.thread || d.ExpectedOldRows == nil || len(c.old) != len(d.ExpectedOldRows) {
@@ -49,7 +52,7 @@ func (c CJSIUsageCandidate) checkDraft(ctx context.Context, tx *sql.Tx, d CJSIUs
 	err := requireUsageRow(tx.QueryRowContext(ctx, `SELECT 1 FROM main.cjsi_publication_attempts a
  JOIN main.cjsi_publication_head h ON h.singleton=1 AND a.base_ticket=h.ticket AND a.core_epoch=h.core_epoch
  JOIN main.derived_snapshot_generation g ON g.singleton=1 AND g.epoch=h.core_epoch
- WHERE a.ticket=? AND a.attempt=? AND a.base_ticket=? AND a.core_epoch=? AND a.input_digest=? AND a.state='draft' AND a.diff_digest IS NULL AND julianday(a.accept_until)>julianday('now') AND EXISTS(SELECT 1 FROM main.cjsi_layout_journal WHERE phase=5)
+ WHERE a.ticket=? AND a.attempt=? AND a.base_ticket=? AND a.core_epoch=? AND a.input_digest=? AND (`+stateSQL+`) AND julianday(a.accept_until)>julianday('now') AND EXISTS(SELECT 1 FROM main.cjsi_layout_journal WHERE phase=5)
  AND h.index_epoch=a.index_epoch AND h.session_revision=a.session_revision AND h.coverage_revision=a.coverage_revision AND h.protection_revision=a.protection_revision`, b.Ticket, b.Attempt, b.BaseTicket, b.CoreEpoch, b.InputDigest[:]))
 	if err != nil {
 		return err
@@ -178,46 +181,86 @@ func (c CJSIUsageCandidate) Stage(ctx context.Context, db *sql.DB, selectDraft C
 	if err = c.checkDraft(ctx, tx, d); err != nil {
 		return err
 	}
-	v, err := c.proposal.Eligibility(d.Stamp, c.thread)
-	if err != nil {
-		return err
-	}
-	delta, err := c.proposal.Changes(d.Stamp, c.thread)
-	if err != nil {
-		return err
-	}
 	base := []any{d.Stamp.Basis.Ticket, d.Stamp.Basis.Attempt, c.thread}
-	const group = " WHERE ticket=? AND attempt=? AND thread=?"
 	var exists bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM main.cjsi_usage_groups"+group+")", base...).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM main.cjsi_usage_groups"+usageStagedWhere+")", base...).Scan(&exists); err != nil {
 		return err
 	}
-	for _, t := range c.images(v, delta) {
-		cols := "ticket,attempt,thread," + t.columns
-		names := strings.Split(cols, ",")
-		insert := "INSERT INTO main." + t.name + "(" + cols + ") VALUES(" + strings.TrimSuffix(strings.Repeat("?,", len(names)), ",") + ")"
-		check := "SELECT 1 FROM main." + t.name + " WHERE " + strings.Join(names, " IS ? AND ") + " IS ?"
-		if exists {
-			var n int
-			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM main."+t.name+group, base...).Scan(&n); err != nil {
-				return err
-			}
-			if n != len(t.rows) {
-				return ledger.ErrProposalMismatch
-			}
+	if exists {
+		if err = c.verifyStagedRows(ctx, tx, d); err != nil {
+			return err
 		}
-		for _, row := range t.rows {
-			args := append(slices.Clip(base), row...)
-			if exists {
-				if err := requireUsageRow(tx.QueryRowContext(ctx, check, args...)); err != nil {
+	} else {
+		tables, err := c.stagedImages(d)
+		if err != nil {
+			return err
+		}
+		for _, t := range tables {
+			columns := "ticket,attempt,thread," + t.columns
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", strings.Count(columns, ",")+1), ",")
+			query := "INSERT INTO main." + t.name + "(" + columns + ") VALUES(" + placeholders + ")"
+			for _, row := range t.rows {
+				if _, err = tx.ExecContext(ctx, query, append(slices.Clip(base), row...)...); err != nil {
 					return err
 				}
-			} else if _, err := tx.ExecContext(ctx, insert, args...); err != nil {
-				return err
 			}
 		}
 	}
 	return tx.Commit()
+}
+
+const usageStagedWhere = " WHERE ticket=? AND attempt=? AND thread=?"
+
+func (c CJSIUsageCandidate) stagedImages(d CJSIUsageDraft) ([]usageStageTable, error) {
+	v, err := c.proposal.Eligibility(d.Stamp, c.thread)
+	if err != nil {
+		return nil, err
+	}
+	delta, err := c.proposal.Changes(d.Stamp, c.thread)
+	if err != nil {
+		return nil, err
+	}
+	return c.images(v, delta), nil
+}
+
+// VerifyStaged checks the independently prepared candidate and exact old rows
+// on the caller's snapshot. It never stages, freezes, or commits a transaction.
+func (c CJSIUsageCandidate) VerifyStaged(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft) error {
+	if tx == nil {
+		return ledger.ErrProposalMismatch
+	}
+	if err := requireUsageRow(tx.QueryRowContext(ctx, "SELECT 1 FROM main.schema_metadata WHERE version=37 AND (SELECT foreign_keys FROM pragma_foreign_keys)=1")); err != nil {
+		return err
+	}
+	if err := c.checkStagingInputs(ctx, tx, d, "a.state='draft' OR (a.state='sealed' AND a.diff_digest IS NOT NULL AND a.session_seal IS NOT NULL)"); err != nil {
+		return err
+	}
+	return c.verifyStagedRows(ctx, tx, d)
+}
+
+func (c CJSIUsageCandidate) verifyStagedRows(ctx context.Context, tx *sql.Tx, d CJSIUsageDraft) error {
+	tables, err := c.stagedImages(d)
+	if err != nil {
+		return err
+	}
+	base := []any{d.Stamp.Basis.Ticket, d.Stamp.Basis.Attempt, c.thread}
+	for _, t := range tables {
+		var n int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM main."+t.name+usageStagedWhere, base...).Scan(&n); err != nil {
+			return err
+		}
+		if n != len(t.rows) {
+			return ledger.ErrProposalMismatch
+		}
+		names := strings.Split("ticket,attempt,thread,"+t.columns, ",")
+		query := "SELECT 1 FROM main." + t.name + " WHERE " + strings.Join(names, " IS ? AND ") + " IS ?"
+		for _, row := range t.rows {
+			if err := requireUsageRow(tx.QueryRowContext(ctx, query, append(slices.Clip(base), row...)...)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (c CJSIUsageCandidate) readOldRows(ctx context.Context, tx *sql.Tx, registered []ledger.OldRow) (map[string]ledger.OldImage, error) {

@@ -115,3 +115,11 @@ PASS 适用于本轮两个私有暂存发现。当前尚未注册整项 Task 3 �
 - **R4 复评（AGY Gemini 4 Neon high）PASS。** R3-T1 closed：排列测试断言被否决镜像只留原生证明、时间窗取最早起点与最晚终点。R3-O1 closed：区分时间缺失与时间矛盾，缺时间副本仍参与计数校验但不提出也不否决窗口，全缺时间时保留已证调用并报 `UnallocatedTokens`，倒置与计数矛盾仍否决；评审者对放宽后的矛盾、全缺、倒置、单独存在与拆分交互全排列复现，均不双计、不发布矛盾余量。本轮无新发现。
 - **验证。** `TestCJSIUsageLedgerReplay` 与 `internal/usage` 全包通过，作者 race 通过；gofmt、vet 干净；`cjsiledger` 导出 API 自 R1 起逐字节不变（Task 4 消费者兼容）；历轮复现与 26 个变异全部成立，其中 6 个为本轮评审者新设计。测试仅用 `t.TempDir()`。
 - **门禁。** CEv1 WorkUnit `codex-jsonl-session-identity:usage-ledger-replay` 在该补丁状态上独立评审、L2 验证、范围与隐私 3/3 满足。真实 Task 4/7/8 的所有权换侧、聚合读取与最终发布 CAS 由后续 Task 联合验收。
+
+## Round 5 — 2026-11-25，Task 8 单元 1 上游修改登记
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+Task 8 单元 1 经主控授权从 `internal/usage/cjsi_ledger_staging.go` 抽出只读的 `VerifyStaged(ctx, tx, draft)`，`Stage` 复用它且语义不变；新增同包测试 `cjsi_verify_staged_test.go`。同代发布评审 Round 13–16（`same-generation-publication.md`）一并冷评审。最终补丁 SHA-256 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`（基线 `f5d93d9`），Claude `claude-opus-5-5` high 复评 PASS。store 包 `-p 1` 全量 655 项通过、3 项跳过；发布相关 race 通过；vet、gofmt 干净。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。

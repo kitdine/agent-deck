@@ -184,8 +184,9 @@ func resultDomainError(domain, code string, refused *platform.ErrStateOwnershipR
 // Client requests a round from an existing worker or elects one by launching
 // the hidden scan-worker command.  Launch is injectable for subprocess tests.
 type Client struct {
-	StateRoot string
-	Home      string
+	ManagedPlanner CJSIRoundPlanner // used by ForceLocal; detached workers receive their planner at Serve
+	StateRoot      string
+	Home           string
 	// RequestID is stable across a client retry. An empty value asks the client
 	// to allocate a new local request identity.
 	RequestID  string
@@ -212,15 +213,17 @@ type Client struct {
 const workerBackgroundEnv = "AGENTDECK_SCAN_WORKER_BACKGROUND"
 
 type wireRequest struct {
-	Protocol int    `json:"protocol"`
-	Request  string `json:"request"`
-	StateID  string `json:"state_id"`
-	Home     string `json:"home"`
-	Scope    Scope  `json:"scope"`
-	Events   bool   `json:"events,omitempty"`
-	CacheNow string `json:"cache_now,omitempty"`
-	AppOwned bool   `json:"app_owned,omitempty"`
-	Serving  bool   `json:"serving,omitempty"`
+	PhysicalRoot string `json:"physical_root,omitempty"`
+	WaitUntil    string `json:"wait_until,omitempty"`
+	Protocol     int    `json:"protocol"`
+	Request      string `json:"request"`
+	StateID      string `json:"state_id"`
+	Home         string `json:"home"`
+	Scope        Scope  `json:"scope"`
+	Events       bool   `json:"events,omitempty"`
+	CacheNow     string `json:"cache_now,omitempty"`
+	AppOwned     bool   `json:"app_owned,omitempty"`
+	Serving      bool   `json:"serving,omitempty"`
 }
 
 type wireResponse struct {
@@ -235,8 +238,8 @@ type wireResponse struct {
 }
 
 // Request joins a covered running round or starts one finite follow-up round.
-// Client cancellation only stops this wait; it never cancels the worker's
-// globally accepted scan.
+// Legacy CLI obligations survive a detached waiter. A bounded managed request
+// carries its acceptance deadline and releases its owner on disconnect.
 func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
 	return c.request(ctx, scope, nil)
 }
@@ -256,6 +259,26 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, err
 	}
 	if c.ForceLocal {
+		// Managed publication has an independently bounded owner and must
+		// also honor this foreground caller's cancellation.
+		m, err := store.ResolveCJSIRuntimeRoot(ctx, stateRoot)
+		if err != nil {
+			return Result{}, err
+		}
+		if m != nil {
+			r := newRound(c.Home)
+			r.managed = m
+			r.managedScope = scope
+			r.managedPlanner = c.ManagedPlanner
+			r.serving = c.OnPublication != nil
+			work, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go r.execute(work, stateRoot, false)
+			if onProgress != nil {
+				return r.waitWithProgress(ctx, scope, func(p Progress) error { onProgress(p); return nil })
+			}
+			return r.wait(ctx, scope)
+		}
 		return localServingRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress, c.AppOwned, c.OnPublication)
 	}
 	endpoint, err := socketPath(stateRoot, stateID)
@@ -266,7 +289,10 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 	if requestID == "" {
 		requestID = newID()
 	}
-	request := wireRequest{Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope, Events: onProgress != nil || c.OnPublication != nil, AppOwned: c.AppOwned, Serving: c.OnPublication != nil}
+	request := wireRequest{PhysicalRoot: scanPhysicalIdentity(stateRoot), Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope, Events: onProgress != nil || c.OnPublication != nil, AppOwned: c.AppOwned, Serving: c.OnPublication != nil}
+	if until, ok := ctx.Deadline(); ok {
+		request.WaitUntil = until.UTC().Format(time.RFC3339Nano)
+	}
 	if c.Executable != "" && c.Now != nil {
 		request.CacheNow = c.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -472,9 +498,15 @@ func decodeServingResponse(ctx context.Context, conn net.Conn, reader *bufio.Rea
 	}
 }
 
-// Serve runs the hidden detached worker.  It holds the scan lock for its whole
-// lifetime, which makes socket cleanup and election authority inseparable.
+// Serve runs the hidden detached worker. Legacy roots retain lifetime scan.lock.
+// Managed roots transfer election under that lock before serving any round.
 func Serve(ctx context.Context, stateRoot string) error {
+	return ServeWithManagedPlanner(ctx, stateRoot, nil)
+}
+
+// ServeWithManagedPlanner binds domain readers and the serving renderer in
+// the detached worker process. Legacy requests still use the original runner.
+func ServeWithManagedPlanner(ctx context.Context, stateRoot string, planner CJSIRoundPlanner) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if os.Getenv(workerBackgroundEnv) == "1" {
@@ -488,16 +520,34 @@ func Serve(ctx context.Context, stateRoot string) error {
 	if err != nil {
 		return err
 	}
-	defer lock.Release()
-	journal, err := openReceiptJournal(stateRoot)
+	defer func() {
+		if lock != nil {
+			_ = lock.Release()
+		}
+	}()
+	managed, err := store.ResolveCJSIRuntimeRoot(ctx, stateRoot)
 	if err != nil {
 		return err
+	}
+	var election *managedWorkerElection
+	var journal *receiptJournal
+	if managed != nil {
+		election, journal, err = electManagedWorker(stateRoot, *managed)
+		if err != nil {
+			return err
+		}
+		defer election.dir.Close()
+	} else {
+		journal, err = openReceiptJournal(stateRoot)
+		if err != nil {
+			return err
+		}
 	}
 	endpoint, err := socketPath(stateRoot, stateID)
 	if err != nil {
 		return err
 	}
-	if err = removeSocket(endpoint); err != nil {
+	if err = removeStaleWorkerSocket(endpoint); err != nil {
 		return err
 	}
 	nonce := newID()
@@ -505,33 +555,71 @@ func Serve(ctx context.Context, stateRoot string) error {
 	if err = writeOwnerMetadata(metadataPath, stateID, nonce); err != nil {
 		return err
 	}
-	defer os.Remove(metadataPath)
+	ownerInfo, err := os.Lstat(metadataPath)
+	if err != nil {
+		return err
+	}
+	// Cooperative successor installation and cleanup share scan.lock. When
+	// this worker has already relinquished its election, leave cleanup to
+	// the admitted successor instead of unlinking a rebound socket or owner.
+	cleanupEntry := func(path string, info os.FileInfo) {
+		if lock == nil && election != nil {
+			pin, e := store.AcquireScanLock(context.WithoutCancel(ctx), stateRoot, 0)
+			if e != nil {
+				return
+			}
+			defer pin.Release()
+			if election.check() != nil {
+				return
+			}
+		}
+		removeWorkerEntry(path, info)
+	}
+	defer cleanupEntry(metadataPath, ownerInfo)
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: endpoint, Net: "unix"})
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = listener.Close()
-		_ = os.Remove(endpoint)
-	}()
+	listener.SetUnlinkOnClose(false)
+	socketInfo, err := os.Lstat(endpoint)
+	if err != nil {
+		listener.Close()
+		return err
+	}
+	defer func() { _ = listener.Close(); cleanupEntry(endpoint, socketInfo) }()
 	if err = os.Chmod(endpoint, 0o600); err != nil {
 		return err
 	}
 	worker := &server{
-		ctx:          ctx,
-		stateRoot:    stateRoot,
-		stateID:      stateID,
-		nonce:        nonce,
-		journal:      journal,
-		rounds:       map[string]*round{},
-		startedAt:    time.Now(),
-		lastActivity: time.Now(),
+		managedPlanner: planner,
+		election:       election,
+		ctx:            ctx,
+		stateRoot:      stateRoot,
+		stateID:        stateID,
+		nonce:          nonce,
+		journal:        journal,
+		rounds:         map[string]*round{},
+		startedAt:      time.Now(),
+		lastActivity:   time.Now(),
 	}
+	var handlers sync.WaitGroup
 	defer func() {
 		cancel()
 		_ = listener.Close()
+		handlers.Wait()
 		worker.waitForLaunchedRounds()
 	}()
+	if election != nil {
+		if err = lock.Release(); err != nil {
+			return err
+		}
+		lock = nil
+	}
+	if election != nil {
+		if err = election.check(); err != nil {
+			return err
+		}
+	}
 	if err = worker.recoverReceipts(); err != nil {
 		return err
 	}
@@ -558,17 +646,25 @@ func Serve(ctx context.Context, stateRoot string) error {
 			}
 			return acceptErr
 		}
-		go worker.handle(conn)
+		handlers.Add(1)
+		go func() {
+			defer handlers.Done()
+			stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+			defer stop()
+			worker.handle(conn)
+		}()
 	}
 }
 
 type server struct {
-	ctx       context.Context
-	stateRoot string
-	stateID   string
-	nonce     string
-	run       roundRunner
-	journal   *receiptJournal
+	managedPlanner CJSIRoundPlanner
+	election       *managedWorkerElection
+	ctx            context.Context
+	stateRoot      string
+	stateID        string
+	nonce          string
+	run            roundRunner
+	journal        *receiptJournal
 
 	mu              sync.Mutex
 	round           *round
@@ -679,7 +775,7 @@ func (s *server) startOrJoin(home string) (*round, error) {
 
 // accept persists a request receipt before the caller sees accepted. A replay
 // returns the original terminal result or attaches to the same recovered round.
-func (s *server) accept(request wireRequest) (*round, *Result, error) {
+func (s *server) accept(request wireRequest) (accepted *round, terminal *Result, retErr error) {
 	if s.stateRoot != "" {
 		if err := platform.RevalidateOwnership(s.stateRoot); err != nil {
 			return nil, nil, err
@@ -687,6 +783,32 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ctx != nil && s.ctx.Err() != nil {
+		return nil, nil, s.ctx.Err()
+	}
+	release, err := s.guardManagedJournal()
+	if err != nil {
+		return nil, nil, err
+	}
+	if release != nil {
+		defer func() { retErr = errors.Join(retErr, release()) }()
+	}
+	if s.election != nil && (s.election.physical == "" || request.PhysicalRoot != s.election.physical) {
+		return nil, nil, store.ErrLockLost
+	}
+	var deadline time.Time
+	connectionOwned := request.AppOwned
+	if s.election != nil && request.WaitUntil != "" {
+		var err error
+		deadline, err = time.Parse(time.RFC3339Nano, request.WaitUntil)
+		if err != nil || !time.Now().Before(deadline) {
+			return nil, nil, context.DeadlineExceeded
+		}
+		// A bounded managed waiter cannot leave an unbounded recovery
+		// obligation. Existing connection-owner accounting cancels on the
+		// final disconnect; later subscribers cannot extend this budget.
+		connectionOwned = true
+	}
 	if s.journal != nil {
 		if receipt, found := s.journal.get(request.Request); found {
 			if receipt.StateID != request.StateID || receipt.Home != request.Home || receipt.Scope != request.Scope || receipt.AppOwned != request.AppOwned {
@@ -700,7 +822,7 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 				return nil, nil, errors.New("scan request receipt expired; re-evaluate required")
 			}
 			if round := s.rounds[receipt.RoundID]; round != nil {
-				round.registerOwner(request.Request, request.AppOwned)
+				round.registerOwner(request.Request, connectionOwned)
 				return round, nil, nil
 			}
 			return nil, nil, errors.New("accepted scan request has no recoverable round")
@@ -709,6 +831,9 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 	round, start, err := s.selectRoundLocked(request.Home, request.Scope, request.Serving)
 	if err != nil {
 		return nil, nil, err
+	}
+	if start {
+		round.managedDeadline = deadline
 	}
 	if request.CacheNow != "" {
 		cacheNow, parseErr := time.Parse(time.RFC3339Nano, request.CacheNow)
@@ -732,7 +857,7 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 		}
 		if err = s.journal.accept(receipt); err != nil {
 			if receiptWasInstalled(err) {
-				round.registerOwner(request.Request, request.AppOwned)
+				round.registerOwner(request.Request, connectionOwned)
 				if start {
 					s.launchRoundLocked(round)
 				}
@@ -743,7 +868,7 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 			return nil, nil, err
 		}
 	}
-	round.registerOwner(request.Request, request.AppOwned)
+	round.registerOwner(request.Request, connectionOwned)
 	if start {
 		s.launchRoundLocked(round)
 	}
@@ -756,6 +881,7 @@ func (s *server) selectRoundLocked(home string, scope Scope, servingRequest ...b
 	if s.round == nil {
 		round := s.newRoundLocked(home, nil)
 		round.serving = serving
+		round.managedScope = scope
 		s.round = round
 		return round, true, nil
 	}
@@ -765,6 +891,9 @@ func (s *server) selectRoundLocked(home string, scope Scope, servingRequest ...b
 	s.round.mu.Lock()
 	if !s.round.pausing && !s.round.observedInventory() && s.round.covers(scope) {
 		s.round.serving = s.round.serving || serving
+		if s.round.managedScope != scope {
+			s.round.managedScope = ScopeBoth
+		}
 		s.round.mu.Unlock()
 		return s.round, false, nil
 	}
@@ -775,17 +904,22 @@ func (s *server) selectRoundLocked(home string, scope Scope, servingRequest ...b
 		}
 		s.pending.mu.Lock()
 		s.pending.serving = s.pending.serving || serving
+		if s.pending.managedScope != scope {
+			s.pending.managedScope = ScopeBoth
+		}
 		s.pending.mu.Unlock()
 		return s.pending, false, nil
 	}
 	if s.round.completed() {
 		round := s.newRoundLocked(home, nil)
 		round.serving = serving
+		round.managedScope = scope
 		s.round = round
 		return round, true, nil
 	}
 	followUp := s.newRoundLocked(home, s.round)
 	followUp.serving = serving
+	followUp.managedScope = scope
 	s.pending = followUp
 	return followUp, true, nil
 }
@@ -794,6 +928,7 @@ func (s *server) newRoundLocked(home string, predecessor *round) *round {
 	s.nextObservation++
 	candidate := newRoundWithID(home, newID(), s.nextObservation)
 	candidate.predecessor = predecessor
+	candidate.managedPlanner = s.managedPlanner
 	if s.rounds == nil {
 		s.rounds = map[string]*round{}
 	}
@@ -818,7 +953,13 @@ func (s *server) rollbackSelectedRoundLocked(round *round, started bool) {
 func (s *server) launchRoundLocked(round *round) {
 	round.launched = true
 	round.onTerminal = func(result Result) error { return s.completeRound(round, result) }
-	workCtx, cancel := context.WithCancel(s.ctx)
+	var workCtx context.Context
+	var cancel context.CancelFunc
+	if s.election != nil && !round.managedDeadline.IsZero() {
+		workCtx, cancel = context.WithDeadline(s.ctx, round.managedDeadline)
+	} else {
+		workCtx, cancel = context.WithCancel(s.ctx)
+	}
 	round.mu.Lock()
 	round.cancelWork = cancel
 	round.mu.Unlock()
@@ -827,15 +968,22 @@ func (s *server) launchRoundLocked(round *round) {
 		if round.predecessor != nil {
 			<-round.predecessor.done
 		}
-		round.executeWith(workCtx, s.stateRoot, true, s.run)
+		if s.election != nil {
+			round.managed = &s.election.root
+			round.election = s.election
+		}
+		round.executeWith(workCtx, s.stateRoot, s.election == nil, s.run)
 	}()
 }
 
-func (s *server) completeRound(round *round, result Result) error {
+func (s *server) completeRound(round *round, result Result) (retErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var journalErr error
-	if s.journal != nil && platform.RevalidateOwnership(s.stateRoot) == nil {
+	release, journalErr := s.guardManagedJournal()
+	if release != nil {
+		defer func() { retErr = errors.Join(retErr, release()) }()
+	}
+	if journalErr == nil && s.journal != nil && platform.RevalidateOwnership(s.stateRoot) == nil {
 		journalErr = s.journal.terminal(round.id, result)
 	}
 	delete(s.rounds, round.id)
@@ -848,7 +996,7 @@ func (s *server) completeRound(round *round, result Result) error {
 	return journalErr
 }
 
-func (s *server) terminalReceipt(id string, result Result) error {
+func (s *server) terminalReceipt(id string, result Result) (retErr error) {
 	if s.journal == nil {
 		return nil
 	}
@@ -857,15 +1005,29 @@ func (s *server) terminalReceipt(id string, result Result) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	release, err := s.guardManagedJournal()
+	if err != nil {
+		return err
+	}
+	if release != nil {
+		defer func() { retErr = errors.Join(retErr, release()) }()
+	}
 	return s.journal.terminalReceipt(id, result)
 }
 
-func (s *server) recoverReceipts() error {
+func (s *server) recoverReceipts() (retErr error) {
 	if s.journal == nil {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	release, err := s.guardManagedJournal()
+	if err != nil {
+		return err
+	}
+	if release != nil {
+		defer func() { retErr = errors.Join(retErr, release()) }()
+	}
 	if s.rounds == nil {
 		s.rounds = map[string]*round{}
 	}
@@ -885,8 +1047,15 @@ func (s *server) recoverReceipts() error {
 		if receipt.StateID != s.stateID {
 			return errors.New("scan receipt journal belongs to another state root")
 		}
-		if !cliRounds[receipt.RoundID] {
-			if err := s.journal.terminal(receipt.RoundID, Result{RoundID: receipt.RoundID, Usage: failedUsage(context.Canceled, 0), Session: failedSession(context.Canceled, 0)}); err != nil {
+		if !cliRounds[receipt.RoundID] || s.election != nil {
+			// A restarted managed worker lacks the original in-process
+			// preparation, live waiter and its earliest acceptance deadline.
+			// Preserve request identity without replaying such a publication.
+			reason := error(context.Canceled)
+			if cliRounds[receipt.RoundID] {
+				reason = store.ErrTelemetrySourceIdentityPending
+			}
+			if err := s.journal.terminal(receipt.RoundID, Result{RoundID: receipt.RoundID, Usage: failedUsage(reason, 0), Session: failedSession(reason, 0)}); err != nil {
 				return err
 			}
 			continue
@@ -934,13 +1103,18 @@ func (s *server) idle() bool {
 }
 
 type round struct {
-	id          string
-	home        string
-	metrics     *ingest.Metrics // set only while measurement recording is on
-	observation uint64
-	predecessor *round
-	onTerminal  func(Result) error
-	launched    bool // protected by server.mu; registration alone is not launch
+	managedScope    Scope
+	managedPlanner  CJSIRoundPlanner
+	managedDeadline time.Time
+	managed         *store.CJSIRuntimeRoot
+	election        *managedWorkerElection // held by the worker; nil for forced-local
+	id              string
+	home            string
+	metrics         *ingest.Metrics // set only while measurement recording is on
+	observation     uint64
+	predecessor     *round
+	onTerminal      func(Result) error
+	launched        bool // protected by server.mu; registration alone is not launch
 
 	// inventoryID is the source coverage acceptance of the current execution:
 	// the round id, or a new attempt id when a replay finds an earlier
@@ -1054,14 +1228,41 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		r.setSession(failedSession(err, 0))
 		return
 	}
+	var scan *store.Lock
 	if !lockHeld {
-		lock, err := store.AcquireScanLock(ctx, stateRoot, 5*time.Second)
+		var err error
+		scan, err = store.AcquireScanLock(ctx, stateRoot, 5*time.Second)
 		if err != nil {
 			r.setUsage(failedUsage(err, 0))
 			r.setSession(failedSession(err, 0))
 			return
 		}
-		defer lock.Release()
+		defer func() {
+			if scan != nil {
+				_ = scan.Release()
+			}
+		}()
+	}
+	managed, err := store.ResolveCJSIRuntimeRoot(ctx, stateRoot)
+	if err == nil && r.managed != nil && (managed == nil || *managed != *r.managed) {
+		err = store.ErrLockLost
+	}
+	if err == nil && managed == nil {
+		if info, e := os.Lstat(filepath.Join(stateRoot, receiptJournalFilename)); e == nil && info.IsDir() {
+			err = store.ErrLockLost
+		}
+	}
+	if err == nil && managed != nil {
+		if scan == nil || r.managed == nil {
+			err = store.ErrStateBusy
+		} else if err = scan.Release(); err == nil {
+			scan = nil
+		}
+	}
+	if err != nil {
+		r.setUsage(failedUsage(err, 0))
+		r.setSession(failedSession(err, 0))
+		return
 	}
 	discoverStarted := time.Now()
 	if r.beforeDiscovery != nil {
@@ -1084,6 +1285,10 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	}
 	if r.afterDiscovery != nil {
 		r.afterDiscovery(sources)
+	}
+	if managed != nil {
+		r.publishManaged(ctx, *managed, sources)
+		return
 	}
 	if serving && !servingSettled(ctx, stateRoot, r.home, r.cacheNow) {
 		r.executeServingDiscovered(ctx, stateRoot, started, sources)
@@ -1579,10 +1784,9 @@ func failureCode(err error) string {
 	}
 }
 
-// WithMaintenance waits behind the same worker election lock before a rebuild
-// or watcher mutation.  It deliberately does not join a running round because
-// maintenance has different source semantics; it only prevents a second live
-// scanner from racing the worker.
+// WithMaintenance takes the scan barrier for rebuild and watcher mutations.
+// Legacy workers hold it for their lifetime. Managed workers acquire it for
+// short protected phases and release it during independent slot I/O.
 func WithMaintenance(ctx context.Context, stateRoot string, timeout time.Duration, run func(context.Context) error) error {
 	release, err := AcquireMaintenance(ctx, stateRoot, timeout)
 	if err != nil {

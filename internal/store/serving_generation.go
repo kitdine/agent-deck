@@ -112,6 +112,7 @@ const servingIdentityBudget = 200 * time.Millisecond
 // is request-local, not shared concurrently, and owns one deadline fixed when
 // it is opened.
 type ServingGenerationReader struct {
+	managed                      *CJSIRuntimeRoot
 	ctx                          context.Context
 	cancel                       context.CancelFunc
 	root, identity               string
@@ -152,6 +153,19 @@ func openServingGenerationReader(ctx context.Context, stateRoot string, budget t
 	if err != nil {
 		return nil, err
 	}
+	if sessionInfo.Size == cjsiFenceSize {
+		if _, e := validateCJSIFence(root); e == nil {
+			m, e := ResolveCJSIRuntimeRoot(ctx, root)
+			if e != nil {
+				return nil, e
+			}
+			if m == nil {
+				return nil, ErrCJSIIndexChanged
+			}
+			success = true
+			return &ServingGenerationReader{ctx: ctx, cancel: cancel, root: root, managed: m}, nil
+		}
+	}
 	identity := fmt.Sprintf("%s:%d:%d:%d:%d:%d:%d", root, rootInfo.Dev, rootInfo.Ino, coreInfo.Dev, coreInfo.Ino, sessionInfo.Dev, sessionInfo.Ino)
 	digest := sha256.Sum256([]byte(identity))
 	identityValue := hex.EncodeToString(digest[:])
@@ -170,13 +184,32 @@ func (r *ServingGenerationReader) Close() {
 	if r.releaseSessions != nil {
 		_ = r.releaseSessions()
 	}
-	_ = r.releaseCore()
+	if r.releaseCore != nil {
+		_ = r.releaseCore()
+	}
 }
 
 func (r *ServingGenerationReader) Read() (ServingGeneration, error) {
 	ctx := r.ctx
 	if err := ctx.Err(); err != nil {
 		return ServingGeneration{}, err
+	}
+	if r.managed != nil {
+		var g ServingGeneration
+		err := r.managed.WithPublishedCore(ctx, func(tx *sql.Tx, _ CJSIIndexStamp) error {
+			return WithCJSIIndexSnapshot(ctx, r.root, tx, func(s CJSIIndexSnapshot) error {
+				var usage int64
+				if err := tx.QueryRowContext(ctx, "SELECT revision FROM serving_generation WHERE singleton=1 AND schema_version=?", ServingStorageVersion).Scan(&usage); err != nil {
+					return err
+				}
+				g = r.managed.ServingGenerationFor(s.Selection(), usage)
+				return nil
+			})
+		})
+		if err != nil {
+			return ServingGeneration{}, err
+		}
+		return g, nil
 	}
 	result := ServingGeneration{StateIdentity: r.identity}
 	var err error
