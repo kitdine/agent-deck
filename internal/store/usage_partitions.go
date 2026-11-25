@@ -268,3 +268,139 @@ func (s *Store) CheckUsageProjectionMetadata(ctx context.Context, expected int64
 	}
 	return nil
 }
+
+// IntervalDirtyScopeKind names one typed cache-invalidation namespace in
+// main.cjsi_usage_interval_dirty_ranges. Aggregate-only stamps live in their
+// own namespace so they never collide with model=” request partitions.
+type IntervalDirtyScopeKind string
+
+const (
+	IntervalDirtyAggregateOnly IntervalDirtyScopeKind = "aggregate-only"
+	IntervalDirtyModel         IntervalDirtyScopeKind = "model"
+	IntervalDirtyClientSummary IntervalDirtyScopeKind = "client-summary"
+	IntervalDirtyAllSummary    IntervalDirtyScopeKind = "all-summary"
+	IntervalDirtyCoverage      IntervalDirtyScopeKind = "coverage"
+)
+
+// IntervalDirtyRange is one half-open signed UTC day span [FromDay, ToDay)
+// since the Unix epoch.
+type IntervalDirtyRange struct {
+	ScopeKind     IntervalDirtyScopeKind
+	Client, Model string
+	FromDay       int64
+	ToDay         int64
+}
+
+// UsageIntervalStampDay converts an instant to its signed UTC day number since
+// the Unix epoch and reports whether the instant is exact UTC midnight.
+// Go integer division truncates toward zero, so negative non-integral days
+// step one day downward.
+func UsageIntervalStampDay(t time.Time) (day int64, midnight bool) {
+	const secondsPerDay = 86400
+	seconds := t.Unix()
+	day = seconds / secondsPerDay
+	remainder := seconds % secondsPerDay
+	if remainder < 0 {
+		day--
+	}
+	return day, remainder == 0 && t.Nanosecond() == 0
+}
+
+func validIntervalDirtyScope(kind IntervalDirtyScopeKind, client, model string) error {
+	switch kind {
+	case IntervalDirtyAllSummary:
+		if client != "" || model != "" {
+			return errors.New("invalid all-summary interval dirty scope")
+		}
+		return nil
+	case IntervalDirtyAggregateOnly, IntervalDirtyClientSummary, IntervalDirtyCoverage:
+		if client == "" || model != "" {
+			return errors.New("invalid client interval dirty scope")
+		}
+		return nil
+	case IntervalDirtyModel:
+		if client == "" {
+			return errors.New("invalid model interval dirty scope")
+		}
+		return nil
+	default:
+		return errors.New("unknown interval dirty scope")
+	}
+}
+
+func checkIntervalStampHead(ctx context.Context, tx *sql.Tx, coreEpoch, ticket int64) error {
+	if tx == nil || coreEpoch <= 0 || ticket <= 0 {
+		return errors.New("invalid interval stamp transaction or head")
+	}
+	var one int
+	return tx.QueryRowContext(ctx, `SELECT 1 FROM main.cjsi_publication_head
+		WHERE singleton=1 AND core_epoch=? AND ticket=?`, coreEpoch, ticket).Scan(&one)
+}
+
+func latestIntervalDirtyStamp(ctx context.Context, tx *sql.Tx, coreEpoch, ticket int64, kind IntervalDirtyScopeKind, client, model string, fromDay, toDay int64) (int64, error) {
+	var stamp sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT MAX(ticket) FROM main.cjsi_usage_interval_dirty_ranges
+		WHERE core_epoch=? AND scope_kind=? AND client=? AND model=? AND from_day<? AND to_day>?`,
+		coreEpoch, string(kind), client, model, toDay, fromDay).Scan(&stamp)
+	if err != nil {
+		return 0, err
+	}
+	if !stamp.Valid {
+		return 0, nil
+	}
+	if stamp.Int64 <= 0 || stamp.Int64 > ticket {
+		return 0, errors.New("interval stamp outside the admitted head")
+	}
+	return stamp.Int64, nil
+}
+
+// ReadUsageIntervalDirtyStamp reads the latest ticket that invalidated any
+// overlapping UTC day range for the given typed scope inside the caller's
+// pinned core transaction. A future ticket fails closed.
+func ReadUsageIntervalDirtyStamp(ctx context.Context, tx *sql.Tx, coreEpoch, ticket int64, kind IntervalDirtyScopeKind, client, model string, fromDay, toDay int64) (int64, error) {
+	if fromDay >= toDay {
+		return 0, errors.New("invalid interval stamp day range")
+	}
+	if err := validIntervalDirtyScope(kind, client, model); err != nil {
+		return 0, err
+	}
+	if err := checkIntervalStampHead(ctx, tx, coreEpoch, ticket); err != nil {
+		return 0, err
+	}
+	return latestIntervalDirtyStamp(ctx, tx, coreEpoch, ticket, kind, client, model, fromDay, toDay)
+}
+
+// WriteUsageIntervalDirtyRanges records monotonic cache-invalidation stamps
+// inside the caller's still-open publication transaction. All ranges are
+// validated before any row is written; on any error the caller rolls back the
+// transaction.
+func WriteUsageIntervalDirtyRanges(ctx context.Context, tx *sql.Tx, coreEpoch, ticket int64, ranges []IntervalDirtyRange) error {
+	if ranges == nil {
+		return errors.New("interval dirty ranges unavailable")
+	}
+	if err := checkIntervalStampHead(ctx, tx, coreEpoch, ticket); err != nil {
+		return err
+	}
+	for _, r := range ranges {
+		if err := validIntervalDirtyScope(r.ScopeKind, r.Client, r.Model); err != nil {
+			return err
+		}
+		if r.ToDay <= r.FromDay {
+			return errors.New("interval dirty range requires increasing UTC day bounds")
+		}
+		if _, err := latestIntervalDirtyStamp(ctx, tx, coreEpoch, ticket, r.ScopeKind, r.Client, r.Model, r.FromDay, r.ToDay); err != nil {
+			return err
+		}
+	}
+	for _, r := range ranges {
+		_, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_usage_interval_dirty_ranges
+			(core_epoch,scope_kind,client,model,from_day,to_day,ticket) VALUES(?,?,?,?,?,?,?)
+			ON CONFLICT(core_epoch,scope_kind,client,model,from_day,to_day) DO UPDATE SET ticket=excluded.ticket
+			WHERE cjsi_usage_interval_dirty_ranges.ticket<excluded.ticket`,
+			coreEpoch, string(r.ScopeKind), r.Client, r.Model, r.FromDay, r.ToDay, ticket)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

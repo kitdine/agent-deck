@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -60,14 +61,7 @@ func (s *Service) presentationInputs(ctx context.Context, from, to, now time.Tim
 	if err != nil {
 		return nil, nil, err
 	}
-	fullPricing := func(event storedEvent) (eventAttribution, Result, error) {
-		a, err := resolver.priceForEvent(event)
-		if err != nil {
-			return a, Result{}, err
-		}
-		r, err := calculateAttributedEvent(event, a)
-		return a, r, err
-	}
+	fullPricing := resolver.projectPrice
 	if !incremental || s.Store.ReadOnly() {
 		return fullEvents, fullPricing, nil
 	}
@@ -87,25 +81,8 @@ func (s *Service) presentationInputs(ctx context.Context, from, to, now time.Tim
 			return nil, nil, err
 		}
 		current, found := resolver.priceAt(p.Client, p.Model, now.UTC())
-		identity, _ := json.Marshal(struct {
-			Algorithm, Parser int
-			Epoch             int64
-			Current           modelPrice
-			Found             bool
-		}{projectedEventAlgorithmVersion, ParserVersion, generation.Epoch, current, found})
-		digest := sha256.Sum256(identity)
-		version := hex.EncodeToString(digest[:])
-		var values []projectedEvent
-		if !p.Dirty && p.ActiveRevision == p.Revision && p.Version == version {
-			var cached projectedEventPartition
-			if json.Unmarshal(p.Payload, &cached) == nil {
-				bytes, _ := json.Marshal(cached.Events)
-				sum := sha256.Sum256(bytes)
-				if cached.Checksum == hex.EncodeToString(sum[:]) && validProjectedEvents(cached.Events, p) {
-					values = cached.Events
-				}
-			}
-		}
+		version := projectedPriceVersion(ParserVersion, generation.Epoch, current, found)
+		values := cachedProjectedEvents(p, version, "")
 		if values == nil {
 			revision, err := s.Store.BeginUsagePartition(ctx, p)
 			if err != nil {
@@ -119,25 +96,8 @@ func (s *Service) presentationInputs(ctx context.Context, from, to, now time.Tim
 			if err != nil {
 				return nil, nil, err
 			}
-			values = make([]projectedEvent, 0, len(inputs))
-			for _, event := range inputs {
-				a, r, err := fullPricing(event)
-				pricingError := ""
-				if err != nil {
-					pricingError = err.Error()
-				}
-				contribution := event.Event
-				contribution.SourcePath = ""
-				contribution.SourceOffset = 0
-				r.Tokens = nil // reducers use the event's canonical token components
-				values = append(values, projectedEvent{Event: contribution, Quality: a.quality, Reason: a.reason, Provider: a.provider, SpendEligible: a.spendEligible, Result: r, PricingError: pricingError})
-			}
-			bytes, err := json.Marshal(values)
-			if err != nil {
-				return nil, nil, err
-			}
-			sum := sha256.Sum256(bytes)
-			payload, err := json.Marshal(projectedEventPartition{Events: values, Checksum: hex.EncodeToString(sum[:])})
+			values = projectRequestEvents(inputs, fullPricing)
+			payload, err := encodeProjectedEvents(values, "")
 			if err != nil {
 				return nil, nil, err
 			}
@@ -202,4 +162,84 @@ func validProjectedEvents(events []projectedEvent, p store.UsagePartition) bool 
 		seen[v.Event.Key] = true
 	}
 	return true
+}
+
+func (resolver readPriceResolver) projectPrice(event storedEvent) (eventAttribution, Result, error) {
+	a, err := resolver.priceForEvent(event)
+	if err != nil {
+		return a, Result{}, err
+	}
+	r, err := calculateAttributedEvent(event, a)
+	return a, r, err
+}
+
+func projectedPriceVersion(parser int, epoch int64, current modelPrice, found bool) string {
+	identity, _ := json.Marshal(struct {
+		Algorithm, Parser int
+		Epoch             int64
+		Current           modelPrice
+		Found             bool
+	}{projectedEventAlgorithmVersion, parser, epoch, current, found})
+	digest := sha256.Sum256(identity)
+	return hex.EncodeToString(digest[:])
+}
+
+func projectRequestEvents(inputs []storedEvent, fullPricing projectedPricing) []projectedEvent {
+	values := make([]projectedEvent, 0, len(inputs))
+	for _, event := range inputs {
+		a, r, err := fullPricing(event)
+		pricingError := ""
+		if err != nil {
+			pricingError = err.Error()
+		}
+		contribution := event.Event
+		contribution.SourcePath = ""
+		contribution.SourceOffset = 0
+		r.Tokens = nil // reducers use the event's canonical token components
+		values = append(values, projectedEvent{Event: contribution, Quality: a.quality, Reason: a.reason, Provider: a.provider, SpendEligible: a.spendEligible, Result: r, PricingError: pricingError})
+	}
+	return values
+}
+
+// v1 checksums cover just the original JSON list. A nonempty binding also
+// covers the expected private partition version, including for an empty list.
+func projectedListChecksum(data []byte, binding string) string {
+	h := sha256.New()
+	if binding != "" {
+		h.Write([]byte(binding))
+		h.Write([]byte{0})
+	}
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func encodeProjectedEvents(values []projectedEvent, binding string) ([]byte, error) {
+	data, err := json.Marshal(values)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(projectedEventPartition{Events: values, Checksum: projectedListChecksum(data, binding)})
+}
+
+func cachedProjectedEvents(p store.UsagePartition, version, binding string) []projectedEvent {
+	if p.Dirty || p.ActiveRevision != p.Revision || p.Version != version {
+		return nil
+	}
+	var cached projectedEventPartition
+	if json.Unmarshal(p.Payload, &cached) != nil {
+		return nil
+	}
+	data, err := json.Marshal(cached.Events)
+	if err != nil || cached.Checksum != projectedListChecksum(data, binding) || !validProjectedEvents(cached.Events, p) {
+		return nil
+	}
+	if binding != "" {
+		// v2 reuse returns the cached bytes as well as the decoded events.
+		// Require the exact canonical encoding a rebuild would produce.
+		canonical, err := json.Marshal(cached)
+		if err != nil || !bytes.Equal(canonical, p.Payload) {
+			return nil
+		}
+	}
+	return cached.Events
 }

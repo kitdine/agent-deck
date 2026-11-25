@@ -92,11 +92,18 @@ type SessionSignalSummary struct {
 	FirstEditSeconds *int
 }
 
-func (s *Service) Signals(ctx context.Context, options SignalOptions) (SignalReport, error) {
-	return s.signalsWithCost(ctx, options, nil)
+// signalQueryer lets the published-row readers use the same queries for
+// legacy callers and callers borrowing a pinned transaction.
+type signalQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, precomputed *ActivityCost) (SignalReport, error) {
+func (s *Service) Signals(ctx context.Context, options SignalOptions) (SignalReport, error) {
+	return readSignalReport(ctx, s.Store.DB, options, s.ActivityCostForScope)
+}
+
+func readSignalReport(ctx context.Context, db signalQueryer, options SignalOptions, activityCost func(context.Context, SignalScope) (ActivityCost, error)) (SignalReport, error) {
 	if !options.From.Before(options.To) {
 		return SignalReport{}, fmt.Errorf("usage signals range must have from before to")
 	}
@@ -117,15 +124,9 @@ func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, pr
 	report := SignalReport{Period: options.Period, Client: client}
 	scope := SignalScope{From: options.From, To: options.To, Client: options.Client, Activity: options.Activity, Sessions: options.Sessions}
 	if selected["activity"] {
-		var cost ActivityCost
-		if precomputed != nil {
-			cost = *precomputed
-		} else {
-			var costErr error
-			cost, costErr = s.ActivityCostForScope(ctx, scope)
-			if costErr != nil {
-				return SignalReport{}, costErr
-			}
+		cost, err := activityCost(ctx, scope)
+		if err != nil {
+			return SignalReport{}, err
 		}
 		activity, convertErr := signalActivity(cost, options.IncludeSub, options.Activity)
 		if convertErr != nil {
@@ -134,7 +135,7 @@ func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, pr
 		report.Activity = &activity
 	}
 	if selected["workflow"] {
-		metrics, metricsErr := s.WorkflowMetrics(ctx, scope)
+		metrics, metricsErr := readWorkflowMetrics(ctx, db, scope)
 		if metricsErr != nil {
 			return SignalReport{}, metricsErr
 		}
@@ -149,7 +150,7 @@ func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, pr
 		}
 	}
 	if selected["tooling"] {
-		tooling, toolingErr := s.ToolingSummary(ctx, scope)
+		tooling, toolingErr := readToolingSummary(ctx, db, scope)
 		if toolingErr != nil {
 			return SignalReport{}, toolingErr
 		}
@@ -162,8 +163,12 @@ func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, pr
 // Usage events begin at the assistant response, while workflow and tooling are
 // scoped by the earlier user-message turn boundary.
 func (s *Service) EarliestSignalAt(ctx context.Context) (*time.Time, error) {
+	return readEarliestSignalAt(ctx, s.Store.DB)
+}
+
+func readEarliestSignalAt(ctx context.Context, db signalQueryer) (*time.Time, error) {
 	var raw sql.NullString
-	if err := s.Store.DB.QueryRowContext(ctx, `SELECT MIN(started_at) FROM usage_work_signals WHERE state=?`, signalStateClassified).Scan(&raw); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT MIN(started_at) FROM usage_work_signals WHERE state=?`, signalStateClassified).Scan(&raw); err != nil {
 		return nil, err
 	}
 	if !raw.Valid || raw.String == "" {
@@ -253,6 +258,10 @@ func signalActivity(cost ActivityCost, includeSub bool, filter string) (SignalAc
 }
 
 func (s *Service) ToolingSummary(ctx context.Context, scope SignalScope) (SignalTooling, error) {
+	return readToolingSummary(ctx, s.Store.DB, scope)
+}
+
+func readToolingSummary(ctx context.Context, db signalQueryer, scope SignalScope) (SignalTooling, error) {
 	query := `SELECT c.tool_kind,c.mcp_server,COUNT(*)
 FROM usage_tool_calls c
 JOIN usage_work_signals w ON w.client=c.client AND w.session_id=c.session_id AND w.turn_index=c.turn_index
@@ -278,7 +287,7 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 	} else {
 		query += ` GROUP BY c.tool_kind,c.mcp_server`
 	}
-	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return SignalTooling{}, err
 	}
@@ -341,16 +350,18 @@ func knownSignalToolKind(value string) bool {
 }
 
 func (s *Service) SessionSignals(ctx context.Context, client, sessionID string) (SessionSignalSummary, bool, error) {
+	return readSessionSignals(ctx, s.Store.DB, client, sessionID, func(scope SignalScope) (SessionCategory, error) {
+		return s.SessionActivityCategory(ctx, scope.Client, scope.Session)
+	})
+}
+
+func readSessionSignals(ctx context.Context, db signalQueryer, client, sessionID string, categoryForScope func(SignalScope) (SessionCategory, error)) (SessionSignalSummary, bool, error) {
 	var turns int
-	if err := s.Store.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_work_signals WHERE state=? AND client=? AND session_id=?`, signalStateClassified, client, sessionID).Scan(&turns); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_work_signals WHERE state=? AND client=? AND session_id=?`, signalStateClassified, client, sessionID).Scan(&turns); err != nil {
 		return SessionSignalSummary{}, false, err
 	}
 	if turns == 0 {
 		return SessionSignalSummary{}, false, nil
-	}
-	category, err := s.SessionActivityCategory(ctx, client, sessionID)
-	if err != nil {
-		return SessionSignalSummary{}, false, err
 	}
 	scope := SignalScope{
 		From:    time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -358,11 +369,15 @@ func (s *Service) SessionSignals(ctx context.Context, client, sessionID string) 
 		Client:  client,
 		Session: sessionID,
 	}
-	metrics, err := s.WorkflowMetrics(ctx, scope)
+	category, err := categoryForScope(scope)
 	if err != nil {
 		return SessionSignalSummary{}, false, err
 	}
-	tooling, err := s.ToolingSummary(ctx, scope)
+	metrics, err := readWorkflowMetrics(ctx, db, scope)
+	if err != nil {
+		return SessionSignalSummary{}, false, err
+	}
+	tooling, err := readToolingSummary(ctx, db, scope)
 	if err != nil {
 		return SessionSignalSummary{}, false, err
 	}

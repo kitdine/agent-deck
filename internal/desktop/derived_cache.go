@@ -48,6 +48,7 @@ type derivedSnapshotCacheHeader struct {
 	WindowEnd            string `json:"window_end"`
 	CreatedAt            string `json:"created_at"`
 	ValidUntil           string `json:"valid_until"`
+	Dependencies         string `json:"dependencies,omitempty"`
 }
 
 type derivedSnapshotPriceAvailability struct {
@@ -155,13 +156,18 @@ func derivedSnapshotDatabaseIdentity(path string) (string, error) {
 	return identity, nil
 }
 
-func nextDerivedSnapshotValidityBoundary(ctx context.Context, core *store.Store, now time.Time, location *time.Location, nextDay time.Time) (time.Time, error) {
+func derivedSnapshotClockBoundary(now time.Time, location *time.Location, nextDay time.Time) time.Time {
 	local := now.In(location)
 	nextHour := time.Date(local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, location)
 	validUntil := nextHour
 	if nextDay.Before(validUntil) {
 		validUntil = nextDay
 	}
+	return validUntil
+}
+
+func nextDerivedSnapshotValidityBoundary(ctx context.Context, core *store.Store, now time.Time, location *time.Location, nextDay time.Time) (time.Time, error) {
+	validUntil := derivedSnapshotClockBoundary(now, location, nextDay)
 	rows, err := core.DB.QueryContext(ctx, `SELECT effective_from FROM price_catalogs UNION SELECT effective_from FROM model_prices`)
 	if err != nil {
 		return time.Time{}, err
@@ -215,7 +221,7 @@ func (s Service) loadDerivedSnapshotCache(ctx context.Context, core *store.Store
 }
 
 func derivedSnapshotCacheHeaderMatches(actual, expected derivedSnapshotCacheHeader, now time.Time) bool {
-	if actual.Version != expected.Version || actual.AlgorithmVersion != expected.AlgorithmVersion || actual.WireVersion != expected.WireVersion || actual.DatabaseIdentity != expected.DatabaseIdentity || actual.SchemaVersion != expected.SchemaVersion || actual.UsageParserVersion != expected.UsageParserVersion || actual.SessionParserVersion != expected.SessionParserVersion || actual.Epoch != expected.Epoch || actual.Revision != expected.Revision || actual.Timezone != expected.Timezone || actual.WindowStart != expected.WindowStart || actual.WindowEnd != expected.WindowEnd {
+	if actual.Version != expected.Version || actual.AlgorithmVersion != expected.AlgorithmVersion || actual.WireVersion != expected.WireVersion || actual.DatabaseIdentity != expected.DatabaseIdentity || actual.SchemaVersion != expected.SchemaVersion || actual.UsageParserVersion != expected.UsageParserVersion || actual.SessionParserVersion != expected.SessionParserVersion || actual.Epoch != expected.Epoch || actual.Revision != expected.Revision || actual.Timezone != expected.Timezone || actual.WindowStart != expected.WindowStart || actual.WindowEnd != expected.WindowEnd || actual.Dependencies != expected.Dependencies {
 		return false
 	}
 	created, err := time.Parse(time.RFC3339Nano, actual.CreatedAt)
@@ -231,44 +237,62 @@ func validDerivedSnapshotCachePayload(payload derivedSnapshotCachePayload) bool 
 }
 
 func readDerivedSnapshotCache(path string) (derivedSnapshotCacheDocument, error) {
-	directory, err := os.Stat(filepath.Dir(path))
+	contents, err := readDerivedSnapshotCacheBytes(path)
 	if err != nil {
 		return derivedSnapshotCacheDocument{}, err
 	}
+	return decodeDerivedSnapshotCache(contents)
+}
+
+func readDerivedSnapshotCacheBytes(path string) ([]byte, error) {
+	directory, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
 	if !directory.IsDir() || directory.Mode().Perm() != platform.DirectoryMode {
-		return derivedSnapshotCacheDocument{}, errors.New("invalid derived snapshot cache directory")
+		return nil, errors.New("invalid derived snapshot cache directory")
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return derivedSnapshotCacheDocument{}, err
+		return nil, err
 	}
 	if info.Size() > derivedSnapshotCacheMaxBytes {
-		return derivedSnapshotCacheDocument{}, ErrDerivedSnapshotCacheTooLarge
+		return nil, ErrDerivedSnapshotCacheTooLarge
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != platform.FileMode || info.Size() <= 0 {
-		return derivedSnapshotCacheDocument{}, errors.New("invalid derived snapshot cache file")
+		return nil, errors.New("invalid derived snapshot cache file")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return derivedSnapshotCacheDocument{}, err
+		return nil, err
 	}
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil {
-		return derivedSnapshotCacheDocument{}, err
+		return nil, err
 	}
 	if !opened.Mode().IsRegular() || opened.Mode().Perm() != platform.FileMode || !os.SameFile(info, opened) {
-		return derivedSnapshotCacheDocument{}, errors.New("derived snapshot cache changed while opening")
+		return nil, errors.New("derived snapshot cache changed while opening")
 	}
 	contents, err := io.ReadAll(io.LimitReader(file, derivedSnapshotCacheMaxBytes+1))
-	if err != nil || len(contents) > derivedSnapshotCacheMaxBytes {
-		if err != nil {
-			return derivedSnapshotCacheDocument{}, err
+	if err != nil {
+		return nil, err
+	}
+	if len(contents) > derivedSnapshotCacheMaxBytes {
+		return nil, ErrDerivedSnapshotCacheTooLarge
+	}
+	return contents, nil
+}
+
+func decodeDerivedSnapshotCache(contents []byte) (derivedSnapshotCacheDocument, error) {
+	if len(contents) == 0 || len(contents) > derivedSnapshotCacheMaxBytes {
+		if len(contents) > derivedSnapshotCacheMaxBytes {
+			return derivedSnapshotCacheDocument{}, ErrDerivedSnapshotCacheTooLarge
 		}
-		return derivedSnapshotCacheDocument{}, ErrDerivedSnapshotCacheTooLarge
+		return derivedSnapshotCacheDocument{}, errors.New("empty derived snapshot cache")
 	}
 	var document derivedSnapshotCacheDocument
-	if err = json.Unmarshal(contents, &document); err != nil {
+	if err := json.Unmarshal(contents, &document); err != nil {
 		return derivedSnapshotCacheDocument{}, err
 	}
 	checksum, err := derivedSnapshotCacheChecksum(document.Header, document.Payload)

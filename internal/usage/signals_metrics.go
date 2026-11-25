@@ -69,11 +69,15 @@ type workflowFile struct {
 
 // WorkflowMetrics computes Decision 6's five metrics over one scope.
 func (s *Service) WorkflowMetrics(ctx context.Context, scope SignalScope) (WorkflowMetrics, error) {
-	sessionStarts, err := s.workflowSessionStarts(ctx, scope)
+	return readWorkflowMetrics(ctx, s.Store.DB, scope)
+}
+
+func readWorkflowMetrics(ctx context.Context, db signalQueryer, scope SignalScope) (WorkflowMetrics, error) {
+	sessionStarts, err := workflowSessionStarts(ctx, db, scope)
 	if err != nil {
 		return WorkflowMetrics{}, err
 	}
-	calls, err := s.workflowCalls(ctx, scope)
+	calls, err := workflowCalls(ctx, db, scope)
 	if err != nil {
 		return WorkflowMetrics{}, err
 	}
@@ -251,7 +255,7 @@ func workflowSessionKey(client, session string) string {
 // workflowSessionStarts returns each in-scope session's first classified turn
 // time, keyed by client and session. It is both the denominator of
 // `edits_per_session` and the origin `first_edit_seconds` measures from.
-func (s *Service) workflowSessionStarts(ctx context.Context, scope SignalScope) (map[string]string, error) {
+func workflowSessionStarts(ctx context.Context, db signalQueryer, scope SignalScope) (map[string]string, error) {
 	query := `SELECT client,session_id,MIN(started_at) FROM usage_work_signals WHERE state=? AND started_at>=? AND started_at<?`
 	args := []any{signalStateClassified, scope.From.UTC().Format(time.RFC3339Nano), scope.To.UTC().Format(time.RFC3339Nano)}
 	if scope.Client != "" {
@@ -267,7 +271,7 @@ func (s *Service) workflowSessionStarts(ctx context.Context, scope SignalScope) 
 		args = append(args, scope.Activity, scope.Activity)
 	}
 	query += ` GROUP BY client,session_id`
-	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +297,7 @@ func (s *Service) workflowSessionStarts(ctx context.Context, scope SignalScope) 
 // turn with no classified row contributes no call, however many tool rows it
 // already has. The left join to `usage_tool_files` keeps calls that wrote
 // nothing in the stream, because they can still be the barrier a rework needs.
-func (s *Service) workflowCalls(ctx context.Context, scope SignalScope) ([]workflowCall, error) {
+func workflowCalls(ctx context.Context, db signalQueryer, scope SignalScope) ([]workflowCall, error) {
 	query := `SELECT c.client,c.session_id,c.activity_key,c.tool_name,c.tool_kind,c.started_at,c.command_read,f.path_digest,f.base_name
 FROM usage_tool_calls c
 JOIN usage_work_signals w ON w.client=c.client AND w.session_id=c.session_id AND w.turn_index=c.turn_index
@@ -313,7 +317,7 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 		args = append(args, scope.Activity, scope.Activity)
 	}
 	query += ` ORDER BY c.started_at,c.source_offset,c.activity_key,f.path_digest`
-	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

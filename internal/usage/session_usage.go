@@ -2,7 +2,10 @@ package usage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 )
 
 const maxSessionInvocationPageLimit = 1000
@@ -63,6 +66,61 @@ func (s *Service) SessionUsageSummary(ctx context.Context, client, sessionID str
 	result.KnownProviderCost = summary.KnownProviderCost
 	result.Unpriced = summary.Unpriced
 	result.Warnings = summary.Warnings
+	return result, nil
+}
+
+// readScopedSessionUsage returns complete lifetime aggregate usage for one
+// logical session, reading both token-only intervals and real requests/pricing
+// exclusively from one caller-pinned read transaction and admitted selection.
+// FirstAt/LastAt come only from real requests, and SessionInvocations remains
+// strictly request-only.
+func readScopedSessionUsage(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, client, sessionID string, read readScopedRequests) (SessionSummary, error) {
+	if tx == nil || read == nil {
+		return SessionSummary{}, errors.New("missing admitted session snapshot or request reader")
+	}
+	// Enclose all 4-digit RFC3339 UTC timestamps in both time.Time and SQL TEXT order.
+	window := StatsOptions{
+		Client: client,
+		From:   time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC),
+		To:     time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC),
+	}
+	var firstAt, lastAt string
+	var eventCount int
+	wrappedRead := func(c context.Context, borrowed *sql.Tx, w scopedRequestWindow) ([]storedEvent, *readPriceResolver, error) {
+		events, resolver, err := read(c, borrowed, w)
+		if err != nil {
+			return nil, nil, err
+		}
+		eventCount = len(events)
+		if len(events) > 0 {
+			firstAt = events[0].EventAt
+			lastAt = events[len(events)-1].EventAt
+		}
+		return events, resolver, nil
+	}
+	joint, err := readScopedUsageSummary(ctx, tx, selected, window, sessionID, wrappedRead)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	result := SessionSummary{
+		Client:    client,
+		SessionID: sessionID,
+		Tokens:    sessionUsageTokens(),
+		Unpriced:  []string{},
+		Warnings:  []string{},
+	}
+	if eventCount == 0 && joint.totals.Sessions == 0 && !joint.partial && joint.summary.CatalogBaseCost != nil {
+		return result, nil
+	}
+	result.FirstAt = firstAt
+	result.LastAt = lastAt
+	result.Tokens = copySessionUsageTokens(joint.summary.Tokens)
+	result.CatalogBaseCost = joint.summary.CatalogBaseCost
+	result.ProviderCost = joint.summary.ProviderCost
+	result.KnownCatalogBaseCost = joint.summary.KnownCatalogBaseCost
+	result.KnownProviderCost = joint.summary.KnownProviderCost
+	result.Unpriced = joint.summary.Unpriced
+	result.Warnings = joint.summary.Warnings
 	return result, nil
 }
 

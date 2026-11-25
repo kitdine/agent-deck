@@ -2,12 +2,16 @@ package usage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/perftrace"
+	ledger "github.com/kitdine/agent-deck/internal/usage/cjsiledger"
 )
 
 const (
@@ -171,12 +175,27 @@ type presentationPeriodDefinition struct {
 }
 
 type presentationAccumulator struct {
-	stats        *statsAccumulator
-	logicalInput int64
+	stats              *statsAccumulator
+	logicalInput       int64
+	cacheHitIncomplete bool
 }
 
 func newPresentationAccumulator() *presentationAccumulator {
 	return &presentationAccumulator{stats: newStatsAccumulator()}
+}
+
+func (a *presentationAccumulator) addInterval(n ledger.Counts, thread string) error {
+	if err := addIntervalToStatsAccumulator(a.stats, n, thread); err != nil {
+		return err
+	}
+	var ok bool
+	if a.logicalInput, ok = addInt64Checked(a.logicalInput, n.Input); !ok {
+		return errors.New("interval logical input overflow")
+	}
+	if n.Known&ledger.CachedKnown == 0 {
+		a.cacheHitIncomplete = true
+	}
+	return nil
 }
 
 func (a *presentationAccumulator) add(event storedEvent, result Result, costs ...*big.Rat) error {
@@ -184,16 +203,32 @@ func (a *presentationAccumulator) add(event storedEvent, result Result, costs ..
 	if len(costs) == 2 {
 		base, provider = costs[0], costs[1]
 	}
-	if err := a.stats.addWithParsedCosts(event, result, base, provider); err != nil {
-		return err
+	nextLogical, ok := addInt64Checked(a.logicalInput, event.Tokens["input_tokens"])
+	if !ok {
+		return errors.New("presentation logical input overflow")
 	}
-	a.logicalInput += event.Tokens["input_tokens"]
 	if event.Client == "claude" {
-		a.logicalInput += event.Tokens["cache_read_tokens"] + event.Tokens["cache_write_5m_tokens"] + event.Tokens["cache_write_1h_tokens"]
-		if event.Tokens["cache_write_5m_tokens"]+event.Tokens["cache_write_1h_tokens"] == 0 {
-			a.logicalInput += event.Tokens["cache_creation_tokens"]
+		if nextLogical, ok = addInt64Checked(nextLogical, event.Tokens["cache_read_tokens"]); !ok {
+			return errors.New("presentation logical input overflow")
+		}
+		cacheWrite, ok := addInt64Checked(event.Tokens["cache_write_5m_tokens"], event.Tokens["cache_write_1h_tokens"])
+		if !ok {
+			return errors.New("presentation cache write overflow")
+		}
+		if cacheWrite == 0 {
+			cacheWrite = event.Tokens["cache_creation_tokens"]
+			if cacheWrite < 0 {
+				return errors.New("negative presentation cache creation tokens")
+			}
+		}
+		if nextLogical, ok = addInt64Checked(nextLogical, cacheWrite); !ok {
+			return errors.New("presentation logical input overflow")
 		}
 	}
+	if err := addEventToStatsAccumulatorChecked(a.stats, event, result, base, provider); err != nil {
+		return err
+	}
+	a.logicalInput = nextLogical
 	return nil
 }
 
@@ -262,8 +297,91 @@ func (s *Service) presentation(ctx context.Context, now time.Time, location *tim
 	return s.presentationProjected(ctx, now, location, todayOnly, false)
 }
 
+// readScopedPresentation reads token-only intervals, real requests, and pricing
+// exclusively from one caller-pinned read transaction and admitted selection
+// view, then reduces them into a PresentationReport. Neither requests nor
+// pricing ever query live s.Store.DB outside tx.
+func readScopedPresentation(ctx context.Context, tx *sql.Tx, selected cjsiIntervalSelection, now time.Time, location *time.Location, todayOnly bool, read readScopedRequests) (PresentationReport, error) {
+	if tx == nil || read == nil {
+		return PresentationReport{}, errors.New("missing admitted presentation snapshot or request reader")
+	}
+	if location == nil {
+		location = time.Local
+	}
+	today := localDateStart(now, location)
+	end := today.AddDate(0, 0, 1)
+	start := today.AddDate(0, 0, -(presentationDailyLimit - 1))
+	if todayOnly {
+		start = today
+	}
+	members, err := readSelectedIntervalMembers(ctx, tx, selected, StatsOptions{From: start, To: end}, "")
+	if err != nil {
+		return PresentationReport{}, err
+	}
+	events, resolver, err := read(ctx, tx, scopedRequestWindow{from: start, to: end})
+	if err != nil {
+		return PresentationReport{}, err
+	}
+	if events == nil {
+		return PresentationReport{}, errors.New("admitted request set unavailable")
+	}
+	if len(events) > 0 && resolver == nil {
+		return PresentationReport{}, errors.New("admitted request pricing inputs unavailable")
+	}
+	seen := make(map[string]struct{}, len(events))
+	for _, e := range events {
+		if _, duplicate := seen[e.Key]; e.Key == "" || duplicate {
+			return PresentationReport{}, errors.New("invalid admitted request key")
+		}
+		seen[e.Key] = struct{}{}
+		at, parseErr := time.Parse(time.RFC3339Nano, e.EventAt)
+		if parseErr != nil {
+			return PresentationReport{}, parseErr
+		}
+		if at.Before(start) || !at.Before(end) {
+			return PresentationReport{}, errors.New("admitted request outside presentation window")
+		}
+	}
+	pricing := func(event storedEvent) (eventAttribution, Result, error) {
+		attribution, err := resolver.priceForEvent(event)
+		if err != nil {
+			return eventAttribution{}, Result{}, err
+		}
+		calculated, err := calculateAttributedEvent(event, attribution)
+		if err != nil {
+			return eventAttribution{}, Result{}, err
+		}
+		return attribution, calculated, nil
+	}
+	return reducePresentation(events, members, pricing, now, location, todayOnly)
+}
+
 func (s *Service) presentationProjected(ctx context.Context, now time.Time, location *time.Location, todayOnly, incremental bool) (PresentationReport, error) {
 	defer perftrace.Span(perftrace.UsagePresentation)()
+	if location == nil {
+		location = time.Local
+	}
+	today := localDateStart(now, location)
+	end := today.AddDate(0, 0, 1)
+	start90 := today.AddDate(0, 0, -(presentationDailyLimit - 1))
+	if todayOnly {
+		start90 = today
+	}
+	events, pricing, err := s.presentationInputs(ctx, start90, end, now, incremental)
+	if err != nil {
+		return PresentationReport{}, err
+	}
+	return reducePresentation(events, []ledger.Member{}, pricing, now, location, todayOnly)
+}
+
+func reducePresentation(events []storedEvent, intervals []ledger.Member, pricing projectedPricing, now time.Time, location *time.Location, todayOnly bool) (PresentationReport, error) {
+	if intervals == nil {
+		return PresentationReport{}, errors.New("admitted intervals unavailable")
+	}
+	uniqueIntervals, err := validateUniqueIntervals(intervals, "")
+	if err != nil {
+		return PresentationReport{}, err
+	}
 	if location == nil {
 		location = time.Local
 	}
@@ -281,10 +399,6 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 		periods = periods[:1]
 	}
 
-	events, pricing, err := s.presentationInputs(ctx, start90, end, now, incremental)
-	if err != nil {
-		return PresentationReport{}, err
-	}
 	scopes := map[string]*presentationScopeAccumulator{
 		"all": newPresentationScopeAccumulator(periods), "codex": newPresentationScopeAccumulator(periods), "claude": newPresentationScopeAccumulator(periods),
 	}
@@ -301,7 +415,9 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 			return PresentationReport{}, calculateErr
 		}
 		if !at.Before(today) {
-			summary.add(event, attribution, calculated)
+			if err := summary.add(event, attribution, calculated); err != nil {
+				return PresentationReport{}, err
+			}
 		}
 		aggregated := aggregateAttributedResult(calculated, attribution)
 		baseCost, err := decimal(aggregated.KnownCatalogBaseCost)
@@ -376,9 +492,19 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 		}
 	}
 
+	if len(uniqueIntervals) > 0 {
+		if err := applyIntervalsToPresentation(scopes, summary, uniqueIntervals, periods, start90, today, end, currentHour, todayOnly, location); err != nil {
+			return PresentationReport{}, err
+		}
+	}
+
 	report := PresentationReport{Available: true, Scopes: make([]PresentationScope, 0, 3), ClientSubtotals: PresentationClientSubtotals{Available: true, Items: []PresentationClientSubtotal{}}, Summary: summary.finish()}
 	for _, scopeName := range []string{"all", "codex", "claude"} {
-		report.Scopes = append(report.Scopes, buildPresentationScope(scopeName, scopes[scopeName], periods, start90, today, currentHour))
+		built, err := buildPresentationScope(scopeName, scopes[scopeName], periods, start90, today, currentHour)
+		if err != nil {
+			return PresentationReport{}, err
+		}
+		report.Scopes = append(report.Scopes, built)
 	}
 	for _, period := range periods {
 		for _, client := range []string{"codex", "claude"} {
@@ -388,6 +514,211 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 		}
 	}
 	return report, nil
+}
+
+func applyIntervalsToPresentation(scopes map[string]*presentationScopeAccumulator, summary *presentationSummaryBuilder, intervals []ledger.Member, periods []presentationPeriodDefinition, start90, today, end time.Time, currentHour int, todayOnly bool, location *time.Location) error {
+	todaySum, err := reduceScopedIntervals(intervals, StatsOptions{From: today, To: end}, "")
+	if err != nil {
+		return err
+	}
+	if todaySum.allocated > 0 {
+		var ok bool
+		if summary.summary.Tokens["input_tokens"], ok = addInt64Checked(summary.summary.Tokens["input_tokens"], todaySum.counts.Input); !ok {
+			return errors.New("presentation summary input overflow")
+		}
+		if summary.summary.Tokens["output_tokens"], ok = addInt64Checked(summary.summary.Tokens["output_tokens"], todaySum.counts.Output); !ok {
+			return errors.New("presentation summary output overflow")
+		}
+		if todaySum.counts.Known&ledger.CachedKnown != 0 {
+			if summary.summary.Tokens["cached_input_tokens"], ok = addInt64Checked(summary.summary.Tokens["cached_input_tokens"], todaySum.counts.Cached); !ok {
+				return errors.New("presentation summary cached overflow")
+			}
+		}
+		if todaySum.counts.Known&ledger.WriteKnown != 0 {
+			if summary.summary.Tokens["cache_write_tokens"], ok = addInt64Checked(summary.summary.Tokens["cache_write_tokens"], todaySum.counts.Write); !ok {
+				return errors.New("presentation summary write overflow")
+			}
+		}
+	}
+	if todaySum.allocated > 0 || todaySum.partial {
+		summary.complete = false
+		summary.providerComplete = false
+	}
+
+	for _, scopeName := range []string{"all", "codex"} {
+		scope := scopes[scopeName]
+		if scope == nil {
+			continue
+		}
+		for _, period := range periods {
+			periodValue := scope.periods[period.name]
+			hasUnprovedModel := false
+			for i := range intervals {
+				m := &intervals[i]
+				contained, intersects := m.Interval.InWindow(period.start, end)
+				if !intersects {
+					continue
+				}
+				if m.Model == "" {
+					hasUnprovedModel = true
+				}
+				if !contained {
+					periodValue.total.stats.catalogComplete = false
+					periodValue.total.stats.providerComplete = false
+					if m.Model != "" {
+						if acc := periodValue.models["codex\x00"+m.Model]; acc != nil {
+							acc.stats.catalogComplete = false
+							acc.stats.providerComplete = false
+						}
+					}
+					continue
+				}
+				if err := periodValue.total.addInterval(m.Tokens, m.Key.Thread); err != nil {
+					return err
+				}
+				if m.Model != "" {
+					modelKey := "codex\x00" + m.Model
+					if periodValue.models[modelKey] == nil {
+						periodValue.models[modelKey] = newPresentationAccumulator()
+					}
+					if err := periodValue.models[modelKey].addInterval(m.Tokens, m.Key.Thread); err != nil {
+						return err
+					}
+				}
+			}
+			if hasUnprovedModel {
+				for key, acc := range periodValue.models {
+					if strings.HasPrefix(key, "codex\x00") {
+						acc.stats.catalogComplete = false
+						acc.stats.providerComplete = false
+					}
+				}
+			}
+		}
+
+		// Daily buckets (bounded to [start90, end)): allocate only on full day
+		// containment; crossing intervals only mark cost incomplete.
+		for date := start90; !date.After(today); date = date.AddDate(0, 0, 1) {
+			nextDay := date.AddDate(0, 0, 1)
+			dateKey := date.Format("2006-01-02")
+			for i := range intervals {
+				m := &intervals[i]
+				contained, intersects := m.Interval.InWindow(date, nextDay)
+				if !intersects {
+					continue
+				}
+				if scope.daily[dateKey] == nil {
+					scope.daily[dateKey] = newPresentationAccumulator()
+				}
+				if contained {
+					if err := scope.daily[dateKey].addInterval(m.Tokens, m.Key.Thread); err != nil {
+						return err
+					}
+				} else {
+					scope.daily[dateKey].stats.catalogComplete = false
+					scope.daily[dateKey].stats.providerComplete = false
+				}
+			}
+		}
+
+		// Today's hourly buckets (0..currentHour): allocate only when both
+		// endpoints fall in the exact same local hour; crossing intervals
+		// never split proportionally across hours.
+		for i := range intervals {
+			m := &intervals[i]
+			_, intersectsToday := m.Interval.InWindow(today, end)
+			if !intersectsToday {
+				continue
+			}
+			loLocal := m.Interval.LowerAt.In(location)
+			hiLocal := m.Interval.UpperAt.In(location)
+			sameHour := !m.Interval.LowerAt.Before(today) && m.Interval.UpperAt.Before(end) &&
+				loLocal.Year() == hiLocal.Year() && loLocal.Month() == hiLocal.Month() &&
+				loLocal.Day() == hiLocal.Day() && loLocal.Hour() == hiLocal.Hour() &&
+				loLocal.Format("-0700") == hiLocal.Format("-0700")
+			if sameHour {
+				h := loLocal.Hour()
+				if h <= currentHour {
+					if scope.hourly[h] == nil {
+						scope.hourly[h] = newPresentationAccumulator()
+					}
+					if err := scope.hourly[h].addInterval(m.Tokens, m.Key.Thread); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			// Mark every touched local hour of today as cost-incomplete.
+			lo := m.Interval.LowerAt
+			if lo.Before(today) {
+				lo = today
+			}
+			hi := m.Interval.UpperAt
+			if !hi.Before(end) {
+				hi = end.Add(-time.Nanosecond)
+			}
+			cursor := bucketStart(lo, "hour", location)
+			for step := 0; step < 26 && !cursor.After(hi); step++ {
+				h := cursor.In(location).Hour()
+				if h <= currentHour {
+					if scope.hourly[h] == nil {
+						scope.hourly[h] = newPresentationAccumulator()
+					}
+					scope.hourly[h].stats.catalogComplete = false
+					scope.hourly[h].stats.providerComplete = false
+				}
+				cursor = cursor.Add(time.Hour)
+			}
+		}
+
+		// 30d rhythm (weekday x hour): same non-splitting rule.
+		if !todayOnly && len(periods) >= 3 {
+			rhythmStart := periods[2].start
+			for i := range intervals {
+				m := &intervals[i]
+				contained, intersects := m.Interval.InWindow(rhythmStart, end)
+				if !intersects {
+					continue
+				}
+				loLocal := m.Interval.LowerAt.In(location)
+				hiLocal := m.Interval.UpperAt.In(location)
+				sameHour := contained &&
+					loLocal.Year() == hiLocal.Year() && loLocal.Month() == hiLocal.Month() &&
+					loLocal.Day() == hiLocal.Day() && loLocal.Hour() == hiLocal.Hour() &&
+					loLocal.Format("-0700") == hiLocal.Format("-0700")
+				if sameHour {
+					key := [2]int{(int(loLocal.Weekday()) + 6) % 7, loLocal.Hour()}
+					if scope.rhythm[key] == nil {
+						scope.rhythm[key] = newPresentationAccumulator()
+					}
+					if err := scope.rhythm[key].addInterval(m.Tokens, m.Key.Thread); err != nil {
+						return err
+					}
+					continue
+				}
+				lo := m.Interval.LowerAt
+				if lo.Before(rhythmStart) {
+					lo = rhythmStart
+				}
+				hi := m.Interval.UpperAt
+				if !hi.Before(end) {
+					hi = end.Add(-time.Nanosecond)
+				}
+				cursor := bucketStart(lo, "hour", location)
+				for step := 0; step < 7*24 && !cursor.After(hi); step++ {
+					local := cursor.In(location)
+					key := [2]int{(int(local.Weekday()) + 6) % 7, local.Hour()}
+					if scope.rhythm[key] == nil {
+						scope.rhythm[key] = newPresentationAccumulator()
+					}
+					scope.rhythm[key].stats.catalogComplete = false
+					scope.rhythm[key].stats.providerComplete = false
+					cursor = cursor.Add(time.Hour)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result, costs ...*big.Rat) error {
@@ -429,7 +760,7 @@ func presentationScopeHasData(value *presentationScopeAccumulator) bool {
 		return true
 	}
 	for _, period := range value.periods {
-		if period.total.stats.events > 0 {
+		if period.total.stats.events > 0 || period.total.stats.tokens > 0 || len(period.total.stats.sessions) > 0 {
 			return true
 		}
 	}
@@ -455,12 +786,12 @@ func unavailablePresentationScope(name string, currentHour int) PresentationScop
 	}
 }
 
-func buildPresentationScope(name string, value *presentationScopeAccumulator, periods []presentationPeriodDefinition, start90, today time.Time, currentHour int) PresentationScope {
+func buildPresentationScope(name string, value *presentationScopeAccumulator, periods []presentationPeriodDefinition, start90, today time.Time, currentHour int) (PresentationScope, error) {
 	// `all` is an explicit scope rather than a missing client, so it keeps its
 	// families available and reports a measured zero. A concrete client with no
 	// data reports unavailable families instead.
 	if name != "all" && !presentationScopeHasData(value) {
-		return unavailablePresentationScope(name, currentHour)
+		return unavailablePresentationScope(name, currentHour), nil
 	}
 	scope := PresentationScope{
 		Client:  name,
@@ -472,15 +803,23 @@ func buildPresentationScope(name string, value *presentationScopeAccumulator, pe
 		Rhythm:  unavailablePresentationScope(name, currentHour).Rhythm,
 	}
 	if len(periods) >= 3 {
-		scope.Rhythm = presentationRhythm(value, periods[2].start)
+		rhythm, err := presentationRhythm(value, periods[2].start)
+		if err != nil {
+			return PresentationScope{}, err
+		}
+		scope.Rhythm = rhythm
 	}
 	for _, period := range periods {
 		periodValue := value.periods[period.name]
+		var cacheHitShare *string
+		if !periodValue.total.cacheHitIncomplete {
+			cacheHitShare = percentPointer(periodValue.total.stats.cachedRead, periodValue.total.logicalInput)
+		}
 		scope.Periods.Items = append(scope.Periods.Items, PresentationPeriod{
 			Period: period.name, Totals: presentationTotals(periodValue.total.stats),
 			AveragePerDay: presentationAverage(periodValue.total.stats, period.days),
 			Peak:          presentationPeak(value.daily, period.start, today),
-			CacheHitShare: percentPointer(periodValue.total.stats.cachedRead, periodValue.total.logicalInput),
+			CacheHitShare: cacheHitShare,
 			Models:        presentationModels(name, periodValue),
 		})
 	}
@@ -499,7 +838,7 @@ func buildPresentationScope(name string, value *presentationScopeAccumulator, pe
 		scope.Hourly.Items = append(scope.Hourly.Items, PresentationHourlyItem{Hour: hour, Value: presentationDisplayValue(item.stats)})
 	}
 	scope.Quality.Items = presentationQuality(value, periods)
-	return scope
+	return scope, nil
 }
 
 func presentationTotals(value *statsAccumulator) PresentationTotals {
@@ -682,14 +1021,18 @@ func presentationPricing(value *presentationScopeAccumulator, periods []presenta
 	return PresentationPricing{Available: true, Items: items}
 }
 
-func presentationRhythm(value *presentationScopeAccumulator, start time.Time) PresentationRhythm {
+func presentationRhythm(value *presentationScopeAccumulator, start time.Time) (PresentationRhythm, error) {
 	maximum := int64(0)
 	weekdayTotals := [7]int64{}
 	for key, item := range value.rhythm {
 		if item.stats.tokens > maximum {
 			maximum = item.stats.tokens
 		}
-		weekdayTotals[key[0]] += item.stats.tokens
+		next, ok := addInt64Checked(weekdayTotals[key[0]], item.stats.tokens)
+		if !ok {
+			return PresentationRhythm{}, errors.New("presentation rhythm weekday token overflow")
+		}
+		weekdayTotals[key[0]] = next
 	}
 	intensities := make([]int, 0, 7*24)
 	tokens := make([]int64, 0, 7*24)
@@ -703,7 +1046,14 @@ func presentationRhythm(value *presentationScopeAccumulator, start time.Time) Pr
 				item = newPresentationAccumulator()
 			}
 			if maximum > 0 {
-				intensity = int((item.stats.tokens*100 + maximum/2) / maximum)
+				if item.stats.tokens <= (math.MaxInt64-maximum/2)/100 {
+					intensity = int((item.stats.tokens*100 + maximum/2) / maximum)
+				} else {
+					num := new(big.Int).Mul(big.NewInt(item.stats.tokens), big.NewInt(100))
+					num.Add(num, big.NewInt(maximum/2))
+					num.Div(num, big.NewInt(maximum))
+					intensity = int(num.Int64())
+				}
 			}
 			display := presentationDisplayValue(item.stats)
 			intensities = append(intensities, intensity)
@@ -723,7 +1073,7 @@ func presentationRhythm(value *presentationScopeAccumulator, start time.Time) Pr
 		Available: true, Intensities: intensities, Tokens: tokens,
 		ProviderCosts: providerCosts, CostIncomplete: costIncomplete,
 		ActiveDays: activeDays, BusiestDay: busiest, QuietestDay: quietest,
-	}
+	}, nil
 }
 
 func presentationDayNames(totals [7]int64) (string, string) {
@@ -782,7 +1132,12 @@ func newPresentationSummaryBuilder() *presentationSummaryBuilder {
 	}
 }
 
-func (b *presentationSummaryBuilder) add(event storedEvent, attribution eventAttribution, result Result) {
+func (b *presentationSummaryBuilder) add(event storedEvent, attribution eventAttribution, result Result) error {
+	for key, value := range event.Tokens {
+		if _, ok := addInt64Checked(b.summary.Tokens[key], value); !ok {
+			return errors.New("presentation summary token overflow")
+		}
+	}
 	b.summary.Counts["events"]++
 	b.summary.Counts[attribution.quality]++
 	b.summary.AttributionReasons[attribution.reason]++
@@ -830,10 +1185,11 @@ func (b *presentationSummaryBuilder) add(event storedEvent, attribution eventAtt
 		for _, component := range result.Unpriced {
 			b.unpriced[component] = true
 		}
-		return
+		return nil
 	}
 	b.summary.Counts["priced"]++
 	model.PricedEvents++
+	return nil
 }
 
 func (b *presentationSummaryBuilder) finish() Summary {

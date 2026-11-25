@@ -629,6 +629,17 @@ func (s Service) loadUsage(ctx context.Context, core *store.Store, now time.Time
 	result.Snapshot.Usage.Presentation = presentation
 }
 
+func summaryPricingComplete(summary usage.Summary) bool {
+	if len(summary.Unpriced) != 0 {
+		return false
+	}
+	if (summary.KnownCatalogBaseCost != nil && summary.CatalogBaseCost == nil) ||
+		(summary.KnownProviderCost != nil && summary.ProviderCost == nil) {
+		return false
+	}
+	return true
+}
+
 func usageSnapshot(summary usage.Summary, from, to time.Time) UsageSnapshot {
 	return UsageSnapshot{
 		Available: true, From: from.Format(time.RFC3339), To: to.Format(time.RFC3339),
@@ -639,6 +650,13 @@ func usageSnapshot(summary usage.Summary, from, to time.Time) UsageSnapshot {
 		PricingComplete:             len(summary.Unpriced) == 0, UnpricedComponents: len(summary.Unpriced),
 		Warnings: nonNilStrings(summary.Warnings), Presentation: usage.EmptyPresentationReport(),
 	}
+}
+
+func usageSnapshotFromPresentation(presentation usage.PresentationReport, from, to time.Time) UsageSnapshot {
+	snapshot := usageSnapshot(presentation.Summary, from, to)
+	snapshot.PricingComplete = summaryPricingComplete(presentation.Summary)
+	snapshot.Presentation = presentation
+	return snapshot
 }
 
 func localDay(now time.Time, location *time.Location) (time.Time, time.Time) {
@@ -736,19 +754,28 @@ func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now
 func (s Service) workSignalsSnapshotWithProjection(ctx context.Context, core *store.Store, now time.Time, projected bool) (WorkSignalsSnapshot, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
-	var options []usage.SignalOptions
-	for _, period := range desktopPeriodRanges(now, s.location()) {
-		for _, client := range []string{"", "codex", "claude"} {
-			options = append(options, usage.SignalOptions{Period: period.name, From: period.start, To: period.end, Client: client, IncludeSub: true})
-		}
-	}
 	loadReports := service.SignalsBatch
 	if projected {
 		loadReports = service.ProjectedSignalsBatch
 	}
+	return buildWorkSignalsSnapshot(ctx, now, s.location(), loadReports)
+}
+
+// The admitted desktop path supplies a loader bound to its presentation transaction.
+func buildWorkSignalsSnapshot(ctx context.Context, now time.Time, loc *time.Location, loadReports func(context.Context, []usage.SignalOptions) ([]usage.SignalReport, error)) (WorkSignalsSnapshot, error) {
+	periods := desktopPeriodRanges(now, loc)
+	var options []usage.SignalOptions
+	for _, period := range periods {
+		for _, client := range []string{"", "codex", "claude"} {
+			options = append(options, usage.SignalOptions{Period: period.name, From: period.start, To: period.end, Client: client, IncludeSub: true})
+		}
+	}
 	reports, err := loadReports(ctx, options)
 	if err != nil {
 		return WorkSignalsSnapshot{}, err
+	}
+	if len(reports) != len(options) {
+		return WorkSignalsSnapshot{}, errors.New("invalid work signal report count")
 	}
 	reportIndex := 0
 	snapshot := WorkSignalsSnapshot{
@@ -756,7 +783,7 @@ func (s Service) workSignalsSnapshotWithProjection(ctx context.Context, core *st
 		Workflow: WorkSignalWorkflowFamily{Available: true, Items: []WorkSignalWorkflowItem{}},
 		Tooling:  WorkSignalToolingFamily{Available: true, Items: []WorkSignalToolingItem{}},
 	}
-	for _, period := range desktopPeriodRanges(now, s.location()) {
+	for _, period := range periods {
 		for _, client := range []string{"all", "codex", "claude"} {
 			report := reports[reportIndex]
 			reportIndex++

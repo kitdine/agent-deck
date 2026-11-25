@@ -2,7 +2,6 @@ package usage
 
 import (
 	"context"
-	"database/sql"
 	"math/big"
 	"strconv"
 	"time"
@@ -153,12 +152,16 @@ func (s *Service) SessionActivityCategory(ctx context.Context, client, sessionID
 	if err != nil {
 		return SessionCategory{}, err
 	}
-	result := SessionCategory{CostBasis: fold.basis()}
+	return fold.sessionCategory(), nil
+}
+
+func (f activityCostFold) sessionCategory() SessionCategory {
+	result := SessionCategory{CostBasis: f.basis()}
 	if result.CostBasis == CostBasisNone {
-		return result, nil
+		return result
 	}
-	result.Kind = fold.dominantKind()
-	return result, nil
+	result.Kind = f.dominantKind()
+	return result
 }
 
 type turnKey struct {
@@ -173,7 +176,7 @@ type turnCategory struct{ kind, sub string }
 // here rather than at each call site: counting one would inflate turn counts,
 // and attributing cost to one would attribute it to a classification nobody has
 // made.
-func classifiedTurns(ctx context.Context, db *sql.DB, client, session string) (map[turnKey]turnCategory, error) {
+func classifiedTurns(ctx context.Context, db signalQueryer, client, session string) (map[turnKey]turnCategory, error) {
 	query := `SELECT client,session_id,turn_index,activity_kind,activity_sub FROM usage_work_signals WHERE state=?`
 	args := []any{signalStateClassified}
 	if client != "" {
@@ -242,14 +245,29 @@ func newActivityCostFold() activityCostFold {
 // `priced` exactly when that figure exists, and a provider-adjusted figure would
 // report an unpriced scope as a confident zero.
 func (s *Service) foldActivityCost(ctx context.Context, events []storedEvent, turns map[turnKey]turnCategory) (activityCostFold, error) {
-	fold := newActivityCostFold()
 	if len(events) == 0 {
-		return fold, nil
+		return newActivityCostFold(), nil
 	}
 	resolver, err := s.loadReadPriceResolver(ctx, s.now())
 	if err != nil {
-		return fold, err
+		return activityCostFold{}, err
 	}
+	return foldSignalActivity(events, turns, signalEventPricing(resolver.priceForEvent))
+}
+
+func signalEventPricing(price eventPricing) projectedPricing {
+	return func(event storedEvent) (eventAttribution, Result, error) {
+		attribution, err := price(event)
+		if err != nil {
+			return attribution, Result{}, err
+		}
+		result, err := calculateAttributedEvent(event, attribution)
+		return attribution, result, err
+	}
+}
+
+func foldSignalActivity(events []storedEvent, turns map[turnKey]turnCategory, pricing projectedPricing) (activityCostFold, error) {
+	fold := newActivityCostFold()
 	for _, event := range events {
 		key := turnKey{client: event.Client, session: event.SessionID, index: event.TurnIndex}
 		category, covered := turns[key]
@@ -257,13 +275,9 @@ func (s *Service) foldActivityCost(ctx context.Context, events []storedEvent, tu
 			fold.uncovered++
 			continue
 		}
-		attribution, priceErr := resolver.priceForEvent(event)
-		if priceErr != nil {
-			return fold, priceErr
-		}
-		result, calculateErr := calculateAttributedEvent(event, attribution)
-		if calculateErr != nil {
-			return fold, calculateErr
+		_, result, err := pricing(event)
+		if err != nil {
+			return fold, err
 		}
 		known, decodeErr := decimal(result.KnownCatalogBaseCost)
 		if decodeErr != nil {
