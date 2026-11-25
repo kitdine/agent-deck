@@ -149,7 +149,11 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 			if err = store.BackupSQLiteFile(ctx, source, snapshot); err != nil {
 				return Manifest{}, fmt.Errorf("snapshot session database: %w", err)
 			}
-			if entries[sessionsName], err = os.ReadFile(snapshot); err != nil {
+			clean := filepath.Join(staging, "sessions.compact.sqlite3")
+			if err = preparePortableSession(ctx, snapshot, clean); err != nil {
+				return Manifest{}, err
+			}
+			if entries[sessionsName], err = os.ReadFile(clean); err != nil {
 				return Manifest{}, err
 			}
 			if err = validateSessionSnapshot(ctx, entries[sessionsName], sessionSnapshotSchemaVersion); err != nil {
@@ -227,6 +231,12 @@ func preparePortableCore(ctx context.Context, snapshotPath, compactPath string) 
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
 		}
 	}()
+	var managed bool
+	if err = conn.QueryRowContext(ctx, `SELECT version>?
+		OR EXISTS(SELECT 1 FROM sqlite_schema WHERE lower(name) GLOB 'cjsi_*')
+		FROM schema_metadata`, store.CurrentSchemaVersion).Scan(&managed); err != nil || managed {
+		return fmt.Errorf("%w: unsupported portable core layout", ErrInvalidArchive)
+	}
 	for _, table := range originNonPortableTables {
 		var present int
 		if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
@@ -508,6 +518,9 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 	}
 	if sessionData, included := entries[sessionsName]; included {
 		if err = validateSessionSnapshot(ctx, sessionData, manifest.DatabaseSchemas[sessionsName]); err != nil {
+			return Manifest{}, err
+		}
+		if entries[sessionsName], err = sanitizeRestoredSession(ctx, sessionData); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -948,11 +961,12 @@ func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[s
 		_ = database.Close()
 		return nil, portableCoreSchema{}, fmt.Errorf("%w: database schema", ErrInvalidArchive)
 	}
-	var hasIdentityTable bool
-	if err := database.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master
-        WHERE type='table' AND name='quota_identities')`).Scan(&hasIdentityTable); err != nil {
+	var hasIdentityTable, managed bool
+	if err := database.DB.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_identities'),
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE lower(name) GLOB 'cjsi_*')`).Scan(&hasIdentityTable, &managed); err != nil || managed {
 		_ = database.Close()
-		return nil, portableCoreSchema{}, err
+		return nil, portableCoreSchema{}, fmt.Errorf("%w: unsupported portable core layout", ErrInvalidArchive)
 	}
 	schema := portableCoreSchema{compact: version >= 36 || hasIdentityTable, prematureIdentityTable: version < 36 && hasIdentityTable}
 	if err = database.Close(); err != nil {
@@ -996,6 +1010,10 @@ func sortedReferenceOwners(values map[string]int64) []string {
 }
 
 func validateSessionSnapshot(ctx context.Context, data []byte, expected int) error {
+	return validateSessionArchive(ctx, data, expected, false)
+}
+
+func validateSessionArchive(ctx context.Context, data []byte, expected int, requirePortableOrder bool) error {
 	if expected != sessionSnapshotSchemaVersion {
 		return fmt.Errorf("%w: session database schema", ErrInvalidArchive)
 	}
@@ -1020,11 +1038,22 @@ func validateSessionSnapshot(ctx context.Context, data []byte, expected int) err
 	if err = database.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		return fmt.Errorf("%w: session database integrity", ErrInvalidArchive)
 	}
+	if err := rejectPrivateSessionSchema(ctx, database); err != nil {
+		return err
+	}
 	for _, table := range []string{"session_sources", "session_metadata", "session_documents"} {
 		var count int
-		if err = database.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name=?", table).Scan(&count); err != nil || count != 1 {
+		if err = database.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?", table).Scan(&count); err != nil || count != 1 {
 			return fmt.Errorf("%w: session database schema", ErrInvalidArchive)
 		}
+	}
+	if requirePortableOrder {
+		return validatePortableSessionOrder(ctx, database)
+	}
+	var order bool
+	if err = database.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_schema
+		WHERE lower(name) GLOB 'portable_session_*')`).Scan(&order); err != nil || order {
+		return fmt.Errorf("%w: session order requires a managed core", ErrInvalidArchive)
 	}
 	return nil
 }

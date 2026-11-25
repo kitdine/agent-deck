@@ -66,6 +66,7 @@ type Service struct {
 	Now               func() time.Time
 	LockProcessCheck  store.LockProcessCheck
 	RegistrationProbe func(context.Context, bool) RegistrationDetails
+	cjsiLayoutProbe   func(context.Context, string) (bool, error)
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
@@ -103,10 +104,28 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
+		var ahead *store.SchemaAhead
+		if errors.As(err, &ahead) && ahead.Stored == cjsiCoreSchemaVersion {
+			probe := s.cjsiLayoutProbe
+			if probe == nil {
+				probe = hasCJSILayout
+			}
+			managed, probeErr := probe(ctx, s.StateRoot)
+			if ctx.Err() != nil {
+				return Report{}, ctx.Err()
+			}
+			if probeErr != nil {
+				report.Partial = true
+				report.add(Check{Name: "database", Status: "error", Code: databaseCode(probeErr)})
+				return report, nil
+			}
+			if managed {
+				return s.checkCJSIDatabase(ctx, full, report)
+			}
+		}
 		report.Partial = true
 		check := Check{Name: "database", Status: "error", Code: databaseCode(err)}
-		var ahead *store.SchemaAhead
-		if errors.As(err, &ahead) {
+		if ahead != nil {
 			check.Count = ahead.Stored
 			check.SupportedCount = ahead.Supported
 		}
@@ -183,20 +202,7 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if !sessionHealth.Present {
-		report.add(Check{Name: "sessions", Status: "warning", Code: "session_index_missing", Recovery: "agentdeck session rebuild"})
-	} else if !sessionHealth.FTSAvailable || sessionHealth.Integrity != "ok" {
-		report.add(Check{Name: "sessions", Status: "error", Code: "session_index_unhealthy", Recovery: "agentdeck session rebuild"})
-	} else {
-		report.add(Check{Name: "sessions", Status: "ok"})
-	}
-	if full {
-		if sessionHealth.UnreadableSources > 0 {
-			report.add(Check{Name: "session_sources", Status: "warning", Code: "session_source_unreadable", Count: sessionHealth.UnreadableSources, Recovery: "agentdeck session rebuild"})
-		} else {
-			report.add(Check{Name: "session_sources", Status: "ok"})
-		}
-	}
+	addSessionHealth(&report, sessionHealth, full)
 	extensionReport, err := extension.Doctor(ctx, database, s.Home, s.Workdir)
 	if err != nil {
 		var inventoryUnreadable *extension.ErrExtensionInventoryUnreadable
@@ -248,6 +254,23 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	}
 	report.add(boundedRegistrationCheck(ctx, full, probe))
 	return report, nil
+}
+
+func addSessionHealth(report *Report, sessionHealth session.Health, full bool) {
+	if !sessionHealth.Present {
+		report.add(Check{Name: "sessions", Status: "warning", Code: "session_index_missing", Recovery: "agentdeck session rebuild"})
+	} else if !sessionHealth.FTSAvailable || sessionHealth.Integrity != "ok" {
+		report.add(Check{Name: "sessions", Status: "error", Code: "session_index_unhealthy", Recovery: "agentdeck session rebuild"})
+	} else {
+		report.add(Check{Name: "sessions", Status: "ok"})
+	}
+	if full {
+		if sessionHealth.UnreadableSources > 0 {
+			report.add(Check{Name: "session_sources", Status: "warning", Code: "session_source_unreadable", Count: sessionHealth.UnreadableSources, Recovery: "agentdeck session rebuild"})
+		} else {
+			report.add(Check{Name: "session_sources", Status: "ok"})
+		}
+	}
 }
 
 func (s Service) checkProjectAttributionGate(
