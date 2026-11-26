@@ -62,6 +62,7 @@ type Vault struct {
 	machineIdentity MachineIdentity
 	random          io.Reader
 	syncStateRoot   func(string) error
+	observeNewKey   func(os.FileInfo, [sha256.Size]byte) error
 }
 
 func New(stateRoot string, machineIdentity MachineIdentity) *Vault {
@@ -159,11 +160,21 @@ func (v *Vault) InspectKeyIDs(ctx context.Context) (map[int]string, error) {
 	return keyIDs, nil
 }
 
+// WithNewKeyObserver returns a vault that reports an exclusively created
+// key to the observer during InitializeNew. The identity comes from the
+// temporary creation descriptor, and the digest covers the bytes written.
+// The observer runs after a successful link and before directory sync.
+func (v *Vault) WithNewKeyObserver(observe func(os.FileInfo, [sha256.Size]byte) error) *Vault {
+	observed := *v
+	observed.observeNewKey = observe
+	return &observed
+}
+
 // InitializeNew atomically creates a fresh credential key and reports whether
 // this caller owns the new file even when machine-key derivation later fails.
 // It never reuses an existing key.
 func (v *Vault) InitializeNew(ctx context.Context) (bool, error) {
-	seed, err := v.createSeedExclusive()
+	seed, err := v.createSeedExclusiveObserved(v.observeNewKey)
 	if err != nil {
 		return false, err
 	}
@@ -264,6 +275,10 @@ func (v *Vault) createSeed() ([]byte, error) {
 }
 
 func (v *Vault) createSeedExclusive() ([]byte, error) {
+	return v.createSeedExclusiveObserved(nil)
+}
+
+func (v *Vault) createSeedExclusiveObserved(observe func(os.FileInfo, [sha256.Size]byte) error) ([]byte, error) {
 	root, err := platform.GuardStateRoot(v.stateRoot)
 	if err != nil {
 		return nil, err
@@ -295,6 +310,10 @@ func (v *Vault) createSeedExclusive() ([]byte, error) {
 	if err == nil {
 		err = temporary.Sync()
 	}
+	var identity os.FileInfo
+	if err == nil && observe != nil {
+		identity, err = temporary.Stat()
+	}
 	if closeErr := temporary.Close(); err == nil {
 		err = closeErr
 	}
@@ -305,8 +324,16 @@ func (v *Vault) createSeedExclusive() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := v.syncStateRoot(v.stateRoot); err != nil {
-		return nil, err
+	var observeErr error
+	if observe != nil {
+		observeErr = observe(identity, sha256.Sum256(contents))
+	}
+	syncErr := v.syncStateRoot(v.stateRoot)
+	if observeErr != nil {
+		return nil, errors.Join(observeErr, syncErr)
+	}
+	if syncErr != nil {
+		return nil, syncErr
 	}
 	return seed, nil
 }

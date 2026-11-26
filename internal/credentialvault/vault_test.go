@@ -793,3 +793,52 @@ func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 func fixedMachine(value string) MachineIdentity {
 	return func(context.Context) (string, error) { return value, nil }
 }
+
+func TestInitializeNewObserverReportsCreationIdentityEvenWhenDirectorySyncFails(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	vault := New(root, fixedMachine("machine-a"))
+	vault.random = bytes.NewReader(syntheticSeedA)
+	keyPath := vault.KeyPath()
+	syncErr := errors.New("injected directory sync failure")
+
+	var createdInfo os.FileInfo
+	var observedDigest [sha256.Size]byte
+	observed := vault.WithNewKeyObserver(func(info os.FileInfo, digest [sha256.Size]byte) error {
+		if createdInfo != nil {
+			t.Fatal("key observer ran twice")
+		}
+		createdInfo, observedDigest = info, digest
+		return nil
+	})
+	observed.syncStateRoot = func(string) error {
+		info, err := os.Lstat(keyPath)
+		if err != nil || createdInfo == nil || !os.SameFile(createdInfo, info) {
+			t.Fatalf("observer did not report the published inode before sync: %v", err)
+		}
+		contents, err := os.ReadFile(keyPath)
+		if err != nil || sha256.Sum256(contents) != observedDigest {
+			t.Fatalf("observer digest did not match created key: %v", err)
+		}
+		replacement := filepath.Join(root, "replacement")
+		if err := os.WriteFile(replacement, contents, platform.FileMode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(replacement, keyPath); err != nil {
+			t.Fatal(err)
+		}
+		return syncErr
+	}
+
+	if created, err := observed.InitializeNew(ctx); created || !errors.Is(err, syncErr) {
+		t.Fatalf("InitializeNew with directory sync failure = %t, %v", created, err)
+	}
+	foreign, err := os.Lstat(keyPath)
+	if err != nil || os.SameFile(createdInfo, foreign) {
+		t.Fatalf("observer reported the replacement inode: %v", err)
+	}
+	observed.random = bytes.NewReader(syntheticSeedB)
+	if created, err := observed.InitializeNew(ctx); created || !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("InitializeNew with an existing key = %t, %v", created, err)
+	}
+}

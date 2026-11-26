@@ -53,7 +53,11 @@ func resumeCJSIProductionLayout(ctx context.Context, root string, core *sql.DB) 
 }
 
 func resumeCJSILayoutWithReady(ctx context.Context, root string, core *sql.DB, commitReady func(context.Context, cjsiLayoutJournal, cjsiLayoutJournal) error) error {
-	if core == nil || !filepath.IsAbs(root) {
+	return resumeCJSILayoutWithPrepare(ctx, root, core, prepareCJSIProductionIndex, commitReady)
+}
+
+func resumeCJSILayoutWithPrepare(ctx context.Context, root string, core *sql.DB, prepare func(context.Context, string) (int64, cjsiIndexSeal, error), commitReady func(context.Context, cjsiLayoutJournal, cjsiLayoutJournal) error) error {
+	if core == nil || !filepath.IsAbs(root) || prepare == nil {
 		return errCJSILayoutInvalid
 	}
 	version, err := schemaVersion(ctx, core)
@@ -80,7 +84,7 @@ func resumeCJSILayoutWithReady(ctx context.Context, root string, core *sql.DB, c
 			}
 			return journal.advance(ctx, prior, next)
 		},
-		prepare:  prepareCJSIProductionIndex,
+		prepare:  prepare,
 		readSeal: readCJSIProductionSeal,
 	}
 	err = resumeCJSILayoutInstall(ctx, root, install)
@@ -159,7 +163,11 @@ func retireCJSILegacySnapshot(ctx context.Context, root string, ready cjsiLayout
 
 // Only the scratch copy owned by recovery is mutable here. Every return
 // closes its SQLite handles, including errors prior to seal commit.
-func prepareCJSIProductionIndex(ctx context.Context, path string) (epoch int64, seal cjsiIndexSeal, err error) {
+func prepareCJSIProductionIndex(ctx context.Context, path string) (int64, cjsiIndexSeal, error) {
+	return prepareCJSIProductionIndexWithOptions(ctx, path, false, false)
+}
+
+func prepareCJSIProductionIndexWithOptions(ctx context.Context, path string, forceMintEpoch, importPortableOrder bool) (epoch int64, seal cjsiIndexSeal, err error) {
 	if !filepath.IsAbs(path) || filepath.Base(path) != cjsiPreparedName {
 		return 0, cjsiIndexSeal{}, errCJSILayoutInvalid
 	}
@@ -203,7 +211,7 @@ func prepareCJSIProductionIndex(ctx context.Context, path string) (epoch int64, 
 		return 0, cjsiIndexSeal{}, err
 	}
 	defer tx.Rollback()
-	if rebuilt {
+	if rebuilt || forceMintEpoch {
 		epoch, err = MintSessionIndexEpoch(ctx, tx)
 	} else if err = ensureSessionIndexGeneration(ctx, tx); err == nil {
 		err = tx.QueryRowContext(ctx, `SELECT epoch FROM main.session_index_generation WHERE singleton=1`).Scan(&epoch)
@@ -218,7 +226,7 @@ func prepareCJSIProductionIndex(ctx context.Context, path string) (epoch int64, 
 	if err := initializeCJSIIndexSeal(ctx, tx, epoch, seal); err != nil {
 		return 0, cjsiIndexSeal{}, err
 	}
-	if err := initializeCJSIPrivateIndex(ctx, tx, seal); err != nil {
+	if err := initializeCJSIPrivateIndexWithOptions(ctx, tx, seal, importPortableOrder); err != nil {
 		return 0, cjsiIndexSeal{}, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -97,7 +97,20 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 		return Manifest{}, err
 	}
 	s.StateRoot = root
-	if s.Core == nil || s.Vault == nil || passphrase == "" {
+	if s.Vault == nil || passphrase == "" {
+		return Manifest{}, fmt.Errorf("%w: missing backup input", ErrInvalidArchive)
+	}
+	managed, managedErr := store.ResolveCJSIRuntimeRoot(ctx, root)
+	if managedErr != nil {
+		if errors.Is(managedErr, store.ErrStateBusy) || ctx.Err() != nil {
+			return Manifest{}, managedErr
+		}
+		return Manifest{}, fmt.Errorf("%w: %w", ErrInvalidArchive, managedErr)
+	}
+	if managed != nil {
+		return s.createManaged(ctx, destination, passphrase, includeSessions)
+	}
+	if s.Core == nil {
 		return Manifest{}, fmt.Errorf("%w: missing backup input", ErrInvalidArchive)
 	}
 	staging, err := os.MkdirTemp("", "agentdeck-backup-")
@@ -314,24 +327,28 @@ func validatePortableQuotaCore(ctx context.Context, path string) error {
 // type is checked on the stored value. Derived rows and receipts are not
 // validated: Restore discards them.
 func validateOriginState(ctx context.Context, database *store.Store) error {
+	return validateOriginStateDB(ctx, database.DB)
+}
+
+func validateOriginStateDB(ctx context.Context, db *sql.DB) error {
 	// Values are not enough: the write path upserts on these keys, so a table
 	// that lost its key would restore cleanly and then refuse every explicit set.
 	for table, columns := range map[string][]string{"origin_preferences": {"singleton"}, "origin_overrides": {"client", "session_id"}} {
-		if err := requireUniqueKey(ctx, database.DB, table, columns); err != nil {
+		if err := requireUniqueKey(ctx, db, table, columns); err != nil {
 			return err
 		}
 	}
 	var defaults int
-	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences`).Scan(&defaults); err != nil || defaults > 1 {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences`).Scan(&defaults); err != nil || defaults > 1 {
 		return fmt.Errorf("%w: origin preference", ErrInvalidArchive)
 	}
 	var invalid int
-	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences WHERE typeof(singleton)!='integer' OR singleton!=1
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM origin_preferences WHERE typeof(singleton)!='integer' OR singleton!=1
  OR typeof(scope)!='text' OR scope NOT IN ('work','auxiliary','all')
  OR typeof(revision)!='integer' OR revision<=0 OR typeof(updated_at)!='text'`).Scan(&invalid); err != nil || invalid != 0 {
 		return fmt.Errorf("%w: origin preference", ErrInvalidArchive)
 	}
-	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM origin_overrides WHERE typeof(client)!='text' OR client NOT IN ('codex','claude')
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM origin_overrides WHERE typeof(client)!='text' OR client NOT IN ('codex','claude')
  OR typeof(session_id)!='text' OR session_id='' OR length(session_id)>256
  OR instr(session_id,char(10))>0 OR instr(session_id,char(13))>0 OR instr(session_id,'/')>0
  OR typeof(binding_digest)!='text' OR binding_digest='' OR length(binding_digest)>256
@@ -342,7 +359,7 @@ func validateOriginState(ctx context.Context, database *store.Store) error {
 		return fmt.Errorf("%w: origin override", ErrInvalidArchive)
 	}
 	var duplicates int
-	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM origin_overrides GROUP BY client,session_id HAVING count(*)>1)`).Scan(&duplicates); err != nil || duplicates != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM origin_overrides GROUP BY client,session_id HAVING count(*)>1)`).Scan(&duplicates); err != nil || duplicates != 0 {
 		return fmt.Errorf("%w: origin override identity", ErrInvalidArchive)
 	}
 	return nil
@@ -515,6 +532,9 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 	}
 	if err = validateCredentials(credentials, sortedReferenceOwners(referenceOwners)); err != nil {
 		return Manifest{}, err
+	}
+	if portableSchema.managed {
+		return restoreManaged(ctx, manifest, entries, credentials, targetRoot, machineIdentity)
 	}
 	if sessionData, included := entries[sessionsName]; included {
 		if err = validateSessionSnapshot(ctx, sessionData, manifest.DatabaseSchemas[sessionsName]); err != nil {
@@ -926,6 +946,7 @@ func clearRestoredQuotaState(ctx context.Context, db *sql.DB, compact bool) erro
 type portableCoreSchema struct {
 	compact                bool
 	prematureIdentityTable bool
+	managed                bool
 }
 
 // Some external archives carry the identity table before advertising its
@@ -941,6 +962,9 @@ func dropPrematureQuotaIdentityTable(ctx context.Context, path string) error {
 }
 
 func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[string]int64, portableCoreSchema, error) {
+	if expected == cjsiCoreSchemaVersion {
+		return validateManagedCoreSnapshot(ctx, data, expected)
+	}
 	root, err := os.MkdirTemp("", "agentdeck-restore-validate-")
 	if err != nil {
 		return nil, portableCoreSchema{}, err

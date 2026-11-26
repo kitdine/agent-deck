@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -257,24 +258,94 @@ func cjsiCandidateGuards() string {
 }
 
 func initializeCJSIPrivateIndex(ctx context.Context, tx *sql.Tx, seal cjsiIndexSeal) error {
+	return initializeCJSIPrivateIndexWithOptions(ctx, tx, seal, false)
+}
+
+func initializeCJSIPrivateIndexWithOptions(ctx context.Context, tx *sql.Tx, seal cjsiIndexSeal, importPortableOrder bool) error {
 	if _, err := tx.ExecContext(ctx, cjsiPrivateIndexSchema+cjsiCandidateGuards()); err != nil {
 		return err
 	}
-	// Include the highest allocated legacy row, even one without reachable
-	// metadata. Unreachable rows do not acquire a group or an ordinal here.
-	if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_index_state
-		(singleton,doc_id_high_water,compacted_ticket,compacted_attempt,compacted_seal,base_revision)
-		VALUES(1,max(0,coalesce((SELECT max(rowid) FROM main.session_documents),0)),0,0,?,
-		(SELECT revision FROM main.serving_generation WHERE singleton=1))`, seal.digest[:]); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_base_groups(source_path,client,session_id,sequence_id)
-		SELECT m.source_path,m.client,m.session_id,randomblob(32) FROM main.session_metadata m JOIN main.session_sources s USING(source_path);
-		INSERT INTO main.cjsi_base_order(source_path,client,session_id,doc_id,detail_ordinal)
-		SELECT g.source_path,g.client,g.session_id,d.rowid,
-		  row_number() OVER(PARTITION BY g.source_path,g.client,g.session_id ORDER BY d.rowid)
-		FROM main.session_documents d JOIN main.cjsi_base_groups g USING(source_path,client,session_id)`); err != nil {
-		return err
+	if importPortableOrder {
+		var hasTables bool
+		if err := tx.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='portable_session_state')
+			AND EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='portable_session_groups')
+			AND EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='portable_session_order')`).Scan(&hasTables); err != nil || !hasTables {
+			return errors.Join(errCJSILayoutInvalid, err)
+		}
+		var valid bool
+		if err := tx.QueryRowContext(ctx, `SELECT
+			NOT EXISTS(SELECT 1 FROM main.portable_session_order
+				WHERE typeof(source_path)<>'text' OR typeof(client)<>'text' OR typeof(session_id)<>'text')
+			AND (SELECT count(*) FROM main.portable_session_state)=1
+			AND EXISTS(SELECT 1 FROM main.portable_session_state WHERE singleton=1
+				AND typeof(doc_id_high_water)='integer' AND doc_id_high_water>=coalesce((SELECT max(doc_id) FROM main.portable_session_order),0))
+			AND NOT EXISTS(SELECT 1 FROM main.portable_session_groups
+				WHERE typeof(source_path)<>'text' OR typeof(client)<>'text' OR typeof(session_id)<>'text'
+				OR typeof(order_verified)<>'integer' OR order_verified NOT IN (0,1))
+			AND NOT EXISTS(SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_order
+				EXCEPT SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_groups)
+			AND NOT EXISTS(SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_groups GROUP BY 1,2,3 HAVING count(*)<>1)
+			AND NOT EXISTS(SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_groups
+				EXCEPT SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.session_metadata)
+			AND NOT EXISTS(SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.session_metadata
+				EXCEPT SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_groups)
+			AND NOT EXISTS(SELECT rowid,source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.session_documents
+				EXCEPT SELECT doc_id,source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_order)
+			AND NOT EXISTS(SELECT doc_id,source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_order
+				EXCEPT SELECT rowid,source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.session_documents)
+			AND NOT EXISTS(SELECT doc_id FROM main.portable_session_order GROUP BY doc_id
+				HAVING typeof(doc_id)<>'integer' OR doc_id<=0 OR count(*)<>1)
+			AND NOT EXISTS(SELECT 1 FROM main.portable_session_order WHERE typeof(detail_ordinal)<>'integer' OR detail_ordinal<=0)
+			AND NOT EXISTS(SELECT source_path COLLATE BINARY,client COLLATE BINARY,session_id COLLATE BINARY FROM main.portable_session_order
+				GROUP BY 1,2,3 HAVING max(detail_ordinal)<>count(*) OR count(DISTINCT detail_ordinal)<>count(*))`).Scan(&valid); err != nil || !valid {
+			return errors.Join(errCJSILayoutInvalid, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_index_state
+			(singleton,doc_id_high_water,compacted_ticket,compacted_attempt,compacted_seal,base_revision)
+			VALUES(1,(SELECT doc_id_high_water FROM main.portable_session_state WHERE singleton=1),0,0,?,
+			(SELECT revision FROM main.serving_generation WHERE singleton=1))`, seal.digest[:]); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_base_groups(source_path,client,session_id,order_verified,sequence_id)
+			SELECT g.source_path,g.client,g.session_id,g.order_verified,randomblob(32)
+			FROM main.portable_session_groups g
+			JOIN main.session_metadata m USING(source_path,client,session_id)
+			JOIN main.session_sources s USING(source_path);
+			INSERT INTO main.cjsi_base_order(source_path,client,session_id,doc_id,detail_ordinal)
+			SELECT o.source_path,o.client,o.session_id,o.doc_id,o.detail_ordinal
+			FROM main.portable_session_order o
+			JOIN main.cjsi_base_groups g USING(source_path,client,session_id)`); err != nil {
+			return err
+		}
+		var mismatch bool
+		if err := tx.QueryRowContext(ctx, `SELECT
+			(SELECT count(*) FROM main.cjsi_base_groups)<>(SELECT count(*) FROM main.portable_session_groups)
+			OR (SELECT count(*) FROM main.cjsi_base_order)<>(SELECT count(*) FROM main.portable_session_order)`).Scan(&mismatch); err != nil || mismatch {
+			return errCJSILayoutInvalid
+		}
+		if _, err := tx.ExecContext(ctx, `DROP TABLE main.portable_session_order;
+			DROP TABLE main.portable_session_groups;
+			DROP TABLE main.portable_session_state`); err != nil {
+			return err
+		}
+	} else {
+		// Include the highest allocated legacy row, even one without reachable
+		// metadata. Unreachable rows do not acquire a group or an ordinal here.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_index_state
+			(singleton,doc_id_high_water,compacted_ticket,compacted_attempt,compacted_seal,base_revision)
+			VALUES(1,max(0,coalesce((SELECT max(rowid) FROM main.session_documents),0)),0,0,?,
+			(SELECT revision FROM main.serving_generation WHERE singleton=1))`, seal.digest[:]); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO main.cjsi_base_groups(source_path,client,session_id,sequence_id)
+			SELECT m.source_path,m.client,m.session_id,randomblob(32) FROM main.session_metadata m JOIN main.session_sources s USING(source_path);
+			INSERT INTO main.cjsi_base_order(source_path,client,session_id,doc_id,detail_ordinal)
+			SELECT g.source_path,g.client,g.session_id,d.rowid,
+			  row_number() OVER(PARTITION BY g.source_path,g.client,g.session_id ORDER BY d.rowid)
+			FROM main.session_documents d JOIN main.cjsi_base_groups g USING(source_path,client,session_id)`); err != nil {
+			return err
+		}
 	}
 	// No inventory is opened here, so an old metadata client cannot authorize
 	// retaining a plaintext tail. A bounded cursor is the same start the old
