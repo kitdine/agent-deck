@@ -19,22 +19,48 @@ type cjsiLegacyManager interface {
 	drainLegacy(context.Context, string) (release func() error, err error)
 }
 
-// Ordinary Open and OpenWithLockHeld retain CurrentSchemaVersion as their
-// ceiling. In particular, the state lock alone cannot start or resume a
-// fenced layout install.
 func migrateCJSIManagedRoot(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager) error {
-	return withCJSIManagedCore(ctx, root, wait, manager, func(root string, core *sql.DB) error {
-		if err := migrateCJSICore(ctx, root, core); err != nil {
+	return migrateCJSIManagedRootWithReady(ctx, root, wait, manager, nil)
+}
+
+// beforeReady runs after verifying the installed fence and index, immediately
+// before the ready journal and initial head commit. Production passes nil.
+func migrateCJSIManagedRootWithReady(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager, beforeReady func(context.Context) error) error {
+	return migrateCJSIManagedRootWhenNeeded(ctx, root, wait, manager, nil, beforeReady)
+}
+
+func migrateCJSIManagedRootWhenNeeded(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager, installed func(context.Context, string) (bool, error), beforeReady func(context.Context) error) error {
+	return withCJSIManagedCoreIfNeeded(ctx, root, wait, manager, installed, func(root string, core *sql.DB) error {
+		return installCJSIState(ctx, root, core, beforeReady)
+	})
+}
+
+func installCJSIState(ctx context.Context, root string, core *sql.DB, beforeReady func(context.Context) error) error {
+	if err := migrateCJSICore(ctx, root, core); err != nil {
+		return err
+	}
+	// A version stamp from an incomplete pre-release layout is not a C2
+	// selection. Never retire a recovery snapshot on its authority.
+	if _, err := cjsiReadIndexHead(ctx, core); err != nil {
+		return err
+	}
+	journal, err := cjsiReadLayoutJournal(ctx, core)
+	if err != nil {
+		return err
+	}
+	if journal.phase == cjsiFenceInstalling {
+		// Capture may resume in a later invocation than schema preflight.
+		if err := normalizeLegacySQLitePermissions(filepath.Join(root, cjsiLegacyIndexName)); err != nil {
 			return err
 		}
-		// A version stamp from an incomplete pre-release layout is not a C2
-		// selection. Never retire a recovery snapshot on its authority.
-		if _, err := cjsiReadIndexHead(ctx, core); err != nil {
-			return err
+	}
+	return resumeCJSILayoutWithReady(ctx, root, core, func(ctx context.Context, prior, next cjsiLayoutJournal) error {
+		if beforeReady != nil {
+			if err := beforeReady(ctx); err != nil {
+				return err
+			}
 		}
-		return resumeCJSILayoutWithReady(ctx, root, core, func(ctx context.Context, prior, next cjsiLayoutJournal) error {
-			return cjsiCommitInitialHead(ctx, root, core, prior, next)
-		})
+		return cjsiCommitInitialHead(ctx, root, core, prior, next)
 	})
 }
 
@@ -52,6 +78,9 @@ func migrateCJSICore(ctx context.Context, physicalRoot string, core *sql.DB) err
 	}
 	step37 := cjsiCoreMigration37(func(ctx context.Context, tx *sql.Tx) error {
 		if err := verifyCJSICoreSchema(ctx, tx, refs.quota36); err != nil {
+			return err
+		}
+		if err := prepareLegacySessionIndexForMigration(ctx, physicalRoot); err != nil {
 			return err
 		}
 		return initializeCJSILayoutCore(ctx, tx, physicalRoot)
@@ -81,7 +110,11 @@ func cjsiCoreMigration37(installJournal func(context.Context, *sql.Tx) error) mi
 	}
 }
 
-func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager, run func(string, *sql.DB) error) (err error) {
+func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager, run func(string, *sql.DB) error) error {
+	return withCJSIManagedCoreIfNeeded(ctx, root, wait, manager, nil, run)
+}
+
+func withCJSIManagedCoreIfNeeded(ctx context.Context, root string, wait time.Duration, manager cjsiLegacyManager, installed func(context.Context, string) (bool, error), run func(string, *sql.DB) error) (err error) {
 	if manager == nil {
 		return ErrStateBusy
 	}
@@ -90,6 +123,9 @@ func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, m
 	}
 	root, err = platform.GuardStateRoot(root)
 	if err != nil {
+		return err
+	}
+	if err := checkCJSICorePath(root); err != nil {
 		return err
 	}
 	if err := platform.EnsureStateRoot(root); err != nil {
@@ -110,6 +146,17 @@ func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, m
 		return err
 	}
 	defer func() { err = errors.Join(err, state.Release()) }()
+	if err := checkCJSICorePath(root); err != nil {
+		return err
+	}
+	if installed != nil {
+		// Another process may have finished while we were waiting. It is
+		// safe for its first writer to retain the ready core handle.
+		ready, err := installed(ctx, root)
+		if ready || err != nil {
+			return err
+		}
+	}
 	release, err := manager.drainLegacy(ctx, root)
 	if err != nil {
 		return err
@@ -126,6 +173,9 @@ func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, m
 	}
 
 	path := filepath.Join(root, "agentdeck.sqlite3")
+	if err := checkManagedCoreBindingBeforeWrite(ctx, root, path); err != nil {
+		return err
+	}
 	if err := prepareCJSIManagedCore(path); err != nil {
 		return err
 	}
@@ -148,7 +198,7 @@ func withCJSIManagedCore(ctx context.Context, root string, wait time.Duration, m
 // Validate surviving SQLite files before opening them. A missing main with
 // surviving sidecars is an unfinished recovery, not a fresh database.
 func prepareCJSIManagedCore(path string) error {
-	stat, err := privateServingPath(path, false)
+	_, err := ownedLegacySQLiteInfo(path)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := cjsiRequireAbsentSidecars(path); err != nil {
 			return err
@@ -162,20 +212,5 @@ func prepareCJSIManagedCore(path string) error {
 	if err != nil {
 		return err
 	}
-	if stat.Nlink != 1 {
-		return errCJSILayoutInvalid
-	}
-	for _, suffix := range cjsiSidecarSuffixes {
-		sidecar, err := privateServingPath(path+suffix, false)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if sidecar.Nlink != 1 {
-			return errCJSILayoutInvalid
-		}
-	}
-	return nil
+	return normalizeLegacySQLitePermissions(path)
 }

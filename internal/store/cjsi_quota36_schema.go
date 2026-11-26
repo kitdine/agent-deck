@@ -198,7 +198,7 @@ func validatedCJSISchemaReferences(ctx context.Context, currentVersion int, regi
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if currentVersion != cjsiBaseCoreSchemaVersion || len(registry) != cjsiBaseCoreSchemaVersion {
+	if currentVersion != cjsiLayoutCoreSchemaVersion || len(registry) != cjsiBaseCoreSchemaVersion {
 		return nil, fmt.Errorf("%w: unsupported schema ceiling %d (registry length %d)", ErrUnknownSchema, currentVersion, len(registry))
 	}
 	for i, m := range registry {

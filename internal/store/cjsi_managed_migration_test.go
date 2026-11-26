@@ -292,17 +292,17 @@ func TestCJSIManagedMigration(t *testing.T) {
 		if err := validateCJSIMigrationRegistry(35, migrations[:35]); !errors.Is(err, ErrUnknownSchema) {
 			t.Fatalf("accepted mismatched ceiling 35: %v", err)
 		}
-		if err := validateCJSIMigrationRegistry(36, migrations[:35]); !errors.Is(err, ErrUnknownSchema) {
+		if err := validateCJSIMigrationRegistry(CurrentSchemaVersion, migrations[:35]); !errors.Is(err, ErrUnknownSchema) {
 			t.Fatalf("accepted truncated registry: %v", err)
 		}
 		fake := append([]migration(nil), migrations...)
 		fake[len(fake)-1].apply = nil
-		if err := validateCJSIMigrationRegistry(36, fake); !errors.Is(err, ErrUnknownSchema) {
+		if err := validateCJSIMigrationRegistry(CurrentSchemaVersion, fake); !errors.Is(err, ErrUnknownSchema) {
 			t.Fatalf("accepted v36 without apply callback: %v", err)
 		}
 	})
 
-	t.Run("ordinary open preserves base schema ceiling", func(t *testing.T) {
+	t.Run("ordinary open leaves installation to the managed entry", func(t *testing.T) {
 		c := newCJSIMigrationCapsule(t)
 		c.seed35(t)
 		core, err := Open(t.Context(), c.root)
@@ -317,10 +317,13 @@ func TestCJSIManagedMigration(t *testing.T) {
 		if err := migrateCJSIManagedRoot(t.Context(), c.root, 0, c); err != nil {
 			t.Fatal(err)
 		}
-		_, err = Open(t.Context(), c.root)
-		var ahead *SchemaAhead
-		if !errors.As(err, &ahead) || ahead.Stored != cjsiLayoutCoreSchemaVersion || ahead.Supported != cjsiBaseCoreSchemaVersion {
-			t.Fatalf("ordinary open: %v", err)
+		core, err = Open(t.Context(), c.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertCJSIMigrationNumber(t, core.DB, "SELECT version FROM schema_metadata", cjsiLayoutCoreSchemaVersion)
+		if err := core.Close(); err != nil {
+			t.Fatal(err)
 		}
 		state, err := AcquireLock(t.Context(), c.root, 0)
 		if err != nil {
@@ -330,11 +333,12 @@ func TestCJSIManagedMigration(t *testing.T) {
 		if err := state.Release(); err != nil {
 			t.Fatal(err)
 		}
-		if store != nil {
-			_ = store.Close()
-		}
-		if !errors.As(openErr, &ahead) || ahead.Stored != cjsiLayoutCoreSchemaVersion || ahead.Supported != cjsiBaseCoreSchemaVersion {
+		if openErr != nil {
 			t.Fatalf("state-lock-only open: %v", openErr)
+		}
+		assertCJSIMigrationNumber(t, store.DB, "SELECT version FROM schema_metadata", cjsiLayoutCoreSchemaVersion)
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
 		}
 		db := c.openCore(t, "rw")
 		cjsiFixtureExec(t, db, "UPDATE schema_metadata SET version=?", cjsiLayoutCoreSchemaVersion+1)
@@ -342,6 +346,7 @@ func TestCJSIManagedMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = migrateCJSIManagedRoot(t.Context(), c.root, 0, c)
+		var ahead *SchemaAhead
 		if !errors.As(err, &ahead) || ahead.Stored != cjsiLayoutCoreSchemaVersion+1 || ahead.Supported != cjsiLayoutCoreSchemaVersion {
 			t.Fatalf("managed open: %v", err)
 		}

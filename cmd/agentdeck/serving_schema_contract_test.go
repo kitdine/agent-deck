@@ -26,4 +26,8 @@ func TestNativeServingReaderSupportsCurrentCoreSchema(t *testing.T) {
 	if err != nil || supported != store.CurrentSchemaVersion {
 		t.Fatalf("native serving reader supports schema %d; helper emits %d", supported, store.CurrentSchemaVersion)
 	}
+	transition := regexp.MustCompile(`\(31\.\.\.` + strconv.Itoa(supported-1) + `\)\.contains\(stored\)\s*&&\s*current\s*==\s*` + strconv.Itoa(supported) + `\b`)
+	if !transition.Match(source) {
+		t.Fatalf("native serving reader lacks the directional compatibility rule for schema %d", supported)
+	}
 }

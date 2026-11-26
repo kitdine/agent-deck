@@ -614,8 +614,8 @@ func TestMigrationsAdoptExactPreassemblyQuotaAlertTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if version, versionErr := migrated.SchemaVersion(ctx); versionErr != nil || version != CurrentSchemaVersion {
-		t.Fatalf("schema version = %d, %v, want %d", version, versionErr, CurrentSchemaVersion)
+	if version, versionErr := migrated.SchemaVersion(ctx); versionErr != nil || version != cjsiBaseCoreSchemaVersion {
+		t.Fatalf("schema version = %d, %v, want %d", version, versionErr, cjsiBaseCoreSchemaVersion)
 	}
 	var notices int
 	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices_v2 WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
@@ -764,7 +764,7 @@ func TestV13MigrationAddsSafeToolActivityStorage(t *testing.T) {
 		t.Fatalf("tool activity = %q %q, %v", toolName, status, err)
 	}
 	version, err := migrated.SchemaVersion(ctx)
-	if err != nil || version != CurrentSchemaVersion {
+	if err != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 }
@@ -786,7 +786,7 @@ func TestV14MigrationAddsUsageEventsClientSessionIndex(t *testing.T) {
 	}
 	defer migrated.Close()
 	version, err := migrated.SchemaVersion(ctx)
-	if err != nil || version != CurrentSchemaVersion {
+	if err != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	// Insert enough rows across enough distinct sessions that the planner's
@@ -862,7 +862,7 @@ func TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects(t
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if version, err := migrated.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+	if version, err := migrated.SchemaVersion(ctx); err != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 
@@ -1230,8 +1230,8 @@ func TestV20AndV21MigrationsAddWorkSignalStorage(t *testing.T) {
 	if err = migrate(ctx, db, migrations[19:]); err != nil {
 		t.Fatal(err)
 	}
-	if version, versionErr := schemaVersion(ctx, db); versionErr != nil || version != CurrentSchemaVersion || CurrentSchemaVersion < 20 {
-		t.Fatalf("schema version = %d, %v, current=%d", version, versionErr, CurrentSchemaVersion)
+	if version, versionErr := schemaVersion(ctx, db); versionErr != nil || version != cjsiBaseCoreSchemaVersion || cjsiBaseCoreSchemaVersion < 20 {
+		t.Fatalf("schema version = %d, %v, legacy ceiling=%d", version, versionErr, cjsiBaseCoreSchemaVersion)
 	}
 	var eventTurn, callTurn sql.NullInt64
 	var toolKind string

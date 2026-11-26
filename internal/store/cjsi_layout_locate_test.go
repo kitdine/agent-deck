@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/platform"
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 var errCJSILocateStop = errors.New("stop after a durable layout phase")
@@ -423,12 +421,15 @@ func TestCJSIFencedStateLayoutLocation(t *testing.T) {
 		if got, err := locateCJSISessionIndex(ctx, c.root, tx); err != nil || got != legacy {
 			t.Fatalf("pinned snapshot located %+v, %v; want %+v", got, err, legacy)
 		}
-		// That older answer reaches only the fence, which the legacy opener refuses.
-		if s, err := OpenSessionsReadOnly(ctx, c.root); !cjsiIsNotADB(err) {
+		// Legacy callers cannot consume raw rows once managed reads own the root.
+		if s, err := OpenSessionsReadOnly(ctx, c.root); !errors.Is(err, ErrCJSIIndexChanged) {
 			if s != nil {
 				_ = s.Close()
 			}
 			t.Fatalf("stale legacy route opened data: %v", err)
+		}
+		if err := cjsiProbeFence(ctx, legacy.path); err != nil {
+			t.Fatalf("the stale path opened as SQLite: %v", err)
 		}
 		if err := tx.Rollback(); err != nil {
 			t.Fatal(err)
@@ -597,11 +598,6 @@ func copyCJSIFile(t *testing.T, from, to string) {
 	if err := os.WriteFile(to, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func cjsiIsNotADB(err error) bool {
-	var driverErr *sqlite.Error
-	return errors.As(err, &driverErr) && driverErr.Code() == sqlite3.SQLITE_NOTADB
 }
 
 type cjsiRootEntry struct {

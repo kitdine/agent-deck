@@ -1604,7 +1604,7 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 36
+	public static let maximumSupportedCoreSchema = 37
 
 	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
 	// session-origin storage; 35 adds a source thread identity column and
@@ -1619,6 +1619,7 @@ public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
 			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
 			|| ((31...34).contains(stored) && current == 35)
 			|| ((31...35).contains(stored) && current == 36)
+			|| ((31...36).contains(stored) && current == 37)
 	}
 	public let stateIdentity: String
 	public let coreEpoch: Int64

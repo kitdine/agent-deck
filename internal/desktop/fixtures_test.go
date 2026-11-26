@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -334,6 +335,10 @@ func seedSessions(t *testing.T, root string, seeds []sessionSeed) {
 	t.Helper()
 	ctx := context.Background()
 	index, err := store.OpenSessions(ctx, root)
+	independent := errors.Is(err, store.ErrSchemaAhead)
+	if independent {
+		index, err = store.OpenSessions(ctx, t.TempDir())
+	}
 	if err != nil {
 		t.Fatalf("OpenSessions: %v", err)
 	}
@@ -351,6 +356,12 @@ func seedSessions(t *testing.T, root string, seeds []sessionSeed) {
 		); err != nil {
 			index.Close()
 			t.Fatalf("seed session metadata: %v", err)
+		}
+	}
+	if independent {
+		if err := index.Backup(ctx, filepath.Join(root, "sessions.sqlite3")); err != nil {
+			index.Close()
+			t.Fatal(err)
 		}
 	}
 	if err = index.Close(); err != nil {

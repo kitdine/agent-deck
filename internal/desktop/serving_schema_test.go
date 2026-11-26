@@ -56,3 +56,14 @@ func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing
 		t.Fatal("schema exception widened to downgrade or future migration")
 	}
 }
+
+func TestServingSchema37Compatibility(t *testing.T) {
+	for stored := 30; stored <= 38; stored++ {
+		if got, want := compatibleServingCoreSchema(stored, 37), stored >= 31 && stored <= 37; got != want {
+			t.Errorf("schema %d → 37 compatibility = %t, want %t", stored, got, want)
+		}
+	}
+	if compatibleServingCoreSchema(37, 36) {
+		t.Fatal("schema 37 accepted by schema 36")
+	}
+}

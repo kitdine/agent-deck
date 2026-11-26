@@ -104,28 +104,34 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
-		var ahead *store.SchemaAhead
-		if errors.As(err, &ahead) && ahead.Stored == cjsiCoreSchemaVersion {
-			probe := s.cjsiLayoutProbe
-			if probe == nil {
-				probe = hasCJSILayout
-			}
-			managed, probeErr := probe(ctx, s.StateRoot)
-			if ctx.Err() != nil {
-				return Report{}, ctx.Err()
-			}
-			if probeErr != nil {
-				report.Partial = true
-				report.add(Check{Name: "database", Status: "error", Code: databaseCode(probeErr)})
-				return report, nil
-			}
-			if managed {
-				return s.checkCJSIDatabase(ctx, full, report)
-			}
+		if ctx.Err() != nil {
+			return Report{}, ctx.Err()
 		}
 		report.Partial = true
+		if errors.Is(err, store.ErrStateRestoreInProgress) {
+			report.add(Check{Name: "database", Status: "error", Code: store.ErrStateRestoreInProgress.Code})
+			return report, nil
+		}
+		if errors.Is(err, store.ErrStateCoreUninitialized) {
+			report.add(Check{Name: "database", Status: "warning", Code: store.ErrStateCoreUninitialized.Code, Recovery: "agentdeck state migrate"})
+			return report, nil
+		}
+		if errors.Is(err, store.ErrStateRootIdentityMismatch) {
+			report.add(Check{Name: "database", Status: "error", Code: store.ErrStateRootIdentityMismatch.Code})
+			return report, nil
+		}
+		var layout *store.CJSILayoutOpenError
+		if errors.As(err, &layout) {
+			if layout.Installing() {
+				report.add(cjsiDatabaseFailure(nil))
+			} else {
+				report.add(cjsiDatabaseFailure(err))
+			}
+			return report, nil
+		}
+		var ahead *store.SchemaAhead
 		check := Check{Name: "database", Status: "error", Code: databaseCode(err)}
-		if ahead != nil {
+		if errors.As(err, &ahead) {
 			check.Count = ahead.Stored
 			check.SupportedCount = ahead.Supported
 		}
@@ -137,15 +143,34 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	if version == cjsiCoreSchemaVersion {
+		hasToolCalls, err := databaseHasTable(ctx, database, "usage_tool_calls")
+		if err != nil || !hasToolCalls {
+			report.Partial = true
+			report.add(cjsiDatabaseFailure(err))
+			return report, nil
+		}
+		if err := database.Close(); err != nil {
+			return Report{}, err
+		}
+		if s.cjsiLayoutProbe != nil {
+			_, err := s.cjsiLayoutProbe(ctx, s.StateRoot)
+			if ctx.Err() != nil {
+				return Report{}, ctx.Err()
+			}
+			if err != nil {
+				report.Partial = true
+				report.add(cjsiDatabaseFailure(err))
+				return report, nil
+			}
+		}
+		return s.checkCJSIDatabase(ctx, full, report)
+	}
 	hasToolCalls, schemaErr := databaseHasTable(ctx, database, "usage_tool_calls")
-	if schemaErr != nil {
+	if schemaErr != nil || (version == cjsiCoreSchemaVersion-1 && !hasToolCalls) {
 		report.add(Check{Name: "schema", Status: "error", Code: "schema_incompatible", Count: version})
-	} else if version == store.CurrentSchemaVersion && !hasToolCalls {
-		report.add(Check{Name: "schema", Status: "error", Code: "schema_incompatible", Count: version})
-	} else if version != store.CurrentSchemaVersion {
-		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version, SupportedCount: store.CurrentSchemaVersion, Recovery: "agentdeck state migrate"})
 	} else {
-		report.add(Check{Name: "schema", Status: "ok", Count: version})
+		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version, SupportedCount: store.CurrentSchemaVersion, Recovery: "agentdeck state migrate"})
 	}
 	if full {
 		integrity, err := database.IntegrityCheck(ctx)
@@ -199,10 +224,30 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 		report.add(Check{Name: "telemetry", Status: "warning", Code: telemetry.WarningMemoriesNotCounted, Reason: telemetry.WarningMemoriesNotCounted, Recovery: "agentdeck telemetry enable --write-codex-config"})
 	}
 	sessionHealth, err := session.CheckHealth(ctx, s.StateRoot, full)
-	if err != nil {
-		return Report{}, err
+	var preflightErr error
+	if err != nil || (sessionHealth.Present && (full || sessionHealth.Integrity != "ok")) {
+		preflightErr = store.CheckLegacySessionIndexForMigration(ctx, s.StateRoot)
 	}
-	addSessionHealth(&report, sessionHealth, full)
+	switch {
+	case errors.Is(preflightErr, store.ErrLegacySessionIndexInvalid):
+		report.add(Check{Name: "sessions", Status: "error", Code: "session_index_unhealthy", Recovery: "agentdeck session purge-index"})
+	case preflightErr != nil:
+		if canceled := ctx.Err(); canceled != nil {
+			return Report{}, canceled
+		}
+		check := Check{Name: "sessions", Status: "error", Code: databaseCode(preflightErr)}
+		if errors.Is(preflightErr, store.ErrStateBusy) {
+			check.Status, check.Code = "warning", store.ErrStateBusy.Code
+		}
+		report.add(check)
+		if full && err == nil {
+			addSessionSourceHealth(&report, sessionHealth.UnreadableSources)
+		}
+	case err != nil:
+		return Report{}, err
+	default:
+		addSessionHealth(&report, sessionHealth, full)
+	}
 	extensionReport, err := extension.Doctor(ctx, database, s.Home, s.Workdir)
 	if err != nil {
 		var inventoryUnreadable *extension.ErrExtensionInventoryUnreadable
@@ -265,11 +310,15 @@ func addSessionHealth(report *Report, sessionHealth session.Health, full bool) {
 		report.add(Check{Name: "sessions", Status: "ok"})
 	}
 	if full {
-		if sessionHealth.UnreadableSources > 0 {
-			report.add(Check{Name: "session_sources", Status: "warning", Code: "session_source_unreadable", Count: sessionHealth.UnreadableSources, Recovery: "agentdeck session rebuild"})
-		} else {
-			report.add(Check{Name: "session_sources", Status: "ok"})
-		}
+		addSessionSourceHealth(report, sessionHealth.UnreadableSources)
+	}
+}
+
+func addSessionSourceHealth(report *Report, unreadable int) {
+	if unreadable > 0 {
+		report.add(Check{Name: "session_sources", Status: "warning", Code: "session_source_unreadable", Count: unreadable, Recovery: "agentdeck session rebuild"})
+	} else {
+		report.add(Check{Name: "session_sources", Status: "ok"})
 	}
 }
 
@@ -654,6 +703,9 @@ func (s Service) checkUsage(ctx context.Context, database *store.Store, report *
 }
 
 func databaseCode(err error) string {
+	if errors.Is(err, store.ErrStateRestoreInProgress) {
+		return store.ErrStateRestoreInProgress.Code
+	}
 	if errors.Is(err, store.ErrSchemaAhead) {
 		return store.ErrSchemaAhead.Code
 	}

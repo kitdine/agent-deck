@@ -35,7 +35,11 @@ func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
+	legacyVersion, err := db.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'official','https://example.invalid','','1','2026-09-08T00:00:00Z','2026-09-08T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +200,13 @@ func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 	if _, ok := hookrefusal.Read(root); !ok {
 		t.Fatal("failed open cleared record")
 	}
-	if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion); err != nil {
+	if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", legacyVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureStateMigrated(ctx, root); err != nil {
 		t.Fatal(err)
 	}
 	runBinary("", 0, "provider", "list")
@@ -205,6 +215,14 @@ func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 	}
 	for _, client := range []string{"codex", "claude"} {
 		deliver(client, "after-"+client)
+	}
+	ready, err := store.OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db = ready
+	if version, err := db.SchemaVersion(ctx); err != nil || version != store.CurrentSchemaVersion {
+		t.Fatalf("recovered schema = %d: %v", version, err)
 	}
 	routeCount(4)
 	t.Log("PASS: real binary doctor quick/full, snapshot, held-lock write refusal, both Hooks, persisted record/routes, read-only retention and successful-open clearing")

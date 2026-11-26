@@ -76,7 +76,7 @@ func TestCJSIR1PortableOrderRejectsForgedGroupKeys(t *testing.T) {
 func TestCJSIR1RestoreSanitizesUnfilteredLegacyArchive(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
-	core := r1CoreFixture(t, root)
+	core, coreSchema := r1CoreFixture(t, root)
 	index, err := store.OpenSessions(ctx, root)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestCJSIR1RestoreSanitizesUnfilteredLegacyArchive(t *testing.T) {
 			t.Fatalf("dirty archive fixture did not carry %s", sentinel)
 		}
 	}
-	archive := writeR1Archive(t, core, unfiltered)
+	archive := writeR1Archive(t, coreSchema, core, unfiltered)
 	target := filepath.Join(t.TempDir(), "restored")
 	if _, err := Restore(ctx, archive, target, "r1-fixture", syntheticMachineIdentity("target")); err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestCJSIR1RestoreSanitizesUnfilteredLegacyArchive(t *testing.T) {
 func TestCJSIR1RestoreRejectsReservedLegacyCoreCatalog(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
-	r1CoreFixture(t, root)
+	_, coreSchema := r1CoreFixture(t, root)
 	db, err := sql.Open("sqlite", filepath.Join(root, coreName))
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestCJSIR1RestoreRejectsReservedLegacyCoreCatalog(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	archive := writeR1Archive(t, readR1Fixture(t, snapshot), nil)
+	archive := writeR1Archive(t, coreSchema, readR1Fixture(t, snapshot), nil)
 	target := filepath.Join(t.TempDir(), "never-created")
 	if _, err := Restore(ctx, archive, target, "r1-fixture", syntheticMachineIdentity("target")); !errors.Is(err, ErrInvalidArchive) {
 		t.Fatalf("unexpected restore error: %v", err)
@@ -220,10 +220,14 @@ func readR1Fixture(t *testing.T, path string) []byte {
 	return data
 }
 
-func r1CoreFixture(t *testing.T, root string) []byte {
+func r1CoreFixture(t *testing.T, root string) ([]byte, int) {
 	t.Helper()
 	ctx := t.Context()
 	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := core.SchemaVersion(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,14 +238,14 @@ func r1CoreFixture(t *testing.T, root string) []byte {
 	if err := core.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return readR1Fixture(t, snapshot)
+	return readR1Fixture(t, snapshot), version
 }
 
-func writeR1Archive(t *testing.T, core, index []byte) string {
+func writeR1Archive(t *testing.T, coreSchema int, core, index []byte) string {
 	t.Helper()
 	contents := map[string][]byte{coreName: core, credentialsName: []byte("[]")}
 	manifest := Manifest{SchemaVersion: ManifestSchemaVersion, CreatedAt: time.Unix(1, 0).UTC(),
-		DatabaseSchemas: map[string]int{coreName: store.CurrentSchemaVersion}}
+		DatabaseSchemas: map[string]int{coreName: coreSchema}}
 	if index != nil {
 		contents[sessionsName] = index
 		manifest.DatabaseSchemas[sessionsName] = sessionSnapshotSchemaVersion

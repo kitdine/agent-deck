@@ -24,7 +24,7 @@ func TestDerivedSnapshotGenerationTracksRelevantWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initial.Epoch != 424242 || initial.Revision != 0 || !initial.Dirty || initial.SchemaVersion != CurrentSchemaVersion {
+	if initial.Epoch != 424242 || initial.Revision != 0 || !initial.Dirty || initial.SchemaVersion != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("initial generation=%#v", initial)
 	}
 	build, err := database.BeginDerivedSnapshotGenerationBuild(ctx)

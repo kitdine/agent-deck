@@ -519,7 +519,7 @@ func TestOriginMigrationFailureRollsBackAndSchemaAheadRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version, _ = migrated.SchemaVersion(ctx); version != CurrentSchemaVersion {
+	if version, _ = migrated.SchemaVersion(ctx); version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("migrated version = %d", version)
 	}
 	if _, err = migrated.DB.Exec(`UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1); err != nil {

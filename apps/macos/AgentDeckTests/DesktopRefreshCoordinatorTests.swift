@@ -245,6 +245,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 			generationChanges: ["core_schema": 35])
 		XCTAssertEqual(snapshot.header.generation.coreSchema, 35)
 		let supportedSchema = DesktopServingGenerationV2.maximumSupportedCoreSchema
+		XCTAssertEqual(supportedSchema, 37)
 		let current = try servingCoordinatorFixture(id: "current-schema", full: true,
 			generationChanges: ["core_schema": supportedSchema])
 		XCTAssertEqual(current.header.generation.coreSchema, supportedSchema)
@@ -262,6 +263,11 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 34))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35))
+		for schema in 31...36 {
+			XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: schema, current: 37))
+		}
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 37))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 36))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {

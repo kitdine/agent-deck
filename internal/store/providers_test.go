@@ -52,7 +52,7 @@ func TestRealV6FixtureMigratesCredentialOwnedMetadataToV9WithoutSecrets(t *testi
 	if err != nil || credential.CredentialRef != "legacy-default-ref" || credential.SecretRef != "legacy-ref" || credential.SecretPresent || credential.Endpoint != "https://legacy.example" || credential.Multiplier != "1.500000000000" || strings.Join(credential.Clients, ",") != "claude,codex" {
 		t.Fatalf("migrated credential = %#v, %v", credential, err)
 	}
-	if version, versionErr := migrated.SchemaVersion(ctx); versionErr != nil || version != CurrentSchemaVersion {
+	if version, versionErr := migrated.SchemaVersion(ctx); versionErr != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, versionErr)
 	}
 	var secretCount int

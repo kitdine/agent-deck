@@ -123,7 +123,6 @@ func TestCJSIProductionLayoutResumeAndRetire(t *testing.T) {
 	ctx := t.Context()
 	core := newCJSIProductionCore(t, root)
 	t.Cleanup(func() { _ = core.Close() })
-	seedCJSIProductionIntent(t, root, core)
 	legacy, err := OpenSessions(ctx, root)
 	if err != nil {
 		t.Fatal(err)
@@ -139,6 +138,7 @@ func TestCJSIProductionLayoutResumeAndRetire(t *testing.T) {
 	if err := closeCJSIInstallReadPool(filepath.Join(root, cjsiLegacyIndexName)); err != nil {
 		t.Fatal(err)
 	}
+	seedCJSIProductionIntent(t, root, core)
 
 	journal := cjsiSQLiteLayoutJournal{core}
 	install := cjsiLayoutInstall{

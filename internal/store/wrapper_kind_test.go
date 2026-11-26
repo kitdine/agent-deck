@@ -53,7 +53,7 @@ func TestV16MigrationAddsWrapperKindLeavingExistingWrappersUndeclared(t *testing
 	ctx := context.Background()
 	migrated := openV6Fixture(t)
 
-	if version, err := migrated.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+	if version, err := migrated.SchemaVersion(ctx); err != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	providers, err := migrated.ListProviders(ctx)

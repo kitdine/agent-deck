@@ -146,7 +146,7 @@ func TestCJSILegacyDrainAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if n, err := s.SchemaVersion(ctx); err != nil || n != CurrentSchemaVersion {
+	if n, err := s.SchemaVersion(ctx); err != nil || n != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("ordinary open: version=%d err=%v", n, err)
 	}
 	if err := s.Backup(ctx, side); err != nil {
@@ -281,7 +281,7 @@ func TestCJSILegacyDrainMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := r.SchemaVersion(t.Context()); err != nil || v != CurrentSchemaVersion {
+	if v, err := r.SchemaVersion(t.Context()); err != nil || v != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("version=%d err=%v", v, err)
 	}
 	r.Close()
@@ -289,8 +289,13 @@ func TestCJSILegacyDrainMigration(t *testing.T) {
 	if err := migrateCJSIManagedRoot(t.Context(), root, time.Second, cjsiStoreLegacyManager{time.Second}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenReadOnly(t.Context(), root); !errors.Is(err, ErrSchemaAhead) {
+	ready, err := OpenReadOnly(t.Context(), root)
+	if err != nil {
 		t.Fatalf("ordinary core after installation: %v", err)
+	}
+	assertCJSIMigrationNumber(t, ready.DB, "SELECT version FROM schema_metadata", CurrentSchemaVersion)
+	if err := ready.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := OpenSessions(t.Context(), root); err == nil {
 		t.Fatal("legacy fence opened")

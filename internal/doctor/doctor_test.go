@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -135,7 +137,9 @@ func TestCheckReportsLockClassificationAndLifecycle(t *testing.T) {
 			}
 			assertDiagnosticReport(t, report,
 				test.wantCheck,
-				reportContract{Mode: "quick", Status: "degraded", Healthy: false, Problems: test.problems, Warnings: test.problems},
+				// The fixture uses ordinary Open, so the outdated schema is
+				// reported alongside the lock diagnostics.
+				reportContract{Mode: "quick", Status: "degraded", Healthy: false, Problems: test.problems + 1, Warnings: test.problems + 1},
 			)
 			if test.writeToken == "" {
 				if _, err := os.Stat(targetFile); !os.IsNotExist(err) {
@@ -170,7 +174,7 @@ func TestCheckReportsInsecureStatePermissionsWithoutRepairingThem(t *testing.T) 
 	}
 	assertDiagnosticReport(t, report,
 		Check{Name: "state_permissions", Status: "error", Code: "insecure_permissions"},
-		reportContract{Mode: "quick", Status: "unhealthy", Healthy: false, Problems: 3, Warnings: 2, Errors: 1},
+		reportContract{Mode: "quick", Status: "unhealthy", Healthy: false, Problems: 4, Warnings: 3, Errors: 1},
 	)
 	if after := fileDigest(t, core); before != after {
 		t.Fatal("doctor changed core database while reporting insecure state permissions")
@@ -329,7 +333,7 @@ func TestCheckQuickAndFullPreserveExistingDatabasesAndEntries(t *testing.T) {
 			}
 			assertDiagnosticReport(t, report,
 				Check{Name: "sessions", Status: "ok"},
-				reportContract{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "degraded", Healthy: false, Problems: 1, Warnings: 1},
+				reportContract{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "degraded", Healthy: false, Problems: 2, Warnings: 2},
 			)
 		})
 	}
@@ -405,13 +409,20 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 		drop, partial                           bool
 	}{
 		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, store.CurrentSchemaVersion, true, false},
-		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, false},
-		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, false},
+		{"schema36", "schema", "warning", "schema_outdated", "agentdeck state migrate", 36, 36, store.CurrentSchemaVersion, false, false},
+		{"schema36_missing_tool_calls", "schema", "error", "schema_incompatible", "", 36, 36, 0, true, false},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, true},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, true},
 		{"future", "database", "error", store.ErrSchemaAhead.Code, "", 99, 99, store.CurrentSchemaVersion, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, full := range []bool{false, true} {
 				state := filepath.Join(t.TempDir(), "state")
+				if test.version == store.CurrentSchemaVersion {
+					if err := store.MigrateState(ctx, state); err != nil {
+						t.Fatal(err)
+					}
+				}
 				database, err := store.Open(ctx, state)
 				if err != nil {
 					t.Fatal(err)
@@ -455,6 +466,225 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDoctorDistinguishesColdCoreFromRestoreResidue(t *testing.T) {
+	for _, shape := range []string{"unmarked cold core", "marked cold core", "portable core bound elsewhere", "copied managed core"} {
+		t.Run(shape, func(t *testing.T) {
+			ctx := t.Context()
+			root := t.TempDir()
+			core := filepath.Join(root, "agentdeck.sqlite3")
+			want := store.ErrStateRestoreInProgress
+			if shape == "unmarked cold core" {
+				want = store.ErrStateCoreUninitialized
+			}
+			if shape == "copied managed core" {
+				want = store.ErrStateRootIdentityMismatch
+				source := t.TempDir()
+				if err := store.EnsureStateMigrated(ctx, source); err != nil {
+					t.Fatal(err)
+				}
+				db, err := store.OpenReadOnly(ctx, source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := errors.Join(db.Backup(ctx, core), db.Close()); err != nil {
+					t.Fatal(err)
+				}
+			} else if shape == "portable core bound elsewhere" {
+				if err := store.EnsureStateMigrated(ctx, root); err != nil {
+					t.Fatal(err)
+				}
+				db, err := sql.Open("sqlite", core)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = db.ExecContext(ctx, `UPDATE cjsi_layout_journal SET root_identity=X'00000000000000000000000000000001'`)
+				if err := errors.Join(err, db.Close()); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if shape == "marked cold core" {
+					scan, err := store.AcquireScanLock(ctx, root, 0)
+					if err != nil {
+						t.Fatal(err)
+					}
+					state, err := store.AcquireLock(ctx, root, 0)
+					if err != nil {
+						_ = scan.Release()
+						t.Fatal(err)
+					}
+					if err := errors.Join(store.MarkStateRestoreInProgress(ctx, root), state.Release(), scan.Release()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.WriteFile(core, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := fileDigest(t, core)
+			if db, err := store.OpenReadOnly(ctx, root); db != nil || !errors.Is(err, want) {
+				t.Fatalf("read error = %v, %v", db, err)
+			}
+			if want != store.ErrStateCoreUninitialized {
+				if db, err := store.Open(ctx, root); db != nil || !errors.Is(err, want) {
+					t.Fatalf("write error = %v, %v", db, err)
+				}
+				for _, migrate := range []func(context.Context, string) error{store.EnsureStateMigrated, store.MigrateState} {
+					if err := migrate(ctx, root); !errors.Is(err, want) {
+						t.Fatalf("migration error = %v", err)
+					}
+				}
+			}
+			report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, false)
+			if err != nil || !report.Partial {
+				t.Fatalf("database report = %+v, %v", report, err)
+			}
+			var found bool
+			for _, check := range report.Checks {
+				if check.Name != "database" {
+					continue
+				}
+				found = true
+				wantJSON := `{"name":"database","status":"error","code":"state_restore_in_progress"}`
+				if want == store.ErrStateCoreUninitialized {
+					wantJSON = `{"name":"database","status":"warning","code":"state_core_uninitialized","recovery_command":"agentdeck state migrate"}`
+				} else if want == store.ErrStateRootIdentityMismatch {
+					wantJSON = `{"name":"database","status":"error","code":"state_root_identity_mismatch"}`
+				}
+				data, err := json.Marshal(check)
+				if err != nil || string(data) != wantJSON {
+					t.Fatalf("database check = %s, %v", data, err)
+				}
+			}
+			if !found || fileDigest(t, core) != before {
+				t.Fatal("doctor omitted the database check or changed the core")
+			}
+		})
+	}
+}
+
+func TestDoctorLegacyPreflightDoesNotPurgeForNonContentFailures(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := store.OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	service := Service{RegistrationProbe: deterministicRegistration, StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir()}
+	assertNoPurge := func(t *testing.T, report Report) {
+		t.Helper()
+		for _, check := range report.Checks {
+			if strings.Contains(check.Recovery, "purge-index") || check.Code == "session_index_unhealthy" {
+				t.Fatalf("healthy index received destructive recovery: %+v", check)
+			}
+		}
+	}
+	assertSessionsCheck := func(t *testing.T, wantJSON string) {
+		t.Helper()
+		report, err := service.Check(ctx, true)
+		if err != nil || report.Mode != "full" || report.Partial {
+			t.Fatalf("preflight prevented a full report: %+v, %v", report, err)
+		}
+		assertNoPurge(t, report)
+		seen := make(map[string]int)
+		for _, check := range report.Checks {
+			seen[check.Name]++
+			if check.Name == "sessions" {
+				actual, err := json.Marshal(check)
+				if err != nil || string(actual) != wantJSON {
+					t.Fatalf("sessions check = %s, %v; want %s", actual, err, wantJSON)
+				}
+			}
+		}
+		for _, name := range []string{"database_integrity", "sessions", "session_sources", "extensions", "launchservices"} {
+			if seen[name] != 1 {
+				t.Fatalf("full report has %d checks named %q: %+v", seen[name], name, report.Checks)
+			}
+		}
+	}
+	legacy := filepath.Join(root, "sessions.sqlite3")
+	t.Run("permission drift", func(t *testing.T) {
+		if err := os.Chmod(legacy, 0644); err != nil {
+			t.Fatal(err)
+		}
+		report, err := service.Check(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoPurge(t, report)
+		ok := false
+		for _, check := range report.Checks {
+			if check.Name == "sessions" && check.Status == "ok" {
+				ok = true
+			}
+		}
+		if info, err := os.Stat(legacy); !ok || err != nil || info.Mode().Perm() != 0644 {
+			t.Fatalf("read-only verification changed or failed to verify healthy index: %v", err)
+		}
+	})
+	preflightDir := filepath.Join(root, ".cjsi-legacy-index-preflight-v1")
+	t.Run("preflight busy", func(t *testing.T) {
+		if err := os.Mkdir(preflightDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(preflightDir)
+		dir, err := os.Open(preflightDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dir.Close()
+		if err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			t.Fatal(err)
+		}
+		assertSessionsCheck(t, `{"name":"sessions","status":"warning","code":"state_busy"}`)
+	})
+	t.Run("snapshot path IO failure", func(t *testing.T) {
+		if err := os.WriteFile(preflightDir, []byte("synthetic obstruction"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		assertSessionsCheck(t, `{"name":"sessions","status":"error","code":"database_unreadable"}`)
+	})
+}
+
+func TestDoctorReportsRecoveryForCorruptLegacyIndex(t *testing.T) {
+	ctx := t.Context()
+	state := filepath.Join(t.TempDir(), "state")
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	index := filepath.Join(state, "sessions.sqlite3")
+	if err := os.WriteFile(index, []byte("synthetic corrupt index"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before := fileDigest(t, index)
+	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "sessions" && check.Code == "session_index_unhealthy" && check.Recovery == "agentdeck session purge-index" {
+			if fileDigest(t, index) != before {
+				t.Fatal("doctor changed corrupt index")
+			}
+			return
+		}
+	}
+	t.Fatalf("missing corrupt-index recovery: %+v", report.Checks)
 }
 
 func TestQuickCheckSkipsDeepPriceDiagnostics(t *testing.T) {

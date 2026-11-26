@@ -73,6 +73,9 @@ func admitLegacy(ctx context.Context, root string) (legacyAdmission, error) {
 		}
 	}
 	if err == nil {
+		err = checkStateRestoreMarkerAt(ctx, a)
+	}
+	if err == nil {
 		err = ctx.Err()
 	}
 	if err != nil {

@@ -1605,14 +1605,20 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 		drop, partial                           bool
 	}{
 		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, store.CurrentSchemaVersion, true, false},
-		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, false},
-		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, false},
+		{"schema36", "schema", "warning", "schema_outdated", "agentdeck state migrate", 36, 36, store.CurrentSchemaVersion, false, false},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, true},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, true},
 		{"future", "database", "error", store.ErrSchemaAhead.Code, "", 99, 99, store.CurrentSchemaVersion, false, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			for _, full := range []bool{false, true} {
 				state := filepath.Join(t.TempDir(), "state")
+				if test.version == store.CurrentSchemaVersion {
+					if err := store.MigrateState(ctx, state); err != nil {
+						t.Fatal(err)
+					}
+				}
 				database, err := store.Open(ctx, state)
 				if err != nil {
 					t.Fatal(err)
@@ -1704,40 +1710,47 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
+	if err := store.MigrateState(ctx, state); err != nil {
+		t.Fatal(err)
+	}
 	database, err := store.Open(ctx, state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE 'derived_snapshot_generation_%' OR name LIKE 'usage_partition_%')`)
+	rows, err := database.DB.QueryContext(ctx, `SELECT type, name FROM sqlite_master
+		WHERE (type='trigger' AND (name LIKE 'derived_snapshot_generation_%' OR name LIKE 'usage_partition_%'))
+		   OR (type='table' AND name GLOB 'cjsi_*')`)
 	if err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
-	var generationTriggers []string
+	drop := []string{"PRAGMA foreign_keys=OFF"}
 	for rows.Next() {
-		var name string
-		if err = rows.Scan(&name); err != nil {
+		var kind, name string
+		if err = rows.Scan(&kind, &name); err != nil {
 			rows.Close()
 			database.Close()
 			t.Fatal(err)
 		}
-		generationTriggers = append(generationTriggers, name)
+		drop = append(drop, "DROP "+kind+` "`+name+`"`)
 	}
 	if err = rows.Close(); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
-	for _, name := range generationTriggers {
-		if _, err = database.Exec(ctx, "DROP TRIGGER "+name); err != nil {
-			database.Close()
-			t.Fatal(err)
-		}
+	drop = append(drop, "PRAGMA foreign_keys=ON")
+	if _, err = database.Exec(ctx, strings.Join(drop, "; ")); err != nil {
+		database.Close()
+		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows_v2; DROP TABLE quota_envelopes_v2; DROP TABLE quota_alert_notices_v2; DROP TABLE quota_identities; DROP TABLE quota_cycle; DROP TABLE quota_projection_revision; DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update; DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE; DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update; DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE; DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER IF EXISTS telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows_v2; DROP TABLE quota_envelopes_v2; DROP TABLE quota_alert_notices_v2; DROP TABLE quota_identities; DROP TABLE quota_cycle; DROP TABLE quota_projection_revision; DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update; DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE; DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update; DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE; DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
 	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(state, "sessions.sqlite3")); err != nil {
 		t.Fatal(err)
 	}
 	var textOutput bytes.Buffer
@@ -3494,6 +3507,10 @@ func TestHookRefusalLifecycleBothClients(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
+			initialVersion, err := db.SchemaVersion(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if _, err := db.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'official','x','','1','2026-09-08T00:00:00Z','2026-09-08T00:00:00Z');`); err != nil {
 				t.Fatal(err)
 			}
@@ -3582,7 +3599,7 @@ func TestHookRefusalLifecycleBothClients(t *testing.T) {
 				t.Fatal(err)
 			}
 			deliver("future-again")
-			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion); err != nil {
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", initialVersion); err != nil {
 				t.Fatal(err)
 			}
 			deliver("supported-after")

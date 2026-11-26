@@ -8,9 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func TestCJSIFencedStateLayout(t *testing.T) {
@@ -246,8 +243,8 @@ func TestCJSIFencedStateLayout(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = core.Close() })
 		version, err := core.SchemaVersion(t.Context())
-		if err != nil || version != cjsiBaseCoreSchemaVersion || CurrentSchemaVersion != cjsiBaseCoreSchemaVersion {
-			t.Fatalf("legacy test requires the quota schema %d baseline: version=%d current=%d err=%v", cjsiBaseCoreSchemaVersion, version, CurrentSchemaVersion, err)
+		if err != nil || version != cjsiBaseCoreSchemaVersion {
+			t.Fatalf("legacy test requires the quota schema %d baseline: version=%d err=%v", cjsiBaseCoreSchemaVersion, version, err)
 		}
 		writeFence(t, root)
 		selection := cjsiIndexFixture(t, root)
@@ -258,13 +255,15 @@ func TestCJSIFencedStateLayout(t *testing.T) {
 				_ = legacy.Close()
 				t.Fatal("legacy opener returned a database past the fence")
 			}
-			var driverErr *sqlite.Error
-			if !errors.As(err, &driverErr) || driverErr.Code() != sqlite3.SQLITE_NOTADB {
-				t.Fatalf("legacy opener did not fail at SQLite validation: %v", err)
+			if !errors.Is(err, errCJSILayoutInvalid) {
+				t.Fatalf("legacy opener did not refuse the inconsistent layout: %v", err)
 			}
 			if _, err := validateCJSIFence(root); err != nil {
 				t.Fatal("legacy opener changed the fence")
 			}
+		}
+		if err := cjsiProbeFence(t.Context(), filepath.Join(root, cjsiLegacyIndexName)); err != nil {
+			t.Fatalf("old SQLite read/write statements opened the fence: %v", err)
 		}
 		got, err := resolveCJSILayout(t.Context(), root, selection, readCJSIFixtureSeal)
 		if err != nil || got.phase != cjsiLayoutSelected {

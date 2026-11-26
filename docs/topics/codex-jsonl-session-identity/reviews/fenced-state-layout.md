@@ -419,3 +419,95 @@ Task 3 后续候选写入必须从真实 C1 binding 保存工作集 ID，Task 8 
 完成门禁：NOT_VERIFIED
 
 Task 8 单元 1 经主控授权修改本锚的 `internal/store/cjsi_core_facts_schema.go`：新增部分索引 `cjsi_publication_attempts_slot_identity`，用于同代发布按 slot_identity 查找试次；同步更新 store schema 测试与金标；不升 schema 版本。同代发布评审 Round 13–16（`same-generation-publication.md`）一并冷评审。最终补丁 SHA-256 `1a09ada117ef998cf8813f2b663ba8b6da2ba6fbea4c52b12de67f9caafa5690`（基线 `f5d93d9`），Claude `claude-opus-5-5` high 复评 PASS。store 包 `-p 1` 全量 655 项通过、3 项跳过；发布相关 race 通过；vet、gofmt 干净。本锚此前的完成证据针对旧内容状态，新内容的证据由 Task 8 联合门禁与最终 L3 承担。
+
+## Round 24 — 2026-11-25，Task 2b schema 37 持久迁移首评
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+Task 2b 把受管布局接入生产：`CurrentSchemaVersion` 升到 37，无锁可写入口自动安装（用户 2026-11-25 选择自动安装），`state migrate` 走 `MigrateState`，加锁打开不安装，doctor 保持只读；同时处理 schema 升级的连带修改（desktop serving schema、`DesktopWire.swift`、契约测试、v1 夹具、schema12 迁移测试）。作者 Codex `gpt-6.2-sol` high，基线 `6d255ed`，候选补丁 `e319beed7423fe9afedeaebf6855a07f0e125c4580c4170200d69624a171e2e6`，29 个路径。独立冷评审为 Claude `claude-opus-5-5` xhigh，此前 AGY 与 OpenCode 两次尝试因额度中断，没有产出结论。
+
+- **CJSI-LAYOUT-2B-R1-F1（P1）** 旧会话索引为零字节或已损坏时，37 已提交，之后永久失败。
+- **CJSI-LAYOUT-2B-R1-F2（P2）** 恢复进行中的残留被接受：零字节 core 被当作全新根，`OpenWithLockHeld` 会建出 36 core。
+- **CJSI-LAYOUT-2B-R1-F3（P2）** core 版本超前时，独立的旧会话读取被拒绝。
+- **CJSI-LAYOUT-2B-R1-F4（P3）** doctor 把缺表误诊。
+- **CJSI-LAYOUT-2B-R1-F5（P3）** 就绪判断没有比较 index_epoch。
+- **CJSI-LAYOUT-2B-R1-F6（P3）** `MigrateState` 成功后不清除 Hook refusal。
+- **CJSI-LAYOUT-2B-R1-F7（P3）** 快照清理缺测试，评审变异 myA 存活。
+- **CJSI-LAYOUT-2B-R1-F8（P3）** 作者的变异材料已过期。
+
+## Round 25 — 2026-11-25，Task 2b R1 复评
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+R1 候选 `9d72f63c7ce346bd2bcababfa43de037d34bd93e418c4afef542464f1017cc4c`，34 个路径。新增恢复标记 API（`MarkStateRestoreInProgress`、`ClearStateRestoreInProgress`、`CheckStateRestoreInProgress`、`ErrStateRestoreInProgress`）和 `ErrLegacySessionIndexInvalid`，坏的旧索引通过 `session purge-index` 恢复。同一评审线程复评，中途因 Claude 5 小时额度中断，额度恢复后续跑。19 个变异全部被杀。
+
+- CJSI-LAYOUT-2B-R1-F1 closed：预检放在 37 迁移事务内，垃圾内容和 CHECK 违例返回 `ErrLegacySessionIndexInvalid`，core 停在 36，原文件字节不变。
+- CJSI-LAYOUT-2B-R1-F2 closed（store 侧）：标记已接入准入和全部公共打开入口，零字节 core 不再被当作全新根。
+- CJSI-LAYOUT-2B-R1-F3 closed：只改夹具 helper，`desktop_test.go` 原文未动。
+- CJSI-LAYOUT-2B-R1-F4、F5、F6、F7、F8 closed。
+- **CJSI-LAYOUT-2B-R2-F1（P3）** 预检把旧索引副本复制到 `os.TempDir`，崩溃时会在状态根之外留下会话内容。
+- **CJSI-LAYOUT-2B-R2-F2（P3）** 标记存在时，属主自己也无法校验发布结果。
+- **CJSI-LAYOUT-2B-R2-F3（P3）** 冷启动留下的零字节 core 被误报为恢复中。
+- **CJSI-LAYOUT-2B-R2-F4（P3）** 读端和写端对同一份残留返回不同的检查码。
+
+四项 P3 都属于本次改动，按发现处置规则判 FAIL。
+
+## Round 26 — 2026-11-25，Task 2b R2 复评
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+R2 候选 `cdebce5645e18d6dc75182eaa60d6247238276b15c59f918c7999f6a55dbe2ef`，34 个路径，相对 R1 改了 8 个路径。新增属主校验入口 `ResolveCJSIRuntimeRootForRestore(ctx, root, scanLock, stateLock)`：Mark 时把两把锁的 token 绑进标记，只有仍持有同一物理根、同一锁世代的调用方才会放行。
+
+- CJSI-LAYOUT-2B-R2-F1 closed：预检副本改放到状态根内的保留目录（目录 0700、文件 0600，带 flock），崩溃残留在下一次预检时按身份核对后清理。
+- CJSI-LAYOUT-2B-R2-F2 closed：他根、缺锁、已释放和新一代的锁全部被拒，放行只在本次调用内有效。
+- CJSI-LAYOUT-2B-R2-F3 closed：没有标记且确认全空的冷启动残留按全新根重建；非空、带标记或硬链接的残留一律拒绝，冷启动矩阵 10 种形态都符合预期。
+- CJSI-LAYOUT-2B-R2-F4 closed：读写两端统一返回 `state_restore_in_progress`；无标记的冷启动残留由 doctor 报 `state_core_uninitialized`。
+- **CJSI-LAYOUT-2B-R3-F1（P2）** 内容健康、权限为 0644 的旧索引被判为损坏，所有写入被拦，doctor 还建议执行会删数据的 `purge-index`；基线 36 会自动修回 0600。这个问题从 R1 起就存在，Round 25 漏判。
+- **CJSI-LAYOUT-2B-R3-F2（P3）** 被移动或复制的受管根被报为恢复中，且没有恢复指引。
+- **CJSI-LAYOUT-2B-R3-F3（P3）** 测试的 1 秒期限在 race 下会抖动。
+
+## Round 27 — 2026-11-25，Task 2b R3 复评
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+R3 候选 `d4caf26d9f69ce3def1c43087a09589b820cc0856954e60e51a33804d491c070`，34 个路径，相对 R2 改了 8 个路径。本轮起按主控的验证预算执行：复评只跑与改动相关的测试，作者的已有变异只核对指纹。
+
+- CJSI-LAYOUT-2B-R3-F1 closed：迁移在排空窗口内把属主自己的文件权限修回 0600，首次预检和中断后的捕获都有回归测试；doctor 只读，不改权限。只有 NOTADB、CORRUPT、CHECK 违例、integrity 失败、缺表才判为损坏，其余错误沿原错误链返回。0644 的 core 与基线行为一致。
+- CJSI-LAYOUT-2B-R3-F2 closed：复制或移动的根返回 `ErrStateRootIdentityMismatch`，doctor 码为 `state_root_identity_mismatch`，不给 recovery_command。迁移前的 36 归档可以恢复到新的空目标，但归档之后写入的数据会丢失；37 受管归档要等 Task 9b-a 才能恢复。
+- CJSI-LAYOUT-2B-R3-F3 closed：期限放宽到 30 秒，断言保持不变。
+- SIGKILL 子进程夹具的竞态只改了测试，父进程仍严格断言 `signal: killed`。作者的整包测试在修复前已经启动，评审在最终文件上补跑了一次 store 全量，结果为 0。
+- **CJSI-LAYOUT-2B-R4-F1（P3）** doctor 预检遇到非内容错误时整份报告失败；R2 时同样情况可以正常输出。
+
+## Round 28 — 2026-11-25，Task 2b R4 主控核对
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+R4 候选 `201ca123c6761b112a97166610c358b62fd28ca494de8632808022999f99722f`，34 个路径，相对 R3 只改了 `internal/doctor/doctor.go` 和它的测试两个路径（增量 `a0234910581663149762fb474ead4056e1fbd8f0ad75f8248d74b8317656a964`）。这一轮只修 Round 27 的一项 P3，由主控逐行核对增量补丁并检查运行证据，没有再派冷复评。
+
+- CJSI-LAYOUT-2B-R4-F1 closed：
+  - 预检忙时，sessions 报 `warning/state_busy`；其他非内容错误报 `error/database_unreadable`。两种情况都照常输出完整报告，也都不建议 `purge-index`。
+  - 只有 `ErrLegacySessionIndexInvalid` 仍建议 `purge-index`。
+  - context 被取消时仍然直接返回错误；`CheckHealth` 本身出错时的处理与基线一致。
+  - 两个变异（busy 时中止报告、I/O 错误时建议 purge）都被测试杀死，退出码 1；定向测试和 doctor 全量都是 0。
+
+验证范围：
+- 主控在最终补丁上自行跑了 store、doctor、backup、session 四包全量，全部退出 0。环境是 `git archive 6d255ed` 加最终补丁的隔离副本，HOME、XDG、TMPDIR 都是临时目录。
+  - 排除了三个调用宿主 osascript 的测试。
+  - 排除了 `TestManagedCommandOwner*`：它依赖 PATH 和环境变量，在 `env -i` 下基线同样失败。
+  - store 和 doctor 在 umask 077 下运行：在 umask 022 下，一批 CJSI 布局测试会因 `privateServingPath` 要求恰好 0700/0600 而失败，基线同样如此。这是既有的测试脆弱性，是否影响真实用户正在集成分诊中确认。
+- race：store 在 Round 26 的复评中单独重跑为 0，Round 27 作者跑的是一次定向 store race；doctor 的 race 来自 Round 25。
+- desktop 只剩两个正常态金标没过，cmd 剩 5 项，归因与 Round 25 相同，按授权延后到集成步骤重新生成和处理。
+- 带标签运行的失败集合与 `6d255ed` 相同。
+- Swift（含 `DesktopWire.swift` 的 schema 37 兼容）没有运行，需要在隔离的 macOS 来宾中验证。
+
+本单元改动了 doctor、desktop、backup 测试和 macOS 测试等其他锚点的文件，这些作为上游修改，在 Task 8 联合门禁时登记。规格要补三个新的 doctor 检查码（`state_restore_in_progress`、`state_core_uninitialized`、`state_root_identity_mismatch`）、`state_root_identity_mismatch` 的恢复前提，以及 sessions 检查的部分报告形状，在 CJSI 集成时写入 `cli-design`。完成证据由 Task 8 联合门禁和最终 L3 承担。

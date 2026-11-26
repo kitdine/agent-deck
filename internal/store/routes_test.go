@@ -14,7 +14,7 @@ func TestV17MigrationAddsSessionRoutesAndAllowsManagedOverlap(t *testing.T) {
 	}
 	defer database.Close()
 
-	if version, err := database.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+	if version, err := database.SchemaVersion(ctx); err != nil || version != cjsiBaseCoreSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	if _, err := database.Exec(ctx, `INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key) VALUES('codex','s','2026-08-03T00:00:00Z','official','1',0,'SessionStart','resume','estimated','route-1')`); err != nil {

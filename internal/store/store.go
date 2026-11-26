@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 36
+	CurrentSchemaVersion   = cjsiLayoutCoreSchemaVersion
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -43,10 +43,13 @@ func OpenSessions(ctx context.Context, stateRoot string) (store *Store, err erro
 	if err != nil {
 		return nil, err
 	}
+	if err := checkCJSICorePath(stateRoot); err != nil {
+		return nil, err
+	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	path := filepath.Join(stateRoot, cjsiLegacyIndexName)
 	pin, err := admitLegacyFile(ctx, path)
 	if err != nil {
 		return nil, err
@@ -56,6 +59,9 @@ func OpenSessions(ctx context.Context, stateRoot string) (store *Store, err erro
 			err = errors.Join(err, pin.close())
 		}
 	}()
+	if err := checkLegacySessionOpen(ctx, stateRoot, false); err != nil {
+		return nil, err
+	}
 	if err := preparePrivateSQLiteFiles(path); err != nil {
 		return nil, err
 	}
@@ -118,7 +124,15 @@ func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error)
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	pin, err := admitLegacy(ctx, stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer pin.close()
+	if err := checkLegacySessionOpen(ctx, stateRoot, true); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(stateRoot, cjsiLegacyIndexName)
 	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
 		return nil, err
@@ -147,7 +161,7 @@ func OpenSessionDiagnosticsReadOnly(ctx context.Context, stateRoot string) (stor
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	path := filepath.Join(stateRoot, cjsiLegacyIndexName)
 	pin, err := admitLegacyFile(ctx, path)
 	if err != nil {
 		return nil, err
@@ -157,6 +171,9 @@ func OpenSessionDiagnosticsReadOnly(ctx context.Context, stateRoot string) (stor
 			err = errors.Join(err, pin.close())
 		}
 	}()
+	if err := checkLegacySessionOpen(ctx, stateRoot, true); err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
@@ -332,7 +349,8 @@ type stateLock interface {
 type lockAcquirer func(context.Context, string, time.Duration) (stateLock, error)
 
 // Open creates or opens a private core database and applies explicit ordered
-// migrations before returning it.
+// migrations before returning it. Only the outer writable entry can install
+// the fenced layout because callers may already own the scan lock.
 func Open(ctx context.Context, stateRoot string) (*Store, error) {
 	return open(ctx, stateRoot, func(ctx context.Context, stateRoot string, timeout time.Duration) (stateLock, error) {
 		return AcquireLock(ctx, stateRoot, timeout)
@@ -345,6 +363,9 @@ func Open(ctx context.Context, stateRoot string) (*Store, error) {
 func OpenExisting(ctx context.Context, stateRoot string) (*Store, error) {
 	stateRoot, err := platform.GuardStateRoot(stateRoot)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkCJSICorePath(stateRoot); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(stateRoot)
@@ -393,6 +414,13 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	cold, err := inspectCJSICorePath(stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	if cold {
+		return nil, ErrStateCoreUninitialized
+	}
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
 	db, release, err := acquireReadOnlySQL(ctx, path, "read-only")
 	if err != nil {
@@ -403,11 +431,7 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 		_ = release()
 		return nil, err
 	}
-	if version > CurrentSchemaVersion {
-		_ = release()
-		return nil, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
-	}
-	if err = checkNoPrematureCJSIJournal(ctx, db, version); err != nil {
+	if _, err = checkCoreLayoutForOpen(ctx, stateRoot, db, version); err != nil {
 		_ = release()
 		return nil, err
 	}
@@ -446,6 +470,9 @@ func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
 func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *Store, err error) {
 	stateRoot, err = platform.GuardStateRoot(stateRoot)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkCJSICorePath(stateRoot); err != nil {
 		return nil, err
 	}
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
@@ -489,6 +516,12 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 			err = errors.Join(err, pin.close())
 		}
 	}()
+	if err := checkCJSICorePath(stateRoot); err != nil {
+		return nil, err
+	}
+	if err := checkManagedCoreBindingBeforeWrite(ctx, stateRoot, path); err != nil {
+		return nil, err
+	}
 	if create {
 		err = preparePrivateSQLiteFiles(path)
 	} else {
@@ -512,6 +545,13 @@ func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcqui
 	if err := migrate(ctx, db, migrations); err != nil {
 		db.Close()
 		return nil, err
+	}
+	version, err := schemaVersion(ctx, db)
+	if err == nil && version == cjsiLayoutCoreSchemaVersion {
+		_, err = checkCoreLayoutForOpen(ctx, stateRoot, db, version)
+	}
+	if err != nil {
+		return nil, errors.Join(err, db.Close())
 	}
 	store = &Store{DB: db, path: path, releaseWriter: pin.close}
 	if err := store.secureFiles(); err != nil {
