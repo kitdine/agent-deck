@@ -24,3 +24,16 @@
 - 集成结果：`origin/main` = `470b0d74`。PR 85 与 86 均对实际 head 取得 Codex review 无发现，PR Actions 9 项全部通过；PR 86 合并前与 PR 85 结果做三方合并检查无冲突。
 - 移出：`codex-subagent-jsonl-session-identity` 按用户决定移出本版本，未并入任何内容；`cask-uninstall-unregistered-widget` 维持 deferred。
 - 新增成员的 CEv1：`fix:settings-window-layout-oscillation` 在 `13160c9b` 上三项 pass；`fix:desktop-scan-failed-retry-loop` 四项 pass。
+
+## Round 3 — 2026-11-27
+
+评审结论：PASS
+
+完成门禁：NOT_VERIFIED
+
+发布门禁复验：独立执行方 Codex/gpt-6.2-sol（reasoningEffort=high），以集成后 `main` `470b0d749ba0e24b457fe386d0e45a4f5999f2b8` 构建的未 strip helper，在当日重新以 `sqlite3 -readonly .backup` 取得的三库隔离拷贝与 APFS 克隆转录上，按 App 实际 bootstrap 路径运行；真实状态只在快照时只读访问，未对真实状态、App Group 或已安装 App 运行任何二进制。
+
+- 冷启动、热启动与三轮追加转录重放共五轮，usage 与 session 全部 `completed`，无 `scan_failed`，无失败诊断条目；收据 round ID 与两域结果一致。
+- 冷启动墙钟 145.28 s（上次诊断 v0.7.0 721.90 s、main 574.78 s）；冷启动全量会话扫描区间 4.307 s（上次 501.596 s、358.553 s），其中 2,752 个失效路径的 FTS 批量清理 2.209 s；热启动墙钟 9.60 s（上次约 36.6 s）。两次使用不同快照，对比同时受数据规模与负载影响。
+- 合成失败验证诊断日志结构化字段与 0600 权限。Swift 侧失败退避与来源最小间隔属 App 行为，不在 CLI 复验范围，已由隔离原生测试与独立评审覆盖。
+- 门禁结论：PASS，允许进入 L4 与发布预检。
