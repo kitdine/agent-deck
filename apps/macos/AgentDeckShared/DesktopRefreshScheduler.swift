@@ -2,6 +2,49 @@ import Darwin
 import Foundation
 import CoreServices
 
+@MainActor
+struct DesktopRefreshClock {
+	typealias Fire = @MainActor () -> Task<Void, Never>?
+	typealias Cancel = @MainActor () -> Void
+
+	let now: @MainActor () -> ContinuousClock.Instant
+	let schedule: @MainActor (ContinuousClock.Instant, @escaping Fire) -> Cancel
+
+	static let continuous = Self(now: { .now }, schedule: { deadline, fire in
+		let task = Task {
+			do { try await ContinuousClock().sleep(until: deadline) }
+			catch { return }
+			guard !Task.isCancelled else { return }
+			_ = fire()
+		}
+		return { task.cancel() }
+	})
+}
+
+struct DesktopRefreshTiming {
+	private static let minimumInterval: Duration = .seconds(30)
+	private static let maximumBackoff: Duration = .seconds(15 * 60)
+
+	var lastStart: ContinuousClock.Instant?
+	private var retryAfter: ContinuousClock.Instant?
+	private var failureDelay: Duration = .zero
+
+	func deadline(includesSourceChange: Bool, now: ContinuousClock.Instant) -> ContinuousClock.Instant {
+		let sourceDeadline = includesSourceChange ? lastStart?.advanced(by: Self.minimumInterval) : nil
+		return max(retryAfter ?? now, sourceDeadline ?? now)
+	}
+
+	mutating func recordFailure(at now: ContinuousClock.Instant) {
+		failureDelay = min(Self.maximumBackoff, max(Self.minimumInterval, failureDelay * 2))
+		retryAfter = now.advanced(by: failureDelay)
+	}
+
+	mutating func recordSuccess() {
+		failureDelay = .zero
+		retryAfter = nil
+	}
+}
+
 /// A lifetime-bound event source. All scan scheduling, merging and cancellation
 /// remain owned by DesktopRefreshCoordinator. No timer or second scanner lives here.
 @MainActor

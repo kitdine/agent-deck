@@ -4,14 +4,30 @@ package platform
 
 import (
 	"errors"
+	"os"
 
 	"golang.org/x/sys/unix"
 )
 
+// Darwin sys/unistd.h: _PC_CASE_SENSITIVE.
+const pcCaseSensitive = 11
+
+// DirectoryIgnoresASCIICase reports whether the open directory is known to
+// resolve ASCII case variants to the same entry, even if its path has moved.
+func DirectoryIgnoresASCIICase(dir *os.File) bool {
+	conn, err := dir.SyscallConn()
+	if err != nil {
+		return false
+	}
+	var insensitive bool
+	err = conn.Control(func(fd uintptr) {
+		value, err := unix.Fpathconf(int(fd), pcCaseSensitive)
+		insensitive = err == nil && value == 0
+	})
+	return err == nil && insensitive
+}
+
 func filesystemCaseSensitive(directory string) (bool, error) {
-	// Darwin sys/unistd.h: _PC_CASE_SENSITIVE. pathconf queries the actual
-	// filesystem at this directory, including a separate case-sensitive mount.
-	const pcCaseSensitive = 11
 	value, err := unix.Pathconf(directory, pcCaseSensitive)
 	if err != nil {
 		return false, err

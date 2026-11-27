@@ -311,6 +311,21 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.timeout == EmbeddedHelperRunner.quotaRefreshTimeout })
 	}
 
+	func testQuotaRefreshBindsOnlyEnvelopeIdentityAndToleratesBadProof() async throws {
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: Data(#"{"data":{"state_root_id":"7:9","alerts":[{"id":"qa2.good","kind":"reset","client":"claude","used_percent":0,"generation":42,"state_root_id":"injected"}]}}"#.utf8))),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: Data(#"{"data":{"state_root_id":false,"alerts":[{"id":"qa2.bad","kind":"reset","client":"claude","used_percent":0,"generation":"42","state_root_id":"injected"},{"id":"legacy","kind":"reset","client":"codex","used_percent":0}]}}"#.utf8))),
+		])
+		let runner = try makeRunner(process: process)
+		let good = await runner.refreshQuota(manual: false)
+		XCTAssertEqual(good.first?.stateRootID, "7:9")
+		XCTAssertEqual(good.first?.generation, 42)
+		let bad = await runner.refreshQuota(manual: false)
+		XCTAssertEqual(bad.map(\.id), ["qa2.bad", "legacy"])
+		XCTAssertNil(bad.first?.generation)
+		XCTAssertNil(bad.first?.stateRootID)
+	}
+
 	func testQuotaAlertAcknowledgementPassesEveryIDAndSkipsAnEmptyBatch() async throws {
 		let payload = Data(#"{"data":{"acknowledged":2}}"#.utf8)
 		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: payload))])
@@ -827,27 +842,48 @@ extension EmbeddedHelperRunnerTests {
 
 private actor SuspendedOwnershipQuery {
     private var continuation: CheckedContinuation<NativeStateLocation, Never>?
-    var waiting: Bool { continuation != nil }
+    private var released: NativeStateLocation?
+    private let installed: @Sendable () -> Void
+    init(installed: @escaping @Sendable () -> Void) { self.installed = installed }
     func query() async -> NativeStateLocation {
-        await withCheckedContinuation { continuation = $0 }
+        await withCheckedContinuation { continuation in
+            // finish() may have run first during test cleanup; never strand.
+            if let released { continuation.resume(returning: released); return }
+            self.continuation = continuation
+            installed()
+        }
     }
-    func finish(_ location: NativeStateLocation) { continuation?.resume(returning: location); continuation = nil }
+    func finish(_ location: NativeStateLocation) {
+        released = location
+        continuation?.resume(returning: location)
+        continuation = nil
+    }
 }
 
 extension EmbeddedHelperRunnerTests {
     func testClosingWhileQueryIsInFlightCannotReacquireOwnership() async throws {
         let account = try ownershipAccount()
         let session = NativeOwnershipSession(accountHome: { account })
-        let suspended = SuspendedOwnershipQuery()
+        let reachedQuery = expectation(description: "ownership query continuation installed")
+        let suspended = SuspendedOwnershipQuery(installed: { reachedQuery.fulfill() })
+        let location = NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path)
         let work = Task { try await session.resolve { await suspended.query() } }
-        for _ in 0..<1000 {
-            if await suspended.waiting { break }
-            await Task.yield()
+        // Cleanup runs on every exit path, including assertion failure: close
+        // releases ownership, cancel stops the pending resolve, and finish
+        // resumes a suspended or not-yet-entered query so work.result settles.
+        addTeardownBlock {
+            session.close()
+            work.cancel()
+            await suspended.finish(location)
+            _ = await work.result
         }
-        let waiting = await suspended.waiting
-        XCTAssertTrue(waiting)
+        // The query signals once its continuation is installed. Scheduler
+        // yields cannot prove that the suspension point was reached.
+        let readiness = await XCTWaiter.fulfillment(of: [reachedQuery], timeout: 5)
+        XCTAssertEqual(readiness, .completed, "query never reached its suspension point")
+        guard readiness == .completed else { return }
         session.close()
-        await suspended.finish(NativeStateLocation(installed: true, stateRoot: account.appendingPathComponent(".agentdeck").path))
+        await suspended.finish(location)
         do { _ = try await work.value; XCTFail("closed during query but returned a usable path") }
         catch { XCTAssertEqual(error as? HelperExecutionError, .cancelled) }
         let fd = try exclusiveDescriptor(account); defer { Darwin.close(fd) }
@@ -948,4 +984,68 @@ private actor OriginOwnershipProbe: EmbeddedHelperProcess {
         operationCalls += 1
         throw HelperExecutionError.malformedOutput
     }
+}
+
+extension EmbeddedHelperRunnerTests {
+	/// One helper `desktop snapshot --wire-version 2` line whose publication
+	/// carries sparse health: a summary without rows, checks set to `checks`.
+	private func sparseHealthServingLine(checks: Any) throws -> Data {
+		let generatedAt = "2026-08-13T10:00:00Z"
+		var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
+		payload["generated_at"] = generatedAt
+		var data = try XCTUnwrap(payload["data"] as? [String: Any])
+		data["generated_at"] = generatedAt
+		data["health"] = ["available": true, "status": "degraded", "healthy": false,
+			"problems": 2, "warnings": 2, "errors": 0, "checks": checks] as [String: Any]
+		payload["data"] = data
+		let coverage: [String: Any] = ["state": "complete", "inventory_id": "fixture", "observed_at": generatedAt, "sources": 2, "committed": 2]
+		let header: [String: Any] = [
+			"format_version": 1, "wire_version": 2, "publication_id": "sparse-health", "projection_version": 1,
+			"usage_parser_version": 1, "session_prepared": true, "timezone": "UTC",
+			"window_start": "2026-08-13T00:00:00Z", "window_end": "2026-08-14T00:00:00Z", "generated_at": generatedAt,
+			"active_generation": "1:3/2:4", "pricing_revision": 3, "data_observed_through": generatedAt, "freshness": "stale",
+			"usage_coverage": coverage, "session_coverage": coverage,
+			"generation": ["state_identity": "fixture-state", "core_epoch": 1, "session_epoch": 2, "core_schema": 31,
+				"session_schema": 1, "usage_revision": 3, "session_revision": 4] as [String: Any],
+		]
+		var line = try JSONSerialization.data(withJSONObject: [
+			"schema_version": 1, "command": "desktop.serving", "partial": false, "warnings": [String](),
+			"data": ["header": header, "payload": payload] as [String: Any],
+		] as [String: Any])
+		line.append(0x0A)
+		return line
+	}
+
+	// The helper serves a sparse publication's health with checks as []; the
+	// native restore keeps its summary instead of failing. A null checks value
+	// is outside the wire: the restore rejects it before installing anything,
+	// which is why the helper normalizes absent checks to [].
+	func testRestoreKeepsSparseHealthServedWithEmptyChecksAndRejectsNullChecks() async throws {
+		let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		let stateRoot = home.appendingPathComponent(".agentdeck")
+		try FileManager.default.createDirectory(at: stateRoot, withIntermediateDirectories: true)
+		addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+		XCTAssertTrue(FileManager.default.createFile(atPath: stateRoot.appendingPathComponent("agentdeck.sqlite3").path, contents: Data()))
+		let bundle = try makeEmbeddedHelperBundle(in: home.appendingPathComponent("bundle"))
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: try sparseHealthServingLine(checks: [Any]()))),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: try sparseHealthServingLine(checks: NSNull()))),
+		])
+		let runner = EmbeddedHelperRunner(appBundleURL: bundle, process: process, environment: ["HOME": home.path])
+
+		let restored = try await runner.readServingSnapshot()
+		let health = restored.payload.data.health
+		XCTAssertEqual(restored.header.publicationID, "sparse-health")
+		XCTAssertEqual(health.checks, [])
+		XCTAssertEqual(health.status, "degraded")
+		XCTAssertFalse(health.healthy)
+		XCTAssertEqual([health.problems, health.warnings, health.errors], [2, 2, 0])
+
+		do {
+			_ = try await runner.readServingSnapshot()
+			XCTFail("a null health.checks restored a snapshot")
+		} catch DecodingError.valueNotFound(_, let context) {
+			XCTAssertEqual(context.codingPath.last?.stringValue, "checks")
+		}
+	}
 }

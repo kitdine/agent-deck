@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Vision
 import WidgetKit
 import XCTest
 
@@ -32,6 +33,160 @@ final class WidgetPresentationTests: XCTestCase {
 		)
 		XCTAssertEqual(WidgetLayoutContract.canvas(.systemLarge).width, WidgetLayoutContract.canvas(.systemMedium).width)
 		XCTAssertGreaterThan(WidgetLayoutContract.canvas(.systemLarge).height, WidgetLayoutContract.canvas(.systemMedium).height * 2)
+	}
+
+	@MainActor
+	func testCurrentCodexLoginWithoutAssociationShowsAndSpeaksTheHint() throws {
+		try assertCodexLoginHint(association: nil, expected: true)
+	}
+
+	@MainActor
+	func testOnlyExactCodexConfirmationSuppressesVisibleAndSpokenHint() throws {
+		try assertCodexLoginHint(association: "confirmed", expected: false)
+		try assertCodexLoginHint(association: "future", expected: true)
+	}
+
+	@MainActor
+	private func assertCodexLoginHint(association: String?, expected: Bool,
+		file: StaticString = #filePath, line: UInt = #line) throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients.removeAll { $0["client"] as? String != "codex" }
+			var identity = clients[0]["identity"] as! [String: Any]
+			identity["email_masked"] = "a***e@example.test"
+			identity["quota_association"] = association
+			clients[0]["identity"] = identity
+		}
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		let entry = AgentDeckWidgetEntry(date: now, outcome: .loaded(snapshot), kind: .quota, client: .codex, period: .today)
+		let chinese = WidgetCopy.resourceBundle.preferredLocalizations.first?.hasPrefix("zh") == true
+		let hint = chinese ? "与额度关联未确认" : "quota unconfirmed"
+		let spoken = chinese ? "当前登录 a 部分隐藏 e@example.test" : "Signed in a partly hidden e@example.test"
+		let labels = try ocrLines(entry: entry, family: .systemLarge, recognitionLanguages: [chinese ? "zh-Hans" : "en-US"])
+		let visible = labels.joined(separator: " ").lowercased().filter { !$0.isWhitespace }
+		XCTAssertTrue(visible.contains(chinese ? "当前登录" : "signedin"), "\(labels)", file: file, line: line)
+		XCTAssertEqual(visible.contains(hint.filter { !$0.isWhitespace }), expected, "\(labels)", file: file, line: line)
+
+		let model = WidgetSurfaceModel(entry: entry, now: now)
+		let client = try XCTUnwrap(snapshot.subscription.clients.first)
+		let login = try XCTUnwrap(model.quotaLogin(client, family: .systemLarge))
+		XCTAssertEqual(WidgetCopy.spokenLogin(login), spoken + (expected ? ", " + hint : ""), file: file, line: line)
+	}
+
+
+	@MainActor
+	private func ocrLines(entry: AgentDeckWidgetEntry, family: WidgetFamily, recognitionLanguages: [String]? = nil) throws -> [String] {
+		let size = WidgetLayoutContract.canvas(family)
+		let content = AgentDeckWidgetView(entry: entry, familyOverride: family, reduceMotionOverride: true)
+			.environment(\.colorScheme, .dark)
+			.frame(width: size.width, height: size.height)
+			.background(Color(red: 0.071, green: 0.082, blue: 0.110))
+		if let recognitionLanguages {
+			let renderer = ImageRenderer(content: content)
+			renderer.scale = 5
+			let cgImage = try XCTUnwrap(renderer.cgImage)
+			return try recognizedLines(cgImage, languages: recognitionLanguages)
+		}
+		let hosting = NSHostingView(rootView: content)
+		hosting.frame = NSRect(origin: .zero, size: size)
+		hosting.layoutSubtreeIfNeeded()
+		hosting.displayIfNeeded()
+		let scale = 2
+		let bitmap = try XCTUnwrap(NSBitmapImageRep(
+			bitmapDataPlanes: nil,
+			pixelsWide: Int(size.width) * scale,
+			pixelsHigh: Int(size.height) * scale,
+			bitsPerSample: 8,
+			samplesPerPixel: 4,
+			hasAlpha: true,
+			isPlanar: false,
+			colorSpaceName: .deviceRGB,
+			bytesPerRow: 0,
+			bitsPerPixel: 0
+		))
+		bitmap.size = size
+		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+		let cgImage = try XCTUnwrap(bitmap.cgImage)
+		return try recognizedLines(cgImage, languages: nil)
+	}
+
+	private func recognizedLines(_ image: CGImage, languages: [String]?) throws -> [String] {
+		let request = VNRecognizeTextRequest()
+		request.recognitionLevel = .accurate
+		request.usesLanguageCorrection = false
+		if let languages { request.recognitionLanguages = languages }
+		try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+		return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+	}
+
+	@MainActor
+	func testQuotaLoginAndWindowsStayWithinEachNativeSize() throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients[0]["plan_display"] = ["state": "raw_only", "short_name": String(repeating: "W", count: 64)]
+		}
+		let date = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+			for selection in [WidgetClient.codex, .claude] {
+				let entry = AgentDeckWidgetEntry(date: date, outcome: .loaded(snapshot), kind: .quota, client: selection, period: .today)
+				let capture = QuotaGeometryCapture()
+				let size = WidgetLayoutContract.canvas(family)
+				let view = QuotaGeometryProbe(content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+					.frame(width: size.width, height: size.height)
+					.background(GeometryReader { proxy in
+						Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self, value: ["canvas": proxy.frame(in: .global)])
+					}), capture: capture)
+				_ = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+				let canvas = try XCTUnwrap(capture.frames["canvas"]).insetBy(dx: -1, dy: -1)
+				for name in ["codex", "claude"] {
+					let shown = family == .systemLarge || selection.rawValue == name
+					let plan = capture.frames["plan.\(name).absolute"]
+					XCTAssertEqual(plan != nil, family == .systemLarge && name == "codex")
+					if let plan { XCTAssertTrue(canvas.contains(plan)); XCTAssertGreaterThan(plan.width, 0) }
+					let login = capture.frames["login.\(name).absolute"]
+					XCTAssertEqual(login != nil, family == .systemLarge)
+					if let login {
+						XCTAssertGreaterThan(login.width, 0)
+						XCTAssertTrue(canvas.contains(login), "\(family) \(name) login \(login) / \(canvas)")
+					}
+					let percentages = capture.frames.filter { $0.key.hasPrefix("percent.\(name).") && $0.key.hasSuffix(".absolute") }
+					XCTAssertEqual(!percentages.isEmpty, shown)
+					for (_, frame) in percentages {
+						XCTAssertTrue(canvas.contains(frame), "\(family) \(name) percentage \(frame) / \(canvas)")
+					}
+				}
+				if selection == .claude || family == .systemLarge {
+					let attribution = try XCTUnwrap(capture.frames["attribution.claude.absolute"])
+					XCTAssertTrue(canvas.contains(attribution))
+				}
+			}
+		}
+	}
+
+	@MainActor
+	func testInvalidatedQuotaFootersFitAndPreferTheKnownReason() throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients[0]["quota_context"] = ["reason": "new-reason"]
+			clients[1]["quota_context"] = ["reason": "identity_key_reset"]
+		}
+		let date = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		print("Task 6 rendered footer: \(WidgetCopy.text("Prior quota unlinked"))")
+		for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+			let entry = AgentDeckWidgetEntry(date: date, outcome: .loaded(snapshot), kind: .quota, client: .claude, period: .today)
+			let model = WidgetSurfaceModel(entry: entry, now: date)
+			XCTAssertEqual(model.quotaContextFooter(family: family), "Prior quota unlinked")
+			XCTAssertFalse(model.qualifiers(family: family).contains(.empty))
+			let size = WidgetLayoutContract.canvas(family)
+			let capture = QuotaGeometryCapture()
+			let view = QuotaGeometryProbe(content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+				.frame(width: size.width, height: size.height)
+				.background(GeometryReader { proxy in
+					Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self, value: ["canvas": proxy.frame(in: .global)])
+				}), capture: capture)
+			_ = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+			let footer = try XCTUnwrap(capture.frames["contextFooter"])
+			let canvas = try XCTUnwrap(capture.frames["canvas"])
+			XCTAssertTrue(canvas.insetBy(dx: -1, dy: -1).contains(footer))
+			XCTAssertGreaterThan(footer.width, 0)
+		}
 	}
 
 	func testPrototypeNumberFormattingDropsFalsePrecision() {
@@ -1372,5 +1527,206 @@ extension WidgetPresentationTests {
 				XCTAssertFalse(bytes.contains("\"unknown_count\":null"), "\(name) round \(round)")
 			}
 		}
+	}
+
+	@MainActor
+	func testCompositionWidgetDistinguishesSameNamedModelsAcrossClientsAndFamilies() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let longModel = "gpt-6-luna-enterprise-reasoning-preview-2026-11-17-long"
+		let snapshot = try snapshotWithModels(base, modelsByScopeAndPeriod: [
+			"all": [
+				"today": [
+					(client: "codex", model: longModel, tokens: 600, share: "60.00"),
+					(client: "claude", model: longModel, tokens: 400, share: "40.00"),
+				],
+				"30d": [
+					(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+			],
+			"codex": [
+				"today": [(client: nil, model: longModel, tokens: 600, share: "100.00")],
+				"30d": [(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+			],
+			"claude": [
+				"today": [(client: nil, model: longModel, tokens: 400, share: "100.00")],
+				"30d": [(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+			],
+		])
+		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+
+
+		func matchesModelPrefix(_ line: String) -> Bool {
+			line.contains("gpt-6-luna") || line.contains("gpt-b-luna") || line.contains("gpt-6") || line.contains("gpt-b")
+		}
+
+		let smallAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .today, isPlaceholder: false)
+		let smallAllModel = WidgetSurfaceModel(entry: smallAll, now: generated)
+		let smallTop = try XCTUnwrap(smallAllModel.period?.models.first)
+		let smallTopAX = WidgetAccessibility.topModel(
+			period: try XCTUnwrap(smallAllModel.period),
+			top: smallTop,
+			display: smallAllModel.modelDisplay(smallTop)
+		)
+		XCTAssertEqual(smallTopAX.label, "\(WidgetCopy.text("Top model")): \(longModel) · Codex")
+		let smallAllLines = try ocrLines(entry: smallAll, family: .systemSmall)
+		XCTAssertTrue(smallAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "small all must render client without truncating it away: \(smallAllLines)")
+
+		let mediumAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .today, isPlaceholder: false)
+		let mediumAllModel = WidgetSurfaceModel(entry: mediumAll, now: generated)
+		let mediumRows = try XCTUnwrap(mediumAllModel.period?.models)
+		XCTAssertEqual(
+			mediumRows.map { WidgetAccessibility.modelRow(item: $0, display: mediumAllModel.modelDisplay($0)).label },
+			["\(longModel) · Codex", "\(longModel) · Claude"]
+		)
+		let mediumAllLines = try ocrLines(entry: mediumAll, family: .systemMedium)
+		XCTAssertTrue(mediumAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "medium all must render Codex row: \(mediumAllLines)")
+		XCTAssertTrue(mediumAllLines.contains { matchesModelPrefix($0) && $0.contains("Claude") }, "medium all must render Claude row: \(mediumAllLines)")
+
+		let largeAll = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .all, period: .thirtyDays, isPlaceholder: false)
+		let largeAllModel = WidgetSurfaceModel(entry: largeAll, now: generated)
+		let largeRows = try XCTUnwrap(largeAllModel.period?.models)
+		XCTAssertEqual(
+			largeRows.map { WidgetAccessibility.modelRow(item: $0, display: largeAllModel.modelDisplay($0)).label },
+			["gpt-6-luna · Claude", "gpt-6-luna · Codex"]
+		)
+		let largeAllLines = try ocrLines(entry: largeAll, family: .systemLarge)
+		XCTAssertTrue(largeAllLines.contains { matchesModelPrefix($0) && $0.contains("Claude") }, "large all must distinguish Claude row: \(largeAllLines)")
+		XCTAssertTrue(largeAllLines.contains { matchesModelPrefix($0) && $0.contains("Codex") }, "large all must distinguish Codex row: \(largeAllLines)")
+
+		let smallCodex = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .codex, period: .today, isPlaceholder: false)
+		let smallCodexModel = WidgetSurfaceModel(entry: smallCodex, now: generated)
+		let smallCodexTop = try XCTUnwrap(smallCodexModel.period?.models.first)
+		XCTAssertEqual(
+			WidgetAccessibility.topModel(
+				period: try XCTUnwrap(smallCodexModel.period),
+				top: smallCodexTop,
+				display: smallCodexModel.modelDisplay(smallCodexTop)
+			).label,
+			"\(WidgetCopy.text("Top model")): \(longModel)"
+		)
+		let smallCodexLines = try ocrLines(entry: smallCodex, family: .systemSmall)
+		XCTAssertTrue(smallCodexLines.contains { matchesModelPrefix($0) && !$0.contains("Codex") }, "small single client omits suffix: \(smallCodexLines)")
+
+		let mediumClaude = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .claude, period: .today, isPlaceholder: false)
+		let mediumClaudeModel = WidgetSurfaceModel(entry: mediumClaude, now: generated)
+		let mediumClaudeTop = try XCTUnwrap(mediumClaudeModel.period?.models.first)
+		XCTAssertEqual(
+			WidgetAccessibility.modelRow(item: mediumClaudeTop, display: mediumClaudeModel.modelDisplay(mediumClaudeTop)).label,
+			longModel
+		)
+		let mediumClaudeLines = try ocrLines(entry: mediumClaude, family: .systemMedium)
+		XCTAssertTrue(mediumClaudeLines.contains { matchesModelPrefix($0) && !$0.contains("Claude") }, "medium single client omits suffix: \(mediumClaudeLines)")
+
+		let largeCodex = AgentDeckWidgetEntry(date: generated, snapshot: snapshot, kind: .composition, client: .codex, period: .thirtyDays, isPlaceholder: false)
+		let largeCodexLines = try ocrLines(entry: largeCodex, family: .systemLarge)
+		XCTAssertTrue(largeCodexLines.contains { matchesModelPrefix($0) && !$0.contains("Codex") }, "large single client omits suffix: \(largeCodexLines)")
+	}
+
+	// MARK: Token mix exclusivity (widget-composition)
+
+	// Synthetic client split of the bug sample, consistent with the producer's
+	// eventTokenTotal (Codex = input + output); only `all` raw totals are the sample's.
+	private var codexParts: WidgetTokenParts { (181_000_000, 180_000_000, 1_000_000, 175_907_008, 1_000_000) }
+	private var claudeParts: WidgetTokenParts { (259_850_572, 1_601_130, 964_562, 256_182_542, 1_102_338) }
+	private var allParts: WidgetTokenParts { (440_850_572, 181_601_130, 1_964_562, 432_089_550, 2_102_338) }
+
+	private func mixItems(
+		_ snapshot: WidgetDesktopSnapshotV1, client: WidgetClient, period: WidgetPeriod
+	) throws -> [TokenComponent] {
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .composition, client: client, period: period, isPlaceholder: false
+		)
+		return try XCTUnwrap(TokenComponent.items(for: WidgetSurfaceModel(entry: entry, now: entry.date)))
+	}
+
+	private func assertWidgetMix(_ items: [TokenComponent], _ expected: [Int64], file: StaticString = #filePath, line: UInt = #line) {
+		XCTAssertEqual(items.map(\.id), ["input", "output", "cache-read", "cache-write"], file: file, line: line)
+		XCTAssertEqual(items.map(\.value), expected, file: file, line: line)
+		let total = expected.reduce(0, +)
+		XCTAssertEqual(items.map { $0.share }, expected.map { WidgetFormat.percentage($0, total: total) }, file: file, line: line)
+		if total > 0 {
+			XCTAssertEqual(items.map { WidgetFormat.decimal($0.share) }.reduce(0, +), 100, accuracy: 0.05, file: file, line: line)
+		}
+	}
+
+	func testWidgetTokenMixIsExclusiveForMixedCodexOnlyAndClaudeScopes() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["30d": allParts], "codex": ["30d": codexParts], "claude": ["30d": claudeParts],
+		])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [3_092_992, 1_000_000, 175_907_008, 1_000_000])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [1_601_130, 964_562, 256_182_542, 1_102_338])
+		XCTAssertEqual(try mixItems(snapshot, client: .all, period: .thirtyDays).map(\.value).reduce(0, +), 440_850_572)
+	}
+
+	func testWidgetTokenMixHandlesZeroAndCacheHeavyCodexWithoutNegativeSlices() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let zero: WidgetTokenParts = (0, 0, 0, 0, 0)
+		let heavy: WidgetTokenParts = (9_100, 9_000, 100, 9_000, 0)
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["today": zero, "7d": heavy], "codex": ["today": zero, "7d": heavy],
+		])
+		let zeroItems = try mixItems(snapshot, client: .all, period: .today)
+		XCTAssertEqual(zeroItems.map(\.value), [0, 0, 0, 0])
+		XCTAssertEqual(zeroItems.map(\.share), [nil, nil, nil, nil])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .sevenDays), [0, 100, 9_000, 0])
+	}
+
+	func testWidgetTokenMixFollowsThePeriodAndNeverBorrowsAnotherPeriodOverlap() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let plain: WidgetTokenParts = (10, 10, 0, 0, 0)
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["7d": allParts, "30d": plain], "codex": ["7d": codexParts, "30d": plain],
+		])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .sevenDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [10, 0, 0, 0])
+	}
+
+	func testWidgetTokenMixWithoutAUsableCodexScopeDerivesOverlapFromTheTotal() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithoutClient(snapshotWithTokenParts(base, ["all": ["30d": allParts]]), client: "codex")
+		assertWidgetMix(try mixItems(snapshot, client: .all, period: .thirtyDays), [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+	}
+
+	func testWidgetCodexCacheWriteConservesProducerTotalAcrossScopeAvailability() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let codex: WidgetTokenParts = (11, 10, 1, 4, 2)
+		let claude: WidgetTokenParts = (17, 3, 2, 5, 7)
+		let all: WidgetTokenParts = (28, 13, 3, 9, 9)
+		let snapshot = try snapshotWithTokenParts(base, ["all": ["30d": all], "codex": ["30d": codex], "claude": ["30d": claude]])
+		let variants = [
+			("codex available", snapshot),
+			("codex missing", try snapshotWithoutClient(snapshot, client: "codex")),
+			("codex unavailable", try snapshotWithUnavailablePeriods(snapshot, client: "codex")),
+		]
+		for (name, variant) in variants {
+			let items = try mixItems(variant, client: .all, period: .thirtyDays)
+			XCTAssertEqual(items.map(\.value), [7, 3, 9, 9], name)
+			assertWidgetMix(items, [7, 3, 9, 9])
+		}
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [4, 1, 4, 2])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [3, 2, 5, 7])
+	}
+
+	func testWidgetMixedCodexAnomalyIsIndependentOfCodexScopeAvailability() throws {
+		let base = try widgetFixture("snapshot-complete")
+		let snapshot = try snapshotWithTokenParts(base, [
+			"all": ["30d": (28, 13, 3, 13, 11)], "codex": ["30d": (11, 10, 1, 8, 4)], "claude": ["30d": (17, 3, 2, 5, 7)],
+		])
+		let variants = [
+			("codex available", snapshot),
+			("codex missing", try snapshotWithoutClient(snapshot, client: "codex")),
+			("codex unavailable", try snapshotWithUnavailablePeriods(snapshot, client: "codex")),
+		]
+		for (name, variant) in variants {
+			let items = try mixItems(variant, client: .all, period: .thirtyDays)
+			XCTAssertEqual(items.map(\.value), [1, 3, 13, 11], name)
+			assertWidgetMix(items, [1, 3, 13, 11])
+		}
+		assertWidgetMix(try mixItems(snapshot, client: .codex, period: .thirtyDays), [0, 1, 8, 4])
+		assertWidgetMix(try mixItems(snapshot, client: .claude, period: .thirtyDays), [3, 2, 5, 7])
 	}
 }

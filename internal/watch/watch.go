@@ -53,6 +53,9 @@ type Service struct {
 type SourceSet []Source
 
 func (s *Service) Poll(ctx context.Context) ([]Event, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s.StateRoot != "" {
 		if err := platform.RevalidateOwnership(s.StateRoot); err != nil {
 			return nil, err
@@ -70,9 +73,15 @@ func (s *Service) Poll(ctx context.Context) ([]Event, error) {
 	}
 	changed := make([]changedSource, 0, len(s.Sources))
 	for _, source := range s.Sources {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		fingerprint, err := source.Snapshot(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("snapshot %s: %w", source.Domain, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		if previous, ok := s.fingerprints[source.Domain]; !ok || previous != fingerprint {
 			changed = append(changed, changedSource{source: source, fingerprint: fingerprint})
@@ -81,8 +90,14 @@ func (s *Service) Poll(ctx context.Context) ([]Event, error) {
 	if len(changed) == 0 {
 		return []Event{}, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	release, err := s.Lock(ctx)
 	if errors.Is(err, store.ErrStateBusy) {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return []Event{s.event("scan_skipped", "all", 0, true, store.ErrStateBusy.Code)}, nil
 	}
 	if err != nil {
@@ -91,35 +106,38 @@ func (s *Service) Poll(ctx context.Context) ([]Event, error) {
 
 	events := make([]Event, 0, len(changed))
 	for _, item := range changed {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, releaseWithError(release, ctxErr)
+		}
 		changes, err := item.source.Scan(ctx)
 		if errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, releaseWithError(release, ctxErr)
+			}
 			// Some domain work committed, but completion is deferred. Leave
 			// its fingerprint unacknowledged so the next poll retries it.
 			events = append(events, s.event("scan_pending", item.source.Domain, changes, false, "source_identity_pending"))
 			continue
 		}
 		if err != nil {
-			if releaseErr := release(); releaseErr != nil {
-				return nil, errors.Join(fmt.Errorf("scan %s: %w", item.source.Domain, err), fmt.Errorf("release scan lock: %w", releaseErr))
-			}
-			return nil, fmt.Errorf("scan %s: %w", item.source.Domain, err)
+			return nil, releaseWithError(release, fmt.Errorf("scan %s: %w", item.source.Domain, err))
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, releaseWithError(release, ctxErr)
 		}
 		fingerprint := item.fingerprint
 		if item.source.PostScanFingerprint != nil {
 			fingerprint, err = item.source.PostScanFingerprint(ctx, item.fingerprint)
 			if err != nil {
-				if releaseErr := release(); releaseErr != nil {
-					return nil, errors.Join(fmt.Errorf("refresh %s fingerprint: %w", item.source.Domain, err), fmt.Errorf("release scan lock: %w", releaseErr))
-				}
-				return nil, fmt.Errorf("refresh %s fingerprint: %w", item.source.Domain, err)
+				return nil, releaseWithError(release, fmt.Errorf("refresh %s fingerprint: %w", item.source.Domain, err))
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, releaseWithError(release, ctxErr)
 			}
 		}
 		if s.PersistFingerprint != nil {
 			if err = s.PersistFingerprint(ctx, item.source.Domain, fingerprint); err != nil {
-				if releaseErr := release(); releaseErr != nil {
-					return nil, errors.Join(fmt.Errorf("persist scan fingerprint: %w", err), fmt.Errorf("release scan lock: %w", releaseErr))
-				}
-				return nil, fmt.Errorf("persist scan fingerprint: %w", err)
+				return nil, releaseWithError(release, fmt.Errorf("persist scan fingerprint: %w", err))
 			}
 		}
 		s.fingerprints[item.source.Domain] = fingerprint
@@ -136,8 +154,14 @@ func (s *Service) Run(ctx context.Context, interval time.Duration, emit func(Eve
 		interval = time.Minute
 	}
 	for {
+		if ctx.Err() != nil {
+			return nil
+		}
 		events, err := s.Poll(ctx)
 		if err != nil {
+			if isCancellationOnly(ctx, err) {
+				return nil
+			}
 			return err
 		}
 		for _, event := range events {
@@ -153,6 +177,35 @@ func (s *Service) Run(ctx context.Context, interval time.Duration, emit func(Eve
 		case <-timer.C:
 		}
 	}
+}
+
+func releaseWithError(release func() error, err error) error {
+	if releaseErr := release(); releaseErr != nil {
+		return errors.Join(err, fmt.Errorf("release scan lock: %w", releaseErr))
+	}
+	return err
+}
+
+func isCancellationOnly(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() == nil {
+		return false
+	}
+	if multi, ok := err.(interface{ Unwrap() []error }); ok {
+		errs := multi.Unwrap()
+		if len(errs) == 0 {
+			return false
+		}
+		for _, sub := range errs {
+			if !isCancellationOnly(ctx, sub) {
+				return false
+			}
+		}
+		return true
+	}
+	if single, ok := err.(interface{ Unwrap() error }); ok {
+		return isCancellationOnly(ctx, single.Unwrap())
+	}
+	return err == ctx.Err()
 }
 
 func (s *Service) event(kind, domain string, changes int, skipped bool, reason string) Event {

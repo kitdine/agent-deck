@@ -3,6 +3,69 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+	func testSubscriptionGoFixtureAndNullableWireContract() throws {
+		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		let bytes = try Data(contentsOf: url)
+		let decoder = JSONDecoder()
+		let original = try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: bytes)
+		XCTAssertEqual(original.projection.value?.coreEpoch, 11)
+		let codex = original.clients[0]
+		XCTAssertEqual(codex.plan, "prolite")
+		XCTAssertEqual(codex.displayPlanShortName, "Pro 100")
+		XCTAssertEqual(codex.identity.value?.quotaAssociation, .value(.confirmed))
+		XCTAssertEqual(codex.identity.value?.currentUntil, .value("2026-11-18T12:10:00Z"))
+		XCTAssertEqual(original.clients[1].planDisplay, .null)
+		XCTAssertEqual(original.clients[1].identity.value?.state, .identified)
+		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(original)), original)
+
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
+		var identity = try XCTUnwrap(clients[1]["identity"] as? [String: Any])
+		identity["freshness"] = "last_read"
+		identity["quota_association"] = "future_association"
+		identity["state"] = "future_identity"
+		identity["current_until"] = NSNull()
+		identity.removeValue(forKey: "organization_name")
+		clients[0]["identity"] = identity
+		clients[0]["plan_display"] = NSNull()
+		clients[1]["failure_detail"] = "future_detail"
+		clients[1]["quota_context"] = ["invalidated_at": "2026-11-18T12:01:00Z", "reason": "context_changed"]
+		func read() throws -> DesktopSubscriptionSnapshotV1 {
+			object["clients"] = clients
+			return try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		}
+		let changed = try read()
+		XCTAssertNil(changed.clients[0].displayPlanShortName)
+		let decoded = try XCTUnwrap(changed.clients[0].identity.value)
+		XCTAssertEqual(decoded.state, .unrecognized)
+		XCTAssertEqual(decoded.freshness, .lastRead)
+		XCTAssertEqual(decoded.currentUntil, .null)
+		XCTAssertEqual(decoded.emailMasked.value, "a***e@example.test")
+		XCTAssertEqual(decoded.organizationName, .absent)
+		XCTAssertEqual(decoded.quotaAssociation, .value(.unrecognized))
+		XCTAssertEqual(changed.clients[1].failureDetail, .value(.unrecognized))
+		XCTAssertEqual(changed.clients[1].quotaContext.value?.reason, .contextChanged)
+		clients[0].removeValue(forKey: "plan_display")
+		object.removeValue(forKey: "projection")
+		let legacy = try read()
+		XCTAssertEqual(legacy.clients[0].displayPlanShortName, "prolite")
+		XCTAssertEqual(legacy.projection, .absent)
+		XCTAssertEqual(try decoder.decode(DesktopSubscriptionSnapshotV1.self, from: JSONEncoder().encode(legacy)), legacy)
+	}
+
+	func testCodexIdentityUnknownAssociation() throws {
+		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+		var clients = try XCTUnwrap(object["clients"] as? [[String: Any]])
+		var identity = try XCTUnwrap(clients[0]["identity"] as? [String: Any])
+		identity["quota_association"] = "future_association"
+		clients[0]["identity"] = identity
+		object["clients"] = clients
+		let data = try JSONSerialization.data(withJSONObject: object)
+		let changed = try JSONDecoder().decode(DesktopSubscriptionSnapshotV1.self, from: data)
+		XCTAssertEqual(changed.clients[0].identity.value?.quotaAssociation, .value(.unrecognized))
+	}
+
 	// MARK: session_scope_view
 
 	/// The producer's canonical fixtures carry the view: a confirmed Work
@@ -199,7 +262,7 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(envelope.warnings.contains("sessions_unavailable"))
         let schema = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "schema_ahead" })
         XCTAssertEqual(schema.count, 99)
-		XCTAssertEqual(schema.supportedCount, 35)
+		XCTAssertEqual(schema.supportedCount, 36)
         XCTAssertNil(schema.recoveryCommand)
         let hook = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" })
         XCTAssertEqual(hook.count, 2)
@@ -869,5 +932,166 @@ final class DesktopWireTests: XCTestCase {
         for sensitive in ["token", "nonce", "Users", ".lock", "pid", "flock"] {
             XCTAssertFalse(jsonStr.contains(sensitive), "Health check wire payload contains sensitive string '\(sensitive)'")
         }
+    }
+
+	func testPresentationModelDisplayAnnotatesClientOnlyInAllScope() throws {
+		let json = Data(#"""
+		[
+			{"client":"codex","model":"gpt-6-luna","value":{"tokens":600,"events":1,"provider_cost":"0.600000","cost_incomplete":false},"share":"60.00"},
+			{"client":"claude","model":"gpt-6-luna","value":{"tokens":400,"events":1,"provider_cost":"0.400000","cost_incomplete":false},"share":"40.00"},
+			{"model":"gpt-5","value":{"tokens":100,"events":1,"provider_cost":"0.100000","cost_incomplete":false},"share":"100.00"}
+		]
+		"""#.utf8)
+		let models = try JSONDecoder().decode([DesktopPresentationModelV1].self, from: json)
+		XCTAssertEqual(Set(models.map(\.id)).count, 3)
+
+		XCTAssertEqual(models[0].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: "Codex"))
+		XCTAssertEqual(models[0].display(inScope: "all").text, "gpt-6-luna · Codex")
+		XCTAssertEqual(models[1].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: "Claude"))
+		XCTAssertEqual(models[1].display(inScope: "all").text, "gpt-6-luna · Claude")
+		XCTAssertEqual(models[2].display(inScope: "all"), DesktopPresentationModelDisplay(model: "gpt-5", clientLabel: nil))
+		XCTAssertEqual(models[2].display(inScope: "all").text, "gpt-5")
+
+		XCTAssertEqual(models[0].display(inScope: "codex"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: nil))
+		XCTAssertEqual(models[0].display(inScope: "codex").text, "gpt-6-luna")
+		XCTAssertEqual(models[1].display(inScope: "claude"), DesktopPresentationModelDisplay(model: "gpt-6-luna", clientLabel: nil))
+		XCTAssertEqual(models[1].display(inScope: "claude").text, "gpt-6-luna")
+	}
+
+	func testPresentationModelDisplayShowsUnknownClientsAsReported() throws {
+		let json = Data(#"""
+		[
+			{"client":"opencode","model":"x","value":{"tokens":1,"events":1,"provider_cost":"0.000001","cost_incomplete":false},"share":"50.00"},
+			{"client":"gemini-cli","model":"x","value":{"tokens":1,"events":1,"provider_cost":"0.000001","cost_incomplete":false},"share":"50.00"}
+		]
+		"""#.utf8)
+		let models = try JSONDecoder().decode([DesktopPresentationModelV1].self, from: json)
+		XCTAssertEqual(models.map { $0.display(inScope: "all").text }, ["x · opencode", "x · gemini-cli"])
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("codex"), "Codex")
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("claude"), "Claude")
+		XCTAssertEqual(DesktopPresentationModelV1.clientDisplayLabel("opencode"), "opencode")
+	}
+
+    // MARK: DesktopTokenMix
+
+    private func tokenMixScopes(
+        _ parts: [String: (tokens: Int64, input: Int64, output: Int64, read: Int64, write: Int64)],
+        dropping: Set<String> = [],
+        unavailable: Set<String> = []
+    ) throws -> [DesktopUsageScopeV1] {
+        var fixture = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
+        var data = try XCTUnwrap(fixture["data"] as? [String: Any])
+        var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+        var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+        var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+        scopes = scopes.filter { !dropping.contains($0["client"] as? String ?? "") }
+        for index in scopes.indices where unavailable.contains(scopes[index]["client"] as? String ?? "") {
+            var periods = try XCTUnwrap(scopes[index]["periods"] as? [String: Any])
+            periods["available"] = false
+            scopes[index]["periods"] = periods
+        }
+        for index in scopes.indices {
+            guard let part = parts[scopes[index]["client"] as? String ?? ""] else { continue }
+            var periods = try XCTUnwrap(scopes[index]["periods"] as? [String: Any])
+            var items = try XCTUnwrap(periods["items"] as? [[String: Any]])
+            for at in items.indices {
+                var totals = try XCTUnwrap(items[at]["totals"] as? [String: Any])
+                totals["tokens"] = part.tokens
+                totals["input_tokens"] = part.input
+                totals["output_tokens"] = part.output
+                totals["cached_read_tokens"] = part.read
+                totals["cache_write_tokens"] = part.write
+                items[at]["totals"] = totals
+            }
+            periods["items"] = items
+            scopes[index]["periods"] = periods
+        }
+        presentation["scopes"] = scopes
+        usage["presentation"] = presentation
+        data["usage"] = usage
+        fixture["data"] = data
+        return try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: fixture)).data.usage.presentation.scopes
+    }
+
+    private func mix(_ scopes: [DesktopUsageScopeV1], _ client: String) throws -> DesktopTokenMix {
+        let scope = try XCTUnwrap(scopes.first { $0.client == client })
+        let period = try XCTUnwrap(scope.periods.items.first)
+        return DesktopTokenMix(scope: scope, period: period)
+    }
+
+    func testTokenMixRemovesOnlyTheCodexCachedInputOverlap() throws {
+        let scopes = try tokenMixScopes([
+            "all": (440_850_572, 181_601_130, 1_964_562, 432_089_550, 2_102_338),
+            "codex": (181_000_000, 180_000_000, 1_000_000, 175_907_008, 1_000_000),
+            "claude": (259_850_572, 1_601_130, 964_562, 256_182_542, 1_102_338),
+        ])
+        let all = try mix(scopes, "all")
+        XCTAssertEqual([all.input, all.output, all.cacheRead, all.cacheWrite], [4_694_122, 1_964_562, 432_089_550, 2_102_338])
+        XCTAssertEqual(all.total, 440_850_572)
+        let codex = try mix(scopes, "codex")
+        XCTAssertEqual([codex.input, codex.cacheRead], [3_092_992, 175_907_008])
+        XCTAssertEqual(codex.total, 181_000_000)
+        let claude = try mix(scopes, "claude")
+        XCTAssertEqual([claude.input, claude.cacheRead], [1_601_130, 256_182_542])
+        XCTAssertEqual(claude.total, 259_850_572)
+    }
+
+    func testTokenMixClampsAndFallsBackWithoutACodexScope() throws {
+        let heavy = try tokenMixScopes([
+            "all": (9_100, 9_000, 100, 9_000, 0), "codex": (9_100, 9_000, 100, 9_000, 0),
+        ])
+        XCTAssertEqual(try mix(heavy, "all").input, 0)
+        let zero = try tokenMixScopes(["all": (0, 0, 0, 0, 0), "codex": (0, 0, 0, 0, 0)])
+        XCTAssertEqual(try mix(zero, "all").total, 0)
+        let derived = try tokenMixScopes(
+            ["all": (440_850_572, 181_601_130, 1_964_562, 432_089_550, 2_102_338)], dropping: ["codex"]
+        )
+        XCTAssertEqual(try mix(derived, "all").input, 4_694_122)
+    }
+
+    func testTokenMixCodexCacheWriteConservesProducerTotalAcrossScopeAvailability() throws {
+        // Producer eventTokenTotal: Codex = input + output; Claude = all four.
+        let parts: [String: (tokens: Int64, input: Int64, output: Int64, read: Int64, write: Int64)] = [
+            "all": (28, 13, 3, 9, 9), "codex": (11, 10, 1, 4, 2), "claude": (17, 3, 2, 5, 7),
+        ]
+        let variants = [
+            ("codex available", try tokenMixScopes(parts)),
+            ("codex missing", try tokenMixScopes(parts, dropping: ["codex"])),
+            ("codex unavailable", try tokenMixScopes(parts, unavailable: ["codex"])),
+        ]
+        for (name, scopes) in variants {
+            let all = try mix(scopes, "all")
+            XCTAssertEqual([all.input, all.output, all.cacheRead, all.cacheWrite], [7, 3, 9, 9], name)
+            XCTAssertEqual(all.total, 28, name)
+        }
+        let codex = try mix(variants[0].1, "codex")
+        XCTAssertEqual([codex.input, codex.output, codex.cacheRead, codex.cacheWrite], [4, 1, 4, 2])
+        XCTAssertEqual(codex.total, 11)
+        let claude = try mix(variants[0].1, "claude")
+        XCTAssertEqual([claude.input, claude.output, claude.cacheRead, claude.cacheWrite], [3, 2, 5, 7])
+        XCTAssertEqual(claude.total, 17)
+    }
+
+    func testTokenMixMixedCodexAnomalyIsIndependentOfCodexScopeAvailability() throws {
+        // validTokenFields allows Codex read + write above input; the same `all`
+        // totals must still give the same slices whether or not Codex is usable.
+        let parts: [String: (tokens: Int64, input: Int64, output: Int64, read: Int64, write: Int64)] = [
+            "all": (28, 13, 3, 13, 11), "codex": (11, 10, 1, 8, 4), "claude": (17, 3, 2, 5, 7),
+        ]
+        let variants = [
+            ("codex available", try tokenMixScopes(parts)),
+            ("codex missing", try tokenMixScopes(parts, dropping: ["codex"])),
+            ("codex unavailable", try tokenMixScopes(parts, unavailable: ["codex"])),
+        ]
+        for (name, scopes) in variants {
+            let all = try mix(scopes, "all")
+            XCTAssertEqual([all.input, all.output, all.cacheRead, all.cacheWrite], [1, 3, 13, 11], name)
+            XCTAssertEqual(all.total, 28, name)
+        }
+        // Codex alone cannot fit read + write inside its total: input floors at zero.
+        let codex = try mix(variants[0].1, "codex")
+        XCTAssertEqual([codex.input, codex.output, codex.cacheRead, codex.cacheWrite], [0, 1, 8, 4])
+        let claude = try mix(variants[0].1, "claude")
+        XCTAssertEqual([claude.input, claude.output, claude.cacheRead, claude.cacheWrite], [3, 2, 5, 7])
     }
 }

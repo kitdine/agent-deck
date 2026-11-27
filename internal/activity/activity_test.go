@@ -57,10 +57,11 @@ func TestParserExtractsCodexWorkSignalMetadata(t *testing.T) {
 		{"type": "session_meta", "payload": map[string]any{"session_id": "session"}},
 		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-1", "model": "gpt-5.6"}},
 		{"type": "response_item", "timestamp": "2026-08-27T00:00:01Z", "payload": map[string]any{"item": map[string]any{"type": "custom_tool_call", "call_id": "patch", "name": "apply_patch", "input": "*** Begin Patch\n*** Update File: " + patchPath + "\n*** End Patch"}}},
+		// Paths are quoted because t.TempDir() may contain spaces.
 		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-2", "model": "gpt-5.6"}},
-		{"type": "response_item", "timestamp": "2026-08-27T00:00:02Z", "payload": map[string]any{"item": map[string]any{"type": "function_call", "call_id": "command", "name": "exec_command", "arguments": `{"cmd":"cat ` + commandPath + ` && sed -i '' ` + commandPath + `","workdir":"` + root + `"}`}}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:02Z", "payload": map[string]any{"item": map[string]any{"type": "function_call", "call_id": "command", "name": "exec_command", "arguments": `{"cmd":"cat '` + commandPath + `' && sed -i '' '` + commandPath + `'","workdir":"` + root + `"}`}}},
 		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-3", "model": "gpt-5.6"}},
-		{"type": "response_item", "timestamp": "2026-08-27T00:00:03Z", "payload": map[string]any{"item": map[string]any{"type": "custom_tool_call", "call_id": "exec", "name": "exec", "input": "await Promise.all([tools.exec_command({cmd: 'cat " + execPath + " # )'}), tools.exec_command({cmd: `head -1 " + execPath + "`})])"}}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:03Z", "payload": map[string]any{"item": map[string]any{"type": "custom_tool_call", "call_id": "exec", "name": "exec", "input": "await Promise.all([tools.exec_command({cmd: 'cat \"" + execPath + "\" # )'}), tools.exec_command({cmd: `head -1 \"" + execPath + "\"`})])"}}},
 		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-4", "model": "gpt-5.6"}},
 		{"type": "response_item", "timestamp": "2026-08-27T00:00:04Z", "payload": map[string]any{"item": map[string]any{"type": "mcp_tool_call", "id": "mcp", "server": "codegraph", "tool": "explore"}}},
 	}

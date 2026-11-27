@@ -51,6 +51,30 @@ enum WidgetAccessibility {
 		)
 	}
 
+	static func topModel(
+		period: DesktopUsagePeriodV1,
+		top: DesktopPresentationModelV1,
+		display: DesktopPresentationModelDisplay
+	) -> WidgetAccessibilityDescriptor {
+		metric(
+			label: "\(WidgetCopy.text("Top model")): \(display.text)",
+			values: [
+				WidgetFormat.share(top.share),
+				"\(WidgetFormat.tokens(top.value.tokens)) \(WidgetCopy.text("of")) \(WidgetFormat.tokens(period.totals.tokens)) \(WidgetCopy.text("Tokens"))",
+			]
+		)
+	}
+
+	static func modelRow(
+		item: DesktopPresentationModelV1,
+		display: DesktopPresentationModelDisplay
+	) -> WidgetAccessibilityDescriptor {
+		metric(
+			label: display.text,
+			values: [WidgetFormat.tokens(item.value.tokens), item.share.map { WidgetFormat.share($0) }]
+		)
+	}
+
 	static func trend(
 		items: [DesktopUsageDailyItemV1],
 		label: String = WidgetCopy.text("Usage trend")
@@ -267,7 +291,8 @@ struct AgentDeckWidgetView: View {
 			entry: entry, qualifiers: model.qualifiers(family: family), family: family,
 			quotaObservedAt: entry.kind == .quota ? model.quotaFooterObservedAt(family: family) : nil,
 			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil,
-			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil
+			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil,
+			fixedFooterText: entry.kind == .quota ? model.quotaContextFooter(family: family).map { WidgetCopy.text($0) } : nil
 		) {
 			switch entry.kind {
 			case .magnitude: MagnitudeWidgetView(model: model, family: family)
@@ -428,7 +453,7 @@ private struct QuotaWidgetView: View {
 		let clients = model.presentedQuotaClients(family: family)
 		let layout = QuotaWidgetLayoutContract.presentation(family: family, clientCount: clients.count)
 		if clients.isEmpty {
-			UnavailableWidget(kind: .quota)
+			Text(WidgetCopy.text("No quota data")).font(.caption).foregroundStyle(.secondary)
 		} else if layout.axis == .vertical {
 			VStack(alignment: .leading, spacing: 0) {
 				ForEach(Array(clients.enumerated()), id: \.element.client) { index, client in
@@ -480,13 +505,18 @@ private struct QuotaWidgetView: View {
 		}
 	}
 
-	private func clientBlock(_ client: DesktopSubscriptionClientV1, includesAttribution: Bool = true) -> some View {
+	private func clientBlock(_ client: AppGroupQuotaClient, includesAttribution: Bool = true) -> some View {
 		let selected = model.quotaWindows(for: client, family: family)
 		return VStack(alignment: .leading, spacing: 5) {
 			HStack {
-				Text(client.client.capitalized).font(.system(size: 11, weight: .semibold))
-				Spacer()
-				if let plan = client.plan { Text(plan).font(.system(size: 9)).foregroundStyle(.secondary) }
+				Text(DesktopPresentationModelV1.clientDisplayLabel(client.client)).font(.system(size: 11, weight: .semibold))
+				if let plan = model.quotaPlan(client, family: family) {
+					Text(verbatim: plan).font(.system(size: 10)).foregroundStyle(.secondary)
+						.lineLimit(1).truncationMode(.tail)
+						.background(quotaGeometry("plan.\(client.client)"))
+				}
+				if family == .systemLarge, needsQuotaAttribution(client) { quotaAttribution(client) }
+				Spacer(minLength: 0)
 			}
 			if selected.isEmpty {
 				// Codex PR #5 fifth review, P2: two clients in the large
@@ -504,6 +534,8 @@ private struct QuotaWidgetView: View {
 							}
 							Spacer()
 							Text(quotaPercentText(window.usedPercent)).monospacedDigit()
+								.fixedSize(horizontal: true, vertical: false)
+								.background(quotaGeometry("percent.\(client.client).\(window.key)"))
 						}
 						.font(.system(size: 9.5)).lineLimit(1)
 						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
@@ -515,16 +547,29 @@ private struct QuotaWidgetView: View {
 					}
 				}
 			}
-			if includesAttribution, needsQuotaAttribution(client) { quotaAttribution(client) }
+			if family != .systemLarge, includesAttribution, needsQuotaAttribution(client) { quotaAttribution(client) }
+			if let login = model.quotaLogin(client, family: family) {
+				Divider()
+				HStack(spacing: 3) {
+					Text(WidgetCopy.format("Signed in %@", value: login.email)).truncationMode(.middle)
+					if login.associationUnconfirmed {
+						Text(WidgetCopy.text("quota unconfirmed")).fixedSize(horizontal: true, vertical: false)
+					}
+				}
+				.font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel(WidgetCopy.spokenLogin(login))
+				.background(quotaGeometry("login.\(client.client)"))
+			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
-	private func needsQuotaAttribution(_ client: DesktopSubscriptionClientV1) -> Bool {
-		client.client == "claude" && !client.attributionConfirmed && client.failure != .probeDisabled
+	private func needsQuotaAttribution(_ client: AppGroupQuotaClient) -> Bool {
+		client.client == "claude" && client.failure != .probeDisabled
 	}
 
-	private func quotaAttribution(_ client: DesktopSubscriptionClientV1) -> some View {
+	private func quotaAttribution(_ client: AppGroupQuotaClient) -> some View {
 		Text(WidgetCopy.text("Account attribution unconfirmed"))
 			.font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
 			.background(quotaGeometry("attribution.\(client.client)"))
@@ -571,7 +616,7 @@ struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {
 /// -- mirrors MenuBarPanelViews' primaryReason. observedAt distinguishes a
 /// successful probe that legitimately returned no windows (.notReported)
 /// from a client that has never been probed at all (.neverProbed).
-func quotaClientReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1 {
+func quotaClientReason(_ client: AppGroupQuotaClient) -> DesktopQuotaReasonV1 {
 	if !client.applicable { return client.applicableReason ?? .notOfficial }
 	if let failure = client.failure { return failure }
 	return client.observedAt != nil ? .notReported : .neverProbed
@@ -601,6 +646,14 @@ private struct WidgetFooter: View {
 		)
 		HStack(spacing: 5) {
 			Text(presentation.updateText)
+				.background {
+					if entry.kind == .quota, fixedText != nil {
+						GeometryReader { proxy in
+							Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self,
+								value: ["contextFooter": proxy.frame(in: .global)])
+						}
+					}
+				}
 				.foregroundStyle(presentation.isOld ? WidgetPalette.warn : Color.secondary)
 			Spacer(minLength: 3)
 			if !presentation.qualifierText.isEmpty {
@@ -912,13 +965,29 @@ private struct CompositionWidgetView: View {
 	}
 
 	private func small(period: DesktopUsagePeriodV1, top: DesktopPresentationModelV1) -> some View {
-		VStack(alignment: .leading, spacing: 0) {
+		let topDisplay = model.modelDisplay(top)
+		return VStack(alignment: .leading, spacing: 0) {
 			Eyebrow(WidgetCopy.text("Top model"))
-			Text(top.model)
+			if let clientLabel = topDisplay.clientLabel, !clientLabel.isEmpty {
+				HStack(spacing: 0) {
+					Text(topDisplay.model)
+						.lineLimit(1)
+						.truncationMode(.middle)
+					Text(" · \(clientLabel)")
+						.lineLimit(1)
+						.layoutPriority(1)
+				}
 				.font(.system(size: 13, weight: .semibold))
-				.lineLimit(1)
-				.minimumScaleFactor(0.75)
 				.padding(.top, 3)
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel(topDisplay.text)
+			} else {
+				Text(topDisplay.model)
+					.font(.system(size: 13, weight: .semibold))
+					.lineLimit(1)
+					.minimumScaleFactor(0.75)
+					.padding(.top, 3)
+			}
 			Text(WidgetFormat.share(top.share))
 				.font(.system(size: 25, weight: .semibold, design: .rounded))
 				.foregroundStyle(WidgetPalette.model(1))
@@ -931,31 +1000,19 @@ private struct CompositionWidgetView: View {
 				.lineLimit(1)
 				.padding(.top, 5)
 		}
-		.widgetAccessibility(WidgetAccessibility.metric(
-			label: "\(WidgetCopy.text("Top model")): \(top.model)",
-			values: [
-				WidgetFormat.share(top.share),
-				"\(WidgetFormat.tokens(top.value.tokens)) \(WidgetCopy.text("of")) \(WidgetFormat.tokens(period.totals.tokens)) \(WidgetCopy.text("Tokens"))",
-			]
-		))
+		.widgetAccessibility(WidgetAccessibility.topModel(period: period, top: top, display: topDisplay))
 	}
 
 	private func modelList(_ period: DesktopUsagePeriodV1) -> some View {
 		VStack(alignment: .leading, spacing: 4) {
 			ForEach(Array(period.models.prefix(4).enumerated()), id: \.element.id) { index, item in
-				ShareMetricRow(
-					label: item.model,
-					value: WidgetFormat.tokens(item.value.tokens),
-					share: item.share,
-					tone: WidgetPalette.model(index),
-					showsDot: true
-				)
+				ShareMetricRow(model: item, display: model.modelDisplay(item), tone: WidgetPalette.model(index))
 			}
 		}
 	}
 
 	private func large(_ period: DesktopUsagePeriodV1) -> some View {
-		let components = TokenComponent.items(period.totals)
+		let components = TokenComponent.items(for: model) ?? []
 		return VStack(alignment: .leading, spacing: 0) {
 			Eyebrow(WidgetCopy.text("Models"))
 			modelList(period).padding(.top, 2)
@@ -1418,31 +1475,64 @@ private struct DateAxis: View {
 
 private struct ShareMetricRow: View {
 	let label: String
+	var truncatablePrefix: String? = nil
+	var preservedSuffix: String? = nil
 	let value: String
 	let share: String?
 	let tone: Color
 	var showsDot = false
+	var accessibility: WidgetAccessibilityDescriptor? = nil
 
 	var body: some View {
 		VStack(spacing: 2) {
 			HStack(alignment: .firstTextBaseline, spacing: 6) {
 				HStack(spacing: 5) {
 					if showsDot { Circle().fill(tone).frame(width: 6, height: 6) }
-					Text(label).lineLimit(1)
+					if let truncatablePrefix, let preservedSuffix {
+						HStack(spacing: 0) {
+							Text(truncatablePrefix)
+								.lineLimit(1)
+								.truncationMode(.middle)
+							Text(preservedSuffix)
+								.lineLimit(1)
+								.layoutPriority(1)
+						}
+					} else {
+						Text(label).lineLimit(1)
+					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
-				Text(value).foregroundStyle(.secondary).lineLimit(1)
+				Text(value).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
 				Text(WidgetFormat.share(share))
 					.fontWeight(.semibold)
 					.frame(width: 42, alignment: .trailing)
+					.layoutPriority(1)
 			}
 			.font(.system(size: 10))
 			if share != nil { ShareTrack(share: share, tone: tone) }
 		}
-		.widgetAccessibility(WidgetAccessibility.metric(
+		.widgetAccessibility(accessibility ?? WidgetAccessibility.metric(
 			label: label,
 			values: [value, share.map { WidgetFormat.share($0) }]
 		))
+	}
+}
+
+extension ShareMetricRow {
+	/// A composition model row. Its visible label, the client suffix kept
+	/// clear of truncation and its accessibility description all derive from
+	/// the same display, so the client distinction cannot drift between them.
+	init(model item: DesktopPresentationModelV1, display: DesktopPresentationModelDisplay, tone: Color) {
+		self.init(
+			label: display.text,
+			truncatablePrefix: display.clientLabel == nil ? nil : display.model,
+			preservedSuffix: display.clientLabel.map { " · \($0)" },
+			value: WidgetFormat.tokens(item.value.tokens),
+			share: item.share,
+			tone: tone,
+			showsDot: true,
+			accessibility: WidgetAccessibility.modelRow(item: item, display: display)
+		)
 	}
 }
 
@@ -1502,19 +1592,26 @@ private struct SectionDivider: View {
 	}
 }
 
-private struct TokenComponent: Identifiable {
+struct TokenComponent: Identifiable {
 	let id: String
 	let label: String
 	let value: Int64
 	let share: String?
 	let color: Color
 
-	static func items(_ totals: DesktopPresentationTotalsV1) -> [TokenComponent] {
+	/// Exclusive components of this surface's own client scope and period;
+	/// no other entry's or scope's figures are borrowed.
+	static func items(for model: WidgetSurfaceModel) -> [TokenComponent]? {
+		guard let scope = model.scope, let period = model.period else { return nil }
+		return items(DesktopTokenMix(scope: scope, period: period))
+	}
+
+	static func items(_ mix: DesktopTokenMix) -> [TokenComponent] {
 		let values: [(String, String, Int64)] = [
-			("input", "Input", totals.inputTokens),
-			("output", "Output", totals.outputTokens),
-			("cache-read", "Cache read", totals.cachedReadTokens),
-			("cache-write", "Cache write", totals.cacheWriteTokens),
+			("input", "Input", mix.input),
+			("output", "Output", mix.output),
+			("cache-read", "Cache read", mix.cacheRead),
+			("cache-write", "Cache write", mix.cacheWrite),
 		]
 		let total = values.reduce(Int64(0)) { $0 + $1.2 }
 		return values.enumerated().map { index, item in

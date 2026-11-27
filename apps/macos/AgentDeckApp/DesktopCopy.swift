@@ -613,6 +613,37 @@ enum DesktopCopy {
 	static let quotaSourceCodexAppServer = "Codex app-server"
 	static let quotaSourceClaudeStatusLine = "Claude status line"
 	static let quotaSourceClaudeUsageProse = "claude /usage"
+	// subscription-account-identity ux/menubar.md §5. Each key doubles as its
+	// en-US value; the catalog carries the reviewed zh-Hans wording.
+	static let quotaIdentityTitle = "Signed in"
+	static let quotaIdentityLastKnown = "Last known sign-in"
+	static let quotaIdentityPastStatus = "Last read · %@"
+	static let quotaIdentityUnknown = "Current identity unknown"
+	static let quotaIdentitySignedOut = "Not signed in to a subscription"
+	static let quotaIdentityNonSubscription = "Not a subscription sign-in"
+	static let quotaIdentityLastRead = "last read %@"
+	static let quotaIdentityWorkspace = "Workspace"
+	static let quotaIdentityOrganization = "Organization"
+	static let quotaIdentityPlanPrefix = "Sign-in plan"
+	static let quotaIdentityAssociationUnconfirmed = "Not confirmed as the account behind this quota"
+	static let quotaIdentityAssociationConfirmed = "Same account as this quota"
+	static let quotaIdentityReasonNeverProbed = "Identity not read yet"
+	static let quotaIdentityReasonProbeFailed = "Identity read failed"
+	static let quotaIdentityReasonParseFailed = "Identity output not recognized"
+	static let quotaIdentityReasonIncomparable = "Identity fields incomplete"
+	static let quotaIdentityMaskedSpoken = "partly hidden"
+	static let quotaPlanDisplayConflict = "Plan sources disagree"
+	static let quotaPlanDisplayRaw = "raw value %@"
+	static let quotaReasonPlanNotReported = "not reported by quota source"
+	static let quotaReasonPlanUnsafe = "plan value cannot be safely displayed"
+	static let quotaDiscarded = "Discarded"
+	static let quotaContextChanged = "Sign-in context changed; earlier quota discarded"
+	static let quotaContextSignedOut = "Signed out of the subscription; earlier quota discarded"
+	static let quotaContextNonSubscription = "Switched to a non-subscription sign-in; earlier quota discarded"
+	static let quotaContextKeyReset = "Cannot compare with the earlier sign-in; earlier quota discarded"
+	static let quotaParseDetailMissingLine = "expected usage line missing"
+	static let quotaParseDetailShapeInvalid = "usage line shape or value invalid"
+	static let quotaParseDetailTimezoneUnresolved = "reset time or time zone unresolved"
 
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
@@ -636,6 +667,15 @@ enum DesktopCopy {
 		quotaReasonNeverProbed, quotaReasonProbeFailed, quotaReasonParseFailed,
 		quotaReasonNotConsented, quotaReasonProbeDisabled, quotaCreditGranted, quotaCreditExpires,
 		quotaSourceCodexAppServer, quotaSourceClaudeStatusLine, quotaSourceClaudeUsageProse,
+		quotaIdentityTitle, quotaIdentityLastKnown, quotaIdentityPastStatus, quotaIdentityUnknown,
+		quotaIdentitySignedOut, quotaIdentityNonSubscription, quotaIdentityLastRead,
+		quotaIdentityWorkspace, quotaIdentityOrganization, quotaIdentityPlanPrefix,
+		quotaIdentityAssociationUnconfirmed, quotaIdentityAssociationConfirmed,
+		quotaIdentityReasonNeverProbed, quotaIdentityReasonProbeFailed, quotaIdentityReasonParseFailed,
+		quotaIdentityReasonIncomparable, quotaIdentityMaskedSpoken,
+		quotaPlanDisplayConflict, quotaPlanDisplayRaw, quotaReasonPlanNotReported, quotaReasonPlanUnsafe,
+		quotaDiscarded, quotaContextChanged, quotaContextSignedOut, quotaContextNonSubscription, quotaContextKeyReset,
+		quotaParseDetailMissingLine, quotaParseDetailShapeInvalid, quotaParseDetailTimezoneUnresolved,
 		panelUnavailableMark, sectionUnavailable,
 		trendTitle, trendWindow, trendHours, trendEvents, trendNow,
 		chipAveragePerDay, chipPeak, chipCacheHit,

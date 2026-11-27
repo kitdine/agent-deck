@@ -783,10 +783,14 @@
                 "attribution_confirmed": "boolean",
                 "client": "string",
                 "failure": "string",
+                "failure_detail": null,
+                "identity": null,
                 "observed_at": null,
                 "observed_reset_at": null,
                 "plan": null,
+                "plan_display": null,
                 "plan_reason": "string",
+                "quota_context": null,
                 "reset_allowance": null,
                 "reset_allowance_reason": "string",
                 "source": null,
@@ -795,6 +799,12 @@
                 "windows": []
               }
             ],
+            "projection": {
+              "boot": "string",
+              "core_epoch": "number",
+              "mono": "number",
+              "revision": "number"
+            },
             "reading": "boolean"
           },
           "usage": {

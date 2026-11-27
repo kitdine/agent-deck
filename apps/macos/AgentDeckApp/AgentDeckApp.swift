@@ -1,4 +1,4 @@
-import AgentDeckShared
+@_spi(DesktopApp) import AgentDeckShared
 import AppKit
 import SwiftUI
 import WidgetKit
@@ -180,7 +180,8 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		let coordinator = DesktopRefreshCoordinator(
 			host: DesktopHost(runner: runner),
 			quotaRefresher: runner,
-			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
+			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications,
+			                                  stateRoot: { [runner] in try await runner.resolveStateRoot() }),
 			snapshotStore: snapshotStore,
 			widgetSessionScopeCollector: WidgetSessionScopeBatchCollector(reader: runner)
 		)
@@ -194,7 +195,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			claudeSettingsURL: claudeSettingsURL,
 			notifications: notifications,
 			refreshQuotaSnapshot: { [weak coordinator] in
-				await coordinator?.refresh(manualQuota: false)
+				await coordinator?.requestSettingsRefresh(requiresFollowUp: false)
 			}
 		)
 		self.preferences = preferences
@@ -212,7 +213,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 				// Counted background usage changed: a finite round settles and
 				// publishes it like any other source change.
 				publicationNeeded: { [weak coordinator] in
-					Task { @MainActor in await coordinator?.requestFullRefresh(trigger: .sourceChange) }
+					coordinator?.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: false)
 				}
 			),
 			// With no listener running, nothing else notices `telemetry enable`.
@@ -230,11 +231,11 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			transport: runner,
 			// A committed default or override changes the next publication, not
 			// the views already shown. Only a refresh that starts after the write
-			// can carry it; a source-change request always runs one more round.
+			// can carry it.
 			publish: { [weak coordinator] in
 				guard let coordinator else { return .failed }
-				await coordinator.requestFullRefresh(trigger: .sourceChange)
-				guard case .succeeded = coordinator.fullAttempt else { return .failed }
+				await coordinator.requestSettingsRefresh(requiresFollowUp: true)
+				guard !Task.isCancelled, case .succeeded = coordinator.fullAttempt else { return .failed }
 				return .published(coordinator.latestSnapshot?.data.sessionScopeView.view?.default)
 			}
 		)
@@ -283,20 +284,21 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		itemController?.warmsWindowAfterPreparation = true
 		if automaticRefreshEnabled {
 			let monitor = DesktopSourceChangeMonitor(home: sourceHome) { [weak refreshCoordinator] in
-				Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: .sourceChange) }
+				refreshCoordinator?.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
 			}
 			let updates = DesktopAutomaticUpdates(
 				enabled: preferences.automaticUpdateEnabled,
 				startWatching: { [weak monitor] in monitor?.start() ?? false },
 				stopWatching: { [weak monitor] in monitor?.stop() },
 				request: { [weak refreshCoordinator] trigger in
-					Task { @MainActor in await refreshCoordinator?.requestFullRefresh(trigger: trigger) }
+					refreshCoordinator?.enqueueAutomaticRefresh(trigger: trigger, fromWatcher: true)
 				}
 			)
 			sourceMonitor = monitor
 			automaticUpdates = updates
-			preferences.automaticUpdateDidChange = { [weak updates] enabled in
+			preferences.automaticUpdateDidChange = { [weak updates, weak refreshCoordinator] enabled in
 				updates?.setEnabled(enabled)
+				if !enabled { refreshCoordinator?.cancelBackgroundRefresh() }
 			}
 			refreshCoordinator.startInitialRefresh()
 			// Restore first: watching and quota work start after it, like the

@@ -45,12 +45,22 @@ func ownerFixture(t *testing.T) (home, self, other string) {
 	return filepath.Join(base, "home"), self, other
 }
 
-func claudeHook(command string) string {
+func hookDocument(command string) string {
 	return `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":` + quoteJSON(command) + `}]}]}}`
 }
 
 func quoteJSON(value string) string {
-	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
+// Keep exercising plain legacy commands whenever the path is a safe shell word.
+func fixtureProgram(path string, forceQuote bool) string {
+	const safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_.-"
+	if !forceQuote && strings.Trim(path, safe) == "" {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'"'"'`) + "'"
 }
 
 func TestManagedCommandOwnerCases(t *testing.T) {
@@ -60,16 +70,24 @@ func TestManagedCommandOwnerCases(t *testing.T) {
 		status, code, reason, rc string
 	}{
 		{name: "none", status: "ok"},
-		{name: "owner", claude: func(self, _ string) string { return claudeHook("'" + self + "' usage hook event claude") }, status: "ok"},
-		{name: "path-only", claude: func(_, _ string) string { return claudeHook("agentdeck usage hook event claude") }, status: "ok", reason: "path_resolved"},
-		{name: "claude-mismatch", claude: func(_, other string) string { return claudeHook(other + " usage hook event claude") }, status: "warning", code: "managed_command_owner_mismatch", reason: "claude", rc: "agentdeck usage hook setup --client claude"},
-		{name: "both-mismatch", claude: func(_, other string) string { return claudeHook(other + " usage hook event claude") }, codex: func(_, other string) string {
-			return `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"` + other + ` usage hook event codex"}]}]}}`
+		{name: "owner", claude: func(self, _ string) string {
+			return hookDocument(fixtureProgram(self, true) + " usage hook event claude")
+		}, status: "ok"},
+		{name: "path-only", claude: func(_, _ string) string { return hookDocument("agentdeck usage hook event claude") }, status: "ok", reason: "path_resolved"},
+		{name: "claude-mismatch", claude: func(_, other string) string {
+			return hookDocument(fixtureProgram(other, false) + " usage hook event claude")
+		}, status: "warning", code: "managed_command_owner_mismatch", reason: "claude", rc: "agentdeck usage hook setup --client claude"},
+		{name: "both-mismatch", claude: func(_, other string) string {
+			return hookDocument(fixtureProgram(other, false) + " usage hook event claude")
+		}, codex: func(_, other string) string {
+			return hookDocument(fixtureProgram(other, false) + " usage hook event codex")
 		}, status: "warning", code: "managed_command_owner_mismatch", reason: "claude,codex", rc: "agentdeck usage hook setup --client all"},
 		{name: "statusline-mismatch", claude: func(_, other string) string {
-			return `{"statusLine":{"type":"command","command":"'` + other + `' quota capture"}}`
+			return `{"statusLine":{"type":"command","command":` + quoteJSON(fixtureProgram(other, true)+" quota capture") + `}}`
 		}, status: "warning", code: "managed_command_owner_mismatch", reason: "claude", rc: "agentdeck desktop quota-statusline enable"},
-		{name: "missing-program", claude: func(self, _ string) string { return claudeHook(self + "-gone/agentdeck usage hook event claude") }, status: "warning", code: "managed_command_owner_mismatch", reason: "claude", rc: "agentdeck usage hook setup --client claude"},
+		{name: "missing-program", claude: func(self, _ string) string {
+			return hookDocument(fixtureProgram(self+"-gone/agentdeck", false) + " usage hook event claude")
+		}, status: "warning", code: "managed_command_owner_mismatch", reason: "claude", rc: "agentdeck usage hook setup --client claude"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, self, other := ownerFixture(t)
@@ -92,7 +110,7 @@ func TestManagedCommandOwnerCases(t *testing.T) {
 
 func TestManagedCommandOwnerOnlyForInstalledUnshortCircuitedReports(t *testing.T) {
 	home, _, other := ownerFixture(t)
-	writeClientFile(t, filepath.Join(home, ".claude", "settings.json"), claudeHook(other+" usage hook event claude"))
+	writeClientFile(t, filepath.Join(home, ".claude", "settings.json"), hookDocument(fixtureProgram(other, false)+" usage hook event claude"))
 	ctx := context.Background()
 	// Installed, but the state directory is missing: the short circuit wins.
 	report, err := Service{StateRoot: filepath.Join(t.TempDir(), "missing"), Home: home}.Check(ctx, false)
@@ -145,10 +163,7 @@ func TestManagedCommandOwnerHookRecoveryClearsMismatch(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, _, other := ownerFixture(t)
-			program := other
-			if tc.quoted {
-				program = "'" + other + "'"
-			}
+			program := fixtureProgram(other, tc.quoted)
 			unrelated := `{"type":"command","command":"printf keep"}`
 			if tc.claude {
 				writeClientFile(t, filepath.Join(home, ".claude", "settings.json"), `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+quoteJSON(program+" usage hook event claude")+`},`+unrelated+`]}]}}`)
@@ -246,10 +261,7 @@ func TestManagedCommandOwnerHookRecoveryClearsCoexistingAndRemovedRoutes(t *test
 			}
 			t.Run("setup-coexisting-"+string(client)+suffix, func(t *testing.T) {
 				home, _, other := ownerFixture(t)
-				program := other
-				if quoted {
-					program = "'" + other + "'"
-				}
+				program := fixtureProgram(other, quoted)
 				manager := usagehook.New(usagehook.Environment{Home: home})
 				if _, err := manager.Setup(usagehook.Request{Client: client}); err != nil {
 					t.Fatalf("initial setup: %v", err)
@@ -277,10 +289,7 @@ func TestManagedCommandOwnerHookRecoveryClearsCoexistingAndRemovedRoutes(t *test
 			})
 			t.Run("remove-legacy-only-"+string(client)+suffix, func(t *testing.T) {
 				home, _, other := ownerFixture(t)
-				program := other
-				if quoted {
-					program = "'" + other + "'"
-				}
+				program := fixtureProgram(other, quoted)
 				path := paths[client](home)
 				appendLegacyRoute(t, path, program, client)
 				before, _ := managedCommandOwnerCheck(home)

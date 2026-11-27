@@ -1220,6 +1220,303 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.menuBarBadged)
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 	}
+
+	func testAllScopeAnnotatesSameNamedModelsAcrossClientsAndPreservesSingleClientSemantics() async {
+		let allScope = WireFixture.scope(
+			client: "all",
+			tokensByPeriod: ["today": 1_000, "7d": 1_200, "30d": 1_200],
+			modelsByPeriod: [
+				"today": [
+					.init(client: "codex", model: "gpt-6-luna", tokens: 600, share: "60.00"),
+					.init(client: "claude", model: "gpt-6-luna", tokens: 400, share: "40.00"),
+				],
+				"7d": [
+					.init(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					.init(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+				"30d": [
+					.init(client: "claude", model: "gpt-6-luna", tokens: 900, share: "75.00"),
+					.init(client: "codex", model: "gpt-6-luna", tokens: 300, share: "25.00"),
+				],
+			]
+		)
+		let codexScope = WireFixture.scope(
+			client: "codex",
+			tokensByPeriod: ["today": 600, "7d": 300, "30d": 300],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: "gpt-6-luna", tokens: 600, share: "100.00")],
+				"7d": [.init(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+				"30d": [.init(client: nil, model: "gpt-6-luna", tokens: 300, share: "100.00")],
+			]
+		)
+		let claudeScope = WireFixture.scope(
+			client: "claude",
+			tokensByPeriod: ["today": 400, "7d": 900, "30d": 900],
+			modelsByPeriod: [
+				"today": [.init(client: nil, model: "gpt-6-luna", tokens: 400, share: "100.00")],
+				"7d": [.init(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+				"30d": [.init(client: nil, model: "gpt-6-luna", tokens: 900, share: "100.00")],
+			]
+		)
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope(scopes: [allScope, codexScope, claudeScope])))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+
+		model.selectedClient = "all"
+		model.selectedPeriod = "today"
+		let todayAll = model.breakdownPanel.models
+		XCTAssertEqual(todayAll.map(\.label), ["gpt-6-luna · Codex", "gpt-6-luna · Claude"])
+		XCTAssertEqual(todayAll.map(\.modelName), ["gpt-6-luna", "gpt-6-luna"])
+		XCTAssertEqual(todayAll.map(\.clientLabel), ["Codex", "Claude"])
+		XCTAssertEqual(todayAll.map(\.value), [DesktopFormat.tokens(600), DesktopFormat.tokens(400)])
+		XCTAssertEqual(todayAll.map(\.shareText), [DesktopFormat.percent("60.00"), DesktopFormat.percent("40.00")])
+		XCTAssertEqual(Set(todayAll.map(\.id)).count, 2)
+
+		model.selectedPeriod = "7d"
+		let weekAll = model.breakdownPanel.models
+		XCTAssertEqual(weekAll.map(\.label), ["gpt-6-luna · Claude", "gpt-6-luna · Codex"])
+		XCTAssertEqual(weekAll.map(\.value), [DesktopFormat.tokens(900), DesktopFormat.tokens(300)])
+		XCTAssertEqual(weekAll.map(\.shareText), [DesktopFormat.percent("75.00"), DesktopFormat.percent("25.00")])
+		XCTAssertEqual(todayAll[0].id, weekAll[1].id, "Codex model row keeps stable identity across rank changes")
+		XCTAssertEqual(todayAll[1].id, weekAll[0].id, "Claude model row keeps stable identity across rank changes")
+
+		model.selectedPeriod = "today"
+		model.selectedClient = "codex"
+		let todayCodex = model.breakdownPanel.models
+		XCTAssertEqual(todayCodex.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(todayCodex.map(\.clientLabel), [nil])
+		XCTAssertEqual(todayCodex.map(\.value), [DesktopFormat.tokens(600)])
+		XCTAssertEqual(todayCodex.map(\.shareText), [DesktopFormat.percent("100.00")])
+
+		model.selectedClient = "claude"
+		let todayClaude = model.breakdownPanel.models
+		XCTAssertEqual(todayClaude.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(todayClaude.map(\.value), [DesktopFormat.tokens(400)])
+		XCTAssertEqual(todayClaude.map(\.shareText), [DesktopFormat.percent("100.00")])
+
+		model.selectedPeriod = "30d"
+		XCTAssertEqual(model.breakdownPanel.models.map(\.label), ["gpt-6-luna"])
+		XCTAssertEqual(model.breakdownPanel.models.map(\.value), [DesktopFormat.tokens(900)])
+	}
+
+	// MARK: Token mix exclusivity
+
+	private struct MixParts {
+		var input: Int64, output: Int64, cacheRead: Int64, cacheWrite: Int64
+		/// Producer `eventTokenTotal`: Codex counts input + output only (cached
+		/// input and cache write are input subsets); Claude counts all four.
+		func tokens(codex: Bool) -> Int64 {
+			codex ? input + output : input + output + cacheRead + cacheWrite
+		}
+	}
+
+	private func mixScope(
+		_ client: String, _ parts: MixParts, tokens: Int64,
+		periods: [String] = ["today", "7d", "30d"], available: Bool = true
+	) -> [String: Any] {
+		var scope = WireFixture.scope(client: client, periodsAvailable: available)
+		var periodPayload = scope["periods"] as! [String: Any]
+		let items = (periodPayload["items"] as! [[String: Any]]).map { item -> [String: Any] in
+			guard periods.contains(item["period"] as! String) else { return item }
+			var item = item
+			var totals = item["totals"] as! [String: Any]
+			totals["tokens"] = tokens
+			totals["input_tokens"] = parts.input
+			totals["output_tokens"] = parts.output
+			totals["cached_read_tokens"] = parts.cacheRead
+			totals["cache_write_tokens"] = parts.cacheWrite
+			item["totals"] = totals
+			return item
+		}
+		periodPayload["items"] = items
+		scope["periods"] = periodPayload
+		return scope
+	}
+
+	// Synthetic client split of the bug sample: the `all` raw totals
+	// (input 181,601,130 / output 1,964,562 / read 432,089,550 / write 2,102,338)
+	// and representative total 440,850,572 are the sample's; the split is not.
+	private let codexMix = MixParts(input: 180_000_000, output: 1_000_000, cacheRead: 175_907_008, cacheWrite: 1_000_000)
+	private let claudeMix = MixParts(input: 1_601_130, output: 964_562, cacheRead: 256_182_542, cacheWrite: 1_102_338)
+
+	private func allMix(_ codex: MixParts, _ claude: MixParts) -> MixParts {
+		MixParts(input: codex.input + claude.input, output: codex.output + claude.output,
+			cacheRead: codex.cacheRead + claude.cacheRead, cacheWrite: codex.cacheWrite + claude.cacheWrite)
+	}
+
+	private func allTokens(_ codex: MixParts, _ claude: MixParts) -> Int64 {
+		codex.tokens(codex: true) + claude.tokens(codex: false)
+	}
+
+	private func mixModel(_ scopes: [[String: Any]], client: String) async -> MenuBarViewModel {
+		let model = await readyModel(envelope: WireFixture.envelope(scopes: scopes))
+		model.selectedClient = client
+		model.selectedPeriod = "30d"
+		return model
+	}
+
+	private func assertMix(_ model: MenuBarViewModel, _ expected: [Int64], total: Int64, file: StaticString = #filePath, line: UInt = #line) {
+		let mix = model.breakdownPanel.tokenMix
+		XCTAssertEqual(mix.map(\.id), ["input", "output", "cache-read", "cache-write"], file: file, line: line)
+		XCTAssertEqual(mix.map(\.value), expected.map { DesktopFormat.tokens($0) }, file: file, line: line)
+		XCTAssertEqual(expected.reduce(0, +), total, file: file, line: line)
+		XCTAssertEqual(mix.map(\.share).reduce(0, +), 1, accuracy: 1e-9, file: file, line: line)
+		for (row, value) in zip(mix, expected) {
+			XCTAssertEqual(row.share, Double(value) / Double(max(1, total)), accuracy: 1e-9, file: file, line: line)
+		}
+	}
+
+	func testMixedTokenMixSubtractsOnlyTheCodexCachedInputOverlap() async {
+		let all = allMix(codexMix, claudeMix)
+		XCTAssertEqual([all.input, all.output, all.cacheRead, all.cacheWrite], [181_601_130, 1_964_562, 432_089_550, 2_102_338])
+		let scopes = [
+			mixScope("all", all, tokens: allTokens(codexMix, claudeMix)),
+			mixScope("codex", codexMix, tokens: codexMix.tokens(codex: true)),
+			mixScope("claude", claudeMix, tokens: claudeMix.tokens(codex: false)),
+		]
+		let model = await mixModel(scopes, client: "all")
+		XCTAssertEqual(model.activePeriod?.totals.tokens, 440_850_572)
+		assertMix(model, [4_694_122, 1_964_562, 432_089_550, 2_102_338], total: 440_850_572)
+	}
+
+	func testCodexOnlyTokenMixExcludesItsCachedInputFromInput() async {
+		let scopes = [
+			mixScope("all", codexMix, tokens: codexMix.tokens(codex: true)),
+			mixScope("codex", codexMix, tokens: codexMix.tokens(codex: true)),
+		]
+		for client in ["all", "codex"] {
+			let model = await mixModel(scopes, client: client)
+			assertMix(model, [3_092_992, 1_000_000, 175_907_008, 1_000_000], total: 181_000_000)
+		}
+	}
+
+	func testClaudeOnlyTokenMixKeepsIndependentCacheUntouched() async {
+		let scopes = [
+			mixScope("all", claudeMix, tokens: claudeMix.tokens(codex: false)),
+			mixScope("claude", claudeMix, tokens: claudeMix.tokens(codex: false)),
+		]
+		for client in ["all", "claude"] {
+			let model = await mixModel(scopes, client: client)
+			assertMix(model, [1_601_130, 964_562, 256_182_542, 1_102_338], total: 259_850_572)
+		}
+	}
+
+	func testSelectedClaudeScopeInAMixedSnapshotIgnoresCodexOverlap() async {
+		let all = allMix(codexMix, claudeMix)
+		let scopes = [
+			mixScope("all", all, tokens: allTokens(codexMix, claudeMix)),
+			mixScope("codex", codexMix, tokens: codexMix.tokens(codex: true)),
+			mixScope("claude", claudeMix, tokens: claudeMix.tokens(codex: false)),
+		]
+		let model = await mixModel(scopes, client: "claude")
+		assertMix(model, [1_601_130, 964_562, 256_182_542, 1_102_338], total: 259_850_572)
+	}
+
+	func testCodexCacheWriteConservesProducerTotalAcrossScopeAvailability() async {
+		// Codex(11: in 10, out 1, read 4, write 2); Claude(17: 3, 2, 5, 7); all(28: 13, 3, 9, 9).
+		let codex = MixParts(input: 10, output: 1, cacheRead: 4, cacheWrite: 2)
+		let claude = MixParts(input: 3, output: 2, cacheRead: 5, cacheWrite: 7)
+		let all = allMix(codex, claude)
+		XCTAssertEqual([codex.tokens(codex: true), claude.tokens(codex: false), allTokens(codex, claude)], [11, 17, 28])
+		let allScope = mixScope("all", all, tokens: 28)
+		let claudeScope = mixScope("claude", claude, tokens: 17)
+		let snapshots: [(String, [[String: Any]])] = [
+			("codex available", [allScope, mixScope("codex", codex, tokens: 11), claudeScope]),
+			("codex missing", [allScope, claudeScope]),
+			("codex unavailable", [allScope, mixScope("codex", codex, tokens: 11, available: false), claudeScope]),
+		]
+		for (name, scopes) in snapshots {
+			let model = await mixModel(scopes, client: "all")
+			XCTAssertEqual(model.activePeriod?.totals.tokens, 28, name)
+			assertMix(model, [7, 3, 9, 9], total: 28)
+		}
+		let codexModel = await mixModel([mixScope("all", codex, tokens: 11), mixScope("codex", codex, tokens: 11)], client: "codex")
+		assertMix(codexModel, [4, 1, 4, 2], total: 11)
+		let codexOnlyAll = await mixModel([mixScope("all", codex, tokens: 11)], client: "all")
+		assertMix(codexOnlyAll, [4, 1, 4, 2], total: 11)
+		let claudeModel = await mixModel(snapshots[0].1, client: "claude")
+		assertMix(claudeModel, [3, 2, 5, 7], total: 17)
+	}
+
+	func testMixedCodexAnomalyTokenMixIsIndependentOfCodexScopeAvailability() async {
+		// Codex read + write (12) exceeds its input (10); the producer accepts it.
+		let codex = MixParts(input: 10, output: 1, cacheRead: 8, cacheWrite: 4)
+		let claude = MixParts(input: 3, output: 2, cacheRead: 5, cacheWrite: 7)
+		let allScope = mixScope("all", allMix(codex, claude), tokens: 28)
+		let claudeScope = mixScope("claude", claude, tokens: 17)
+		let snapshots: [(String, [[String: Any]])] = [
+			("codex available", [allScope, mixScope("codex", codex, tokens: 11), claudeScope]),
+			("codex missing", [allScope, claudeScope]),
+			("codex unavailable", [allScope, mixScope("codex", codex, tokens: 11, available: false), claudeScope]),
+		]
+		for (name, scopes) in snapshots {
+			let model = await mixModel(scopes, client: "all")
+			XCTAssertEqual(model.breakdownPanel.tokenMix.map(\.value), [1, 3, 13, 11].map { DesktopFormat.tokens($0) }, name)
+			assertMix(model, [1, 3, 13, 11], total: 28)
+		}
+		assertMix(await mixModel(snapshots[0].1, client: "codex"), [0, 1, 8, 4], total: 13)
+		assertMix(await mixModel(snapshots[0].1, client: "claude"), [3, 2, 5, 7], total: 17)
+	}
+
+	func testZeroTokenMixStaysZeroWithoutDivisionArtifacts() async {
+		let zero = MixParts(input: 0, output: 0, cacheRead: 0, cacheWrite: 0)
+		let model = await mixModel([mixScope("all", zero, tokens: 0), mixScope("codex", zero, tokens: 0)], client: "all")
+		let mix = model.breakdownPanel.tokenMix
+		XCTAssertEqual(mix.map(\.value), Array(repeating: DesktopFormat.tokens(0), count: 4))
+		XCTAssertEqual(mix.map(\.share), [0, 0, 0, 0])
+	}
+
+	func testCacheHeavyCodexTokenMixNeverGoesNegativeOrOverCounts() async {
+		// Everything Codex read was cached: exclusive input is zero, not negative.
+		let heavy = MixParts(input: 9_000, output: 100, cacheRead: 9_000, cacheWrite: 0)
+		let scopes = [mixScope("all", heavy, tokens: 9_100), mixScope("codex", heavy, tokens: 9_100)]
+		assertMix(await mixModel(scopes, client: "all"), [0, 100, 9_000, 0], total: 9_100)
+		// A cache read larger than input is clamped to the input it can overlap.
+		let odd = MixParts(input: 50, output: 10, cacheRead: 80, cacheWrite: 0)
+		let oddModel = await mixModel([mixScope("all", odd, tokens: 60), mixScope("codex", odd, tokens: 60)], client: "all")
+		XCTAssertTrue(oddModel.breakdownPanel.tokenMix.allSatisfy { $0.share >= 0 })
+		XCTAssertEqual(oddModel.breakdownPanel.tokenMix.first?.value, DesktopFormat.tokens(0))
+		// Anomalous read + write above input: input floors at zero on both paths
+		// and the slices are shown as published rather than forced onto the total.
+		let over = MixParts(input: 10, output: 1, cacheRead: 8, cacheWrite: 4)
+		for scopes in [[mixScope("all", over, tokens: 11), mixScope("codex", over, tokens: 11)], [mixScope("all", over, tokens: 11)]] {
+			let model = await mixModel(scopes, client: "all")
+			XCTAssertEqual(model.breakdownPanel.tokenMix.map(\.value), [0, 1, 8, 4].map { DesktopFormat.tokens($0) })
+		}
+	}
+
+	func testTokenMixWithoutACodexScopeDerivesTheOverlapFromThePublishedTotal() async {
+		let all = allMix(codexMix, claudeMix)
+		let model = await mixModel([mixScope("all", all, tokens: allTokens(codexMix, claudeMix))], client: "all")
+		assertMix(model, [4_694_122, 1_964_562, 432_089_550, 2_102_338], total: 440_850_572)
+	}
+
+	func testTokenMixFollowsTheSelectedPeriodAndClientScope() async {
+		// Codex carries overlap only in 7d; in 30d it has no cached input.
+		let plain = MixParts(input: 10, output: 0, cacheRead: 0, cacheWrite: 0)
+		let all = allMix(codexMix, claudeMix)
+		let allTotal = allTokens(codexMix, claudeMix)
+		func override(_ base: [String: Any], _ period: String, _ from: [String: Any]) -> [String: Any] {
+			var scope = base
+			var periods = scope["periods"] as! [String: Any]
+			let source = ((from["periods"] as! [String: Any])["items"] as! [[String: Any]]).first { ($0["period"] as! String) == period }!
+			periods["items"] = (periods["items"] as! [[String: Any]]).map { ($0["period"] as! String) == period ? source : $0 }
+			scope["periods"] = periods
+			return scope
+		}
+		let codexScope = override(mixScope("codex", plain, tokens: 10), "7d", mixScope("codex", codexMix, tokens: codexMix.tokens(codex: true)))
+		let allScope = override(mixScope("all", plain, tokens: 10), "7d", mixScope("all", all, tokens: allTotal))
+		let model = await readyModel(envelope: WireFixture.envelope(scopes: [allScope, codexScope]))
+		model.selectedClient = "all"
+		model.selectedPeriod = "7d"
+		let sevenDay = model.breakdownPanel.tokenMix.map(\.value)
+		XCTAssertEqual(sevenDay.first, DesktopFormat.tokens(4_694_122))
+		model.selectedPeriod = "30d"
+		XCTAssertEqual(model.breakdownPanel.tokenMix.first?.value, DesktopFormat.tokens(10))
+		model.selectedPeriod = "7d"
+		XCTAssertEqual(model.breakdownPanel.tokenMix.map(\.value), sevenDay)
+	}
+
 }
 
 private enum MenuBarPublicationError: Error {

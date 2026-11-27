@@ -6,7 +6,29 @@ const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", 
 
 // 额度读取状态是独立的标本轴。它不能并进 STATES：用量数据状态与额度读取状态
 // 可以同时发生，合成一个控件就无法检验“用量过期 + 额度也过期”。
-const QUOTAS = ["normal", "bothOfficial", "codexPlus", "prose", "parseFailed", "stale", "neverProbed", "readingOff"];
+const QUOTAS = [
+  "normal",
+  "bothOfficial",
+  "codexPlus",
+  "prose",
+  "parseFailed",
+  "parseFailedMissingLine",
+  "parseFailedTimezone",
+  "stale",
+  "neverProbed",
+  "readingOff",
+  "identityUnconfirmed",
+  "identityConfirmed",
+  "identityUnknown",
+  "expiredMailbox",
+  "contextChanged",
+  "claudeApiKey",
+  "contextKeyReset",
+  "contextRecovered",
+  "signedOut",
+  "planConflict",
+  "longPlan",
+];
 const REFRESHES = ["idle", "refreshing", "failed", "storageFailed", "wake", "recovered", "firstFailure"];
 const WIDGET_REFRESHES = ["fresh", "aging", "old", "hostAbsent", "unchanged", "changed", "missing", "containerUnavailable", "readFailed", "unsupported", "recovered"];
 const WIDGET_CLIENTS = ["codex", "claude"];

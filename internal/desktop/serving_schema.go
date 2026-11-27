@@ -20,6 +20,8 @@ func compatibleServingCoreSchema(stored, current int) bool {
 		return stored == 31 || stored == 32 || stored == 33
 	case 35:
 		return stored >= 31 && stored <= 34
+	case 36:
+		return stored >= 31 && stored <= 35
 	}
 	return false
 }

@@ -13,7 +13,7 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 	public let usage: AppGroupUsageSnapshotV1
 	public let sessions: AppGroupSessionsSnapshotV1
 	public let health: AppGroupHealthSnapshotV1
-	public let subscription: DesktopSubscriptionSnapshotV1
+	public let subscription: AppGroupSubscriptionV1
 	/// The Widget's session-scope summaries (architecture §7). Nil only for a
 	/// file written before Task 7; a current host always writes a set, even an
 	/// unavailable one, so a reader can tell legacy from unavailable.
@@ -30,7 +30,7 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		usage = AppGroupUsageSnapshotV1(envelope.data.usage)
 		sessions = AppGroupSessionsSnapshotV1(envelope.data.sessions)
 		health = AppGroupHealthSnapshotV1(envelope.data.health)
-		subscription = envelope.data.subscription
+		subscription = AppGroupSubscriptionV1(envelope.data.subscription)
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -59,7 +59,7 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		usage = try container.decode(AppGroupUsageSnapshotV1.self, forKey: .usage)
 		sessions = try container.decode(AppGroupSessionsSnapshotV1.self, forKey: .sessions)
 		health = try container.decode(AppGroupHealthSnapshotV1.self, forKey: .health)
-		subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
+		subscription = try container.decodeIfPresent(AppGroupSubscriptionV1.self, forKey: .subscription) ?? .unavailable
 	}
 }
 

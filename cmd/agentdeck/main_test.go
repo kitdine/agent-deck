@@ -1733,7 +1733,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows_v2; DROP TABLE quota_envelopes_v2; DROP TABLE quota_alert_notices_v2; DROP TABLE quota_identities; DROP TABLE quota_cycle; DROP TABLE quota_projection_revision; DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update; DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE; DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update; DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE; DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2689,6 +2689,80 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(state, "sessions.sqlite3")); !os.IsNotExist(err) {
 		t.Fatalf("usage-only watch created session store: %v", err)
 	}
+}
+
+func TestWatchMidRoundCancellationExitsCleanly(t *testing.T) {
+	t.Run("cancelled during session snapshot", func(t *testing.T) {
+		root := t.TempDir()
+		state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		oldHome := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = oldHome })
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		origDiscover := discoverSessionInventory
+		discoverSessionInventory = func(string) ([]ingest.Source, error) {
+			cancel()
+			return nil, ctx.Err()
+		}
+		t.Cleanup(func() { discoverSessionInventory = origDiscover })
+
+		var output bytes.Buffer
+		command := newRootCommand(bytes.NewReader(nil), &output)
+		command.SetContext(ctx)
+		command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "session", "--interval", "10ms"})
+		if err := command.Execute(); err != nil {
+			t.Fatalf("watch mid-round cancellation error = %v, want nil", err)
+		}
+		if output.Len() != 0 {
+			t.Fatalf("unexpected watch output after mid-round cancellation: %s", output.String())
+		}
+	})
+
+	t.Run("cancelled during extension fingerprint persist", func(t *testing.T) {
+		root := t.TempDir()
+		state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		oldHome := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = oldHome })
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		origPersist := extensionScanFingerprintPersist
+		extensionScanFingerprintPersist = func(context.Context, *store.Store, string) error {
+			cancel()
+			return ctx.Err()
+		}
+		t.Cleanup(func() { extensionScanFingerprintPersist = origPersist })
+
+		var output bytes.Buffer
+		command := newRootCommand(bytes.NewReader(nil), &output)
+		command.SetContext(ctx)
+		command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "extension", "--interval", "10ms"})
+		if err := command.Execute(); err != nil {
+			t.Fatalf("watch mid-round cancellation error = %v, want nil", err)
+		}
+		if output.Len() != 0 {
+			t.Fatalf("unexpected watch output after mid-round cancellation: %s", output.String())
+		}
+		core, err := store.OpenReadOnly(context.Background(), state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer core.Close()
+		if _, found, err := core.Setting(context.Background(), "watch.fingerprint.extension"); err != nil || found {
+			t.Fatalf("extension fingerprint persisted after cancellation: found=%t err=%v", found, err)
+		}
+	})
 }
 
 func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) {

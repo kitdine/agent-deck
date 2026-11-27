@@ -646,7 +646,7 @@ func TestSchedulerAbortsOnWindowPersistenceFailure(t *testing.T) {
 	ctx := context.Background()
 
 	digest := accountDigest(ClientCodex, "acct_fake")
-	if _, err := store.db.ExecContext(ctx, `INSERT INTO quota_windows(
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO quota_windows_v2(
 			client, account_id, window_key, source, observed_at, vendor_order,
 			window_minutes, window_minutes_reason, label, used_percent, resets_at,
 			observed_reset_at, prior_used_percent, prior_observed_at

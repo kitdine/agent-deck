@@ -523,6 +523,7 @@ func Serve(ctx context.Context, stateRoot string) error {
 		stateID:      stateID,
 		nonce:        nonce,
 		journal:      journal,
+		diagnostics:  newDiagnosticLog(stateRoot),
 		rounds:       map[string]*round{},
 		startedAt:    time.Now(),
 		lastActivity: time.Now(),
@@ -563,12 +564,13 @@ func Serve(ctx context.Context, stateRoot string) error {
 }
 
 type server struct {
-	ctx       context.Context
-	stateRoot string
-	stateID   string
-	nonce     string
-	run       roundRunner
-	journal   *receiptJournal
+	ctx         context.Context
+	stateRoot   string
+	stateID     string
+	nonce       string
+	run         roundRunner
+	journal     *receiptJournal
+	diagnostics *diagnosticLog
 
 	mu              sync.Mutex
 	round           *round
@@ -817,6 +819,7 @@ func (s *server) rollbackSelectedRoundLocked(round *round, started bool) {
 
 func (s *server) launchRoundLocked(round *round) {
 	round.launched = true
+	round.diagnostics = s.diagnostics
 	round.onTerminal = func(result Result) error { return s.completeRound(round, result) }
 	workCtx, cancel := context.WithCancel(s.ctx)
 	round.mu.Lock()
@@ -941,6 +944,9 @@ type round struct {
 	predecessor *round
 	onTerminal  func(Result) error
 	launched    bool // protected by server.mu; registration alone is not launch
+	// diagnostics is the worker's private failure log; in-process rounds
+	// have none.
+	diagnostics *diagnosticLog
 
 	// inventoryID is the source coverage acceptance of the current execution:
 	// the round id, or a new attempt id when a replay finds an earlier
@@ -1057,6 +1063,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if !lockHeld {
 		lock, err := store.AcquireScanLock(ctx, stateRoot, 5*time.Second)
 		if err != nil {
+			r.recordFailure("usage,session", withStage("scan_lock", err))
 			r.setUsage(failedUsage(err, 0))
 			r.setSession(failedSession(err, 0))
 			return
@@ -1078,6 +1085,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	r.inventoryOnce.Do(func() { close(r.inventoryObserved) })
 	r.mu.Unlock()
 	if discoverErr != nil {
+		r.recordFailure("usage,session", withStage("discovery", discoverErr))
 		r.setUsage(failedUsage(discoverErr, 0))
 		r.setSession(failedSession(discoverErr, 0))
 		return
@@ -1102,23 +1110,27 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	if coreErr == nil {
 		defer core.Close()
 	}
+	coreErr = withStage("open_core", coreErr)
 	sessions, sessionsErr := openSessions(ctx, stateRoot)
 	if sessionsErr == nil {
 		defer sessions.Close()
 	}
+	sessionsErr = withStage("open_sessions", sessionsErr)
 	var coreAccepted, sessionsAccepted bool
 	if coreErr == nil {
 		coreAccepted, coreErr = core.AbandonRoundInventories(ctx, r.id)
+		coreErr = withStage(domainStage("abandon_round_inventories", false), coreErr)
 	}
 	if sessionsErr == nil {
 		sessionsAccepted, sessionsErr = sessions.AbandonRoundInventories(ctx, r.id)
+		sessionsErr = withStage(domainStage("abandon_round_inventories", true), sessionsErr)
 	}
 	r.inventoryID = roundInventoryID(r.id, coreAccepted || sessionsAccepted)
 	if coreErr == nil {
-		coreErr = acceptDomainInventory(ctx, core, r.inventoryID, sources, false, started)
+		coreErr = withStage(domainStage("accept_inventory", false), acceptDomainInventory(ctx, core, r.inventoryID, sources, false, started))
 	}
 	if sessionsErr == nil {
-		sessionsErr = acceptDomainInventory(ctx, sessions, r.inventoryID, sources, true, started)
+		sessionsErr = withStage(domainStage("accept_inventory", true), acceptDomainInventory(ctx, sessions, r.inventoryID, sources, true, started))
 	}
 
 	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: r.metrics})
@@ -1132,42 +1144,43 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		usageService.PreparedSources = sources
 		usageService.Coordinator = coordinator
 		usageInventory, usagePlanErr = usageService.PlanForCoordinator(ctx, coordinator)
+		usagePlanErr = withStage("plan_usage", usagePlanErr)
 	} else {
-		usagePlanErr = sealSkippedSources(coordinator, sources, ingest.ConsumerUsage)
+		usagePlanErr = withStage("seal_skipped_usage", sealSkippedSources(coordinator, sources, ingest.ConsumerUsage))
 		if usagePlanErr == nil {
 			usagePlanErr = coreErr
 		}
 	}
 	sessionPlanErr := sessionsErr
 	if sessionsErr == nil {
-		sessionPlanErr = session.PlanForCoordinator(ctx, sessions.DB, r.home, sources, coordinator)
+		sessionPlanErr = withStage("plan_session", session.PlanForCoordinator(ctx, sessions.DB, r.home, sources, coordinator))
 	} else {
-		sessionPlanErr = sealSkippedSources(coordinator, sources, ingest.ConsumerSession)
+		sessionPlanErr = withStage("seal_skipped_session", sealSkippedSources(coordinator, sources, ingest.ConsumerSession))
 		if sessionPlanErr == nil {
 			sessionPlanErr = sessionsErr
 		}
 	}
 	if usagePlanErr != nil && sessionPlanErr != nil {
-		r.setUsage(failedUsage(usagePlanErr, 0))
-		r.setSession(failedSession(sessionPlanErr, 0))
+		r.failUsage(usagePlanErr, 0)
+		r.failSession(sessionPlanErr, 0)
 		return
 	}
 	if usagePlanErr != nil {
 		if err := coordinator.AbandonPlan(ingest.ConsumerUsage); err != nil {
-			r.setUsage(failedUsage(usagePlanErr, 0))
-			r.setSession(failedSession(err, 0))
+			r.failUsage(usagePlanErr, 0)
+			r.failSession(withStage("abandon_plan_usage", err), 0)
 			return
 		}
-		r.setUsage(failedUsage(usagePlanErr, 0))
+		r.failUsage(usagePlanErr, 0)
 		coordinator.ConsumerDone(ingest.ConsumerUsage)
 	}
 	if sessionPlanErr != nil {
 		if err := coordinator.AbandonPlan(ingest.ConsumerSession); err != nil {
-			r.setUsage(failedUsage(err, 0))
-			r.setSession(failedSession(sessionPlanErr, 0))
+			r.failUsage(withStage("abandon_plan_session", err), 0)
+			r.failSession(sessionPlanErr, 0)
 			return
 		}
-		r.setSession(failedSession(sessionPlanErr, 0))
+		r.failSession(sessionPlanErr, 0)
 		coordinator.ConsumerDone(ingest.ConsumerSession)
 	}
 	r.setProgressStage("importing")
@@ -1187,16 +1200,16 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			duration := time.Since(started).Milliseconds()
 			if err != nil {
 				finishDomainInventory(core, r.inventoryID, err)
-				r.setUsage(failedUsage(err, duration))
+				r.failUsage(withStage("scan_usage", err), duration)
 				return
 			}
 			if err = finishUsageInventory(ctx, core, usageService, r.inventoryID); err != nil {
-				r.setUsage(failedUsage(err, duration))
+				r.failUsage(withStage("finish_usage_inventory", err), duration)
 				return
 			}
 			if _, err := core.SettleTelemetry(ctx, time.Now(), telemetry.SettleAfter); err != nil {
 				finishDomainInventory(core, r.inventoryID, err)
-				r.setUsage(failedUsage(err, duration))
+				r.failUsage(withStage("settle_telemetry", err), duration)
 				return
 			}
 			r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: duration})
@@ -1237,16 +1250,16 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			finishSession()
 			if err != nil {
 				finishDomainInventory(sessions, r.inventoryID, err)
-				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+				r.failSession(withStage("scan_session", err), time.Since(started).Milliseconds())
 				return
 			}
 			if err = finishAcceptedInventory(ctx, sessions, r.inventoryID); err != nil {
-				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+				r.failSession(withStage("finish_session_inventory", err), time.Since(started).Milliseconds())
 				return
 			}
 			epoch, err := sessions.SessionIndexEpoch(ctx)
 			if err != nil {
-				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+				r.failSession(withStage("session_index_epoch", err), time.Since(started).Milliseconds())
 				return
 			}
 			if coreErr == nil {
@@ -1258,12 +1271,12 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 				coordinator.ConsumerDone(ingest.ConsumerSession)
 				<-r.usageDone
 				if err := r.settleAndClassify(ctx, stateRoot, core, sessions, usageService); err != nil {
-					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+					r.failSession(withStage("settle_and_classify", err), time.Since(started).Milliseconds())
 					return
 				}
 				checkpoint := sessionorigin.WatchFingerprint(epoch, ingest.FingerprintSources(sources))
 				if err := core.SetSetting(ctx, "watch.fingerprint.session", checkpoint); err != nil {
-					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+					r.failSession(withStage("watch_fingerprint", err), time.Since(started).Milliseconds())
 					return
 				}
 			}

@@ -2,7 +2,13 @@
 
 package platform
 
-import "errors"
+import (
+	"errors"
+	"os"
+)
+
+// DirectoryIgnoresASCIICase fails closed without a known directory case policy.
+func DirectoryIgnoresASCIICase(*os.File) bool { return false }
 
 func filesystemCaseSensitive(string) (bool, error) {
 	// Existing entrances use portable OS object identities. An ambiguous alias

@@ -489,7 +489,7 @@ private struct BreakdownModelsCard: View {
 				ForEach(Array(shown.enumerated()), id: \.element.id) { index, row in
 					BreakdownModelRow(
 						row: row,
-						tone: BreakdownPalette.modelTone(label: row.label, fallbackIndex: index)
+						tone: BreakdownPalette.modelTone(label: row.modelName ?? row.label, fallbackIndex: index)
 					)
 				}
 			}
@@ -513,17 +513,33 @@ private struct BreakdownModelRow: View {
 			HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
 				HStack(spacing: 6) {
 					Circle().fill(tone.color).frame(width: 7, height: 7)
-					Text(row.label).lineLimit(1).truncationMode(.middle)
+					if let modelName = row.modelName, let clientLabel = row.clientLabel, !clientLabel.isEmpty {
+						HStack(spacing: 0) {
+							Text(modelName)
+								.lineLimit(1)
+								.truncationMode(.middle)
+							Text(" · \(clientLabel)")
+								.lineLimit(1)
+								.layoutPriority(1)
+						}
+						.accessibilityElement(children: .ignore)
+						.accessibilityLabel(row.label)
+					} else {
+						Text(row.label).lineLimit(1).truncationMode(.middle)
+					}
 				}
 				Spacer(minLength: MenuBarGeometry.betweenRows)
 				Text(row.value)
 					.foregroundStyle(DesktopVisualTheme.muted)
 					.fontWeight(.medium)
 					.monospacedDigit()
+					.lineLimit(1)
+					.layoutPriority(1)
 				Text(row.shareText)
 					.fontWeight(.semibold)
 					.monospacedDigit()
 					.frame(width: 52, alignment: .trailing)
+					.layoutPriority(1)
 			}
 			.font(.caption)
 			GeometryReader { geometry in
@@ -1536,20 +1552,50 @@ struct QuotaPanelView: View {
 	}
 
 	private func clientCard(_ client: DesktopSubscriptionClientV1) -> some View {
-		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-			HStack(alignment: .firstTextBaseline) {
-				Text(client.client.capitalized).font(.headline)
-				if let plan = client.plan { Text(plan).font(.caption).padding(.horizontal, 6).background(DesktopVisualTheme.surfaceRaised, in: Capsule()) }
-				Spacer()
-				if let source = client.source { Text(headerCaption(client, source: source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim) }
+		let discarded = quotaDiscardedLabel(client)
+		return VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			HStack(alignment: .firstTextBaseline, spacing: 6) {
+				Text(DesktopPresentationModelV1.clientDisplayLabel(client.client)).font(.headline)
+					.lineLimit(1).fixedSize().layoutPriority(3)
+				if let pill = planPill(client) {
+					// Let the pill shrink to the space available beside the source and age.
+					Text(verbatim: pill.text ?? "").font(.caption).lineLimit(1).truncationMode(.tail)
+						.padding(.horizontal, 6)
+						.background(DesktopVisualTheme.surfaceRaised, in: Capsule())
+						.help(pill.help)
+						.accessibilityLabel(pill.help)
+				}
+				Spacer(minLength: 4).layoutPriority(-1)
+				if discarded != nil {
+					Text(verbatim: "—").font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+				} else if let source = client.source {
+					Text(headerCaption(client, source: source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+						.multilineTextAlignment(.trailing)
+				}
 			}
 			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
 				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
 			}
-			if let reason = primaryReason(client) {
+			if let discarded {
+				// ux/menubar.md §4: a known Claude sign-in change replaces the window
+				// area with one discarded row until the first new usage commits.
+				VStack(alignment: .leading, spacing: 3) {
+					HStack(alignment: .firstTextBaseline) {
+						Text(t(DesktopCopy.quotaTitle)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+						Spacer(minLength: 4)
+						Text(t(DesktopCopy.quotaDiscarded)).font(.body.weight(.semibold))
+					}
+					Text(discarded).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+				.accessibilityElement(children: .combine)
+			} else if let reason = primaryReason(client) {
 				VStack(alignment: .leading, spacing: 3) {
 					Text(missingWord(reason)).font(.body.weight(.semibold))
 					Text(reasonLabel(reason)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+					if let detail = parseDetailLabel(client) {
+						Text(detail).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+					}
 				}
 			} else {
 				// Codex PR #5 ninth review, P2: planUnavailableLabel and the
@@ -1575,6 +1621,9 @@ struct QuotaPanelView: View {
 				// retained figures with no indication the last refresh failed.
 				if let failure = client.failure {
 					Text(reasonLabel(failure)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+					if let detail = parseDetailLabel(client) {
+						Text(detail).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+					}
 				}
 				ForEach(client.windows, id: \.key) { window in windowRow(window) }
 			}
@@ -1593,6 +1642,7 @@ struct QuotaPanelView: View {
 			if let observed = client.observedResetAt {
 				LabeledContent(t(DesktopCopy.quotaLocallyObservedReset), value: DesktopFormat.relative(observed, now: Date())).font(.caption)
 			}
+			QuotaIdentitySection(client: client)
 		}
 		.padding(12)
 		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1696,9 +1746,58 @@ struct QuotaPanelView: View {
 	// dropped the required Plan/unavailable row instead of rendering it.
 	// The caller now gates this to the windows-shown branch only, so it no
 	// longer needs to guard the collapsed states itself.
+	//
+	// subscription-account-identity A4/ux/menubar.md §2: only a legacy
+	// snapshot without the `plan_display` key keeps the old plan/plan_reason
+	// path. An explicit null (Claude: the quota channel has no plan) and a
+	// missing projection use the projection's own reason, never `plan_reason`.
 	func planUnavailableLabel(_ client: DesktopSubscriptionClientV1) -> String? {
-		guard client.plan == nil else { return nil }
-		return reasonLabel(client.planReason ?? .notReported)
+		switch client.planDisplay {
+		case .absent:
+			guard client.plan == nil else { return nil }
+			return reasonLabel(client.planReason ?? .notReported)
+		case .null:
+			return t(DesktopCopy.quotaReasonPlanNotReported)
+		case .value:
+			let plan = QuotaPlanPresentation.make(client.planDisplay, legacyPlan: nil)
+			if let plan, plan.conflict { return t(DesktopCopy.quotaPlanDisplayConflict) }
+			if let plan, !plan.missing { return nil }
+			return plan?.missingReason == .unsafeValue ? t(DesktopCopy.quotaReasonPlanUnsafe) : t(DesktopCopy.quotaReasonPlanNotReported)
+		}
+	}
+
+	/// The header pill: the quota side's compact plan name (A4 consumer table).
+	/// A conflict or missing projection shows no pill.
+	func planPill(_ client: DesktopSubscriptionClientV1) -> QuotaPlanPresentation? {
+		guard let plan = QuotaPlanPresentation.make(client.planDisplay, legacyPlan: client.plan),
+			!plan.missing, !plan.conflict, plan.text != nil else { return nil }
+		return plan
+	}
+
+	/// ux/menubar.md §4: the discarded row's sentence, chosen by
+	/// `quota_context.reason`. Reading off and a non-applicable client keep
+	/// their own collapsed rows.
+	func quotaDiscardedLabel(_ client: DesktopSubscriptionClientV1) -> String? {
+		guard client.applicable, client.failure != .probeDisabled, let context = client.quotaContext.value else { return nil }
+		switch context.reason {
+		case .signedOut: return t(DesktopCopy.quotaContextSignedOut)
+		case .nonSubscription: return t(DesktopCopy.quotaContextNonSubscription)
+		case .identityKeyReset: return t(DesktopCopy.quotaContextKeyReset)
+		case .contextChanged, .unrecognized: return t(DesktopCopy.quotaContextChanged)
+		}
+	}
+
+	/// ux/menubar.md §5: the second, smaller line under `Output shape not
+	/// recognized`. A legacy producer without `failure_detail` shows only the
+	/// original wording.
+	func parseDetailLabel(_ client: DesktopSubscriptionClientV1) -> String? {
+		guard client.failure == .parseFailed, client.quotaContext.value == nil else { return nil }
+		switch client.failureDetail.value {
+		case .missingLine: return t(DesktopCopy.quotaParseDetailMissingLine)
+		case .shapeInvalid: return t(DesktopCopy.quotaParseDetailShapeInvalid)
+		case .timezoneUnresolved: return t(DesktopCopy.quotaParseDetailTimezoneUnresolved)
+		case .unrecognized, nil: return nil
+		}
 	}
 
 	// Codex PR #5 fifth review, P2: a successful probe that legitimately
@@ -1760,5 +1859,273 @@ struct QuotaPanelView: View {
 			caption += " · " + t(DesktopCopy.quotaStale)
 		}
 		return caption
+	}
+}
+
+/// One plan projection as the quota card presents it (subscription-account-identity
+/// A4 consumer table). `.absent` is the only key state that falls back to the
+/// legacy raw `plan`; an explicit null shows nothing.
+struct QuotaPlanPresentation: Equatable {
+	let text: String?
+	let fullName: String?
+	let help: String
+	let conflict: Bool
+	let missing: Bool
+	let missingReason: DesktopPlanDisplayV1.Reason?
+
+	static func make(_ field: WireField<DesktopPlanDisplayV1>, legacyPlan: String?) -> Self? {
+		switch field {
+		case .absent:
+			guard let legacyPlan, !legacyPlan.isEmpty else { return nil }
+			return Self(text: legacyPlan, fullName: legacyPlan, help: legacyPlan, conflict: false, missing: false, missingReason: nil)
+		case .null:
+			return nil
+		case let .value(plan):
+			if plan.state == .conflict {
+				let raws = plan.raw.map { "\($0.field): \(t(DesktopCopy.quotaPlanDisplayRaw, $0.value))" }.joined(separator: " · ")
+				let conflict = t(DesktopCopy.quotaPlanDisplayConflict)
+				return Self(text: conflict, fullName: conflict, help: raws.isEmpty ? conflict : QuotaIdentityPunctuation.parenthesized(conflict, raws), conflict: true, missing: false, missingReason: nil)
+			}
+			guard plan.state == .known || plan.state == .rawOnly, let short = plan.shortName.value, !short.isEmpty else {
+				return Self(text: nil, fullName: nil, help: "", conflict: false, missing: true, missingReason: plan.reason.value)
+			}
+			let full = plan.name.value.flatMap { $0.isEmpty ? nil : $0 } ?? short
+			let help = plan.raw.first.map { QuotaIdentityPunctuation.parenthesized(full, t(DesktopCopy.quotaPlanDisplayRaw, $0.value)) } ?? full
+			return Self(text: short, fullName: full, help: help, conflict: false, missing: false, missingReason: nil)
+		}
+	}
+
+	func sameName(as other: Self) -> Bool { text != nil && text == other.text }
+}
+
+/// zh-Hans uses full-width separators; every other shipped language uses ASCII.
+enum QuotaIdentityPunctuation {
+	static var isChinese: Bool {
+		if let override = DesktopLocale.override { return override == "zh-Hans" }
+		return Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+	}
+	static var colon: String { isChinese ? "：" : ": " }
+	static var comma: String { isChinese ? "，" : ", " }
+	static var semicolon: String { isChinese ? "；" : "; " }
+	static func parenthesized(_ head: String, _ detail: String) -> String {
+		isChinese ? "\(head)（\(detail)）" : "\(head) (\(detail))"
+	}
+}
+
+/// The current-sign-in area of one quota card (ux/menubar.md §2 rows a–d, §3,
+/// §6). Pure so that the selection, ordering and spoken text are testable
+/// without rendering; the view only lays these strings out.
+struct QuotaIdentityPresentation: Equatable {
+	enum Lead: Equatable {
+		/// Row a with a masked mailbox. `lastKnown` dims it and relabels it.
+		case email(label: String, masked: String, lastKnown: Bool)
+		/// No mailbox: the visible text and the spoken name are the state itself.
+		case status(String)
+	}
+
+	let lead: Lead
+	let organization: String?
+	let plan: String?
+	let planHelp: String?
+	let planConflict: Bool
+	let meta: String?
+	/// Last-known values keep their original read time and reason directly
+	/// beneath them, before row b.
+	let metaAdjacent: Bool
+	let association: String?
+	/// Deadline for the current presentation, if applicable.
+	let currentUntil: Date?
+	var isCurrent: Bool { currentUntil != nil }
+	let accessibilityLabel: String
+
+	static func make(_ client: DesktopSubscriptionClientV1, now: Date, expiredDeadline: Date? = nil) -> Self? {
+		// Reading off, a non-official provider and the gate keep the area away
+		// entirely, including any retained identity (ux/menubar.md §3).
+		guard client.applicable, client.failure != .probeDisabled, let identity = client.identity.value else { return nil }
+		let state: DesktopQuotaIdentityV1.State = identity.state == .unrecognized ? .unknown : identity.state
+		let unknownReason = identity.unknownReason.value ?? identity.failure.value
+		let quotaNeverProbed = client.observedAt == nil && client.windows.isEmpty && client.quotaContext.value == nil
+			&& (client.failure == nil || client.failure == .neverProbed)
+		if quotaNeverProbed, state == .unknown, unknownReason == .neverProbed { return nil }
+		let masked = identity.emailMasked.value.flatMap { $0.isEmpty ? nil : $0 }
+		let hasEmail = masked != nil && (state == .identified || state == .unknown)
+		let currentUntil = identity.currentUntil.value.flatMap(DesktopFormat.timestamp)
+		let isCurrent = state != .unknown && identity.freshness == .current
+			&& currentUntil.map { now < $0 && $0 != expiredDeadline } == true
+		let pastStatus = !isCurrent && (state == .signedOut || state == .nonSubscription)
+		let lastKnown = hasEmail && !isCurrent
+		let adjacent = lastKnown || pastStatus
+
+		let rowALabel = t(lastKnown ? DesktopCopy.quotaIdentityLastKnown : DesktopCopy.quotaIdentityTitle)
+		let statusWord = switch state {
+		case .signedOut: t(DesktopCopy.quotaIdentitySignedOut)
+		case .nonSubscription: t(DesktopCopy.quotaIdentityNonSubscription)
+		default: t(DesktopCopy.quotaIdentityUnknown)
+		}
+		let statusLabel = pastStatus ? t(DesktopCopy.quotaIdentityPastStatus, statusWord) : statusWord
+
+		let colon = QuotaIdentityPunctuation.colon
+		var organization: String?
+		if hasEmail, let name = identity.organizationName.value, !name.isEmpty {
+			switch identity.organizationKind.value {
+			case .workspace: organization = t(DesktopCopy.quotaIdentityWorkspace) + colon + name
+			case .organization: organization = t(DesktopCopy.quotaIdentityOrganization) + colon + name
+			default: organization = name
+			}
+		}
+
+		let quotaPlan = QuotaPlanPresentation.make(client.planDisplay, legacyPlan: client.plan)
+		let identityPlan = hasEmail ? QuotaPlanPresentation.make(identity.planDisplay, legacyPlan: nil) : nil
+		var plan: QuotaPlanPresentation?
+		if let identityPlan, !identityPlan.missing {
+			let quotaShowsSame = quotaPlan.map { !$0.missing && !$0.conflict && !identityPlan.conflict && identityPlan.sameName(as: $0) } ?? false
+			if !quotaShowsSame { plan = identityPlan }
+		}
+		let planText = plan.flatMap { $0.text }.map { t(DesktopCopy.quotaIdentityPlanPrefix) + colon + $0 }
+		let planSpeech = plan.flatMap { $0.fullName }.map { t(DesktopCopy.quotaIdentityPlanPrefix) + colon + $0 }
+
+		var time: String?
+		if let observed = identity.observedAt.value {
+			let relative = DesktopFormat.relative(observed, now: now)
+			time = adjacent ? t(DesktopCopy.quotaIdentityLastRead, relative) : t(DesktopCopy.quotaObservedAt, relative)
+		}
+		var reason: String?
+		if state == .unknown {
+			switch unknownReason {
+			case .neverProbed: reason = t(DesktopCopy.quotaIdentityReasonNeverProbed)
+			case .probeFailed: reason = t(DesktopCopy.quotaIdentityReasonProbeFailed)
+			case .parseFailed: reason = t(DesktopCopy.quotaIdentityReasonParseFailed)
+			case .incomparable: reason = t(DesktopCopy.quotaIdentityReasonIncomparable)
+			case .unrecognized, nil: reason = nil
+			}
+		}
+		let meta = [time, reason].compactMap { $0 }.joined(separator: " · ")
+
+		// Only Codex can carry a same-account statement, and only while the
+		// confirmation is still current at the rendering instant (Claude stays
+		// account-unconfirmed: its attribution line above is never replaced).
+		var association: String?
+		if client.client == "codex", hasEmail {
+			association = isCurrent && identity.quotaAssociation.value == .confirmed
+				? t(DesktopCopy.quotaIdentityAssociationConfirmed)
+				: t(DesktopCopy.quotaIdentityAssociationUnconfirmed)
+		}
+
+		let lead: Lead = if hasEmail, let masked { .email(label: rowALabel, masked: masked, lastKnown: lastKnown) } else { .status(statusLabel) }
+		let spokenName: String = if case let .email(label, value, _) = lead { label + colon + spokenMaskedEmail(value) } else { statusLabel }
+		let head = DesktopPresentationModelV1.clientDisplayLabel(client.client) + " " + spokenName
+		let timeSummary = meta.isEmpty ? nil : meta
+		let details = adjacent ? [timeSummary, organization, planSpeech] : [organization, planSpeech, timeSummary]
+		var spoken = ([head] + details.compactMap { $0 }).joined(separator: QuotaIdentityPunctuation.comma)
+		if let association { spoken += QuotaIdentityPunctuation.semicolon + association }
+
+		return Self(
+			lead: lead,
+			organization: organization,
+			plan: planText,
+			planHelp: plan.map { $0.help },
+			planConflict: plan?.conflict ?? false,
+			meta: timeSummary,
+			metaAdjacent: adjacent,
+			association: association,
+			currentUntil: isCurrent ? currentUntil : nil,
+			accessibilityLabel: spoken
+		)
+	}
+
+	/// `***` is read as the reviewed "partly hidden" phrase rather than as
+	/// three asterisks; the rest of the masked mailbox is read as shown.
+	static func spokenMaskedEmail(_ masked: String) -> String {
+		masked.replacingOccurrences(of: "***", with: " \(t(DesktopCopy.quotaIdentityMaskedSpoken)) ")
+			.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+	}
+}
+
+private struct QuotaIdentitySection: View {
+	let client: DesktopSubscriptionClientV1
+	@State private var expiredDeadline: Date?
+
+	var body: some View {
+		if let identity = QuotaIdentityPresentation.make(client, now: Date(), expiredDeadline: expiredDeadline) {
+			QuotaIdentityView(identity: identity)
+				.task(id: identity.currentUntil) {
+					guard let deadline = identity.currentUntil else { return }
+					do {
+						try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+						try Task.checkCancellation()
+					} catch { return }
+					expiredDeadline = deadline
+				}
+		}
+	}
+}
+
+/// ux/menubar.md §2 row 5 and §6: a separated, non-interactive area at the
+/// bottom of the card, read by VoiceOver as one element.
+struct QuotaIdentityView: View {
+	let identity: QuotaIdentityPresentation
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 3) {
+			Divider().padding(.bottom, 3)
+			switch identity.lead {
+			case let .email(label, masked, lastKnown):
+				HStack(alignment: .firstTextBaseline, spacing: 8) {
+					Text(label).foregroundStyle(DesktopVisualTheme.dim)
+						.lineLimit(1).fixedSize().layoutPriority(2)
+					Spacer(minLength: 0)
+					// Middle truncation keeps both the mailbox start and the
+					// top-level domain visible at 280 pt.
+					Text(verbatim: masked)
+						.fontWeight(lastKnown ? .regular : .semibold)
+						.foregroundStyle(lastKnown ? DesktopVisualTheme.dim : DesktopVisualTheme.text)
+						.lineLimit(1).truncationMode(.middle)
+						.help(masked)
+				}
+				.font(.caption)
+			case let .status(status):
+				Text(status).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			if identity.metaAdjacent { meta }
+			if identity.organization != nil || identity.plan != nil {
+				ViewThatFits(in: .horizontal) {
+					HStack(spacing: 5) { contextItems(separated: true) }
+					VStack(alignment: .leading, spacing: 2) { contextItems(separated: false) }
+				}
+				.font(.caption2)
+				.foregroundStyle(DesktopVisualTheme.dim)
+			}
+			if !identity.metaAdjacent { meta }
+			if let association = identity.association {
+				Text(association).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(identity.accessibilityLabel)
+	}
+
+	@ViewBuilder
+	private var meta: some View {
+		if let meta = identity.meta {
+			Text(meta).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+				.fixedSize(horizontal: false, vertical: true)
+		}
+	}
+
+	@ViewBuilder
+	private func contextItems(separated: Bool) -> some View {
+		if let organization = identity.organization {
+			Text(verbatim: organization).lineLimit(1).truncationMode(.tail).help(organization)
+		}
+		if separated, identity.organization != nil, identity.plan != nil {
+			Text(verbatim: "·")
+		}
+		if let plan = identity.plan {
+			Text(verbatim: plan).lineLimit(1).truncationMode(.tail)
+				.foregroundStyle(identity.planConflict ? DesktopVisualTheme.warning : DesktopVisualTheme.dim)
+				.help(identity.planHelp ?? plan)
+		}
 	}
 }

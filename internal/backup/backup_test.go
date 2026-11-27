@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -572,7 +573,7 @@ func TestRestoreDiscardsAccountBoundQuotaState(t *testing.T) {
 		if err = sourceQuota.PutEnvelopeFailure(ctx, client, quota.ReasonProbeFailed, now, now.Add(time.Hour), now); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_alert_notices(client,window_key,kind,threshold,instance_unix,notified_at) VALUES(?,'five_hour','threshold',90,?,?)`, string(client), obs.ResetsAt.Unix(), now.Format(time.RFC3339)); err != nil {
+		if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_alert_notices_v2(client,window_key,kind,threshold,instance_unix,notified_at) VALUES(?,'five_hour','threshold',90,?,?)`, string(client), obs.ResetsAt.Unix(), now.Format(time.RFC3339)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -589,7 +590,7 @@ func TestRestoreDiscardsAccountBoundQuotaState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	for _, table := range []string{"quota_windows", "quota_envelopes", "quota_alert_notices"} {
+	for _, table := range []string{"quota_windows_v2", "quota_envelopes_v2", "quota_alert_notices_v2"} {
 		var count int
 		if err = restored.DB.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
 			t.Fatal(err)
@@ -665,8 +666,8 @@ func TestRestoreRollsBackQuotaCleanupFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_envelopes(client) VALUES('codex');
- CREATE TRIGGER reject_quota_cleanup BEFORE DELETE ON quota_envelopes BEGIN SELECT RAISE(ABORT, 'synthetic cleanup failure'); END;`); err != nil {
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_envelopes_v2(client) VALUES('codex');
+ CREATE TRIGGER reject_quota_cleanup BEFORE DELETE ON quota_envelopes_v2 BEGIN SELECT RAISE(ABORT, 'synthetic cleanup failure'); END;`); err != nil {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(t.TempDir(), "portable.adb")
@@ -702,7 +703,7 @@ func TestRestoreRollsBackQuotaCleanupFailure(t *testing.T) {
 		})
 	}
 	var count int
-	if err = database.DB.QueryRowContext(ctx, "SELECT count(*) FROM quota_envelopes").Scan(&count); err != nil || count != 1 {
+	if err = database.DB.QueryRowContext(ctx, "SELECT count(*) FROM quota_envelopes_v2").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("source changed: %d, %v", count, err)
 	}
 }
@@ -1132,4 +1133,101 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestPortableQuotaIdentityScrubsCoreBytes(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	const old = "former-displayed-mailbox-identity-sentinel"
+	const current = "current-display-and-comparison-sentinel"
+	if _, err := core.DB.Exec(`PRAGMA secure_delete=OFF;
+		INSERT INTO quota_identities(client,email_masked,org_name,baseline_correlation) VALUES('claude',?,?,?);
+		UPDATE quota_identities SET email_masked=?,org_name=?,baseline_correlation=?;
+		INSERT INTO quota_envelopes_v2(client,plan_unsafe) VALUES('codex',1)`, old, old, old, current, current, current); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "portable.adb")
+	if _, err := (Service{Core: core, StateRoot: root, Vault: testBackupVault(t, "source")}).Create(ctx, archive, "passphrase", false); err != nil {
+		t.Fatal(err)
+	}
+	_, entries, err := readEncrypted(archive, "passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sentinel := range []string{old, current} {
+		if bytes.Contains(entries[coreName], []byte(sentinel)) {
+			t.Fatal("portable core contains quota identity sentinel bytes")
+		}
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err := Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(target, coreName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte(old)) || bytes.Contains(data, []byte(current)) {
+		t.Fatal("restored core contains quota identity sentinel bytes")
+	}
+}
+
+func TestRestoreQuotaIdentityCompactsExternalEmptyTable(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	core, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := strings.Repeat("externally-deleted-quota-sentinel-", 800)
+	if _, err := core.DB.Exec(`PRAGMA secure_delete=OFF;
+		INSERT INTO quota_identities(client,org_name) VALUES('claude',?);
+		DELETE FROM quota_identities`, sentinel); err != nil {
+		t.Fatal(err)
+	}
+	if err := core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, coreName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment := []byte("externally-deleted-quota-sentinel-")
+	if !bytes.Contains(data, fragment) {
+		t.Fatal("fixture did not leave obsolete identity bytes")
+	}
+	manifest := Manifest{
+		SchemaVersion: ManifestSchemaVersion, DatabaseSchemas: map[string]int{coreName: 36},
+		Included: []string{coreName, credentialsName},
+	}
+	entries := map[string][]byte{coreName: data, credentialsName: []byte("[]")}
+	for _, name := range manifest.Included {
+		entry := entries[name]
+		manifest.Entries = append(manifest.Entries, Entry{Name: name, Size: int64(len(entry)), SHA256: fmt.Sprintf("%x", sha256.Sum256(entry))})
+	}
+	manifestJSON, err := EncodeManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "external.adb")
+	entries[manifestName] = manifestJSON
+	if err := writeEncrypted(archive, "passphrase", entries, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err := Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target")); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(filepath.Join(target, coreName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(after, fragment) {
+		t.Fatal("restored core still contains externally deleted identity bytes")
+	}
 }

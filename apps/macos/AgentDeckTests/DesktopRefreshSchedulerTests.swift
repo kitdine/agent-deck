@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshSchedulerTests: XCTestCase {
+	func testContinuousClockFiresOnDeadlineAndCancelsScheduledWork() async {
+		let clock = DesktopRefreshClock.continuous
+		let fired = expectation(description: "scheduled callback")
+		let cancelled = expectation(description: "cancelled callback")
+		cancelled.isInverted = true
+		let deadline = clock.now() + .milliseconds(25)
+		let cancel = clock.schedule(deadline) {
+			cancelled.fulfill()
+			return nil
+		}
+		cancel()
+		let cleanup = clock.schedule(deadline) {
+			XCTAssertGreaterThanOrEqual(clock.now(), deadline)
+			fired.fulfill()
+			return nil
+		}
+		defer { cleanup() }
+		let result = await XCTWaiter.fulfillment(of: [fired, cancelled], timeout: 1)
+		XCTAssertEqual(result, .completed)
+	}
+
 	func testSourceMonitorObservesRealWritesAndStopsWithOwner() async throws {
 		let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		let root = home.appendingPathComponent(".codex/sessions")
