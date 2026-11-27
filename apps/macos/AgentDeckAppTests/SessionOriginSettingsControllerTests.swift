@@ -1151,7 +1151,7 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 		XCTAssertFalse(controller.isManaging)
 		XCTAssertEqual(controller.status, .unknown, "the unresolved request stays with the App")
 		XCTAssertLessThanOrEqual(shown.frame.height, (NSScreen.main?.visibleFrame.height ?? 800) + 1, "the window body scrolls rather than outgrowing the screen")
-		shown.close()
+		window.tearDown()
 	}
 
 	/// Native renderings in both languages at the window's 460pt width: the
@@ -1405,7 +1405,7 @@ final class SettingsWindowPaneTests: XCTestCase {
 	private var opened: [SettingsWindowController] = []
 
 	override func tearDown() async throws {
-		for controller in opened { controller.window?.close() }
+		for controller in opened { controller.tearDown() }
 		opened = []
 		try await super.tearDown()
 	}
@@ -1500,7 +1500,7 @@ final class SettingsWindowPaneTests: XCTestCase {
 		controller.show()
 		XCTAssertEqual(controller.selectedPane, .quota, "a reopened window comes back to the page shown last")
 		XCTAssertEqual(controller.tabs?.selectedTabViewItemIndex, 3)
-		XCTAssertEqual(window.title, SettingsPane.quota.title)
+		XCTAssertEqual(controller.window?.title, SettingsPane.quota.title)
 		controller.show(pane: .liveUsage)
 		XCTAssertEqual(controller.selectedPane, .liveUsage, "another surface can open one page by its key")
 
@@ -1887,7 +1887,7 @@ final class SettingsHelperAcceptanceTests: XCTestCase {
 	private var homes: [URL] = []
 
 	override func tearDown() async throws {
-		for controller in opened { controller.window?.close() }
+		for controller in opened { controller.tearDown() }
 		opened = []
 		for home in homes { try? FileManager.default.removeItem(at: home) }
 		homes = []
@@ -1982,7 +1982,7 @@ final class SettingsHelperAcceptanceTests: XCTestCase {
 
 		// Fresh instances over the same store (the process-level restart is
 		// SettingsRestartAcceptanceTests).
-		settings.window?.close()
+		settings.tearDown()
 		let restarted = SessionOriginSettingsController(transport: try helper(home), publish: { .published(nil) }, newRequestID: { "app-run-2-\(UUID().uuidString)" })
 		let restartedWindow = window(restarted)
 		restartedWindow.show()

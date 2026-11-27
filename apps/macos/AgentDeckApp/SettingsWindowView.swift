@@ -51,6 +51,17 @@ struct SettingsPaneView: View {
 	/// Reports the page's natural height whenever it changes while shown, so
 	/// the window follows a row that appears or goes away.
 	var onNaturalHeight: ((CGFloat) -> Void)? = nil
+	/// The current scroll limit; tests substitute a controllable one.
+	var screenLimit: () -> CGFloat = { SettingsPaneView.maximumHeight }
+	/// Whether the page shows inside the scroll view, decided from its
+	/// natural height alone and never from the window it is shown in.
+	@State private var scrollsPage = false
+	/// The page's last measured natural height, kept so a change in the
+	/// screen's usable height can re-decide scrolling without a new layout.
+	@State private var naturalHeight: CGFloat = 0
+	/// The scroll limit last applied, held as state so a new limit redraws
+	/// the scroll view's height even when the page keeps scrolling.
+	@State private var appliedLimit: CGFloat = 0
 
 	/// The tallest a page's content may be before it scrolls inside the page,
 	/// leaving the title bar and toolbar on screen.
@@ -58,20 +69,39 @@ struct SettingsPaneView: View {
 		max(320, (NSScreen.main?.visibleFrame.height ?? 800) - 140)
 	}
 
+	/// How far past `maximumHeight` a page's height must move before it
+	/// changes between whole and scrolling. On a 1x display the laid-out page
+	/// can measure a point taller than its fitted size; that difference must
+	/// never move it in and out of the scroll view, which rebuilt the page on
+	/// every layout pass and never settled.
+	static let scrollHysteresis: CGFloat = 4
+
+	/// Whether a page `height` tall scrolls under `limit`, given whether it
+	/// scrolls now.
+	static func scrollsPage(height: CGFloat, limit: CGFloat, scrolling: Bool) -> Bool {
+		scrolling ? height > limit - scrollHysteresis : height > limit + scrollHysteresis
+	}
+
 	var body: some View {
 		Group {
-			if scrolls {
-				// The page's ideal size is its natural height, which sizes the
-				// window; only a page taller than the screen scrolls.
-				ViewThatFits(in: .vertical) {
-					page
-					ScrollView(.vertical) { page }
-						.frame(width: 460)
-						.frame(maxHeight: Self.maximumHeight)
-				}
+			if scrolls, scrollsPage {
+				// Only a page taller than the screen scrolls; the window fits
+				// the page's natural height otherwise.
+				ScrollView(.vertical) { page }
+					.frame(width: 460)
+					.frame(maxHeight: appliedLimit > 0 ? appliedLimit : screenLimit())
 			} else {
 				page
 			}
+		}
+		// The page's height is fixed, so a smaller usable screen (a resolution
+		// change, or the window moving to another display) must re-decide
+		// scrolling on its own or the lower rows become unreachable.
+		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+			updateScrolling(notifyingWindow: true)
+		}
+		.onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { _ in
+			updateScrolling(notifyingWindow: true)
 		}
 		.modifier(AcceptanceAppearance())
 		.foregroundStyle(DesktopVisualTheme.text)
@@ -96,11 +126,33 @@ struct SettingsPaneView: View {
 		}
 		.padding(18)
 		.frame(width: 460, alignment: .leading)
-		// The rows never stretch, so the page's own height is its natural one
-		// whether it is shown whole or inside the scroll view.
+		// The page always takes its natural height, so its own height does
+		// not depend on the window or on whether it is shown inside the
+		// scroll view.
+		.fixedSize(horizontal: false, vertical: true)
 		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+			naturalHeight = height
+			_ = updateScrolling()
 			onNaturalHeight?(height)
 		}
+	}
+
+	/// Re-decides scrolling for the last natural height under the current
+	/// limit. A screen change that flips the decision, or changes the limit
+	/// while the page keeps scrolling, also asks the window to refit, since
+	/// the page's own height did not change.
+	@discardableResult
+	private func updateScrolling(notifyingWindow: Bool = false) -> Bool {
+		guard scrolls, naturalHeight > 0 else { return false }
+		let limit = screenLimit()
+		let limitChanged = abs(limit - appliedLimit) > 0.5
+		if limitChanged { appliedLimit = limit }
+		let next = Self.scrollsPage(height: naturalHeight, limit: limit, scrolling: scrollsPage)
+		let flipped = next != scrollsPage
+		if flipped { scrollsPage = next }
+		let changed = flipped || (next && limitChanged)
+		if changed, notifyingWindow { onNaturalHeight?(naturalHeight) }
+		return changed
 	}
 
 	@ViewBuilder

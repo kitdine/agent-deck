@@ -1282,7 +1282,7 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
 		controller.show(pane: .quota)
 		let window = try XCTUnwrap(controller.window)
-		defer { window.close() }
+		defer { controller.tearDown() }
 		await quotaSettings.load()
 		settle(window)
 
@@ -1332,7 +1332,7 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings, telemetrySettings: makeTelemetrySettingsController())
 		controller.show(pane: .quota)
 		let window = try XCTUnwrap(controller.window)
-		defer { window.close() }
+		defer { controller.tearDown() }
 		await quotaSettings.load()
 		settle(window)
 		let heightWithoutWarning = window.contentLayoutRect.height
