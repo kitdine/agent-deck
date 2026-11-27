@@ -83,3 +83,11 @@ created: 2026-11-27
 完成门禁：NOT_VERIFIED
 
 PR #85 上的 Codex 代码评审（`chatgpt-codex-connector`，提交 `defa121d`）。**SWO-PR-F1 / P2**：页面高度固定后，只有内容高度变化才重新判断滚动；设置窗口打开期间屏幕可用高度变小（改分辨率或移到另一块屏），页面不会进入滚动，下方设置项无法访问。修复：保留最后一次测得的自然高度，在 `NSApplication.didChangeScreenParametersNotification` 与 `NSWindow.didChangeScreenNotification` 时按当前上限重新判断，判断改变时通知窗口重新适配；上限改为可注入以便测试。新增用例 `testAShrinkingScreenMakesAWholePageScrollAndAGrowingOneUndoesIt`。隔离完整 `scripts/test-macos-app.sh` 通过。复评由 PR 上的 Codex 评审在新提交上进行。
+
+## Review — Round 4
+
+评审结论：FAIL
+
+完成门禁：NOT_VERIFIED
+
+PR #85 上的 Codex 代码评审（提交 `6e400c2c`）。**SWO-PR-F2 / P2**：页面已在滚动时屏幕再缩小，滚动判断仍为真，`updateScrolling` 提前返回，滚动视图保留旧的 `maxHeight`，窗口也不重新适配。修复：把已应用的上限存为状态，滚动视图高度取该状态；上限变化时即使仍在滚动也更新状态并请求窗口重新适配。回归用例补充"已滚动时上限再缩小"的断言（窗口收到重新适配请求，滚动视图高度不超过新上限）。隔离完整 `scripts/test-macos-app.sh` 通过。

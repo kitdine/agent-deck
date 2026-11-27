@@ -32,6 +32,14 @@ final class SettingsPaneLayoutStabilityTests: XCTestCase {
 		view is NSScrollView || view.subviews.contains(where: containsScrollView)
 	}
 
+	private func scrollView(in view: NSView) -> NSScrollView? {
+		if let scroll = view as? NSScrollView { return scroll }
+		for subview in view.subviews {
+			if let found = scrollView(in: subview) { return found }
+		}
+		return nil
+	}
+
 	func testAPageAPointTallerThanItsFittedWindowOnA1xDisplaySettles() async throws {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 		let quota = makeQuotaSettingsController(preferences: preferences)
@@ -93,6 +101,17 @@ final class SettingsPaneLayoutStabilityTests: XCTestCase {
 		pump(window, turns: 10)
 		XCTAssertTrue(containsScrollView(hosting.view), "after the usable screen shrinks below the page, the page scrolls")
 		XCTAssertGreaterThan(reports.count, before, "the window is asked to refit when the decision flips")
+
+		// The screen shrinks again while the page already scrolls: the scroll
+		// view takes the new limit and the window is asked to refit.
+		window.setContentSize(NSSize(width: 460, height: 400))
+		let whileScrolling = reports.count
+		limit.value = 90
+		NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+		pump(window, turns: 10)
+		XCTAssertGreaterThan(reports.count, whileScrolling, "a new limit while scrolling asks the window to refit")
+		let scrollHeight = scrollView(in: hosting.view)?.frame.height ?? .infinity
+		XCTAssertLessThanOrEqual(scrollHeight, 90.5, "the scroll view follows the smaller limit (\(scrollHeight))")
 
 		limit.value = 2000
 		NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)

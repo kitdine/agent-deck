@@ -59,6 +59,9 @@ struct SettingsPaneView: View {
 	/// The page's last measured natural height, kept so a change in the
 	/// screen's usable height can re-decide scrolling without a new layout.
 	@State private var naturalHeight: CGFloat = 0
+	/// The scroll limit last applied, held as state so a new limit redraws
+	/// the scroll view's height even when the page keeps scrolling.
+	@State private var appliedLimit: CGFloat = 0
 
 	/// The tallest a page's content may be before it scrolls inside the page,
 	/// leaving the title bar and toolbar on screen.
@@ -86,7 +89,7 @@ struct SettingsPaneView: View {
 				// the page's natural height otherwise.
 				ScrollView(.vertical) { page }
 					.frame(width: 460)
-					.frame(maxHeight: screenLimit())
+					.frame(maxHeight: appliedLimit > 0 ? appliedLimit : screenLimit())
 			} else {
 				page
 			}
@@ -135,16 +138,21 @@ struct SettingsPaneView: View {
 	}
 
 	/// Re-decides scrolling for the last natural height under the current
-	/// limit. A screen change that flips the decision also asks the window to
-	/// refit, since the page's own height did not change.
+	/// limit. A screen change that flips the decision, or changes the limit
+	/// while the page keeps scrolling, also asks the window to refit, since
+	/// the page's own height did not change.
 	@discardableResult
 	private func updateScrolling(notifyingWindow: Bool = false) -> Bool {
 		guard scrolls, naturalHeight > 0 else { return false }
-		let next = Self.scrollsPage(height: naturalHeight, limit: screenLimit(), scrolling: scrollsPage)
-		guard next != scrollsPage else { return false }
-		scrollsPage = next
-		if notifyingWindow { onNaturalHeight?(naturalHeight) }
-		return true
+		let limit = screenLimit()
+		let limitChanged = abs(limit - appliedLimit) > 0.5
+		if limitChanged { appliedLimit = limit }
+		let next = Self.scrollsPage(height: naturalHeight, limit: limit, scrolling: scrollsPage)
+		let flipped = next != scrollsPage
+		if flipped { scrollsPage = next }
+		let changed = flipped || (next && limitChanged)
+		if changed, notifyingWindow { onNaturalHeight?(naturalHeight) }
+		return changed
 	}
 
 	@ViewBuilder
