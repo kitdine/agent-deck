@@ -5,7 +5,7 @@ created: 2026-11-17
 
 # v0.7.5 版本契约
 
-本版本集中处理既有缺陷。版本成员来自 Beads `ad-v075-iteration`，含 12 项代码修复、1 项 CI 流程修复和 1 项仍为 deferred 的旧 Cask 首次升级验收/处置，共 14 项。成员资格、实现、评审、提交及集成分别登记。
+本版本集中处理既有缺陷。版本成员来自 Beads `ad-v075-iteration`。2026-11-27 对账后，交付成员为 11 项原计划代码修复、1 项 CI 流程修复，以及当日纳入的 2 项修复（设置窗口 1x 布局振荡、桌面扫描失败重跑）；`codex-subagent-jsonl-session-identity` 由用户移出本版本，旧 Cask 首次升级验收/处置仍为 deferred。成员资格、实现、评审、提交及集成分别登记。
 
 用户授权自动完成并发布 v0.7.5，覆盖本版本的契约、开发、独立评审、验证、按 issue 提交及推送、创建 PR、符合门禁的合并、版本集成和稳定版发布。允许按可用性使用现有 Codex、Claude、Antigravity、OpenCode harness。每个 PR 须在 push 与 PR Actions 通过后取得针对实际 head 的 Codex review，并关闭范围内发现。Cask 验收维持延期，隔离原生验收沿用用户已批准的本机配置边界。
 
@@ -24,8 +24,8 @@ created: 2026-11-17
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `assemble` | [ ] | [ ] |
-| 2. `v0-7-5-contract` | [ ] | [ ] |
+| 1. `assemble` | [x] | [x] |
+| 2. `v0-7-5-contract` | [x] | [ ] |
 
 这些任务是版本集成与对账边界，不是把原有 Bug 复制成新的实现任务。文档任务为 `ad-v0-7-5-contract-doc-tasks-design`；当前未创建尚未批准的集成实现任务。
 
@@ -56,7 +56,9 @@ created: 2026-11-17
 | Batch 2 / P2 | `health-self-scan-lock` | A；与上一项共用一个实现者、一个候选；分别保留 issue 验收映射，不重复修改同源代码。 | 同一候选与 L3 证据，不能因关联而略过验收。 |
 | Batch 3 / P2 | `selection-verify-200ms-deadline` | A；消除高负载下内部短期限导致的误判，保留有界等待、调用者取消、generation 向量验证及真实不可用错误。 | `internal/store/serving_generation.go`、相关读池及 `internal/sessionorigin/` 消费者/测试；L3。 |
 | Batch 3 / P2 | `turn-classification-quadratic` | 本轮路线委托下的 A 仅适用于无 schema 变更的预聚合，消除逐 turn 重复扫描且结果不变；若必须索引/迁移则停止 A 并按下文重新分诊，编号分配不代替授权。 | `internal/usage/signals.go` 与分类测试；无迁移 L2。获准变更方案后，store 迁移及测试按 L3。 |
-| Batch 3 / P2 | `codex-subagent-jsonl-session-identity` | B；先定义 child、parent、继承历史、新旧 token 事件与跨源去重契约，再实施幂等回填。保留原 Bug，不以设计交付关闭问题。 | usage/session/ingest/sessionorigin/store，必要 telemetry 去重消费者与测试；L3。 |
+| ~~Batch 3 / P2~~ | `codex-subagent-jsonl-session-identity` | 2026-11-27 用户决定停止推进并移出 v0.7.5，Beads 转为 deferred，现有工作树、分支与验收材料保留供后续重做。本版本不交付该项。 | 不纳入本版本集成。 |
+| 新增 / P1 | `desktop-scan-failed-retry-loop` | A（2026-11-27 用户确认）；原为发布门禁，用户改为本版本直接修复：自动刷新失败退避与来源变化最小间隔、FTS 批量清理、结构化诊断日志。修复记录 `docs/archive/fixes/desktop-scan-failed-retry-loop.md`。 | Swift 刷新调度、`internal/session`、`internal/scanruntime`；PR 86。 |
+| 新增 / P1 | `6d5i`（Beads `ad-6d5i`） | A（2026-11-27 用户确认）；1x 显示器上设置窗口布局无限振荡、主线程持续满载，关闭窗口后不停止。修复记录 `docs/archive/fixes/settings-window-layout-oscillation.md`。 | 设置窗口视图与控制器及测试；PR 85。 |
 | Batch 3 / P2 | `cask-uninstall-unregistered-widget` | 保留 deferred；新模板已交付不等于旧 Cask 首次升级验证通过。记录仍未验证的路径和处置，执行真实安装操作前另需授权。 | 当前仅文档与只读核验；未来限定 Homebrew 模板及安装验收，L3。 |
 | Batch 4 / P3 | `watch-interrupt-mid-round-exit-1` | A；轮内调用者取消与既有轮间正常停止一致。独立运行错误、emit 错误及锁释放失败保持失败，不产生虚假成功 fingerprint。 | `internal/watch/` 及必要 cmd 信号/退出码测试；L3。 |
 | Batch 4 / P3 | `native-ownership-query-test-readiness` | A，test-only；continuation 安装后显式确认就绪，替代固定 yield 次数；保留锁、释放和取消断言及有界 teardown。 | `AgentDeckTests/EmbeddedHelperRunnerTests.swift`；L1，受控延迟调度。 |
@@ -147,4 +149,11 @@ internal/store/store.go
 - 原生 UI 验收使用现有绑定工作树与现有本机配置，先绑定隔离 fixture、应用身份、进程与窗口。需要切换或新建工作树、修改本机配置或更改 VoiceOver 设置的项目保持未验证。实际 App 验收须有原生观察证据。
 - 版本联合验收覆盖账号切换、App/Widget 一致性、token 构成守恒、旧快照刷新、高负载 selection、长会话分类、JSONL/OTel 去重、轮内外 SIGINT/SIGTERM 和 native readiness。
 - Cask 的旧版本首次升级及其他实际环境操作在获得具体授权后执行；未执行项保留未验证，不能用新模板测试代替。
+
+## 发布门禁：扫描失败重跑复验
+
+2026-11-25 用户把 `ad-bug-desktop-scan-failed-retry-loop` 纳入本版本作为发布门禁。2026-11-27 用户更正：该问题不延后，发布的版本必须包含其修复；修复已随 PR 86 并入，版本号仍为 v0.7.5。
+
+- 发布预检前，用集成后的 main 构建，在通过 `sqlite3 .backup` 得到的隔离状态拷贝上复验：冷、热及连续多轮（含来源追加）不出现 `scan_failed` 循环，诊断日志行为符合契约。不在真实状态目录上运行候选构建。
+- 复验结论登记在 [集成记录](reviews/assemble.md)；未通过时不打标签、不发布，转回修复。
 - 仅在实际层级到达边界时查询 Topic/Integration gate；逐项 PR 不等于版本已集成，未经授权的 merge 仍是明确的未完成边界。
