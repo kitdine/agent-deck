@@ -65,6 +65,47 @@ final class SettingsPaneLayoutStabilityTests: XCTestCase {
 			XCTAssertFalse(scrolled, "\(pane): a page shorter than the screen never shows inside the scroll view")
 		}
 	}
+
+	func testAShrinkingScreenMakesAWholePageScrollAndAGrowingOneUndoesIt() async throws {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		let quota = makeQuotaSettingsController(preferences: preferences)
+		await quota.load()
+		let telemetry = makeTelemetrySettingsController()
+		await telemetry.load()
+		let limit = ScreenLimit()
+		let reports = ReportCounter()
+		let hosting = NSHostingController(rootView: SettingsPaneView(
+			pane: .general, preferences: preferences, quotaSettings: quota, telemetrySettings: telemetry,
+			onNaturalHeight: { _ in reports.count += 1 }, screenLimit: { limit.value }
+		))
+		hosting.sizingOptions = []
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: 460, height: 400), styleMask: [.borderless], backing: .buffered, defer: false
+		)
+		window.isReleasedWhenClosed = false
+		window.contentViewController = hosting
+		pump(window, turns: 10)
+		XCTAssertFalse(containsScrollView(hosting.view), "a page shorter than the screen shows whole")
+		let before = reports.count
+
+		limit.value = 120
+		NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+		pump(window, turns: 10)
+		XCTAssertTrue(containsScrollView(hosting.view), "after the usable screen shrinks below the page, the page scrolls")
+		XCTAssertGreaterThan(reports.count, before, "the window is asked to refit when the decision flips")
+
+		limit.value = 2000
+		NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+		pump(window, turns: 10)
+		XCTAssertFalse(containsScrollView(hosting.view), "after the screen grows again, the page shows whole")
+		window.contentViewController = nil
+		window.close()
+	}
+}
+
+@MainActor
+private final class ScreenLimit {
+	var value: CGFloat = 2000
 }
 
 /// The Settings window's own lifecycle: a page scrolls only past the screen
