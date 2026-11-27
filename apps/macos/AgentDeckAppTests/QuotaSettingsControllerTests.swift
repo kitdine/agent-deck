@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 @testable import AgentDeck
-@testable import AgentDeckShared
+@_spi(DesktopApp) @testable import AgentDeckShared
 
 @MainActor
 final class QuotaSettingsControllerTests: XCTestCase {
@@ -34,6 +34,68 @@ final class QuotaSettingsControllerTests: XCTestCase {
 
 		let count = await refreshCalls.count
 		XCTAssertEqual(count, 1, "a confirmed reading change must trigger exactly one snapshot refresh")
+	}
+
+	func testNextQuotaWriteRemainsQueuedWhileRefreshAwaitsPublication() async {
+		let refreshStarted = expectation(description: "confirmed reading write requests publication")
+		var finishRefresh: CheckedContinuation<Void, Never>?
+		let transport = StubQuotaSettingsTransport()
+		let controller = makeQuotaSettingsController(transport: transport, refreshQuotaSnapshot: {
+			await withCheckedContinuation { continuation in
+				finishRefresh = continuation
+				refreshStarted.fulfill()
+			}
+		})
+		await controller.load()
+
+		let reading = Task { await controller.setReading(true) }
+		let started = await XCTWaiter.fulfillment(of: [refreshStarted], timeout: 3)
+		XCTAssertEqual(started, .completed)
+		guard let finishRefresh else {
+			reading.cancel()
+			return
+		}
+		await controller.setInterval(.fifteenMinutes)
+		let callsBeforePublication = await transport.applyCalls
+		XCTAssertEqual(callsBeforePublication.count, 1, "the publisher still owns the write sequence")
+		finishRefresh.resume()
+		await reading.value
+		let calls = await transport.applyCalls
+		XCTAssertEqual(calls.count, 2)
+		XCTAssertEqual(calls.last?.interval, .fifteenMinutes)
+	}
+
+	func testReadingWritesDuringAScanPublishTheLastCommittedSetting() async {
+		let transport = StubQuotaSettingsTransport()
+		let firstScan = expectation(description: "first scan captured reading on")
+		let host = QuotaSettingsRefreshHost(transport: transport, firstScan: firstScan)
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let controller = makeQuotaSettingsController(transport: transport, refreshQuotaSnapshot: {
+			await coordinator.requestSettingsRefresh(requiresFollowUp: false)
+		})
+		await controller.load()
+
+		let enable = Task { await controller.setReading(true) }
+		let firstResult = await XCTWaiter.fulfillment(of: [firstScan], timeout: 3)
+		XCTAssertEqual(firstResult, .completed)
+		guard firstResult == .completed else {
+			coordinator.stopAppWork()
+			host.resumeFirstScan()
+			await enable.value
+			return
+		}
+		await controller.setReading(false)
+		let pendingWrites = await transport.applyCalls
+		XCTAssertEqual(pendingWrites.map(\.reading), [true], "the second write waits for the first publication")
+		XCTAssertEqual(host.readingAtStart, [true], "the first scan owns only the first write")
+		XCTAssertNil(coordinator.latestSnapshot)
+
+		host.resumeFirstScan()
+		await enable.value
+		let writes = await transport.applyCalls
+		XCTAssertEqual(writes.map(\.reading), [true, false])
+		XCTAssertEqual(host.readingAtStart, [true, false], "each round reads its committed write")
+		XCTAssertEqual(coordinator.latestSnapshot?.data.subscription.reading, false)
 	}
 
 	func testSetReadingDoesNotTriggerASnapshotRefreshWhenTheWriteFails() async {
@@ -544,6 +606,41 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(controller.settings?.reading, true)
 		let finalRefreshCount = await refreshCalls.count
 		XCTAssertEqual(finalRefreshCount, 1)
+	}
+}
+
+@MainActor
+private final class QuotaSettingsRefreshHost: DesktopSnapshotRefreshing {
+	private let transport: StubQuotaSettingsTransport
+	private let firstScan: XCTestExpectation
+	private var resumeScan: CheckedContinuation<Void, Never>?
+	private(set) var readingAtStart: [Bool] = []
+
+	init(transport: StubQuotaSettingsTransport, firstScan: XCTestExpectation) {
+		self.transport = transport
+		self.firstScan = firstScan
+	}
+
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		guard case let .decoded(settings) = await transport.loadQuotaSettings() else {
+			throw HelperExecutionError.malformedOutput
+		}
+		let reading = settings.settings.reading
+		readingAtStart.append(reading)
+		if readingAtStart.count == 1 {
+			await withCheckedContinuation { continuation in
+				resumeScan = continuation
+				firstScan.fulfill()
+			}
+		}
+		return WireFixture.envelope().replacingSubscription(
+			DesktopSubscriptionSnapshotV1(available: true, reading: reading, clients: [])
+		)
+	}
+
+	func resumeFirstScan() {
+		resumeScan?.resume()
+		resumeScan = nil
 	}
 }
 

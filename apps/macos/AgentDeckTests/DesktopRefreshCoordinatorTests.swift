@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import AgentDeckShared
+@_spi(DesktopApp) @testable import AgentDeckShared
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
@@ -682,9 +682,17 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await host.waitForCall(1)
 		let passiveJoin = Task { await coordinator.requestFullRefresh(trigger: .periodic) }
 		let providerFollowUp = Task { await coordinator.requestFullRefresh(trigger: .providerSwitch) }
+		for _ in 0..<20 { await Task.yield() }
 		host.resumeCall(1)
-		await host.waitForCall(2)
+		for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
 		XCTAssertEqual(host.callCount, 2)
+		guard host.callCount == 2 else {
+			coordinator.stopAppWork()
+			await initial.value
+			await passiveJoin.value
+			await providerFollowUp.value
+			return
+		}
 		host.resumeCall(2)
 		await initial.value
 		await passiveJoin.value
@@ -694,21 +702,126 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
 
+	func testExplicitRequestsDuringAnAutomaticRoundCoalesceIntoOneImmediateFollowUp() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for trigger in [DesktopFullRefreshTrigger.manual, .providerSwitch] {
+			let host = ControlledSnapshotRefresher(responses: [snapshot], failures: [1])
+			let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			var finished = 0
+			let initial = Task {
+				await coordinator.requestFullRefresh(trigger: .startup)
+				finished += 1
+			}
+			await host.waitForCall(1)
+			coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+			let requests = (0..<3).map { _ in
+				Task {
+					await coordinator.requestFullRefresh(trigger: trigger)
+					finished += 1
+				}
+			}
+			for _ in 0..<20 { await Task.yield() }
+			XCTAssertEqual(host.callCount, 1, "an explicit action must not run a parallel scan")
+			XCTAssertEqual(finished, 0)
+			host.resumeCall(1)
+			for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
+			XCTAssertEqual(host.callCount, 2, "\(trigger) must cause an immediate follow-up after the failure")
+			XCTAssertNil(clock.scheduledSecond)
+			if host.callCount == 2 {
+				XCTAssertEqual(finished, 0, "callers await the immediate follow-up")
+				host.resumeCall(2)
+				for _ in 0..<200 where finished < 4 { await Task.yield() }
+				XCTAssertEqual(finished, 4)
+				XCTAssertEqual(host.callCount, 2)
+				XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+			}
+			coordinator.stopAppWork()
+			host.resumeCall(3)
+			await initial.value
+			for request in requests { await request.value }
+		}
+	}
+
+	func testManualThenProviderSwitchShareOneRoundThatStartsAfterTheSwitch() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		var switchCompleted = false
+		var switchCompleteAtStart: [Bool] = []
+		let host = ControlledSnapshotRefresher(responses: [first, second], onStart: {
+			switchCompleteAtStart.append(switchCompleted)
+		})
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let transport = CompletingRefreshTestSwitch { switchCompleted = true }
+		let switcher = SwitchController(transport: transport, refreshCoordinator: coordinator)
+		let target = ProviderSwitchTarget(client: "codex", provider: "provider-after-switch", credential: nil, viaWrapper: false)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+
+		let manual = Task { await coordinator.requestFullRefresh(trigger: .manual) }
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertTrue(switcher.start(target))
+		for _ in 0..<1000 where switcher.state != .succeeded(target) { await Task.yield() }
+		XCTAssertEqual(switcher.state, .succeeded(target))
+		XCTAssertEqual(switchCompleteAtStart, [false], "no round starts while the original scan is active")
+		host.resumeCall(1)
+		for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
+		XCTAssertEqual(switchCompleteAtStart, [false, true], "the single follow-up starts after the switch transport completes")
+		if host.callCount == 2 {
+			XCTAssertEqual(coordinator.latestSnapshot, first)
+			host.resumeCall(2)
+			await initial.value
+			await manual.value
+			XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
+			XCTAssertEqual(host.callCount, 2)
+		}
+		coordinator.stopAppWork()
+		await initial.value
+		await manual.value
+	}
+
+	func testProviderSwitchBypassesBackoffAndSourceCooldown() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for first in [ScriptedSnapshotRefresher.Response.helperFailure(.nonZeroExit(1)), .snapshot(snapshot)] {
+			let host = ScriptedSnapshotRefresher(responses: [first, .snapshot(snapshot)])
+			let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			await coordinator.requestFullRefresh(trigger: .startup)
+			coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+			XCTAssertEqual(clock.scheduledSecond, 30)
+
+			var completed = false
+			let switched = Task {
+				await coordinator.requestFullRefresh(trigger: .providerSwitch)
+				completed = true
+			}
+			for _ in 0..<100 where !completed { await Task.yield() }
+			XCTAssertTrue(completed, "the switch refresh finishes without advancing the automatic clock")
+			XCTAssertEqual(host.callCount, 2)
+			XCTAssertNil(clock.scheduledSecond)
+			XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+			coordinator.stopAppWork()
+			await switched.value
+		}
+	}
+
 	func testSourceBurstDuringScanCreatesOneFollowUpAndRetainsPublishedValue() async throws {
 		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
 		let host = ControlledSnapshotRefresher(responses: [first, second])
 		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
 		let initial = Task { await coordinator.requestFullRefresh(trigger: .sourceChange) }
 		await host.waitForCall(1)
-		let notifications = (0..<8).map { _ in Task { await coordinator.requestFullRefresh(trigger: .sourceChange) } }
-		for _ in 0..<50 { await Task.yield() }
+		for _ in 0..<8 { coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true) }
 		host.resumeCall(1)
+		await initial.value
+		XCTAssertEqual(host.callCount, 1)
+		let followUp = try XCTUnwrap(clock.advance(to: 30))
 		await host.waitForCall(2)
 		XCTAssertEqual(coordinator.latestSnapshot, first)
 		host.resumeCall(2)
-		await initial.value
-		for notification in notifications { await notification.value }
+		await followUp.value
 		XCTAssertEqual(host.callCount, 2)
 		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
@@ -718,19 +831,19 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
 		let host = ControlledSnapshotRefresher(responses: [first, second])
 		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
 		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
 		await host.waitForCall(1)
-		let wake = Task { await coordinator.requestFullRefresh(trigger: .wake) }
-		let sources = (0..<4).map { _ in Task { await coordinator.requestFullRefresh(trigger: .sourceChange) } }
-		for _ in 0..<50 { await Task.yield() }
+		coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+		for _ in 0..<4 { coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true) }
 		host.resumeCall(1)
+		await initial.value
+		XCTAssertEqual(host.callCount, 1)
+		let followUp = try XCTUnwrap(clock.advance(to: 30))
 		await host.waitForCall(2)
-		for _ in 0..<50 { await Task.yield() }
 		XCTAssertEqual(host.callCount, 2, "no third update is queued behind the merged follow-up")
 		host.resumeCall(2)
-		await initial.value
-		await wake.value
-		for source in sources { await source.value }
+		await followUp.value
 		XCTAssertEqual(host.callCount, 2, "the wake and the source burst share one follow-up")
 		XCTAssertEqual(coordinator.latestSnapshot, second.replacingSubscription(first.data.subscription))
 	}
@@ -755,6 +868,101 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await wake.value
 	}
 
+	func testWakeDuringScanQueuesOneFollowUpWhilePeriodicAndStartupOnlyJoin() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for sendsWake in [false, true] {
+			let host = ControlledSnapshotRefresher(responses: [first, first])
+			let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+			await host.waitForCall(1)
+			if sendsWake {
+				for _ in 0..<4 { coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true) }
+			}
+			var completed = 0
+			let joiners = [DesktopFullRefreshTrigger.periodic, .startup].map { trigger in
+				Task {
+					await coordinator.requestFullRefresh(trigger: trigger)
+					completed += 1
+				}
+			}
+			for _ in 0..<20 { await Task.yield() }
+			XCTAssertEqual(completed, 0)
+			XCTAssertEqual(host.callCount, 1)
+			host.resumeCall(1)
+			if sendsWake {
+				for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
+				XCTAssertEqual(host.callCount, 2)
+				XCTAssertEqual(completed, 0, "joiners wait through the immediate wake follow-up")
+				host.resumeCall(2)
+			}
+			for _ in 0..<200 where completed < 2 { await Task.yield() }
+			XCTAssertEqual(completed, 2)
+			XCTAssertEqual(host.callCount, sendsWake ? 2 : 1)
+			XCTAssertNil(clock.advance(to: 30))
+			coordinator.stopAppWork()
+			host.resumeCall(2)
+			await initial.value
+			for joiner in joiners { await joiner.value }
+		}
+	}
+
+	func testWakeFollowUpRemainsPendingThroughFailureBackoff() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [first], failures: [1])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		for _ in 0..<4 { coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true) }
+		host.resumeCall(1)
+		await initial.value
+		XCTAssertEqual(clock.scheduledSecond, 30)
+		XCTAssertNil(clock.advance(to: 29))
+		XCTAssertEqual(host.callCount, 1)
+		let followUp = try XCTUnwrap(clock.advance(to: 30))
+		await host.waitForCall(2)
+		host.resumeCall(2)
+		await followUp.value
+		XCTAssertEqual(host.callCount, 2)
+		XCTAssertEqual(coordinator.latestSnapshot, first)
+	}
+
+	func testQuotaRequestsQueuedAfterTheQuotaPhaseWaitThroughTheImmediateFollowUp() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, first])
+		let quota = SequencedQuotaRefresher()
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		// The legacy host reaches the scan only after the full round's quota phase.
+		await host.waitForCall(1)
+		var quotaReturned = false
+		let manualQuota = Task {
+			await coordinator.requestQuotaRefresh(manual: true)
+			quotaReturned = true
+		}
+		coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertFalse(quotaReturned)
+		host.resumeCall(1)
+		await quota.waitForSecondOperation()
+		let priorities = await quota.manualValues
+		XCTAssertEqual(priorities, [false, true], "the automatic follow-up consumes the manual quota request")
+		for _ in 0..<50 { await Task.yield() }
+		XCTAssertFalse(quotaReturned, "the quota call must wait while the follow-up probe is held")
+		XCTAssertEqual(host.callCount, 1)
+		await quota.resumeSecondOperation()
+		for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 2)
+		XCTAssertFalse(quotaReturned, "the quota call must wait for the follow-up scan's terminal")
+		host.resumeCall(2)
+		await initial.value
+		await manualQuota.value
+		XCTAssertTrue(quotaReturned)
+		let finalPriorities = await quota.manualValues
+		XCTAssertEqual(finalPriorities, [false, true], "no extra quota probe follows the sequence")
+	}
+
 	func testStopAppWorkDropsQueuedFollowUpSoQuitStartsNoNewUpdate() async throws {
 		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
@@ -770,6 +978,416 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await source.value
 		for _ in 0..<50 { await Task.yield() }
 		XCTAssertEqual(host.callCount, 1, "quit leaves no follow-up update behind")
+	}
+
+	func testAutomaticRefreshBackoffDoublesAndCapsAtFifteenMinutes() async throws {
+		let delays = [30, 60, 120, 240, 480, 900, 900]
+		let host = ScriptedSnapshotRefresher(responses: Array(repeating: .helperFailure(.nonZeroExit(1)), count: delays.count + 1))
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		var time = 0
+		for (index, delay) in delays.enumerated() {
+			XCTAssertNil(clock.scheduledSecond, "a failure alone does not enqueue a scan")
+			for _ in 0..<6 { coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true) }
+			XCTAssertEqual(clock.scheduledSecond, time + delay)
+			XCTAssertEqual(clock.scheduledCount, index + 1, "a trigger burst owns only one timer")
+			XCTAssertNil(clock.advance(to: time + delay - 1))
+			XCTAssertEqual(host.callCount, index + 1)
+			time += delay
+			let refresh = try XCTUnwrap(clock.advance(to: time))
+			await refresh.value
+			XCTAssertEqual(host.callCount, index + 2)
+		}
+	}
+
+	func testSuccessfulRefreshRestartsBackoffAtThirtySeconds() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ScriptedSnapshotRefresher(responses: [
+			.helperFailure(.nonZeroExit(1)), .helperFailure(.nonZeroExit(1)), .snapshot(snapshot),
+			.helperFailure(.nonZeroExit(1)), .snapshot(snapshot),
+		])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		for time in [30, 90] {
+			coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+			let refresh = try XCTUnwrap(clock.advance(to: time))
+			await refresh.value
+		}
+		XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+		await coordinator.requestFullRefresh(trigger: .periodic)
+		XCTAssertEqual(host.callCount, 4, "success clears the previous retry deadline")
+		coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+		XCTAssertEqual(clock.scheduledSecond, 120, "the next failure starts a new streak")
+		let refresh = try XCTUnwrap(clock.advance(to: 120))
+		await refresh.value
+		XCTAssertEqual(host.callCount, 5)
+	}
+
+	func testContinuousSourceWritesRefreshAtFixedIntervalsAndDeliverTheLastWrite() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ScriptedSnapshotRefresher(responses: Array(repeating: .snapshot(snapshot), count: 4))
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .sourceChange)
+		for start in [0, 30, 60] {
+			for event in [1, 10, 29] {
+				XCTAssertNil(clock.advance(to: start + event))
+				coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+				XCTAssertEqual(clock.scheduledSecond, start + 30)
+				XCTAssertEqual(host.callCount, start / 30 + 1)
+			}
+			let refresh = try XCTUnwrap(clock.advance(to: start + 30))
+			await refresh.value
+			XCTAssertEqual(host.callCount, start / 30 + 2)
+		}
+		XCTAssertEqual(clock.scheduledCount, 3)
+		XCTAssertNil(clock.advance(to: 120))
+		XCTAssertEqual(host.callCount, 4)
+	}
+
+	func testSourceCooldownAndFailureBackoffUseTheLaterDeadline() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot, snapshot], failures: [1])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .sourceChange) }
+		await host.waitForCall(1)
+		XCTAssertNil(clock.advance(to: 10))
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		host.resumeCall(1)
+		await initial.value
+
+		XCTAssertEqual(clock.scheduledSecond, 40, "cooldown starts at 0, backoff starts at the failed terminal at 10")
+		XCTAssertNil(clock.advance(to: 30))
+		XCTAssertEqual(host.callCount, 1)
+		let refresh = try XCTUnwrap(clock.advance(to: 40))
+		await host.waitForCall(2)
+		host.resumeCall(2)
+		await refresh.value
+		XCTAssertEqual(host.callCount, 2)
+	}
+
+	func testContinuousSourceWritesDoNotMoveTheFailureRetryDeadline() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ScriptedSnapshotRefresher(responses: [
+			.helperFailure(.nonZeroExit(1)), .helperFailure(.nonZeroExit(1)), .snapshot(snapshot),
+		])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		for (start, next, calls) in [(0, 30, 1), (30, 90, 2)] {
+			for second in (start + 1)..<next {
+				XCTAssertNil(clock.advance(to: second))
+				coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+				XCTAssertEqual(clock.scheduledSecond, next)
+				XCTAssertEqual(host.callCount, calls)
+			}
+			let refresh = try XCTUnwrap(clock.advance(to: next))
+			await refresh.value
+			XCTAssertEqual(host.callCount, calls + 1)
+		}
+		XCTAssertEqual(clock.scheduledCount, 2)
+		XCTAssertNil(clock.advance(to: 120))
+		XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+	}
+
+	func testBootstrapFailureBacksOffCancellationPreservesBackoffAndSuccessResetsIt() async throws {
+		let snapshot = try servingCoordinatorFixture(id: "bootstrap-final", full: true)
+		let host = ScriptedBootstrapRefresher(responses: [
+			.failure(HelperExecutionError.nonZeroExit(1)), .failure(HelperExecutionError.cancelled),
+			.failure(CancellationError()), .success(snapshot), .failure(HelperExecutionError.nonZeroExit(1)),
+		])
+		let now = ISO8601DateFormatter().date(from: "2026-08-13T10:00:00Z")!
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil, wallNow: { now })
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		guard case .failed = coordinator.fullAttempt else { return XCTFail("failed bootstrap must publish failure") }
+		XCTAssertNil(clock.advance(to: 10))
+		await coordinator.requestFullRefresh(trigger: .manual)
+		await coordinator.requestFullRefresh(trigger: .manual)
+		coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+		XCTAssertEqual(clock.scheduledSecond, 30, "neither form of cancellation changes the existing deadline")
+		XCTAssertEqual(host.bootstrapCalls, 3)
+		let successful = try XCTUnwrap(clock.advance(to: 30))
+		await successful.value
+		guard case .succeeded = coordinator.fullAttempt else { return XCTFail("complete bootstrap must publish success") }
+		XCTAssertEqual(coordinator.servingHeader, snapshot.header)
+
+		await coordinator.requestFullRefresh(trigger: .manual)
+		XCTAssertEqual(host.bootstrapCalls, 5)
+		coordinator.enqueueAutomaticRefresh(trigger: .wake, fromWatcher: true)
+		XCTAssertEqual(clock.scheduledSecond, 60, "the failure after success starts a fresh 30-second backoff")
+		coordinator.stopAppWork()
+	}
+
+	func testManualRefreshBypassesBothDeadlines() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot, snapshot, snapshot], failures: [1])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .sourceChange) }
+		await host.waitForCall(1)
+		host.resumeCall(1)
+		await initial.value
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		XCTAssertEqual(clock.scheduledSecond, 30)
+
+		let manual = Task { await coordinator.requestFullRefresh(trigger: .manual) }
+		for _ in 0..<100 where host.callCount < 2 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 2, "manual scan starts before either deadline")
+		guard host.callCount == 2 else {
+			coordinator.stopAppWork()
+			await manual.value
+			return
+		}
+		XCTAssertNil(clock.scheduledSecond)
+		host.resumeCall(2)
+		await manual.value
+		XCTAssertEqual(host.callCount, 2)
+	}
+
+	func testStopAppWorkCancelsTimerAndRejectsLateCallbacksAndRequests() async throws {
+		let host = ScriptedSnapshotRefresher(responses: [.helperFailure(.nonZeroExit(1))])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		let staleCallback = try XCTUnwrap(clock.pendingFire)
+		coordinator.stopAppWork()
+
+		XCTAssertEqual(clock.cancelledCount, 1)
+		XCTAssertNil(clock.scheduledSecond)
+		XCTAssertNil(clock.advance(to: 30))
+		XCTAssertNil(staleCallback(), "a callback already dispatched before cancellation is harmless")
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		await coordinator.requestFullRefresh(trigger: .manual)
+		XCTAssertEqual(host.callCount, 1)
+	}
+
+	func testStoppingBackgroundWatchCancelsItsTimerAndManualRefreshStaysAvailable() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ScriptedSnapshotRefresher(responses: [.snapshot(snapshot), .snapshot(snapshot)])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		await coordinator.requestFullRefresh(trigger: .startup)
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		XCTAssertEqual(clock.scheduledSecond, 30)
+		coordinator.cancelBackgroundRefresh()
+		XCTAssertEqual(clock.cancelledCount, 1)
+		XCTAssertNil(clock.advance(to: 30))
+		XCTAssertEqual(host.callCount, 1)
+		await coordinator.requestFullRefresh(trigger: .manual)
+		XCTAssertEqual(host.callCount, 2)
+	}
+
+	func testSettingsRefreshesBypassDeadlinesAndKeepPeriodicQuotaPriority() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for requiresFollowUp in [false, true] {
+			let host = ScriptedSnapshotRefresher(responses: [.helperFailure(.nonZeroExit(1)), .snapshot(snapshot)])
+			let quota = RecordingQuotaRefresher()
+			let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			await coordinator.requestFullRefresh(trigger: .startup)
+			coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+			XCTAssertEqual(clock.scheduledSecond, 30)
+
+			var completed = false
+			let save = Task {
+				await coordinator.requestSettingsRefresh(requiresFollowUp: requiresFollowUp)
+				completed = true
+			}
+			for _ in 0..<1000 where !completed { await Task.yield() }
+			XCTAssertTrue(completed, "an explicit settings save does not wait for a timer")
+			XCTAssertEqual(host.callCount, 2)
+			XCTAssertNil(clock.scheduledSecond)
+			let quotaCalls = await quota.recordedManualValues()
+			XCTAssertEqual(quotaCalls, [false, false])
+			coordinator.stopAppWork()
+			await save.value
+		}
+	}
+
+	func testQuotaSettingsRefreshJoinsAnActiveRoundWithoutAddingFollowUp() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot, snapshot])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		var completed = false
+		let save = Task {
+			await coordinator.requestSettingsRefresh(requiresFollowUp: false)
+			completed = true
+		}
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertFalse(completed)
+		host.resumeCall(1)
+		for _ in 0..<200 where !completed { await Task.yield() }
+		XCTAssertTrue(completed)
+		XCTAssertEqual(host.callCount, 1)
+		coordinator.stopAppWork()
+		host.resumeCall(2)
+		await initial.value
+		await save.value
+	}
+
+	func testSettingsSavesWaitForOneImmediateFollowUpAfterAnActiveRoundFails() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot, snapshot], failures: [1])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+		var completed = 0
+		let saves = (0..<2).map { _ in
+			Task {
+				await coordinator.requestSettingsRefresh(requiresFollowUp: true)
+				completed += 1
+			}
+		}
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertEqual(completed, 0)
+		host.resumeCall(1)
+		for _ in 0..<200 where host.callCount < 2 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 2, "settings reconcile immediately after the first round fails")
+		XCTAssertEqual(completed, 0, "settings cannot use the first round's terminal")
+		XCTAssertNil(clock.scheduledSecond)
+		if host.callCount == 2 {
+			host.resumeCall(2)
+			await initial.value
+			for save in saves { await save.value }
+			XCTAssertEqual(completed, 2)
+			XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+			XCTAssertEqual(host.callCount, 2)
+		}
+		coordinator.stopAppWork()
+		await initial.value
+		for save in saves { await save.value }
+	}
+
+	func testCancellingDeferredWaiterRestoresWatcherOnlyCancellation() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for cancelBeforeDisabling in [true, false] {
+			let host = ScriptedSnapshotRefresher(responses: [.snapshot(snapshot)])
+			let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			await coordinator.requestFullRefresh(trigger: .startup)
+			var completed = false
+			let waiter = Task {
+				await coordinator.requestFullRefresh(trigger: .sourceChange)
+				completed = true
+			}
+			for _ in 0..<100 where clock.scheduledSecond == nil { await Task.yield() }
+			XCTAssertEqual(clock.scheduledSecond, 30)
+			XCTAssertFalse(completed)
+			coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: true)
+			if !cancelBeforeDisabling { coordinator.cancelBackgroundRefresh() }
+			waiter.cancel()
+			for _ in 0..<100 where !completed { await Task.yield() }
+			XCTAssertTrue(completed, "cancelled callers return without advancing the clock")
+			if cancelBeforeDisabling {
+				XCTAssertEqual(clock.scheduledSecond, 30, "the watcher still owns pending work")
+				coordinator.cancelBackgroundRefresh()
+			}
+			XCTAssertEqual(clock.cancelledCount, 1, "the cancelled caller no longer keeps watcher work alive")
+			XCTAssertNil(clock.advance(to: 30))
+			XCTAssertEqual(host.callCount, 1)
+			coordinator.stopAppWork()
+			await waiter.value
+		}
+	}
+
+	func testCancellingLastWaiterClearsTheTimerAndDoesNotAffectIndependentNotifications() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		for independentNotification in [false, true] {
+			let host = ScriptedSnapshotRefresher(responses: [.snapshot(snapshot), .snapshot(snapshot)])
+			let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+			let clock = RefreshTestClock(coordinator)
+			await coordinator.requestFullRefresh(trigger: .startup)
+			var completed = false
+			let waiter = Task {
+				await coordinator.requestFullRefresh(trigger: .sourceChange)
+				completed = true
+			}
+			for _ in 0..<100 where clock.scheduledSecond == nil { await Task.yield() }
+			XCTAssertEqual(clock.scheduledSecond, 30)
+			if independentNotification {
+				coordinator.enqueueAutomaticRefresh(trigger: .sourceChange, fromWatcher: false)
+			}
+			waiter.cancel()
+			for _ in 0..<100 where !completed { await Task.yield() }
+			XCTAssertTrue(completed)
+			coordinator.cancelBackgroundRefresh()
+			XCTAssertEqual(clock.scheduledSecond, independentNotification ? 30 : nil)
+			let refresh = clock.advance(to: 30)
+			await refresh?.value
+			XCTAssertEqual(host.callCount, independentNotification ? 2 : 1)
+			coordinator.stopAppWork()
+			await waiter.value
+		}
+	}
+
+	func testCancellingAnActiveJoinerDoesNotCancelTheAutomaticRound() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let automatic = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		var completed = false
+		let periodic = Task {
+			await coordinator.requestFullRefresh(trigger: .periodic)
+			completed = true
+		}
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertFalse(completed)
+		periodic.cancel()
+		for _ in 0..<100 where !completed { await Task.yield() }
+		XCTAssertTrue(completed, "only the caller's wait is cancelled")
+		XCTAssertNil(coordinator.latestSnapshot)
+		host.resumeCall(1)
+		await automatic.value
+		await periodic.value
+		XCTAssertEqual(host.callCount, 1)
+		XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+	}
+
+	func testManualRefreshWakesDeferredWaitersAndUsesLargestRecentLimit() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot], failures: [1])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let clock = RefreshTestClock(coordinator)
+		let startup = Task { await coordinator.requestFullRefresh(trigger: .startup) }
+		await host.waitForCall(1)
+		host.resumeCall(1)
+		await startup.value
+		var completed = Set<Int>()
+		let waiters = [4, 17].map { recentLimit in
+			Task {
+				await coordinator.requestFullRefresh(trigger: .sourceChange, recentLimit: recentLimit)
+				completed.insert(recentLimit)
+			}
+		}
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertEqual(clock.scheduledSecond, 30)
+		let manual = Task { await coordinator.requestFullRefresh(trigger: .manual, recentLimit: 8) }
+		for _ in 0..<100 where host.callCount < 2 { await Task.yield() }
+		XCTAssertEqual(host.callCount, 2)
+		guard host.callCount == 2 else {
+			coordinator.stopAppWork()
+			await manual.value
+			for waiter in waiters { _ = await waiter.value }
+			return
+		}
+		XCTAssertTrue(completed.isEmpty)
+		XCTAssertNil(clock.scheduledSecond)
+		XCTAssertEqual(host.recentLimits.last, 17)
+		host.resumeCall(2)
+		await manual.value
+		for waiter in waiters { _ = await waiter.value }
+		XCTAssertEqual(completed, [4, 17])
+		XCTAssertEqual(host.callCount, 2)
 	}
 
 	func testConcurrentQuotaRequestsShareOneOwnerSideEffectSequence() async throws {
@@ -1327,13 +1945,56 @@ private actor SequencedQuotaRefresher: DesktopQuotaRefreshing {
 }
 
 @MainActor
+private final class RefreshTestClock {
+	private let epoch = ContinuousClock.now
+	private var second = 0
+	private var pending: (deadline: ContinuousClock.Instant, fire: DesktopRefreshClock.Fire)?
+	private(set) var scheduledCount = 0
+	private(set) var cancelledCount = 0
+
+	var pendingFire: DesktopRefreshClock.Fire? { pending?.fire }
+
+	var scheduledSecond: Int? {
+		pending.map { Int(epoch.duration(to: $0.deadline).components.seconds) }
+	}
+
+	init(_ coordinator: DesktopRefreshCoordinator) {
+		coordinator.refreshClock = DesktopRefreshClock(
+			now: { [self] in epoch.advanced(by: .seconds(second)) },
+			schedule: { [self] deadline, fire in
+				XCTAssertNil(pending, "only one timer may be pending")
+				scheduledCount += 1
+				pending = (deadline, fire)
+				return {
+					self.cancelledCount += 1
+					self.pending = nil
+				}
+			}
+		)
+	}
+
+	func advance(to second: Int) -> Task<Void, Never>? {
+		XCTAssertGreaterThanOrEqual(second, self.second)
+		self.second = second
+		guard let pending, pending.deadline <= epoch.advanced(by: .seconds(second)) else { return nil }
+		self.pending = nil
+		return pending.fire()
+	}
+}
+
+@MainActor
 private final class ControlledSnapshotRefresher: DesktopSnapshotRefreshing {
 	private var responses: [DesktopWireEnvelopeV1]
+	private let failures: Set<Int>
+	private let onStart: @MainActor () -> Void
 	private var continuations = [Int: CheckedContinuation<Void, Never>]()
 	private(set) var callCount = 0
+	private(set) var recentLimits: [Int] = []
 
-	init(responses: [DesktopWireEnvelopeV1]) {
+	init(responses: [DesktopWireEnvelopeV1], failures: Set<Int> = [], onStart: @escaping @MainActor () -> Void = {}) {
 		self.responses = responses
+		self.failures = failures
+		self.onStart = onStart
 	}
 
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
@@ -1345,8 +2006,11 @@ private final class ControlledSnapshotRefresher: DesktopSnapshotRefreshing {
 		progress: @escaping @Sendable (DesktopScanProgress) -> Void
 	) async throws -> DesktopWireEnvelopeV1 {
 		callCount += 1
+		onStart()
+		recentLimits.append(recentLimit)
 		let call = callCount
 		await withCheckedContinuation { continuations[call] = $0 }
+		if failures.contains(call) { throw HelperExecutionError.nonZeroExit(1) }
 		return responses.removeFirst()
 	}
 
@@ -1356,6 +2020,40 @@ private final class ControlledSnapshotRefresher: DesktopSnapshotRefreshing {
 
 	func resumeCall(_ call: Int) {
 		continuations.removeValue(forKey: call)?.resume()
+	}
+}
+
+private struct CompletingRefreshTestSwitch: ProviderSwitching {
+	let complete: @MainActor @Sendable () -> Void
+
+	func switchProvider(_ target: ProviderSwitchTarget) async -> ProviderSwitchTransportOutcome {
+		await complete()
+		return .succeeded
+	}
+}
+
+@MainActor
+private final class ScriptedBootstrapRefresher: DesktopSnapshotRefreshing, DesktopSnapshotBootstrapping {
+	private var responses: [Result<DesktopServingSnapshotV2, any Error>]
+	private(set) var bootstrapCalls = 0
+
+	init(responses: [Result<DesktopServingSnapshotV2, any Error>]) {
+		self.responses = responses
+	}
+
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		XCTFail("expected bootstrap instead of the legacy helper")
+		throw HelperExecutionError.malformedOutput
+	}
+
+	func readServingSnapshot() async throws -> DesktopServingSnapshotV2 {
+		throw HelperExecutionError.malformedOutput
+	}
+
+	func bootstrapServingSnapshot(progress: @escaping @Sendable (DesktopScanProgress) -> Void,
+		publication: @escaping @Sendable (DesktopServingSnapshotV2) -> Void) async throws -> DesktopServingSnapshotV2? {
+		bootstrapCalls += 1
+		return try responses.removeFirst().get()
 	}
 }
 
@@ -1447,12 +2145,14 @@ private final class ScriptedSnapshotRefresher: DesktopSnapshotRefreshing {
 	}
 
 	private var responses: [Response]
+	private(set) var callCount = 0
 
 	fileprivate init(responses: [Response]) {
 		self.responses = responses
 	}
 
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		callCount += 1
 		guard !responses.isEmpty else {
 			throw HelperExecutionError.launchFailed
 		}
@@ -1898,8 +2598,8 @@ final class BootstrapSessionScopeDeliveryTests: XCTestCase {
 		try JSONSerialization.data(withJSONObject: ["schema_version": 2, "command": "desktop.bootstrap", "type": type, "data": data])
 	}
 
-	private func terminal(_ state: String) throws -> Data {
-		try line("terminal", ["usage": ["state": state], "session": ["state": state]])
+	private func terminal(_ state: String, session: String? = nil) throws -> Data {
+		try line("terminal", ["usage": ["state": state], "session": ["state": session ?? state]])
 	}
 
 	private func batch(publication: String, views: [DesktopSessionScopeViewV1], asOf: String) throws -> Data {
@@ -1991,6 +2691,22 @@ final class BootstrapSessionScopeDeliveryTests: XCTestCase {
 			XCTFail("an incomplete round must fail")
 		} catch let error as HelperExecutionError {
 			XCTAssertEqual(error, .nonZeroExit(1))
+		}
+	}
+
+	func testPartialTerminalWithZeroExitCannotCountAsASuccessfulRound() async throws {
+		let snapshot = try servingCoordinatorFixture(id: "publication-partial", full: false)
+		let publication = try line("publication", JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let process = HeldBootstrapProcess(head: [publication, try terminal("completed", session: "failed")], tail: [])
+		process.release()
+		let runner = try runner(process, in: directory)
+		do {
+			_ = try await runner.bootstrapServingSnapshot(progress: { _ in }, publication: { _ in })
+			XCTFail("both domains must complete before bootstrap can report success")
+		} catch let error as HelperExecutionError {
+			XCTAssertEqual(error, .malformedOutput)
 		}
 	}
 }

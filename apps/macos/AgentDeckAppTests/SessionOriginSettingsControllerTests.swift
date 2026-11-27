@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 @testable import AgentDeck
-@testable import AgentDeckShared
+@_spi(DesktopApp) @testable import AgentDeckShared
 
 /// One scripted transport. Each queue answers in order and repeats its last
 /// answer; a held write stays in flight until the test releases it.
@@ -286,6 +286,54 @@ final class SessionOriginSettingsControllerTests: XCTestCase {
 		await controller.publicationTask?.value
 		XCTAssertTrue(controller.publicationPending)
 		XCTAssertEqual(controller.defaultState, .confirmed(.work, revision: 2))
+	}
+
+	func testDefaultSavesDuringAScanPublishTheLatestRevisionInAFollowUp() async {
+		let transport = StubOriginTransport(
+			defaults: [.value(.confirmedWork(revision: 2))],
+			writes: [
+				.committed(DesktopOriginReceiptV1(requestID: "settings-test-1", kind: .scopeSet, outcome: .saved, value: "auxiliary", revision: 3, publicationPending: true)),
+				.committed(DesktopOriginReceiptV1(requestID: "settings-test-2", kind: .scopeSet, outcome: .saved, value: "all", revision: 4, publicationPending: true)),
+			]
+		)
+		let first = WireFixture.envelope(sessionScope: .custom(
+			WireFixture.sessionScopeView(scope: "auxiliary", defaults: WireFixture.confirmedDefault("auxiliary", revision: 3))
+		))
+		let latest = WireFixture.envelope(sessionScope: .custom(
+			WireFixture.sessionScopeView(scope: "all", defaults: WireFixture.confirmedDefault("all", revision: 4))
+		))
+		let host = StubDesktopHost(behavior: .suspendedEnvelope(first))
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+		let controller = makeController(transport) {
+			await coordinator.requestSettingsRefresh(requiresFollowUp: true)
+			guard !Task.isCancelled, case .succeeded = coordinator.fullAttempt else { return .failed }
+			return .published(coordinator.latestSnapshot?.data.sessionScopeView.view?.default)
+		}
+		await controller.open()
+		await controller.selectDefault(.auxiliary)
+		let firstPublication = controller.publicationTask
+		for _ in 0..<500 where host.refreshCount == 0 { await Task.yield() }
+		XCTAssertEqual(host.refreshCount, 1)
+		guard host.refreshCount == 1 else {
+			coordinator.stopAppWork()
+			host.resume()
+			await firstPublication?.value
+			return
+		}
+
+		await controller.selectDefault(.all)
+		for _ in 0..<20 { await Task.yield() }
+		XCTAssertEqual(controller.defaultState, .confirmed(.all, revision: 4))
+		XCTAssertTrue(controller.publicationPending)
+		XCTAssertEqual(host.refreshCount, 1)
+		host.behavior = .envelope(latest)
+		host.resume()
+		await firstPublication?.value
+		await controller.publicationTask?.value
+
+		XCTAssertEqual(host.refreshCount, 2)
+		XCTAssertEqual(coordinator.latestSnapshot?.data.sessionScopeView.view?.default, .confirmed(.all, revision: 4))
+		XCTAssertFalse(controller.publicationPending, "the saved revision is acknowledged only after publication")
 	}
 
 	func testNoChangeRequestsNoPublicationAndPermissionWarningStaysSaved() async {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -991,15 +992,71 @@ func removeMissingSourcesExec(ctx context.Context, executor sessionExecutor, see
 	if err = rows.Close(); err != nil {
 		return err
 	}
-	for _, p := range missing {
-		if err = deleteSource(ctx, executor, p); err != nil {
+	return deleteSources(ctx, executor, missing)
+}
+
+// deleteSources removes every document, metadata row and registry entry of
+// paths through the caller's executor, so a transaction covers all of them.
+// source_path is an UNINDEXED FTS5 column: filtering on it scans the whole
+// virtual table, so the documents of all paths are collected in one scan and
+// then deleted by rowid, which FTS5 looks up directly.
+func deleteSources(ctx context.Context, executor sessionExecutor, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	pathSet, err := sourcePathSet(paths)
+	if err != nil {
+		return err
+	}
+	rows, err := executor.QueryContext(ctx, "SELECT rowid FROM session_documents WHERE source_path IN "+sourcePathSetSQL, pathSet)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var rowids []int64
+	for rows.Next() {
+		var rowid int64
+		if err = rows.Scan(&rowid); err != nil {
 			return err
 		}
-		if _, err = executor.ExecContext(ctx, "DELETE FROM session_sources WHERE source_path=?", p); err != nil {
+		rowids = append(rowids, rowid)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	if len(rowids) > 0 {
+		rowidSet, err := json.Marshal(rowids)
+		if err != nil {
+			return err
+		}
+		if _, err = executor.ExecContext(ctx, searchTextChanged+"DELETE FROM session_documents WHERE rowid IN (SELECT value FROM json_each(?))", string(rowidSet)); err != nil {
 			return err
 		}
 	}
-	return nil
+	if _, err = executor.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path IN "+sourcePathSetSQL, pathSet); err != nil {
+		return err
+	}
+	_, err = executor.ExecContext(ctx, "DELETE FROM session_sources WHERE source_path IN "+sourcePathSetSQL, pathSet)
+	return err
+}
+
+// sourcePathSetSQL expands the parameter built by sourcePathSet back into the
+// exact stored paths. A stored path is whatever bytes its source path had,
+// which need not be valid UTF-8, and JSON text cannot carry such bytes: each
+// path travels hex-encoded and is cast back to TEXT byte for byte, so the
+// comparison stays exact and the primary key indexes still apply.
+const sourcePathSetSQL = "(SELECT CAST(unhex(value) AS TEXT) FROM json_each(?))"
+
+func sourcePathSet(paths []string) (string, error) {
+	encoded := make([]string, len(paths))
+	for index, path := range paths {
+		encoded[index] = hex.EncodeToString([]byte(path))
+	}
+	set, err := json.Marshal(encoded)
+	return string(set), err
 }
 
 type visibleDocument struct {
