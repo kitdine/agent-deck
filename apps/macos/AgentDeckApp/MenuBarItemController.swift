@@ -517,6 +517,10 @@ final class SettingsWindowController {
 	private var paneControllers: [SettingsPane: NSHostingController<SettingsPaneView>] = [:]
 	private var isResizing = false
 	private var refitAfterResize = false
+	/// A page changed size while the window was not on screen; the window
+	/// fits it once it shows again.
+	private var refitWhenVisible = false
+	private var occlusionObserver: NSObjectProtocol?
 	/// Applies a resize. The system decides whether a requested transition is
 	/// drawn: with Reduce Motion on it lands in one step. A test reads the
 	/// request here, where it does not depend on that setting.
@@ -536,6 +540,10 @@ final class SettingsWindowController {
 		self.quotaSettings = quotaSettings
 		self.telemetrySettings = telemetrySettings
 		self.sessionOrigin = sessionOrigin
+	}
+
+	isolated deinit {
+		tearDown()
 	}
 
 	/// Sessions exists only with its controller.
@@ -575,6 +583,7 @@ final class SettingsWindowController {
 		NSApp.activate(ignoringOtherApps: true)
 		window?.makeKeyAndOrderFront(nil)
 		window?.makeFirstResponder(nil)
+		refitIfShownAgain()
 		let quotaSettings = quotaSettings
 		if !wasVisible {
 			let telemetrySettings = telemetrySettings
@@ -592,6 +601,58 @@ final class SettingsWindowController {
 	func select(_ pane: SettingsPane) {
 		guard let tabs, let index = panes.firstIndex(of: pane) else { return }
 		tabs.selectedTabViewItemIndex = index
+	}
+
+	/// Takes the window down: ends a sheet, closes the window (discarding its
+	/// drafts once) and detaches the pages, the tabs and every closure that
+	/// reaches back here, so nothing of a closed window stays in AppKit's
+	/// layout and display cycle. The App-level controllers keep every state
+	/// that matters; the next `show()` builds the window again on the page
+	/// shown last. A hidden window (ordered out, or the App hidden) is closed
+	/// too, so its drafts are discarded as for a visible one.
+	func tearDown() {
+		tearDown(afterClose: false)
+	}
+
+	/// `afterClose` is true only when the window's own close runs this.
+	private func tearDown(afterClose: Bool) {
+		guard let window else { return }
+		// The close below runs `onClose` again; that call returns here.
+		self.window = nil
+		if let sheet = window.attachedSheet {
+			window.endSheet(sheet)
+		}
+		if !afterClose {
+			// Discards the window's drafts once, through `onClose`.
+			window.close()
+		}
+		window.onClose = nil
+		if let occlusionObserver {
+			NotificationCenter.default.removeObserver(occlusionObserver)
+		}
+		occlusionObserver = nil
+		window.contentViewController = nil
+		// The toolbar is the tab controller's.
+		window.toolbar = nil
+		if let tabs {
+			tabs.canChangePane = nil
+			tabs.paneWillChange = nil
+			tabs.paneDidChange = nil
+			// The shown page last, so removing the others selects nothing new.
+			let shown = tabs.tabView.selectedTabViewItem
+			for item in tabs.tabViewItems where item !== shown {
+				tabs.removeTabViewItem(item)
+			}
+			for item in tabs.tabViewItems {
+				tabs.removeTabViewItem(item)
+			}
+		}
+		tabs = nil
+		paneControllers.removeAll()
+		refitWhenVisible = false
+		// AppKit may still be inside this window's close; the emptied window
+		// object goes away on the next run-loop turn.
+		RunLoop.main.perform(inModes: [.common]) { withExtendedLifetime(window) {} }
 	}
 
 	private func makeWindow() {
@@ -633,9 +694,19 @@ final class SettingsWindowController {
 		created.toolbarStyle = .preference
 		created.title = selectedPane.title
 		created.isReleasedWhenClosed = false
-		// The window outlives its close; the App-level controller keeps the
-		// operation and discards only the window's drafts.
-		created.onClose = { [weak sessionOrigin] in sessionOrigin?.windowClosed() }
+		// The App-level controller keeps the operation and discards only the
+		// window's drafts; the closed window is then taken down.
+		created.onClose = { [weak self, weak sessionOrigin] in
+			sessionOrigin?.windowClosed()
+			self?.tearDown(afterClose: true)
+		}
+		// Showing again after the App was hidden fits a page that changed
+		// while the window was off screen.
+		occlusionObserver = NotificationCenter.default.addObserver(
+			forName: NSWindow.didChangeOcclusionStateNotification, object: created, queue: .main
+		) { [weak self] _ in
+			MainActor.assumeIsolated { self?.refitIfShownAgain() }
+		}
 		window = created
 		self.tabs = tabs
 		fitSelectedPane(animate: false)
@@ -650,17 +721,33 @@ final class SettingsWindowController {
 	}
 
 	/// A page that grows or shrinks while shown (a warning row appearing)
-	/// resizes the window after the SwiftUI update that changed it.
+	/// resizes the window after the SwiftUI update that changed it. A window
+	/// that is not on screen is not resized; it fits the page when it shows
+	/// again.
 	private func paneContentChanged(_ pane: SettingsPane) {
-		guard pane == selectedPane else { return }
+		guard pane == selectedPane, let window else { return }
+		guard window.isVisible else {
+			refitWhenVisible = true
+			return
+		}
 		// A run-loop turn, not the main queue: it also runs inside a nested
 		// run loop such as a modal sheet's.
 		RunLoop.main.perform(inModes: [.common]) { [weak self] in
 			MainActor.assumeIsolated {
-				guard let self, pane == self.selectedPane else { return }
+				guard let self, pane == self.selectedPane, let window = self.window else { return }
+				guard window.isVisible else {
+					self.refitWhenVisible = true
+					return
+				}
 				self.fitSelectedPane(animate: false)
 			}
 		}
+	}
+
+	private func refitIfShownAgain() {
+		guard refitWhenVisible, window?.isVisible == true else { return }
+		refitWhenVisible = false
+		fitSelectedPane(animate: false)
 	}
 
 	private func fitSelectedPane(animate: Bool) {

@@ -51,6 +51,9 @@ struct SettingsPaneView: View {
 	/// Reports the page's natural height whenever it changes while shown, so
 	/// the window follows a row that appears or goes away.
 	var onNaturalHeight: ((CGFloat) -> Void)? = nil
+	/// Whether the page shows inside the scroll view, decided from its
+	/// natural height alone and never from the window it is shown in.
+	@State private var scrollsPage = false
 
 	/// The tallest a page's content may be before it scrolls inside the page,
 	/// leaving the title bar and toolbar on screen.
@@ -58,17 +61,27 @@ struct SettingsPaneView: View {
 		max(320, (NSScreen.main?.visibleFrame.height ?? 800) - 140)
 	}
 
+	/// How far past `maximumHeight` a page's height must move before it
+	/// changes between whole and scrolling. On a 1x display the laid-out page
+	/// can measure a point taller than its fitted size; that difference must
+	/// never move it in and out of the scroll view, which rebuilt the page on
+	/// every layout pass and never settled.
+	static let scrollHysteresis: CGFloat = 4
+
+	/// Whether a page `height` tall scrolls under `limit`, given whether it
+	/// scrolls now.
+	static func scrollsPage(height: CGFloat, limit: CGFloat, scrolling: Bool) -> Bool {
+		scrolling ? height > limit - scrollHysteresis : height > limit + scrollHysteresis
+	}
+
 	var body: some View {
 		Group {
-			if scrolls {
-				// The page's ideal size is its natural height, which sizes the
-				// window; only a page taller than the screen scrolls.
-				ViewThatFits(in: .vertical) {
-					page
-					ScrollView(.vertical) { page }
-						.frame(width: 460)
-						.frame(maxHeight: Self.maximumHeight)
-				}
+			if scrolls, scrollsPage {
+				// Only a page taller than the screen scrolls; the window fits
+				// the page's natural height otherwise.
+				ScrollView(.vertical) { page }
+					.frame(width: 460)
+					.frame(maxHeight: Self.maximumHeight)
 			} else {
 				page
 			}
@@ -96,9 +109,15 @@ struct SettingsPaneView: View {
 		}
 		.padding(18)
 		.frame(width: 460, alignment: .leading)
-		// The rows never stretch, so the page's own height is its natural one
-		// whether it is shown whole or inside the scroll view.
+		// The page always takes its natural height, so its own height does
+		// not depend on the window or on whether it is shown inside the
+		// scroll view.
+		.fixedSize(horizontal: false, vertical: true)
 		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+			if scrolls {
+				let next = Self.scrollsPage(height: height, limit: Self.maximumHeight, scrolling: scrollsPage)
+				if next != scrollsPage { scrollsPage = next }
+			}
 			onNaturalHeight?(height)
 		}
 	}
