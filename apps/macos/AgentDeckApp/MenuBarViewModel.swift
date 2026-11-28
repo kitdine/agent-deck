@@ -79,6 +79,7 @@ struct MenuBarHero: Equatable, Sendable {
 	let tokens: String
 	let counts: String
 	let costIncomplete: String?
+	var pricingLabel: String? = nil
 }
 
 struct StatChip: Identifiable, Equatable, Sendable {
@@ -107,6 +108,7 @@ struct ShareRow: Identifiable, Equatable, Sendable {
 	let value: String
 	let share: Double
 	let shareText: String
+	var estimate: String? = nil
 }
 
 struct UsagePanelModel: Equatable, Sendable {
@@ -115,6 +117,8 @@ struct UsagePanelModel: Equatable, Sendable {
 	let buckets: [TrendBucket]
 	let chips: [StatChip]
 	let emptyCopy: String?
+	var usesRequestPricing = false
+	var peakID: String? = nil
 }
 
 struct BreakdownPanelModel: Equatable, Sendable {
@@ -123,6 +127,7 @@ struct BreakdownPanelModel: Equatable, Sendable {
 	let modelsEmptyCopy: String?
 	let tokenMix: [ShareRow]
 	let clientRows: [ShareRow]
+	var tierRows: [ShareRow] = []
 }
 
 struct ProviderQualityGroup: Identifiable, Equatable, Sendable {
@@ -139,6 +144,7 @@ struct AttributionPanelModel: Equatable, Sendable {
 	let pricingHeadline: String
 	let pricingCoverage: Double
 	let unpricedIdentifiers: [String]
+	var diagnostics: [String] = []
 }
 
 enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
@@ -702,10 +708,16 @@ final class MenuBarViewModel {
 				: nil
 			let totals = isPeriodAvailable(selectedPeriod)
 				? scope.periods.items.first(where: { $0.period == selectedPeriod })?.totals : nil
+			let value: String
+			if let projection = snapshot.pricing, projection.version == 1, isPeriodAvailable(selectedPeriod) {
+				value = pricingText(projection.scope(scope.client)?.period(selectedPeriod)?.pricing)
+			} else {
+				value = subtotal.map(costText) ?? totals.map(costText) ?? "—"
+			}
 			return FilterOption(
 				id: scope.client,
 				label: clientLabel(scope.client),
-				value: subtotal.map(costText) ?? totals.map(costText) ?? "—"
+				value: value
 			)
 		}
 	}
@@ -779,22 +791,35 @@ final class MenuBarViewModel {
 		return activeScope?.periods.items.first(where: { $0.period == selectedPeriod })
 	}
 
+	private var requestPricingScope: DesktopPricingScopeV1? {
+		snapshot?.pricing?.scope(selectedClient)
+	}
+
+	private var requestPricingPeriod: DesktopPricingPeriodV1? {
+		guard isPeriodAvailable(selectedPeriod) else { return nil }
+		return requestPricingScope?.period(selectedPeriod)
+	}
+
 	// MARK: Hero
 
 	var hero: MenuBarHero? {
 		guard let snapshot, let period = activePeriod else { return nil }
 		let projects = sessionStatistics?.distinctProjects
+		let pricing = requestPricingPeriod?.pricing
+		let display = pricing.map(pricingDisplay)
+		let legacyIncomplete = period.totals.pricingComplete
+			? nil
+			: period.totals.unpricedComponents > 0
+				? t(DesktopCopy.costIncomplete, Int64(period.totals.unpricedComponents))
+				: t(DesktopCopy.costIncompleteAttribution)
 		return MenuBarHero(
 			scopeLine: "\(periodLabel(period.period)) · \(DesktopFormat.day(snapshot.generatedAt))",
-			amount: costText(period.totals),
+			amount: display?.amount ?? (pricing != nil ? t(DesktopCopy.pricingUnavailable) : costText(period.totals)),
 			tokens: DesktopFormat.tokens(period.totals.tokens),
 			counts: projects.map { t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64($0)) }
 				?? t(DesktopCopy.heroCountsUnknownProjects, period.totals.events, period.totals.sessions),
-			costIncomplete: period.totals.pricingComplete
-				? nil
-				: period.totals.unpricedComponents > 0
-					? t(DesktopCopy.costIncomplete, Int64(period.totals.unpricedComponents))
-					: t(DesktopCopy.costIncompleteAttribution)
+			costIncomplete: pricing.map { $0.apiEquivalent.status == "complete" ? nil : t(DesktopCopy.pricingSeeDiagnostics) } ?? legacyIncomplete,
+			pricingLabel: display?.amount == nil ? nil : display?.label
 		)
 	}
 
@@ -809,6 +834,10 @@ final class MenuBarViewModel {
 		let usesHourly = selectedPeriod == "today" && scope.hourly?.available == true
 		let hourly = usesHourly ? scope.hourly?.items ?? [] : []
 		let hourlyByHour = Dictionary(uniqueKeysWithValues: hourly.map { ($0.hour, $0) })
+		let pricingPeriod = requestPricingPeriod
+		let costComparable = pricingPeriod?.peak != nil
+		let pricingBuckets = usesHourly ? requestPricingScope?.hourly : requestPricingScope?.daily
+		let byKey = Dictionary(pricingBuckets?.map { ($0.key, $0.pricing) } ?? [], uniquingKeysWith: { first, _ in first })
 		let buckets = usesHourly
 			? (0 ..< 24).map { hour in
 				if let item = hourlyByHour[hour] {
@@ -816,10 +845,13 @@ final class MenuBarViewModel {
 						id: "hour.\(item.hour)",
 						label: DesktopFormat.hourWindow(item.hour),
 						value: item.value,
-						inWindow: true
+						inWindow: true,
+						pricing: byKey[String(item.hour)],
+						useNewPricing: pricingPeriod != nil,
+						costComparable: costComparable
 					)
 				} else {
-					emptyHourlyTrendBucket(hour: hour)
+					emptyHourlyTrendBucket(hour: hour, useNewPricing: pricingPeriod != nil)
 				}
 			}
 			: daily.filter { window.contains($0.date) }.map { item in
@@ -827,7 +859,10 @@ final class MenuBarViewModel {
 					id: item.date,
 					label: DesktopFormat.compactDay(item.date),
 					value: item.value,
-					inWindow: true
+					inWindow: true,
+					pricing: byKey[item.date],
+					useNewPricing: pricingPeriod != nil,
+					costComparable: costComparable
 				)
 			}
 		let isEmpty = period.totals.tokens == 0 && period.totals.events == 0
@@ -836,7 +871,9 @@ final class MenuBarViewModel {
 			windowLabel: usesHourly ? t(DesktopCopy.trendHours) : t(DesktopCopy.trendWindow, Int64(buckets.count)),
 			buckets: buckets,
 			chips: usageChips(period, hourly: hourly),
-			emptyCopy: isEmpty ? emptyCopy : nil
+			emptyCopy: isEmpty ? emptyCopy : nil,
+			usesRequestPricing: pricingPeriod != nil,
+			peakID: pricingPeriod?.peak.map { usesHourly ? "hour.\($0.key)" : $0.key }
 		)
 	}
 
@@ -861,12 +898,17 @@ final class MenuBarViewModel {
 				}
 				return candidate.hour < selected.hour ? candidate : selected
 			}
+			let pricePeak = requestPricingPeriod?.peak
+			let peakHour = requestPricingPeriod != nil ? pricePeak.flatMap { Int($0.key) } : peak?.hour
+			let peakNote = requestPricingPeriod != nil
+				? pricePeak.map { pricingText($0.pricing) }
+				: peak.map { costText($0.value) }
 			return [
 				StatChip(
 					id: "priciest-hour",
 					label: t(DesktopCopy.chipPriciestHour),
-					value: peak.map { DesktopFormat.hourWindow($0.hour) } ?? "—",
-					note: peak.map { costText($0.value) } ?? t(DesktopCopy.notCapturedYet)
+					value: peakHour.map(DesktopFormat.hourWindow) ?? "—",
+					note: peakNote ?? t(DesktopCopy.notCapturedYet)
 				),
 				StatChip(id: "events", label: t(DesktopCopy.chipEvents), value: DesktopFormat.count(period.totals.events), note: nil),
 				StatChip(
@@ -877,6 +919,8 @@ final class MenuBarViewModel {
 				),
 			]
 		}
+		let pricePeriod = requestPricingPeriod
+		let pricePeak = pricePeriod?.peak
 		return [
 			StatChip(
 				id: "average",
@@ -887,8 +931,9 @@ final class MenuBarViewModel {
 			StatChip(
 				id: "peak",
 				label: t(DesktopCopy.chipPeak),
-				value: DesktopFormat.tokens(period.peak.totals.tokens),
-				note: period.peak.date.isEmpty ? nil : DesktopFormat.compactDay(period.peak.date)
+				value: pricePeriod != nil ? pricePeak.map { pricingText($0.pricing) } ?? "—" : DesktopFormat.tokens(period.peak.totals.tokens),
+				note: pricePeriod != nil ? pricePeak.map { DesktopFormat.compactDay($0.key) }
+					: (period.peak.date.isEmpty ? nil : DesktopFormat.compactDay(period.peak.date))
 			),
 			StatChip(
 				id: "cache-hit",
@@ -906,7 +951,7 @@ final class MenuBarViewModel {
 			return BreakdownPanelModel(available: false, models: [], modelsEmptyCopy: nil, tokenMix: [], clientRows: [])
 		}
 		var seenModelIDs = [String: Int]()
-		let models = period.models.prefix(12).map { model -> ShareRow in
+		let legacyModels = period.models.prefix(12).map { model -> ShareRow in
 			let occurrence = seenModelIDs[model.id, default: 0]
 			seenModelIDs[model.id] = occurrence + 1
 			let rowID = occurrence == 0 ? "model.\(model.id)" : "model.\(model.id)#\(occurrence)"
@@ -921,6 +966,13 @@ final class MenuBarViewModel {
 				shareText: DesktopFormat.percent(model.share)
 			)
 		}
+		let pricing = requestPricingPeriod
+		let models = pricing?.models.map { row in
+			let model = row.key
+			let client = scope.client == "all" ? row.client.map(clientLabel) : nil
+			return pricingRow(row, id: "model.\(row.client ?? "")/\(model)",
+				label: [model, client].compactMap { $0 }.joined(separator: " · "), modelName: model, client: client)
+		} ?? legacyModels
 		// Shared projection keeps the four slices exclusive (see DesktopTokenMix).
 		let exclusive = DesktopTokenMix(scope: scope, period: period)
 		let mixTotal = max(1, exclusive.total)
@@ -946,6 +998,22 @@ final class MenuBarViewModel {
 			: []
 		let clientTotal = max(Int64(1), clientItems.reduce(Int64(0)) { $0 + $1.value.tokens })
 		let clientRows = clientItems.map { item in
+			if pricing != nil {
+				let p = snapshot.pricing?.scope(item.client)?.period(selectedPeriod)?.pricing
+				let total = snapshot.pricing?.scope("all")?.period(selectedPeriod)?.pricing.apiEquivalent
+				let api = p?.apiEquivalent
+				let share: Double?
+				if let total, let api, total.status == "complete", api.status == "complete",
+					total.currency == api.currency, let sum = Double(total.amount ?? ""), sum > 0,
+					let amount = Double(api.amount ?? "")
+				{
+					share = amount / sum
+				} else {
+					share = nil
+				}
+				return ShareRow(id: "client.\(item.client)", label: clientLabel(item.client), value: pricingText(p),
+					share: share ?? 0, shareText: share.map { $0.formatted(.percent.precision(.fractionLength(0 ... 1)).locale(DesktopLocale.current)) } ?? "—")
+			}
 			let fraction = Double(item.value.tokens) / Double(clientTotal)
 			return ShareRow(
 				id: "client.\(item.client)",
@@ -960,7 +1028,8 @@ final class MenuBarViewModel {
 			models: Array(models),
 			modelsEmptyCopy: models.isEmpty ? t(DesktopCopy.modelsEmpty) : nil,
 			tokenMix: mix,
-			clientRows: clientRows
+			clientRows: clientRows,
+			tierRows: pricing?.tiers.map { pricingRow($0, id: "tier.\($0.key)", label: executionTierLabel($0.key)) } ?? []
 		)
 	}
 
@@ -975,7 +1044,10 @@ final class MenuBarViewModel {
 		}
 		let periodItems = scope.quality.items.filter { $0.period == selectedPeriod }
 		let aggregate = periodItems.first(where: { $0.provider == nil })
-		let tiers = (aggregate?.tiers ?? []).map { tier in
+		let requestPricing = requestPricingPeriod
+		let tiers = requestPricing?.quality.filter { $0.provider == nil }.map {
+			pricingRow($0, id: "tier.\($0.key)", label: qualityLabel($0.key), showEstimate: true)
+		} ?? (aggregate?.tiers ?? []).map { tier in
 			ShareRow(
 				id: "tier.\(tier.quality)",
 				label: qualityLabel(tier.quality),
@@ -989,7 +1061,9 @@ final class MenuBarViewModel {
 			return ProviderQualityGroup(
 				id: "provider.\(provider)",
 				title: provider,
-				tiers: item.tiers.map { tier in
+				tiers: requestPricing?.quality.filter { $0.provider == provider }.map {
+					pricingRow($0, id: "provider.\(provider).\($0.key)", label: qualityLabel($0.key), showEstimate: true)
+				} ?? item.tiers.map { tier in
 					ShareRow(
 						id: "provider.\(provider).\(tier.quality)",
 						label: qualityLabel(tier.quality),
@@ -1010,7 +1084,8 @@ final class MenuBarViewModel {
 			pricingAvailable: scope.pricing.available && pricing != nil,
 			pricingHeadline: t(DesktopCopy.pricingPriced, priced, total),
 			pricingCoverage: min(1, max(0, (Double(pricing?.coverage ?? "0") ?? 0) / 100)),
-			unpricedIdentifiers: Array((pricing?.unpricedIdentifiers ?? []).prefix(12))
+			unpricedIdentifiers: Array((pricing?.unpricedIdentifiers ?? []).prefix(12)),
+			diagnostics: requestPricing.map { pricingDiagnostics($0.pricing) } ?? []
 		)
 	}
 
@@ -1295,6 +1370,9 @@ final class MenuBarViewModel {
 		else {
 			return RhythmBlockModel(available: false, scopeLine: t(DesktopCopy.rhythmScope), figures: [], cells: [], calendar: [])
 		}
+		let requestPricing = snapshot.pricing?.scope("all")
+		let hourlyPricing = Dictionary(requestPricing?.rhythm?.map { ($0.key, $0.pricing) } ?? [], uniquingKeysWith: { first, _ in first })
+		let dailyPricing = Dictionary(requestPricing?.daily.map { ($0.key, $0.pricing) } ?? [], uniquingKeysWith: { first, _ in first })
 		let rhythm = scope.rhythm
 		let peak = rhythm.cells.max(by: { $0.intensity < $1.intensity })
 		let figures: [StatChip] = [
@@ -1327,9 +1405,14 @@ final class MenuBarViewModel {
 		]
 		let cells = rhythm.cells.map { cell in
 			let tokens = cell.tokens ?? 0
-			let cost = cell.providerCost.map {
-				DesktopFormat.cost($0, known: $0, approximate: cell.costIncomplete == true)
-			} ?? "—"
+			let cost: String
+			if requestPricing != nil {
+				cost = pricingText(hourlyPricing[String(cell.weekday * 24 + cell.hour)], empty: tokens == 0)
+			} else {
+				cost = cell.providerCost.map {
+					DesktopFormat.cost($0, known: $0, approximate: cell.costIncomplete == true)
+				} ?? "—"
+			}
 			return RhythmCell(
 				id: cell.id,
 				weekday: cell.weekday,
@@ -1350,7 +1433,9 @@ final class MenuBarViewModel {
 				id: "calendar.\(item.date)",
 				label: DesktopFormat.compactDay(item.date),
 				value: item.value,
-				inWindow: true
+				inWindow: true,
+				pricing: dailyPricing[item.date],
+				useNewPricing: requestPricing != nil
 			)
 		}
 		return RhythmBlockModel(
@@ -1625,6 +1710,9 @@ final class MenuBarViewModel {
 		guard preferences.menuBarValue != .icon, isPeriodAvailable("today") else { return nil }
 		let client = preferences.menuBarScope == .followPanel ? selectedClient : "all"
 		guard let snapshot else { return nil }
+		if preferences.menuBarValue == .cost, let pricing = snapshot.pricing, pricing.version == 1 {
+			return pricingText(pricing.scope(client)?.period("today")?.pricing)
+		}
 		let subtotals = snapshot.usage.presentation.clientSubtotals
 		if subtotals.available,
 			let value = subtotals.items.first(where: { $0.period == "today" && $0.client == client })?.value
@@ -1713,6 +1801,122 @@ final class MenuBarViewModel {
 		}
 	}
 
+	private func pricingDisplay(_ p: DesktopPricingReportV1) -> (label: String, amount: String?) {
+		let api = p.apiEquivalent
+		if api.status == "complete", let amount = api.amount {
+			return (t(DesktopCopy.pricingAPI), pricedMoney(amount, currency: api.currency))
+		}
+		if let amount = api.knownAmount {
+			return (t(DesktopCopy.pricingKnown), pricedMoney(amount, currency: api.currency))
+		}
+		if let reference = p.reference, let amount = reference.amount,
+			["standard", "as_of_date", "legacy_catalog", "assumed_5m"].contains(reference.basis)
+		{
+			return (t(DesktopCopy.pricingReference), pricedMoney(amount, currency: reference.currency))
+		}
+		return (t(DesktopCopy.pricingUnavailable), nil)
+	}
+
+	private func pricingText(_ p: DesktopPricingReportV1?, empty: Bool = false) -> String {
+		guard let p else {
+			return empty ? "\(t(DesktopCopy.pricingAPI)) \(pricedMoney("0", currency: "USD"))" : t(DesktopCopy.pricingUnavailable)
+		}
+		let display = pricingDisplay(p)
+		return display.amount.map { "\(display.label) \($0)" } ?? display.label
+	}
+
+	private func pricingRow(_ row: DesktopPricingRowV1, id: String, label: String, modelName: String? = nil,
+		client: String? = nil, showEstimate: Bool = false) -> ShareRow {
+		let estimate = showEstimate && row.key != "unattributed" && row.pricing.providerEstimate != nil
+			? pricingEstimate(row.pricing.providerEstimate)
+			: nil
+		return ShareRow(id: id, label: label, modelName: modelName, clientLabel: client, value: pricingText(row.pricing),
+			share: shareFraction(row.share), shareText: DesktopFormat.percent(row.share), estimate: estimate)
+	}
+
+	private func pricedMoney(_ value: String, currency: String) -> String {
+		Decimal(string: value, locale: Locale(identifier: "en_US_POSIX"))?
+			.formatted(.currency(code: currency).locale(DesktopLocale.current)) ?? value
+	}
+
+	private func executionTierLabel(_ tier: String) -> String {
+		if tier.isEmpty || tier == "unknown" { return t(DesktopCopy.pricingUnknownTier) }
+		return tier.replacingOccurrences(of: "_", with: " ").capitalized
+	}
+
+	private func pricingEstimate(_ estimate: DesktopPricingAmountV1?) -> String {
+		let label = estimate?.status == "partial" ? DesktopCopy.pricingKnownEstimate : DesktopCopy.pricingProviderEstimate
+		let amount = (estimate?.amount ?? estimate?.knownAmount).map {
+			pricedMoney($0, currency: estimate?.currency ?? "USD")
+		}
+		return "\(t(label)) · \(amount ?? t(DesktopCopy.pricingUnavailable))"
+	}
+
+	private func pricingDiagnostics(_ pricing: DesktopPricingReportV1) -> [String] {
+		var values = [pricingEstimate(pricing.providerEstimate)]
+		let reasons = [
+			"activity_coverage_unavailable": DesktopCopy.pricingGuardianCoverage,
+			"model_unresolved": DesktopCopy.pricingReasonModel,
+			"historical_rule_missing": DesktopCopy.pricingReasonHistorical,
+			"effective_boundary_unverified": DesktopCopy.pricingReasonBoundary,
+			"service_tier_unverified": DesktopCopy.pricingReasonTier,
+			"context_policy_unverified": DesktopCopy.pricingReasonContext,
+			"invocation_boundary_unverified": DesktopCopy.pricingReasonInvocation,
+			"cache_write_ttl_unverified": DesktopCopy.pricingReasonTTL,
+			"component_unmetered": DesktopCopy.pricingReasonUnmetered,
+			"conflicting_counts": DesktopCopy.pricingReasonCounts,
+			"provider_route_unverified": DesktopCopy.pricingReasonRoute,
+			"activity_unverified": DesktopCopy.pricingReasonActivity,
+			"pricing_rule_conflict": DesktopCopy.pricingReasonConflict,
+			"pricing_selector_unverified": DesktopCopy.pricingReasonSelector,
+		]
+		values += pricing.reasons.map { reasons[$0].map { t($0) } ?? $0 }
+		if let reference = pricing.reference, let text = pricingDiagnosticReference(reference) {
+			values.append(text)
+		}
+		for reference in pricing.referenceDetails ?? [] {
+			if let text = pricingDiagnosticReference(reference) {
+				values.append(t(DesktopCopy.pricingReferenceSubset) + "\n" + text)
+			}
+		}
+		for source in pricing.sources ?? [] {
+			var detail = [source.ruleID]
+			if let from = source.effectiveFrom { detail.append(t(DesktopCopy.pricingEffectiveFrom, pricingBoundary(from))) }
+			if let until = source.effectiveUntil { detail.append(t(DesktopCopy.pricingEffectiveUntil, pricingBoundary(until))) }
+			values.append(detail.joined(separator: " · ") + "\n" + source.sourceURL)
+		}
+		return values
+	}
+
+	private func pricingBoundary(_ boundary: DesktopPricingBoundaryV1) -> String {
+		[boundary.value, boundary.timeZone].compactMap { $0 }.joined(separator: " · ")
+	}
+
+	private func pricingDiagnosticReference(_ ref: DesktopPricingReferenceV1) -> String? {
+		let amount: String
+		if let lower = ref.lower, let upper = ref.upper {
+			amount = pricedMoney(lower, currency: ref.currency) + "\u{2060}–\u{2060}" + pricedMoney(upper, currency: ref.currency)
+		} else if let raw = ref.amount {
+			amount = pricedMoney(raw, currency: ref.currency)
+		} else {
+			return nil
+		}
+		let tier = executionTierLabel(ref.tier ?? "")
+		let basis: String
+		switch ref.basis {
+		case "as_of_date": basis = t(DesktopCopy.pricingAsOf, ref.asOf ?? "—")
+		case "legacy_catalog": basis = t(DesktopCopy.pricingLegacyCatalog)
+		case "requested_tier": basis = t(DesktopCopy.pricingRequestedTier, tier)
+		case "standard": basis = t(DesktopCopy.pricingTierAssumed, tier)
+		case "per_request_context": basis = t(DesktopCopy.pricingContextAssumed)
+		case "assumed_5m": basis = t(DesktopCopy.pricingTTLAssumed, "5m")
+		case "cache_write_ttl_range":
+			basis = t(DesktopCopy.pricingTTLAssumed, (ref.ttlCandidates ?? []).joined(separator: "/")) + " · " + tier
+		default: basis = ref.basis
+		}
+		return "\(t(DesktopCopy.pricingReference)) \(amount)\n\(basis)"
+	}
+
 	func costText(_ totals: DesktopPresentationTotalsV1) -> String {
 		DesktopFormat.cost(totals.providerCost, known: totals.knownProviderCost, approximate: totals.providerCost == nil)
 	}
@@ -1725,22 +1929,27 @@ final class MenuBarViewModel {
 		id: String,
 		label: String,
 		value: DesktopPresentationValueV1,
-		inWindow: Bool
+		inWindow: Bool,
+		pricing: DesktopPricingReportV1? = nil,
+		useNewPricing: Bool = false,
+		costComparable: Bool = false
 	) -> TrendBucket {
-		TrendBucket(
+		let cost = useNewPricing ? pricingText(pricing, empty: value.events == 0) : costText(value)
+		let amount = costComparable ? Double(pricing?.apiEquivalent.amount ?? "") ?? 0 : Double(value.tokens)
+		return TrendBucket(
 			id: id,
 			label: label,
 			tokens: value.tokens,
 			events: value.events,
-			cost: costText(value),
-			magnitude: costMagnitude(value),
+			cost: cost,
+			magnitude: useNewPricing ? amount : costMagnitude(value),
 			inWindow: inWindow,
-			accessibilityValue: "\(costText(value)), \(DesktopFormat.tokens(value.tokens)), \(t(DesktopCopy.trendEvents, value.events))"
+			accessibilityValue: "\(cost), \(DesktopFormat.tokens(value.tokens)), \(t(DesktopCopy.trendEvents, value.events))"
 		)
 	}
 
-	private func emptyHourlyTrendBucket(hour: Int) -> TrendBucket {
-		let cost = DesktopFormat.cost("0", known: "0", approximate: false)
+	private func emptyHourlyTrendBucket(hour: Int, useNewPricing: Bool = false) -> TrendBucket {
+		let cost = useNewPricing ? pricingText(nil, empty: true) : DesktopFormat.cost("0", known: "0", approximate: false)
 		return TrendBucket(
 			id: "hour.\(hour)",
 			label: DesktopFormat.hourWindow(hour),

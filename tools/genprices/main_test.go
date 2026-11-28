@@ -41,6 +41,20 @@ const syntheticSnapshot = `{
 
 const emptyGapfill = `{"schema_version":1,"entries":[],"pending":[]}`
 
+const syntheticRules = `{
+  "schema_version": 2,
+  "rules": [{
+    "id": "test-rule",
+    "selector": {
+      "provider": "openai", "channel": "public_api", "models": ["gpt-test"],
+      "endpoints": ["v1/responses"], "service_tier": "standard", "regions": ["global"]
+    },
+    "validity": {"basis": "effective", "from": {"value": "2026-07-13T00:00:00Z", "precision": "instant"}},
+    "sources": [{"url": "https://developers.openai.com/api/docs/pricing", "revision": "test-rev", "verified_on": "2026-07-13", "kind": "vendor_dated"}],
+    "currency": "USD", "unit": "usd_per_million_tokens", "rates": {"input": "2.5"}
+  }]
+}`
+
 const unpublishedArtifact = "existing artifact must remain byte-for-byte unchanged\n"
 
 // recordingFetcher stands in for the network and records every URL requested,
@@ -79,18 +93,22 @@ func (r *recordingFetcher) requestedAny(substr string) bool {
 // writeFixture lays out a temporary artifact + gap-fill pair. When artifact is
 // empty the artifact is generated from the synthetic snapshot pinned to
 // recordedCommit, i.e. exactly what a correct regeneration would produce.
-func writeFixture(t *testing.T, artifact string) (outPath, gapfillPath string) {
+func writeFixture(t *testing.T, artifact string) (outPath, gapfillPath, rulesPath string) {
 	t.Helper()
 	dir := t.TempDir()
 	outPath = filepath.Join(dir, "model-prices.json")
 	gapfillPath = filepath.Join(dir, "price-gapfill.json")
+	rulesPath = filepath.Join(dir, "price-rules-v2.json")
+	if err := os.WriteFile(rulesPath, []byte(syntheticRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if artifact == "" {
 		gapfill, err := usage.ParseGapfill([]byte(emptyGapfill))
 		if err != nil {
 			t.Fatal(err)
 		}
-		generated, err := usage.GenerateBundledCatalog([]byte(syntheticSnapshot), recordedCommit, gapfill)
+		generated, err := usage.GenerateBundledCatalogWithRules([]byte(syntheticSnapshot), recordedCommit, gapfill, []byte(syntheticRules))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,10 +120,10 @@ func writeFixture(t *testing.T, artifact string) (outPath, gapfillPath string) {
 	if err := os.WriteFile(gapfillPath, []byte(emptyGapfill), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return outPath, gapfillPath
+	return outPath, gapfillPath, rulesPath
 }
 
-func writeFailureFixture(t *testing.T) (outPath, gapfillPath string) {
+func writeFailureFixture(t *testing.T) (outPath, gapfillPath, rulesPath string) {
 	t.Helper()
 	return writeFixture(t, unpublishedArtifact)
 }
@@ -162,7 +180,7 @@ func (r *repeatedResponseReader) Read(p []byte) (int, error) {
 }
 
 func TestRunAcceptsCatalogAtExactHTTPSizeLimit(t *testing.T) {
-	outPath, gapfillPath := writeFailureFixture(t)
+	outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 	padding := int64(maxCatalogBytes - len(syntheticSnapshot))
 	if padding < 0 {
 		t.Fatalf("synthetic catalog is %d bytes, exceeds limit %d", len(syntheticSnapshot), maxCatalogBytes)
@@ -175,7 +193,7 @@ func TestRunAcceptsCatalogAtExactHTTPSizeLimit(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(body), Header: make(http.Header)}, nil
 	})}
 
-	if err := run(recordedCommit, outPath, gapfillPath, false, httpFetcher(client)); err != nil {
+	if err := run(recordedCommit, outPath, gapfillPath, rulesPath, false, httpFetcher(client)); err != nil {
 		t.Fatalf("run rejected an exact-size catalog: %v", err)
 	}
 	written, err := os.ReadFile(outPath)
@@ -223,9 +241,9 @@ func TestRunDoesNotPublishOnHTTPFetchFailures(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			outPath, gapfillPath := writeFailureFixture(t)
+			outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 			client := &http.Client{Transport: test.transport}
-			err := run(recordedCommit, outPath, gapfillPath, false, httpFetcher(client))
+			err := run(recordedCommit, outPath, gapfillPath, rulesPath, false, httpFetcher(client))
 			if test.isErr != nil {
 				if !errors.Is(err, test.isErr) {
 					t.Fatalf("run error = %v, want errors.Is(%v)", err, test.isErr)
@@ -249,7 +267,7 @@ func TestRunRejectsInvalidLatestCommitBeforeCatalogFetch(t *testing.T) {
 		{name: "non-sha revision", body: `{"sha":"main"}`, wantErr: "resolve latest LiteLLM commit: response contained an invalid SHA"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			outPath, gapfillPath := writeFailureFixture(t)
+			outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 			var requested []string
 			get := func(_ context.Context, url string, _ map[string]string) ([]byte, error) {
 				requested = append(requested, url)
@@ -259,7 +277,7 @@ func TestRunRejectsInvalidLatestCommitBeforeCatalogFetch(t *testing.T) {
 				return []byte(syntheticSnapshot), nil
 			}
 
-			err := run("", outPath, gapfillPath, false, get)
+			err := run("", outPath, gapfillPath, rulesPath, false, get)
 			if err == nil || err.Error() != test.wantErr {
 				t.Fatalf("run error = %v, want %q", err, test.wantErr)
 			}
@@ -272,7 +290,7 @@ func TestRunRejectsInvalidLatestCommitBeforeCatalogFetch(t *testing.T) {
 }
 
 func TestRunWrapsLatestCommitTransportErrorBeforeCatalogFetch(t *testing.T) {
-	outPath, gapfillPath := writeFailureFixture(t)
+	outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 	transportErr := errors.New("synthetic latest commit transport failure")
 	var requested []string
 	get := func(_ context.Context, url string, _ map[string]string) ([]byte, error) {
@@ -280,7 +298,7 @@ func TestRunWrapsLatestCommitTransportErrorBeforeCatalogFetch(t *testing.T) {
 		return nil, transportErr
 	}
 
-	err := run("", outPath, gapfillPath, false, get)
+	err := run("", outPath, gapfillPath, rulesPath, false, get)
 	const wantPrefix = "resolve latest LiteLLM commit: "
 	wantErr := wantPrefix + transportErr.Error()
 	if err == nil || err.Error() != wantErr || !strings.HasPrefix(err.Error(), wantPrefix) {
@@ -296,14 +314,14 @@ func TestRunWrapsLatestCommitTransportErrorBeforeCatalogFetch(t *testing.T) {
 }
 
 func TestRunRejectsExplicitInvalidCommitBeforeCatalogFetch(t *testing.T) {
-	outPath, gapfillPath := writeFailureFixture(t)
+	outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 	var requested []string
 	get := func(_ context.Context, url string, _ map[string]string) ([]byte, error) {
 		requested = append(requested, url)
 		return []byte(syntheticSnapshot), nil
 	}
 
-	err := run("main", outPath, gapfillPath, false, get)
+	err := run("main", outPath, gapfillPath, rulesPath, false, get)
 	const wantErr = "price update requires a pinned LiteLLM commit SHA"
 	if err == nil || err.Error() != wantErr {
 		t.Fatalf("run error = %v, want %q", err, wantErr)
@@ -324,7 +342,7 @@ func TestRunDoesNotPublishInvalidCatalogInputs(t *testing.T) {
 		{name: "no direct-provider records", body: `{"bedrock":{"litellm_provider":"bedrock","input_cost_per_token":1,"output_cost_per_token":1}}`, wantErr: "LiteLLM catalog contains no validated direct-provider records"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			outPath, gapfillPath := writeFailureFixture(t)
+			outPath, gapfillPath, rulesPath := writeFailureFixture(t)
 			requested := 0
 			get := func(_ context.Context, url string, _ map[string]string) ([]byte, error) {
 				requested++
@@ -335,7 +353,7 @@ func TestRunDoesNotPublishInvalidCatalogInputs(t *testing.T) {
 				return []byte(test.body), nil
 			}
 
-			err := run(recordedCommit, outPath, gapfillPath, false, get)
+			err := run(recordedCommit, outPath, gapfillPath, rulesPath, false, get)
 			if err == nil || err.Error() != test.wantErr {
 				t.Fatalf("run error = %v, want %q", err, test.wantErr)
 			}
@@ -352,10 +370,10 @@ func TestRunDoesNotPublishInvalidCatalogInputs(t *testing.T) {
 // mode, with no commit supplied, and proves the pin comes from the artifact
 // rather than from current main.
 func TestCheckModePinsToTheArtifactsRecordedCommit(t *testing.T) {
-	outPath, gapfillPath := writeFixture(t, "")
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
 	get := &recordingFetcher{snapshots: map[string]string{recordedCommit: syntheticSnapshot}}
 
-	if err := run("", outPath, gapfillPath, true, get.fetch); err != nil {
+	if err := run("", outPath, gapfillPath, rulesPath, true, get.fetch); err != nil {
 		t.Fatalf("check mode failed on an artifact that matches its inputs: %v", err)
 	}
 
@@ -374,7 +392,7 @@ func TestCheckModePinsToTheArtifactsRecordedCommit(t *testing.T) {
 // TestCheckModeFailsWhenArtifactDiffersFromRegeneration proves the byte
 // comparison is real: a hand-edited artifact must not pass.
 func TestCheckModeFailsWhenArtifactDiffersFromRegeneration(t *testing.T) {
-	outPath, gapfillPath := writeFixture(t, "")
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
 
 	// Hand-edit one price, leaving the recorded pin and version untouched --
 	// the exact "silently hand-edited artifact" this check exists to catch.
@@ -399,7 +417,7 @@ func TestCheckModeFailsWhenArtifactDiffersFromRegeneration(t *testing.T) {
 	before := readArtifact(t, outPath)
 
 	get := &recordingFetcher{snapshots: map[string]string{recordedCommit: syntheticSnapshot}}
-	err = run("", outPath, gapfillPath, true, get.fetch)
+	err = run("", outPath, gapfillPath, rulesPath, true, get.fetch)
 	if err == nil {
 		t.Fatal("check mode passed a hand-edited artifact")
 	}
@@ -424,12 +442,12 @@ func TestCheckModeFailsBeforeAnyNetworkWhenPinIsUnusable(t *testing.T) {
 		{"ambiguous provenance", `{"generated_from":[{"kind":"litellm","commit_sha":"` + recordedCommit + `"},{"kind":"litellm","commit_sha":"` + otherCommit + `"}]}`, "ambiguous"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			outPath, gapfillPath := writeFixture(t, test.artifact)
+			outPath, gapfillPath, rulesPath := writeFixture(t, test.artifact)
 			before := readArtifact(t, outPath)
 			// failAll turns any request at all into a test failure.
 			get := &recordingFetcher{failAll: true}
 
-			err := run("", outPath, gapfillPath, true, get.fetch)
+			err := run("", outPath, gapfillPath, rulesPath, true, get.fetch)
 			if err == nil {
 				t.Fatal("check mode accepted an artifact with an unusable pin")
 			}
@@ -447,14 +465,14 @@ func TestCheckModeFailsBeforeAnyNetworkWhenPinIsUnusable(t *testing.T) {
 // TestCheckModeHonorsAnExplicitCommit confirms an explicitly supplied pin
 // still wins and is the one fetched.
 func TestCheckModeHonorsAnExplicitCommit(t *testing.T) {
-	outPath, gapfillPath := writeFixture(t, "")
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
 	before := readArtifact(t, outPath)
 	get := &recordingFetcher{snapshots: map[string]string{otherCommit: syntheticSnapshot}}
 
 	// The artifact records recordedCommit, so checking it against a different
 	// pin must fetch that other pin -- and here the regenerated bytes differ
 	// (different commit in generated_from), so it must fail rather than pass.
-	err := run(otherCommit, outPath, gapfillPath, true, get.fetch)
+	err := run(otherCommit, outPath, gapfillPath, rulesPath, true, get.fetch)
 	if err == nil {
 		t.Fatal("checking against a different commit passed; generated_from should differ")
 	}
@@ -471,10 +489,10 @@ func TestCheckModeHonorsAnExplicitCommit(t *testing.T) {
 // check mode an omitted commit does resolve current main, so the check-mode
 // behavior above is a deliberate difference rather than a broken resolver.
 func TestWriteModeResolvesLatestMainWhenUnpinned(t *testing.T) {
-	outPath, gapfillPath := writeFixture(t, "")
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
 	get := &recordingFetcher{snapshots: map[string]string{otherCommit: syntheticSnapshot}}
 
-	if err := run("", outPath, gapfillPath, false, get.fetch); err != nil {
+	if err := run("", outPath, gapfillPath, rulesPath, false, get.fetch); err != nil {
 		t.Fatalf("write mode failed: %v", err)
 	}
 	if !get.requestedAny("api.github.com") {
@@ -497,7 +515,7 @@ func TestWriteModeResolvesLatestMainWhenUnpinned(t *testing.T) {
 // to regenerate from a curated input that would not meet the bar, before it
 // reaches the network.
 func TestCheckModeRejectsAGapfillThatFailsTheCurationBar(t *testing.T) {
-	outPath, gapfillPath := writeFixture(t, "")
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
 	before := readArtifact(t, outPath)
 	bad := `{"schema_version":1,"entries":[{"model":"m","provider":"openai","effective_from":"2026-02-12T00:00:00Z","source_url":"https://models.dev/m","verified_by":"x","verified_on":"2026-07-23","prices_per_million":{"input":"1"}}]}`
 	if err := os.WriteFile(gapfillPath, []byte(bad), 0o644); err != nil {
@@ -505,7 +523,7 @@ func TestCheckModeRejectsAGapfillThatFailsTheCurationBar(t *testing.T) {
 	}
 	get := &recordingFetcher{failAll: true}
 
-	err := run("", outPath, gapfillPath, true, get.fetch)
+	err := run("", outPath, gapfillPath, rulesPath, true, get.fetch)
 	if err == nil || !strings.Contains(err.Error(), "not a openai vendor rate card") {
 		t.Fatalf("aggregator-sourced gap-fill accepted: %v", err)
 	}
@@ -513,4 +531,25 @@ func TestCheckModeRejectsAGapfillThatFailsTheCurationBar(t *testing.T) {
 		t.Fatalf("network reached before validating the gap-fill: %v", get.requested)
 	}
 	requireArtifactBytes(t, outPath, before)
+}
+
+func TestCheckModeDetectsChangedRulesWithoutRewritingCatalog(t *testing.T) {
+	outPath, gapfillPath, rulesPath := writeFixture(t, "")
+	before := readArtifact(t, outPath)
+	changed := strings.Replace(syntheticRules, `"input": "2.5"`, `"input": "3"`, 1)
+	if err := os.WriteFile(rulesPath, []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	get := &recordingFetcher{snapshots: map[string]string{recordedCommit: syntheticSnapshot}}
+
+	if err := run("", outPath, gapfillPath, rulesPath, true, get.fetch); err == nil || !strings.Contains(err.Error(), "local price inputs") {
+		t.Fatalf("check did not reject a catalog with stale rules: %v", err)
+	}
+	requireArtifactBytes(t, outPath, before)
+	if err := run(recordedCommit, outPath, gapfillPath, rulesPath, false, get.fetch); err != nil {
+		t.Fatal(err)
+	}
+	if err := run("", outPath, gapfillPath, rulesPath, true, get.fetch); err != nil {
+		t.Fatalf("regenerated catalog failed a second pinned generation: %v", err)
+	}
 }

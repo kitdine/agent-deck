@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 35
-	CodeProviderNotFound   = "provider_not_found"
-	CodeCredentialNotFound = "credential_not_found"
+	PricingFactsSchemaVersion = 36
+	CurrentSchemaVersion      = PricingFactsSchemaVersion
+	CodeProviderNotFound      = "provider_not_found"
+	CodeCredentialNotFound    = "credential_not_found"
 )
 
 // writablePragmas also keeps SQLite statement journals in memory. A file-backed

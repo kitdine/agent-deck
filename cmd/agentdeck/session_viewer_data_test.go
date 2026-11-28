@@ -131,11 +131,14 @@ VALUES('token-event','codex','token-session','event','2026-07-13T00:00:00Z','gpt
 			t.Fatalf("token detail field %q = %#v, want token value %q", label, field, value)
 		}
 	}
-	if field := fields["CATALOG BASE COST"]; field.value == "" || field.role != terminalDetailRoleWarning {
-		t.Fatalf("catalog cost detail = %#v, want unavailable-provider warning role", field)
+	if field := fields["PROVIDER ESTIMATE"]; field.value != "Unavailable" || field.role != terminalDetailRoleWarning {
+		t.Fatalf("provider estimate detail = %#v, want unavailable with warning role", field)
+	}
+	if !strings.Contains(strings.Join(page.Summary, " "), "API EQUIVALENT") {
+		t.Fatalf("summary did not use request pricing: %v", page.Summary)
 	}
 	detail := strings.Join(sessionViewerDetail(page.Rows[0], 120, usageTextPrimitives{}), " ")
-	if !strings.Contains(detail, "UNPRICED") || strings.Contains(detail, "0.000000000 (partial)") {
+	if !strings.Contains(detail, "Reference") || !strings.Contains(detail, "Unavailable") || strings.Contains(detail, "0.000000000 (partial)") {
 		t.Fatalf("token detail did not make unattributed provider cost unavailable: %q", detail)
 	}
 }

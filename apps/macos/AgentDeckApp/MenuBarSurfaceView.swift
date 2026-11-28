@@ -299,12 +299,19 @@ struct MenuBarSurfaceView: View {
 					.font(.caption)
 					.foregroundStyle(DesktopVisualTheme.dim)
 				HStack(alignment: .firstTextBaseline) {
-					Text(hero.amount)
-						.font(.largeTitle)
-						.monospacedDigit()
-						.foregroundStyle(DesktopVisualTheme.accent)
-						.lineLimit(1)
-						.minimumScaleFactor(0.6)
+					VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+						if let label = hero.pricingLabel {
+							Text(label).font(.caption)
+								.foregroundStyle(DesktopVisualTheme.dim)
+								.fixedSize(horizontal: false, vertical: true)
+						}
+						Text(hero.amount)
+							.font(.largeTitle)
+							.monospacedDigit()
+							.foregroundStyle(DesktopVisualTheme.accent)
+							.lineLimit(hero.pricingLabel == nil ? 2 : 1)
+							.minimumScaleFactor(0.6)
+					}
 					Spacer()
 					VStack(alignment: .trailing, spacing: MenuBarGeometry.withinRow) {
 						Text(hero.tokens).monospacedDigit()

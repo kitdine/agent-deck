@@ -65,9 +65,9 @@ func (r statsTextRenderer) statsTrendLabelValueWidths() (labelWidth, valueWidth 
 	}
 	valueWidth = statsTrendDefaultValueWidth
 	for _, bucket := range buckets {
-		valueLabel := compactMetric(statsBucketMetric(bucket, r.report.Metric), r.report.Metric)
+		valueLabel := compactMetric(statsBucketMagnitude(bucket, r.report), r.report.Metric)
 		if r.report.Metric == "cost" {
-			valueLabel = compactCost(bucket.MetricValue, bucket.KnownMetricValue, knownCostAvailable(bucket.MetricValue, bucket.KnownMetricValue, bucket.Coverage))
+			valueLabel = statsBucketCost(bucket)
 		}
 		valueWidth = max(valueWidth, statsVisibleWidth(valueLabel))
 	}
@@ -188,6 +188,12 @@ func (r statsTextRenderer) metaLine() string {
 
 func (r statsTextRenderer) trendLines(width int) []string {
 	metricLabel := strings.ToUpper(r.report.Metric)
+	if r.report.Metric == "cost" && r.report.Totals.Pricing != nil {
+		metricLabel = "API EQUIVALENT"
+		if !statsAPIComparable(r.report) {
+			metricLabel = "TOKEN BARS · API EQUIVALENT"
+		}
+	}
 	total := len(r.report.Buckets)
 	omitted := 0
 	buckets := r.report.Buckets
@@ -200,16 +206,22 @@ func (r statsTextRenderer) trendLines(width int) []string {
 	values := make([]float64, len(buckets))
 	valueLabels := make([]string, len(buckets))
 	for index, bucket := range buckets {
-		values[index] = statsBucketMetric(bucket, r.report.Metric)
+		values[index] = statsBucketMagnitude(bucket, r.report)
 		valueLabels[index] = compactMetric(values[index], r.report.Metric)
 		if r.report.Metric == "cost" {
-			valueLabels[index] = compactCost(bucket.MetricValue, bucket.KnownMetricValue, knownCostAvailable(bucket.MetricValue, bucket.KnownMetricValue, bucket.Coverage))
+			valueLabels[index] = statsBucketCost(bucket)
 		}
 		maximum = math.Max(maximum, values[index])
 	}
 	peakLabel := compactMetric(maximum, r.report.Metric)
 	if r.report.Metric == "cost" && !r.hasKnownProviderCost() {
 		peakLabel = "unavailable"
+	}
+	if r.report.Metric == "cost" && r.report.Totals.Pricing != nil {
+		peakLabel = "unavailable"
+		if peak := r.report.APIPeak; peak != nil {
+			peakLabel = compactCost(peak.Value, peak.KnownValue, true)
+		}
 	}
 	trendColor := usageMetricColor(r.report.Metric)
 	if r.report.Metric == "cost" && (r.hasPartialCost() || !r.hasKnownProviderCost()) {
@@ -260,10 +272,11 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	shareLabels := make([]string, limit)
 	for index := 0; index < limit; index++ {
 		model := shownModels[index]
-		shares[index], _ = strconv.ParseFloat(model.KnownShare, 64)
+		share, shareAvailable := statsDimensionShare(model, r.report.Metric)
+		shares[index] = share
 		shareLabels[index] = formatPercent(shares[index])
 		if r.report.Metric == "cost" {
-			if !knownCostAvailable(model.MetricValue, model.KnownMetricValue, model.Coverage) {
+			if !shareAvailable {
 				shares[index] = 0
 				shareLabels[index] = "unavailable"
 			}
@@ -271,7 +284,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	modelDetails := make([][]usageAlignedColumn, limit)
 	for index, model := range shownModels {
-		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
+		cost := statsDimensionCost(model)
 		modelDetails[index] = r.dimensionDetailColumns(compactNumber(float64(model.Tokens)), cost, modelPricingStatus(model), groupedInt(model.Sessions))
 	}
 	usageAlignColumnRows(modelDetails)
@@ -317,15 +330,15 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	lines = append(lines, "", r.sectionTitle(clientLabel, width, usageColorBrand))
 	clientDetails := make([][]usageAlignedColumn, len(r.report.Clients))
 	for index, client := range r.report.Clients {
-		cost := compactCost(client.ProviderCost, client.KnownProviderCost, knownCostAvailable(client.ProviderCost, client.KnownProviderCost, client.Coverage))
+		cost := statsDimensionCost(client)
 		clientDetails[index] = r.dimensionDetailColumns(compactNumber(float64(client.Tokens)), cost, modelPricingStatus(client), groupedInt(client.Sessions))
 	}
 	usageAlignColumnRows(clientDetails)
 	for index, client := range r.report.Clients {
-		share, _ := strconv.ParseFloat(client.KnownShare, 64)
+		share, shareAvailable := statsDimensionShare(client, r.report.Metric)
 		shareLabel := formatPercent(share)
 		if r.report.Metric == "cost" {
-			if !knownCostAvailable(client.MetricValue, client.KnownMetricValue, client.Coverage) {
+			if !shareAvailable {
 				share = 0
 				shareLabel = "unavailable"
 			}
@@ -363,14 +376,14 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	shownProviders := statsTopN(r.report.Providers, r.capFor(statsProvidersCap))
 	providerDetails := make([][]usageAlignedColumn, len(shownProviders))
 	for index, provider := range shownProviders {
-		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
+		cost := statsDimensionCost(provider)
 		providerDetails[index] = r.dimensionDetailColumns(compactNumber(float64(provider.Tokens)), cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
 	}
 	usageAlignColumnRows(providerDetails)
 	for index, provider := range shownProviders {
-		share, _ := strconv.ParseFloat(provider.KnownShare, 64)
+		share, shareAvailable := statsDimensionShare(provider, r.report.Metric)
 		shareLabel := formatPercent(share)
-		if r.report.Metric == "cost" && !knownCostAvailable(provider.MetricValue, provider.KnownMetricValue, provider.Coverage) {
+		if r.report.Metric == "cost" && !shareAvailable {
 			share = 0
 			shareLabel = "unavailable"
 		}
@@ -574,6 +587,12 @@ func (r statsTextRenderer) activityLines() []string {
 			metricLabel = "KNOWN COST"
 		}
 	}
+	if r.report.Metric == "cost" && r.report.Totals.Pricing != nil {
+		metricLabel, costUnavailable = "API EQUIVALENT", false
+		if !statsAPIComparable(r.report) {
+			metricLabel = "TOKENS"
+		}
+	}
 	title := "▦ ACTIVITY BY WEEKDAY / HOUR · " + metricLabel
 	if r.width >= 58 {
 		title += " · 1H BUCKET"
@@ -591,7 +610,7 @@ func (r statsTextRenderer) activityLines() []string {
 		if activity.Weekday < 0 || activity.Weekday >= 7 || activity.Hour < 0 || activity.Hour >= 24 {
 			continue
 		}
-		value, _ := strconv.ParseFloat(activity.KnownMetricValue, 64)
+		value := statsActivityMagnitude(activity, r.report)
 		values[activity.Weekday*24+activity.Hour] = value
 		maximum = math.Max(maximum, value)
 	}
@@ -669,10 +688,17 @@ func (r statsTextRenderer) dimensionDetailLines(width int, columns []usageAligne
 }
 
 func (r statsTextRenderer) hasPartialCost() bool {
+	if pricing := r.report.Totals.Pricing; pricing != nil {
+		return pricing.APIEquivalent.Status == "partial"
+	}
 	return r.report.Totals.ProviderCost == nil && r.hasKnownProviderCost()
 }
 
 func (r statsTextRenderer) hasKnownProviderCost() bool {
+	if pricing := r.report.Totals.Pricing; pricing != nil {
+		basis, _, _ := pricing.DisplayAPI()
+		return basis != "unavailable"
+	}
 	if r.report.Totals.ProviderCost != nil || r.report.Coverage.PricedEvents > 0 {
 		return true
 	}

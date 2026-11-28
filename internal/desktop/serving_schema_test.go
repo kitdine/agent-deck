@@ -4,47 +4,59 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
-func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing.T) {
+func TestServingCoreSchemaCompatibility(t *testing.T) {
+	for current := 30; current <= 37; current++ {
+		for stored := 30; stored <= 37; stored++ {
+			want := stored == current && current <= 36 || current >= 32 && current <= 35 && stored >= 31 && stored < current
+			if got := compatibleServingCoreSchema(stored, current); got != want {
+				t.Errorf("stored %d, current %d: compatible=%v, want %v", stored, current, got, want)
+			}
+		}
+	}
+}
+
+func TestServingPricingFactsSchemaRejectsAndRebuildsRetainedPublication(t *testing.T) {
 	s, core, _ := newServingFixture(t)
 	seedServingUsage(t, s, core)
 	ctx := context.Background()
-	full, err := s.PublishServingSnapshot(ctx, Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}, false)
+	request := Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}
+	full, err := s.PublishServingSnapshot(ctx, request, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Schema 31's to 34's published format and canonical fact layout are
-	// unchanged by migrations 32 to 35. Exercise each old header against the
-	// upgraded state reader.
-	for _, schema := range []int{31, 32, 33, 34} {
+	for _, schema := range []int{30, 31, 32, 33, 34, 35, 37} {
 		full.Header.Generation.CoreSchema = schema
-		bytes, err := encodeServingSnapshot(full)
+		data, err := encodeServingSnapshot(full)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
-			t.Fatal(err)
-		}
-		old, err := s.ReadServingSnapshot(ctx)
-		if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
-			t.Fatalf("compatible schema %d publication lost or redated: %v", schema, err)
-		}
-	}
-	for _, schema := range []int{30, 36} {
-		full.Header.Generation.CoreSchema = schema
-		bytes, err := encodeServingSnapshot(full)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
+		if err := writeServingSnapshot(s.StateRoot, data); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.ReadServingSnapshot(ctx); !errors.Is(err, ErrServingInvalid) {
-			t.Fatalf("unknown schema %d accepted: %v", schema, err)
+			t.Fatalf("stored schema %d, live schema %d: %v", schema, store.CurrentSchemaVersion, err)
 		}
 	}
-	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(33, 32) || compatibleServingCoreSchema(34, 33) || compatibleServingCoreSchema(35, 34) || compatibleServingCoreSchema(30, 35) || compatibleServingCoreSchema(31, 36) || compatibleServingCoreSchema(35, 36) {
-		t.Fatal("schema exception widened to downgrade or future migration")
+	bootstrap, err := s.ReadOrBootstrapServingSnapshot(ctx, request)
+	if err != nil || bootstrap.Header.Generation.CoreSchema != 36 || bootstrap.Header.PublicationID == full.Header.PublicationID {
+		t.Fatalf("existing bootstrap used old publication: %v", err)
+	}
+	rebuilt, err := s.PublishServingSnapshot(ctx, request, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := s.ReadServingSnapshot(ctx)
+	if err != nil || read.Header.Generation.CoreSchema != 36 || read.Header.PublicationID != rebuilt.Header.PublicationID {
+		t.Fatalf("rebuilt current publication was not readable: schema %d, err %v", read.Header.Generation.CoreSchema, err)
+	}
+	if _, err := core.DB.ExecContext(ctx, `UPDATE schema_metadata SET version=37`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadServingSnapshot(ctx); !errors.Is(err, store.ErrSchemaAhead) {
+		t.Fatalf("live schema ahead: %v", err)
 	}
 }

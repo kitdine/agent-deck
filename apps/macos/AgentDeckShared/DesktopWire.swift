@@ -106,6 +106,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
     public let nextRefreshAt: String
     public let provider: DesktopProviderSnapshotV1
     public let usage: DesktopUsageSnapshotV1
+    public let pricing: DesktopRequestPricingV1?
     public let sessions: DesktopSessionsSnapshotV1
     public let health: DesktopHealthSnapshotV1
     public let subscription: DesktopSubscriptionSnapshotV1
@@ -119,6 +120,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         case nextRefreshAt = "next_refresh_at"
         case provider
         case usage
+        case pricing
         case sessions
         case health
         case subscription
@@ -132,6 +134,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
         provider = try container.decode(DesktopProviderSnapshotV1.self, forKey: .provider)
         usage = try container.decode(DesktopUsageSnapshotV1.self, forKey: .usage)
+        pricing = try container.decodeIfPresent(DesktopRequestPricingV1.self, forKey: .pricing)
         sessions = try container.decode(DesktopSessionsSnapshotV1.self, forKey: .sessions)
         health = try container.decode(DesktopHealthSnapshotV1.self, forKey: .health)
         // C11's section is additive and does not raise `wire_version`: a payload
@@ -155,6 +158,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         try container.encode(nextRefreshAt, forKey: .nextRefreshAt)
         try container.encode(provider, forKey: .provider)
         try container.encode(usage, forKey: .usage)
+        try container.encodeIfPresent(pricing, forKey: .pricing)
         try container.encode(sessions, forKey: .sessions)
         try container.encode(health, forKey: .health)
         try container.encode(subscription, forKey: .subscription)
@@ -169,25 +173,153 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         DesktopSnapshotV1(
             wireVersion: wireVersion, generatedAt: generatedAt, nextRefreshAt: nextRefreshAt,
             provider: provider, usage: usage, sessions: sessions, health: health, subscription: subscription,
-            sessionScopeView: sessionScopeView
+            sessionScopeView: sessionScopeView, pricing: pricing
         )
     }
 
     init(
         wireVersion: Int, generatedAt: String, nextRefreshAt: String, provider: DesktopProviderSnapshotV1,
         usage: DesktopUsageSnapshotV1, sessions: DesktopSessionsSnapshotV1, health: DesktopHealthSnapshotV1,
-        subscription: DesktopSubscriptionSnapshotV1, sessionScopeView: DesktopSessionScopeFieldV1 = .absent
+        subscription: DesktopSubscriptionSnapshotV1, sessionScopeView: DesktopSessionScopeFieldV1 = .absent,
+        pricing: DesktopRequestPricingV1? = nil
     ) {
         self.wireVersion = wireVersion
         self.generatedAt = generatedAt
         self.nextRefreshAt = nextRefreshAt
         self.provider = provider
         self.usage = usage
+        self.pricing = pricing
         self.sessions = sessions
         self.health = health
         self.subscription = subscription
         self.sessionScopeView = sessionScopeView
     }
+}
+
+public struct DesktopRequestPricingV1: Codable, Equatable, Sendable {
+	public let version: Int
+	public let validUntil: String
+	public let scopes: [DesktopPricingScopeV1]
+
+	enum CodingKeys: String, CodingKey {
+		case version, scopes
+		case validUntil = "valid_until"
+	}
+
+	public func scope(_ client: String) -> DesktopPricingScopeV1? {
+		guard version == 1 else { return nil }
+		return scopes.first { $0.client == client }
+	}
+}
+
+public struct DesktopPricingScopeV1: Codable, Equatable, Sendable {
+	public let client: String
+	public let periods: [DesktopPricingPeriodV1]
+	public let daily: [DesktopPricingBucketV1]
+	public let hourly: [DesktopPricingBucketV1]
+	public let rhythm: [DesktopPricingBucketV1]?
+
+	public func period(_ key: String) -> DesktopPricingPeriodV1? {
+		periods.first { $0.period == key }
+	}
+}
+
+public struct DesktopPricingPeriodV1: Codable, Equatable, Sendable {
+	public let period: String
+	public let pricing: DesktopPricingReportV1
+	public let models: [DesktopPricingRowV1]
+	public let tiers: [DesktopPricingRowV1]
+	public let quality: [DesktopPricingRowV1]
+	public let peak: DesktopPricingBucketV1?
+}
+
+public struct DesktopPricingBucketV1: Codable, Equatable, Sendable {
+	public let key: String
+	public let pricing: DesktopPricingReportV1
+}
+
+public struct DesktopPricingRowV1: Codable, Equatable, Sendable {
+	public let key: String
+	public let client: String?
+	public let provider: String?
+	public let tokens: Int64
+	public let share: String?
+	public let pricing: DesktopPricingReportV1
+}
+
+public struct DesktopPricingReportV1: Codable, Equatable, Sendable {
+	public let version: Int
+	public let ruleSet: String
+	public let apiEquivalent: DesktopPricingAmountV1
+	public let providerEstimate: DesktopPricingAmountV1?
+	public let reference: DesktopPricingReferenceV1?
+	public let reasons: [String]
+	public let referenceDetails: [DesktopPricingReferenceV1]?
+	public let sources: [DesktopPricingRuleSourceV1]?
+
+	enum CodingKeys: String, CodingKey {
+		case version, reference, reasons, sources
+		case ruleSet = "rule_set"
+		case apiEquivalent = "api_equivalent"
+		case providerEstimate = "provider_estimate"
+		case referenceDetails = "reference_details"
+	}
+}
+
+public struct DesktopPricingAmountV1: Codable, Equatable, Sendable {
+	public let currency: String
+	public let status: String
+	public let amount: String?
+	public let knownAmount: String?
+
+	enum CodingKeys: String, CodingKey {
+		case currency, status, amount
+		case knownAmount = "known_amount"
+	}
+}
+
+public struct DesktopPricingReferenceV1: Codable, Equatable, Sendable {
+	public let basis: String
+	public let currency: String
+	public let amount: String?
+	public let asOf: String?
+	public let lower: String?
+	public let upper: String?
+	public let tier: String?
+	public let contextUnit: String?
+	public let ttlCandidates: [String]?
+
+	enum CodingKeys: String, CodingKey {
+		case basis, currency, amount, lower, upper, tier
+		case asOf = "as_of"
+		case contextUnit = "context_unit"
+		case ttlCandidates = "ttl_candidates"
+	}
+}
+
+public struct DesktopPricingRuleSourceV1: Codable, Equatable, Sendable {
+	public let ruleID: String
+	public let sourceURL: String
+	public let effectiveFrom: DesktopPricingBoundaryV1?
+	public let effectiveUntil: DesktopPricingBoundaryV1?
+
+	enum CodingKeys: String, CodingKey {
+		case ruleID = "rule_id"
+		case sourceURL = "source_url"
+		case effectiveFrom = "effective_from"
+		case effectiveUntil = "effective_until"
+	}
+}
+
+public struct DesktopPricingBoundaryV1: Codable, Equatable, Sendable {
+	public let value: String
+	public let precision: String
+	public let timeZone: String?
+
+	enum CodingKeys: String, CodingKey {
+		case value, precision
+		case timeZone = "timezone"
+	}
 }
 
 public struct DesktopProviderSnapshotV1: Codable, Equatable, Sendable {
@@ -1604,17 +1736,17 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 35
+	public static let maximumSupportedCoreSchema = 36
 
 	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
 	// session-origin storage; 35 adds a source thread identity column and
 	// rebuilds the derived classification table. None changes the canonical
 	// facts in a retained schema-31/32/33/34 publication.
-	// Keep this directional compatibility aligned with the Go serving reader.
-	// All other identity changes still
-	// invalidate a retained publication before date and fullness checks.
+	// Schema 36 adds pricing rules and request facts. A migrated core must
+	// rebuild an older publication. Keep these exceptions aligned with Go.
 	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
-		stored == current || (stored == 31 && current == 32)
+		guard stored > 0, current <= maximumSupportedCoreSchema else { return false }
+		return stored == current || (stored == 31 && current == 32)
 			|| ((stored == 31 || stored == 32) && current == 33)
 			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
 			|| ((31...34).contains(stored) && current == 35)
@@ -1680,7 +1812,7 @@ public struct DesktopServingSnapshotV2: Codable, Equatable, Sendable {
 		guard header.formatVersion == 1, header.wireVersion == 2, header.projectionVersion == 1,
 			!header.publicationID.isEmpty, !generation.stateIdentity.isEmpty,
 			generation.coreEpoch > 0, generation.sessionEpoch > 0,
-			generation.coreSchema <= DesktopServingGenerationV2.maximumSupportedCoreSchema, generation.sessionSchema == 1,
+			(1...DesktopServingGenerationV2.maximumSupportedCoreSchema).contains(generation.coreSchema), generation.sessionSchema == 1,
 			generation.usageRevision >= 0, generation.sessionRevision >= 0,
 			!header.activeGeneration.isEmpty, header.pricingRevision >= 0, ["current", "stale"].contains(header.freshness),
 			header.generatedAt == payload.data.generatedAt,

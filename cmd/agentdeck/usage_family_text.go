@@ -55,16 +55,28 @@ func renderUsageFamilySummary(w io.Writer, value usage.Summary, options usageTex
 		{{label: "EXACT ATTRIBUTION", value: strconv.FormatInt(value.Counts["exact"], 10)}},
 		{{label: "ESTIMATED ATTRIBUTION", value: strconv.FormatInt(value.Counts["estimated"], 10)}},
 		{{label: "UNATTRIBUTED ATTRIBUTION", value: strconv.FormatInt(value.Counts["unattributed"], 10)}},
-		{{label: "PRICED EVENTS", value: strconv.FormatInt(value.Counts["priced"], 10)}},
-		{{label: "UNPRICED EVENTS", value: strconv.FormatInt(value.Counts["unpriced"], 10)}},
-		{{label: "CATALOG BASE TOTAL", value: optionalCost(value.CatalogBaseCost)}},
-		{{label: "PROVIDER TOTAL", value: optionalCost(value.ProviderCost)}},
-		{{label: "KNOWN CATALOG SUBTOTAL", value: optionalCost(value.KnownCatalogBaseCost)}},
-		{{label: "KNOWN PROVIDER SUBTOTAL", value: optionalCost(value.KnownProviderCost)}},
-		{{label: "UNATTRIBUTED CATALOG BASE", value: optionalCost(value.UnattributedCatalogBaseCost)}},
-		{{label: "WARNINGS", value: textList(value.Warnings)}},
-		{{label: "UNPRICED", value: textList(value.Unpriced)}},
 	}
+	modelCoverageLabel := "MODEL COVERAGE"
+	if value.Pricing != nil {
+		modelCoverageLabel = "LEGACY CATALOG COVERAGE"
+		pricingRows := make([][]usageAlignedColumn, 0, 3)
+		for _, field := range requestPricingFields(value.Pricing, false) {
+			pricingRows = append(pricingRows, []usageAlignedColumn{{label: field.label, value: field.value}})
+		}
+		metricRows = append(pricingRows, metricRows...)
+	} else {
+		metricRows = append(metricRows,
+			[]usageAlignedColumn{{label: "PRICED EVENTS", value: strconv.FormatInt(value.Counts["priced"], 10)}},
+			[]usageAlignedColumn{{label: "UNPRICED EVENTS", value: strconv.FormatInt(value.Counts["unpriced"], 10)}},
+			[]usageAlignedColumn{{label: "CATALOG BASE TOTAL", value: optionalCost(value.CatalogBaseCost)}},
+			[]usageAlignedColumn{{label: "PROVIDER TOTAL", value: optionalCost(value.ProviderCost)}},
+			[]usageAlignedColumn{{label: "KNOWN CATALOG SUBTOTAL", value: optionalCost(value.KnownCatalogBaseCost)}},
+			[]usageAlignedColumn{{label: "KNOWN PROVIDER SUBTOTAL", value: optionalCost(value.KnownProviderCost)}},
+			[]usageAlignedColumn{{label: "UNATTRIBUTED CATALOG BASE", value: optionalCost(value.UnattributedCatalogBaseCost)}},
+			[]usageAlignedColumn{{label: "UNPRICED", value: textList(value.Unpriced)}},
+		)
+	}
+	metricRows = append(metricRows, []usageAlignedColumn{{label: "WARNINGS", value: textList(value.Warnings)}})
 	usageAlignColumnRows(metricRows)
 	lines := []string{renderer.section("📊 USAGE SUMMARY", "1;32")}
 	for _, row := range metricRows {
@@ -94,7 +106,7 @@ func renderUsageFamilySummary(w io.Writer, value usage.Summary, options usageTex
 		lines = append(lines, usageAlignedColumns(renderer.width, row...)...)
 	}
 
-	lines = append(lines, "", renderer.section("🧾 MODEL COVERAGE", "1;35"))
+	lines = append(lines, "", renderer.section("🧾 "+modelCoverageLabel, "1;35"))
 	if len(value.Models) == 0 {
 		return writeUsageFamilyLines(w, append(lines, renderer.primitives.style("No model coverage.", "2")))
 	}
@@ -159,7 +171,7 @@ func renderUsageFamilySessions(w io.Writer, values []usage.SessionSummary, optio
 
 func usageSessionPrimaryColumns(value usage.SessionSummary) []usageAlignedColumn {
 	zone := displayZoneName()
-	return []usageAlignedColumn{
+	columns := []usageAlignedColumn{
 		{label: "CLIENT", value: value.Client},
 		{label: "SESSION", value: value.SessionID},
 		{label: "FIRST (" + zone + ")", value: renderDisplayTime(value.FirstAt)},
@@ -167,10 +179,16 @@ func usageSessionPrimaryColumns(value usage.SessionSummary) []usageAlignedColumn
 		{label: "INPUT", value: strconv.FormatInt(value.Tokens["input_tokens"], 10)},
 		{label: "CACHED", value: strconv.FormatInt(value.Tokens["cached_input_tokens"], 10)},
 		{label: "OUTPUT", value: strconv.FormatInt(value.Tokens["output_tokens"], 10)},
-		{label: "BASE COST", value: sessionCostText(value.CatalogBaseCost, value.KnownCatalogBaseCost)},
-		{label: "PROVIDER COST", value: sessionCostText(value.ProviderCost, value.KnownProviderCost)},
-		{label: "STATUS", value: usageSessionStatus(value)},
 	}
+	if value.Pricing != nil {
+		api, _ := apiReportText(value.Pricing)
+		columns = append(columns, usageAlignedColumn{label: "API EQUIVALENT", value: api})
+	} else {
+		columns = append(columns,
+			usageAlignedColumn{label: "BASE COST", value: sessionCostText(value.CatalogBaseCost, value.KnownCatalogBaseCost)},
+			usageAlignedColumn{label: "PROVIDER COST", value: sessionCostText(value.ProviderCost, value.KnownProviderCost)})
+	}
+	return append(columns, usageAlignedColumn{label: "STATUS", value: usageSessionStatus(value)})
 }
 
 func usageSessionSecondaryColumns(value usage.SessionSummary) []usageAlignedColumn {

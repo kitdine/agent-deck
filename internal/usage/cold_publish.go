@@ -42,26 +42,35 @@ func publishColdSource(ctx context.Context, tx *sql.Tx, path string, events []Ev
 	// Keep first-insertion order and the reference's logical-change counts even
 	// when a provider reports the same event more than once in one source.
 	positions := make(map[string]int, len(events))
-	finalEvents := make([]Event, 0, len(events))
+	type eventRow struct {
+		Event
+		facts sql.NullString
+	}
+	finalEvents := make([]eventRow, 0, len(events))
 	for _, e := range events {
 		at, parseErr := time.Parse(time.RFC3339Nano, e.EventAt)
 		if parseErr != nil {
 			return true, 0, 0, fmt.Errorf("invalid usage event timestamp %q: %w", e.EventAt, parseErr)
 		}
 		e.EventAt = at.UTC().Format(time.RFC3339Nano)
+		facts, err := encodeRequestFacts(e)
+		if err != nil {
+			return true, 0, 0, err
+		}
+		row := eventRow{e, facts}
 		if i, exists := positions[e.Key]; exists {
 			previous := finalEvents[i]
 			// These columns are deliberately not updated by the reference UPSERT.
 			if previous.Client != e.Client || previous.SessionID != e.SessionID || previous.EventID != e.EventID {
 				return false, 0, 0, nil
 			}
-			if !sameColdEvent(previous, e) {
+			if !sameColdEvent(previous.Event, e) || previous.facts != facts {
 				updated++
 			}
-			finalEvents[i] = e
+			finalEvents[i] = row
 		} else {
 			positions[e.Key] = len(finalEvents)
-			finalEvents = append(finalEvents, e)
+			finalEvents = append(finalEvents, row)
 			imported++
 		}
 	}
@@ -96,8 +105,19 @@ func publishColdSource(ctx context.Context, tx *sql.Tx, path string, events []Ev
 	eventPrefix, _, _ := strings.Cut(upsertUsageEventSQL, "VALUES")
 	batch := coldSQLBatch{tx: tx, prefix: eventPrefix + "VALUES", columns: 17}
 	for _, e := range finalEvents {
-		if err = batch.add(ctx, usageEventValues(e)...); err != nil {
+		if err = batch.add(ctx, usageEventValues(e.Event)...); err != nil {
 			return true, 0, 0, err
+		}
+	}
+	if err = batch.flush(ctx); err != nil {
+		return true, 0, 0, err
+	}
+	batch = coldSQLBatch{tx: tx, columns: 2, prefix: `INSERT INTO usage_request_facts(event_key,facts_json) VALUES`}
+	for _, row := range finalEvents {
+		if row.facts.Valid {
+			if err = batch.add(ctx, row.Key, row.facts.String); err != nil {
+				return true, 0, 0, err
+			}
 		}
 	}
 	if err = batch.flush(ctx); err != nil {

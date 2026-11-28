@@ -409,6 +409,133 @@ func TestPriceOverrideGoldenUsesSnakeCaseInput(t *testing.T) {
 	assertJSONFields(t, stderr.Bytes(), loadGUIContract(t).ErrorFields)
 }
 
+func TestPriceOverrideImportsCatalogRules(t *testing.T) {
+	state, home := filepath.Join(t.TempDir(), "state"), t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	rules, err := usage.DecodePriceRules([]byte(`{
+		"schema_version":2,
+		"rules":[{
+			"id":"cli-fixture",
+			"selector":{"provider":"openai","channel":"public_api","models":["gpt-example"],"endpoints":["v1/responses"],"service_tier":"standard","regions":["global"]},
+			"validity":{"basis":"effective","from":{"value":"2026-10-01T00:00:00Z","precision":"instant"}},
+			"sources":[{"url":"https://developers.openai.com/api/docs/pricing","revision":"test-price-card","verified_on":"2026-11-18","kind":"vendor_dated"}],
+			"currency":"USD","unit":"usd_per_million_tokens","rates":{"input":"2"}
+		}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const version = "cli-catalog-fixture"
+	const catalogSource = "https://developers.openai.com/api/docs/pricing"
+	contents, err := json.Marshal(map[string]any{
+		"schema_version":  1,
+		"catalog_version": version,
+		"currency":        "USD",
+		"sources":         []map[string]string{{"url": catalogSource}},
+		"models":          json.RawMessage(`{"gpt-example":{"provider":"openai","effective_from":"2026-01-01T00:00:00Z","prices_per_million":{"input":"1"}}}`),
+		"pricing_rules":   rules,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(fixture, contents, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "price", "override", "--file", fixture}, bytes.NewReader(nil), &stdout); err != nil {
+		t.Fatal(err)
+	}
+	assertNonNullJSONEnvelope(t, stdout.Bytes(), "price.override")
+	var envelope struct {
+		Data struct {
+			Version string `json:"version"`
+			Models  int    `json:"models"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope.Data.Version != version || envelope.Data.Models != 1 {
+		t.Fatalf("catalog response = %#v, %v", envelope, err)
+	}
+
+	ctx := context.Background()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	service := usage.New(db, home)
+	persisted, err := service.CatalogPriceRules(ctx, version)
+	if err != nil || persisted == nil || !reflect.DeepEqual(persisted.Rules, rules.Rules) {
+		t.Fatalf("persisted rules = %#v, %v", persisted, err)
+	}
+	history, err := service.PriceHistory(ctx)
+	if err != nil || len(history) != 1 || history[0].Version != version || history[0].SourceKind != "official" || history[0].SourceURL != catalogSource {
+		t.Fatalf("catalog history = %#v, %v", history, err)
+	}
+}
+
+func TestPriceOverrideRejectsInvalidCatalogWithoutBreakingReports(t *testing.T) {
+	state, home := filepath.Join(t.TempDir(), "state"), t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	const source = "https://developers.openai.com/api/docs/pricing"
+	const instant = "2026-01-01T00:00:00Z"
+	override := func(t *testing.T, version, sourceURL, effectiveFrom, prices string) error {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "catalog.json")
+		contents := fmt.Sprintf(`{"schema_version":1,"catalog_version":%q,"currency":"USD","sources":[{"url":%q}],"models":{"gpt-example":{"provider":"openai","effective_from":%q,"prices_per_million":%s}}}`,
+			version, sourceURL, effectiveFrom, prices)
+		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return run([]string{"--state-dir", state, "--format", "json", "price", "override", "--file", path}, bytes.NewReader(nil), io.Discard)
+	}
+	const baseline = "valid-local"
+	if err := override(t, baseline, source, instant, `{"input":"1"}`); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, sourceURL, effectiveFrom, prices, errorText string
+	}{
+		{"date", source, "yesterday", `{"input":"1"}`, "effective_from"},
+		{"price", source, instant, `{"input":"abc"}`, "invalid decimal"},
+		{"negative", source, instant, `{"input":"-1"}`, "invalid decimal"},
+		{"unknown component", source, instant, `{"bogus_component":"1"}`, "bogus_component"},
+		{"not a URL", "not a url", instant, `{"input":"1"}`, "HTTPS"},
+		{"insecure URL", "http://example.invalid/pricing", instant, `{"input":"1"}`, "HTTPS"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := override(t, "invalid-"+test.name, test.sourceURL, test.effectiveFrom, test.prices)
+			if err == nil || !strings.Contains(err.Error(), test.errorText) {
+				t.Fatalf("invalid catalog error = %v, want %q", err, test.errorText)
+			}
+		})
+	}
+
+	for _, command := range [][]string{{"price", "status"}, {"price", "list"}, {"usage", "summary", "--no-scan"}} {
+		args := append([]string{"--state-dir", state, "--format", "json"}, command...)
+		if err := run(args, bytes.NewReader(nil), io.Discard); err != nil {
+			t.Errorf("%v after rejected catalog imports: %v", command, err)
+		}
+	}
+	ctx := context.Background()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	history, err := usage.New(db, home).PriceHistory(ctx)
+	if err != nil || len(history) != 1 || history[0].Version != baseline {
+		t.Fatalf("catalog history after rejection = %#v, %v", history, err)
+	}
+}
+
 func TestProviderRecoverGoldenUsesEmptyArrayAndStableOperationDTO(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")

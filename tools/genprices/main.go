@@ -3,8 +3,8 @@
 //
 // It downloads a pinned LiteLLM snapshot, keeps only direct openai/anthropic
 // priced records, merges internal/usage/price-gapfill.json over the result,
-// and stamps a content-derived catalog version. All of that logic lives in
-// package usage (GenerateBundledCatalog) so it is unit-tested without network
+// packages internal/usage/price-rules-v2.json, and stamps a content-derived
+// catalog version. All of that logic lives in package usage so it is unit-tested without network
 // and cannot drift from the `agentdeck usage price update` path; this command
 // is only the network and file shim.
 //
@@ -42,11 +42,12 @@ func main() {
 	commit := flag.String("commit", "", "LiteLLM commit SHA to pin (default: resolve current main)")
 	out := flag.String("out", filepath.Join("internal", "usage", "model-prices.json"), "output path for the generated bundled catalog")
 	gapfillPath := flag.String("gapfill", filepath.Join("internal", "usage", "price-gapfill.json"), "curated gap-fill input merged over the generated catalog")
+	rulesPath := flag.String("rules", filepath.Join("internal", "usage", "price-rules-v2.json"), "vendor-sourced v2 tariff rules")
 	check := flag.Bool("check", false, "verify the committed catalog is byte-identical to a fresh generation instead of writing it")
 	flag.Parse()
 
 	client := &http.Client{Timeout: httpTimeout}
-	if err := run(*commit, *out, *gapfillPath, *check, httpFetcher(client)); err != nil {
+	if err := run(*commit, *out, *gapfillPath, *rulesPath, *check, httpFetcher(client)); err != nil {
 		fmt.Fprintln(os.Stderr, "genprices:", err)
 		os.Exit(1)
 	}
@@ -64,7 +65,7 @@ func httpFetcher(client *http.Client) fetcher {
 	}
 }
 
-func run(commit, out, gapfillPath string, check bool, get fetcher) error {
+func run(commit, out, gapfillPath, rulesPath string, check bool, get fetcher) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -75,6 +76,11 @@ func run(commit, out, gapfillPath string, check bool, get fetcher) error {
 	gapfill, err := usage.ParseGapfill(gapfillData)
 	if err != nil {
 		return fmt.Errorf("%s: %w", gapfillPath, err)
+	}
+
+	rulesData, err := os.ReadFile(rulesPath)
+	if err != nil {
+		return err
 	}
 
 	if commit == "" {
@@ -106,7 +112,7 @@ func run(commit, out, gapfillPath string, check bool, get fetcher) error {
 		return err
 	}
 
-	generated, err := usage.GenerateBundledCatalog(snapshot, commit, gapfill)
+	generated, err := usage.GenerateBundledCatalogWithRules(snapshot, commit, gapfill, rulesData)
 	if err != nil {
 		return err
 	}
@@ -117,7 +123,7 @@ func run(commit, out, gapfillPath string, check bool, get fetcher) error {
 			return readErr
 		}
 		if string(existing) != string(generated) {
-			return fmt.Errorf("%s is not what regeneration from LiteLLM %s produces; run 'make prices-regen LITELLM_COMMIT=%s'", out, commit, commit)
+			return fmt.Errorf("%s is not what regeneration from LiteLLM %s and the local price inputs produces; run 'make prices-regen LITELLM_COMMIT=%s'", out, commit, commit)
 		}
 		fmt.Fprintf(os.Stderr, "genprices: %s matches regeneration from LiteLLM %s\n", out, commit)
 		return nil

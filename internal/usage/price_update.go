@@ -2,11 +2,15 @@ package usage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"net/url"
+	"slices"
 	"time"
 )
 
@@ -86,6 +90,185 @@ func (s *Service) UpdateLiteLLM(ctx context.Context, commit string, client *http
 		return nil, err
 	}
 	return map[string]any{"version": c.Version, "models": kept, "commit_sha": commit, "content_sha256": contentHash}, nil
+}
+
+// ImportOfficialCatalog imports a local catalog envelope with its optional
+// v2 rules. The catalog URL describes the document and each rule carries its
+// own independently validated sources and validity bounds.
+func (s *Service) ImportOfficialCatalog(ctx context.Context, data []byte, sourceURL string) error {
+	source, err := url.Parse(sourceURL)
+	if err != nil || source.Scheme != "https" || source.Hostname() == "" || source.User != nil {
+		return errors.New("official catalog requires an absolute HTTPS provenance URL without user credentials")
+	}
+	c, err := parseCatalog(data)
+	if err != nil {
+		return err
+	}
+	for model, price := range c.Models {
+		if _, err := time.Parse(time.RFC3339Nano, price.EffectiveFrom); err != nil {
+			return fmt.Errorf("official catalog model %q effective_from: %w", model, err)
+		}
+		for component, amount := range price.Prices {
+			switch component {
+			case "input", "output", "cached_input", "cache_read", "cache_write_5m", "cache_write_1h":
+			default:
+				return fmt.Errorf("official catalog model %q has unknown price component %q", model, component)
+			}
+			if _, err := decimal(amount); err != nil {
+				return fmt.Errorf("official catalog model %q component %q: %w", model, component, err)
+			}
+		}
+	}
+	return s.importParsedCatalog(ctx, c, "official", sourceURL, "", s.now(), hash(data))
+}
+
+func (s *Service) importCatalog(ctx context.Context, data []byte, kind, url, commit string, effective time.Time, contentHash string) error {
+	c, err := parseCatalog(data)
+	if err != nil {
+		return err
+	}
+	return s.importParsedCatalog(ctx, c, kind, url, commit, effective, contentHash)
+}
+
+func (s *Service) importParsedCatalog(ctx context.Context, c catalog, kind, url, commit string, effective time.Time, contentHash string) error {
+	if !validSHA256(contentHash) {
+		return errors.New("invalid catalog content SHA-256")
+	}
+	tx, err := s.Store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `INSERT INTO price_catalogs(version,source_kind,source_url,commit_sha,content_sha256,imported_at,effective_from,currency,schema_version)
+VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(version) DO NOTHING`, c.Version, kind, url, commit, contentHash, s.now().Format(time.RFC3339Nano), effective.Format(time.RFC3339Nano), c.Currency, c.SchemaVersion)
+	if err != nil {
+		return err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted == 0 {
+		var existingHash, existingKind string
+		if err = tx.QueryRowContext(ctx, `SELECT content_sha256,source_kind FROM price_catalogs WHERE version=?`, c.Version).Scan(&existingHash, &existingKind); err != nil {
+			return err
+		}
+		if existingHash != contentHash {
+			if kind != "bundled" || existingKind != "bundled" {
+				return fmt.Errorf("price catalog version %q already has different content", c.Version)
+			}
+			// Bundled versions identify semantic content. A different encoding
+			// can keep the original provenance only if the stored rates match.
+			matches, err := storedCatalogModelsMatch(ctx, tx, c)
+			if err != nil {
+				return err
+			}
+			if !matches {
+				return fmt.Errorf("price catalog version %q already has different content", c.Version)
+			}
+		}
+	} else {
+		for name, p := range c.Models {
+			prices, _ := json.Marshal(p.Prices)
+			aliases, _ := json.Marshal(p.Aliases)
+			if _, err = tx.ExecContext(ctx, `INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES(?,?,?,?,?,?)`, c.Version, name, p.Provider, p.EffectiveFrom, prices, aliases); err != nil {
+				return err
+			}
+		}
+	}
+	if c.PricingRules != nil || inserted == 0 {
+		if err := storeCatalogPriceRules(ctx, tx, c.Version, c.PricingRules); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func storedCatalogModelsMatch(ctx context.Context, tx *sql.Tx, c catalog) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT model,provider,effective_from,prices_json,aliases_json FROM model_prices WHERE catalog_version=?`, c.Version)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	matched := 0
+	for rows.Next() {
+		var model, prices, aliases string
+		var stored modelPrice
+		if err := rows.Scan(&model, &stored.Provider, &stored.EffectiveFrom, &prices, &aliases); err != nil {
+			return false, err
+		}
+		if err := json.Unmarshal([]byte(prices), &stored.Prices); err != nil {
+			return false, err
+		}
+		if err := json.Unmarshal([]byte(aliases), &stored.Aliases); err != nil {
+			return false, err
+		}
+		want, ok := c.Models[model]
+		if !ok || stored.Provider != want.Provider || stored.EffectiveFrom != want.EffectiveFrom ||
+			!maps.Equal(stored.Prices, want.Prices) || !slices.Equal(stored.Aliases, want.Aliases) {
+			return false, nil
+		}
+		matched++
+	}
+	return matched == len(c.Models), rows.Err()
+}
+
+func storeCatalogPriceRules(ctx context.Context, tx *sql.Tx, version string, rules *PriceRuleSet) error {
+	var stored string
+	err := tx.QueryRowContext(ctx, `SELECT rules_json FROM price_rule_sets WHERE catalog_version=?`, version).Scan(&stored)
+	missing := errors.Is(err, sql.ErrNoRows)
+	if err != nil && !missing {
+		return err
+	}
+	if rules == nil {
+		if missing {
+			return nil
+		}
+		return fmt.Errorf("price catalog version %q already has different pricing rules", version)
+	}
+	encoded, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	if missing {
+		// A pre-migration catalog can have legacy model rows without its rule
+		// set. Keep the original import and fill the rules in this transaction.
+		_, err := tx.ExecContext(ctx, `INSERT INTO price_rule_sets(catalog_version,rules_json) VALUES(?,?)`, version, string(encoded))
+		return err
+	}
+	if stored != string(encoded) {
+		existing, err := decodePriceRules([]byte(stored), true)
+		if err != nil {
+			return err
+		}
+		if existing.Digest != rules.Digest {
+			return fmt.Errorf("price catalog version %q already has different pricing rules", version)
+		}
+	}
+	return nil
+}
+
+// CatalogPriceRules returns the validated rules for a stored version. A nil
+// result means this version has no stored rule set.
+func (s *Service) CatalogPriceRules(ctx context.Context, version string) (*PriceRuleSet, error) {
+	supported, err := s.hasPricingFactsStorage(ctx)
+	if err != nil || !supported {
+		return nil, err
+	}
+	var raw string
+	err = s.Store.DB.QueryRowContext(ctx, `SELECT rules_json FROM price_rule_sets WHERE catalog_version=?`, version).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	rules, err := decodePriceRules([]byte(raw), true)
+	if err != nil {
+		return nil, err
+	}
+	return &rules, nil
 }
 
 func latestLiteLLMCommit(ctx context.Context, client *http.Client) (string, error) {

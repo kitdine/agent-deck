@@ -24,7 +24,7 @@ import (
 const (
 	derivedSnapshotCacheFilename         = "desktop-derived-cache.json"
 	derivedSnapshotCacheVersion          = 1
-	derivedSnapshotCacheAlgorithmVersion = 1
+	derivedSnapshotCacheAlgorithmVersion = 2
 	derivedSnapshotCacheMaxBytes         = 8 << 20
 	derivedSnapshotCacheLockWait         = time.Second
 )
@@ -56,10 +56,10 @@ type derivedSnapshotPriceAvailability struct {
 	UnpricedComponents int  `json:"unpriced_components"`
 }
 
-// derivedSnapshotCachePayload deliberately contains only the four approved
-// derived values. Provider, session, health, credentials, and source material
+// Provider, session, health, credentials, and source material
 // remain live inputs to each desktop snapshot.
 type derivedSnapshotCachePayload struct {
+	Pricing           *usage.PricingPresentation       `json:"pricing,omitempty"`
 	Presentation      usage.PresentationReport         `json:"presentation"`
 	Summary           usage.Summary                    `json:"summary"`
 	WorkSignals       WorkSignalsSnapshot              `json:"work_signals"`
@@ -94,6 +94,7 @@ func (s Service) derivedSnapshotPayload(ctx context.Context, core *store.Store, 
 	}
 	return derivedSnapshotCachePayload{
 		Presentation: presentation,
+		Pricing:      presentation.RequestPricing,
 		Summary:      presentation.Summary,
 		WorkSignals:  workSignals,
 		PriceAvailability: derivedSnapshotPriceAvailability{
@@ -111,6 +112,7 @@ func (s Service) applyDerivedSnapshotPayload(now time.Time, result *Result, payl
 	usageSnapshot := usageSnapshot(payload.Summary, from, to)
 	usageSnapshot.Presentation = presentation
 	result.Snapshot.Usage = usageSnapshot
+	result.Snapshot.Pricing = payload.Pricing
 	result.Snapshot.Sessions.WorkSignals = payload.WorkSignals
 }
 
@@ -203,6 +205,9 @@ func (s Service) loadDerivedSnapshotCache(ctx context.Context, core *store.Store
 	}
 	header, err := s.derivedSnapshotCacheHeader(ctx, core, generation, now, wireVersion)
 	if err != nil || !derivedSnapshotCacheHeaderMatches(document.Header, header, now) || !validDerivedSnapshotCachePayload(document.Payload) {
+		return derivedSnapshotCachePayload{}, false
+	}
+	if valid, err := document.Payload.Pricing.ValidAt(now); err != nil || !valid {
 		return derivedSnapshotCachePayload{}, false
 	}
 	// Recheck after the bounded cache read so a writer cannot make a stale hit
