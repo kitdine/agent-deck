@@ -28,3 +28,14 @@ PR 87 合入 PR 88 后的 desktop 作业（head `6dedfcc6`）在
 ## 验证
 
 本机隔离完整 `scripts/test-macos-app.sh`，见下方评审节。
+
+## Review — Round 1
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+发现：0 P1 / 0 P2 / 0 P3。
+
+独立方法：PR 89 上的 Codex 代码评审（`chatgpt-codex-connector`，与作者 Claude 不同 harness），评审提交 `1056095def861d702fc057f237e5386448a4cd67`，结论"未发现主要问题"。
+本机隔离完整 `bash scripts/test-macos-app.sh` 退出 0：App 287 个用例（3 个跳过）、Widget 75 个，0 失败。
