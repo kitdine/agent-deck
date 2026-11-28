@@ -254,10 +254,16 @@ func TestSessionCLIListAndShowPaginationContracts(t *testing.T) {
 	if err = run([]string{"--state-dir", state, "session", "show", "a", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &showText); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"SHOWING", "1-2 of 3", "--client 'codex'", "--page 2", "--limit 2"} {
+	for _, want := range []string{"SHOWING", "1-2 of 3", "NEXT PAGE"} {
 		if !strings.Contains(showText.String(), want) {
 			t.Fatalf("show text missing %q: %s", want, showText.String())
 		}
+	}
+	// The NEXT PAGE field wraps at the display width, and where it wraps depends on
+	// the length of the temporary state path, so compare the whole command.
+	wantShowNext := fmt.Sprintf("agentdeck --state-dir %s session show 'a' --client 'codex' --page 2 --limit 2", shellQuote(state))
+	if !sessionShowNextPageMatches(showText.String(), wantShowNext) {
+		t.Fatalf("show next command does not match %q:\n%s", wantShowNext, showText.String())
 	}
 
 	for _, args := range [][]string{
