@@ -1076,7 +1076,13 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(NSPasteboard.general.string(forType: .string), "agentdeck extension scan")
 		XCTAssertEqual(model.copiedHealthRowID, rows[1].id)
 		XCTAssertEqual(model.healthDetail, original)
-		try await Task.sleep(for: .milliseconds(1_700))
+		// The copied state clears 1.6s after the copy. Poll with a bounded
+		// deadline rather than sleeping a fixed 100ms past it, which a loaded
+		// runner can miss before the reset task is scheduled.
+		let deadline = ContinuousClock.now + .seconds(5)
+		while model.copiedHealthRowID != nil, ContinuousClock.now < deadline {
+			try await Task.sleep(for: .milliseconds(50))
+		}
 		XCTAssertNil(model.copiedHealthRowID)
 		XCTAssertEqual(model.healthDetail, original)
 	}
