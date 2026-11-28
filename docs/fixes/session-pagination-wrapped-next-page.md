@@ -29,3 +29,14 @@ TMPDIR 为 26 或 41 个字符时这些参数被拆到相邻两行（实测）�
 - 该用例在 TMPDIR 为 26、38、41、49 个字符时各运行 3 次均通过；修复前 26 与 41 个字符时失败。
 - 变异：期望命令改为 `--page 3` 时用例失败。
 - 短 TMPDIR（26 个字符）下完整 `cmd/agentdeck` 包通过。
+
+## Review — Round 1
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+发现：0 P1 / 0 P2 / 0 P3。
+
+独立方法：PR 90 上的 Codex 代码评审（`chatgpt-codex-connector`，与作者 Claude 不同 harness），评审提交 `b39ec1ac0fcd8c463f8554c2aae4343074543be8`，结论"未发现主要问题"。
+作者验证：该用例四种 TMPDIR 长度各 3 次通过，`--page 3` 变异被检出，短 TMPDIR 下完整 `cmd/agentdeck` 包通过（165.8 s）。
