@@ -292,6 +292,16 @@ backup configuration.
 No `providers.json` is used by AgentDeck. Legacy files are not imported or
 modified automatically.
 
+`scan-worker-diagnostics.log` is the scan worker's private failure log beside
+the scan receipts. Each failed serving round, including refreshes after the day
+snapshot settles, appends one line keyed by its round: the stage, affected
+domain, public classification code, error type chain, SQLite result-code names,
+and file-operation and errno names. It never contains error text, paths, or
+session content, and an identifier the worker could not have generated is
+written as `invalid`. The file is mode `0600`, refuses a symbolic link, rotates
+once at 256 KiB, and is never included in a portable backup. Public result codes
+and receipts are unchanged by it.
+
 `project-attribution.enabled` is an empty `0600` machine-local derived-state
 marker. Its absence lets managed client functions bypass AgentDeck without
 starting a process; its presence means only that a full eligibility check may
@@ -2363,10 +2373,15 @@ write action; it holds no state of its own that matters.
   updates are event driven and have no refresh period: while on, a source-file
   change requests one finite update, and wake or re-enabling requests one finite
   reconciliation for changes no event reported; a burst of these during a
-  running update merges into exactly one follow-up. While off, the App neither
-  watches log files nor polls them. Manual and provider-switch requests remain
-  available either way. Quota refresh keeps its own single-flight lane and
-  schedule and never requests a data update.
+  running update merges into exactly one follow-up. Automatic updates are
+  rate-limited: after a round ends in failure the next automatic round waits
+  30 seconds, doubling after each further failure up to 15 minutes, and a fully
+  successful round resets the wait; source-change updates also start at least
+  30 seconds after the previous round began, still delivering the last change.
+  While off, the App neither watches log files nor polls them. Manual,
+  provider-switch, and Settings-commit requests remain available either way and
+  are never delayed by these limits. Quota refresh keeps its own single-flight
+  lane and schedule and never requests a data update.
 - **Settings.** Exactly four preferences: automatic local-data updates (stored
   under the former periodic-refresh preference: a stored value, including an
   explicit off, is kept; an absent value is on, matching the file watching
