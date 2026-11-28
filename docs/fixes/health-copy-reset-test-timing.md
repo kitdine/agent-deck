@@ -27,6 +27,14 @@ PR 87（只改文档）的 desktop 作业连续两次在
 
 本机隔离完整 `scripts/test-macos-app.sh`，见下方评审节。复位任务被移除时，用例在 5 秒上限后断言失败。
 
-## Review
 
-独立评审由 PR 上的 Codex 代码评审进行；结论与 CI 结果在合并时登记到 v0.7.5 集成记录。
+## Review — Round 1
+
+评审结论：PASS
+
+完成门禁：VERIFIED
+
+发现：0 P1 / 0 P2 / 0 P3。
+
+独立方法：PR 88 上的 Codex 代码评审（`chatgpt-codex-connector`，与作者 Claude 不同 harness），评审提交 `9a64d22041611a5064cddb501220109e4cd5592b`，结论"未发现主要问题"。
+同一提交的 CI desktop 作业原生测试全部通过（仅因本记录缺评审轮次被文档门禁拦下）；本机隔离完整 `scripts/test-macos-app.sh` 退出 0。
