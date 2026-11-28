@@ -62,7 +62,7 @@ func newSampleFixture(t *testing.T) *sampleFixture {
 	f.sampler = Sampler{
 		StateRoot: root,
 		Scheduler: Scheduler{
-			Store: NewStore(core.DB), Now: func() time.Time { return f.now },
+			Store: NewWritableStore(core), Now: func() time.Time { return f.now },
 			ProbeCodex: func(_ context.Context, at time.Time, _ time.Duration) (CodexResult, error) {
 				f.calls++
 				if f.probing != nil {
@@ -443,8 +443,24 @@ func TestSampleExplicitAndRefreshAuthenticationEvidenceInvalidatesClient(t *test
 			if explicit {
 				f.run(t, SampleFinish, ClientClaude, "selected", SampleProbeFailed)
 			} else {
-				f.sampler.Scheduler.Run(f.ctx, ClientClaude, TriggerManual, true)
-				rec, _, err := f.sampler.Scheduler.Store.Envelope(f.ctx, ClientClaude)
+				ctx, cancel := context.WithTimeout(f.ctx, RefreshTimeout)
+				defer cancel()
+				root, err := OpenRefreshCore(ctx, f.sampler.StateRoot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer root.Close()
+				lock, err := store.AcquireQuotaRefreshLock(ctx, root.Root(), 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Release()
+				scheduler := f.sampler.Scheduler
+				scheduler.Store = root.Store()
+				if _, guard, err := scheduler.RunRefresh(ctx, root, lock, TriggerManual, map[Client]Reason{ClientClaude: ""}); err != nil || guard == nil {
+					t.Fatalf("guarded refresh = %v, %v", guard, err)
+				}
+				rec, _, err := scheduler.Store.Envelope(ctx, ClientClaude)
 				if err != nil || rec.Failure != ReasonProbeFailed {
 					t.Fatalf("refresh failure = %v: %v", rec.Failure, err)
 				}
@@ -458,6 +474,47 @@ func TestSampleExplicitAndRefreshAuthenticationEvidenceInvalidatesClient(t *test
 				t.Fatal("Claude authentication failure affected Codex")
 			}
 		})
+	}
+}
+
+func TestSampleClaudeUsesCurrentContextWithoutReopeningCapture(t *testing.T) {
+	f := newSampleFixture(t)
+	f.run(t, SampleStart, ClientClaude, "selected", "")
+	writer := f.sampler.Scheduler.Store
+	lock, err := store.AcquireQuotaRefreshLock(f.ctx, f.sampler.StateRoot, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	cycle, err := writer.BeginRefreshCycle(f.ctx, lock, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard, err := writer.ReconcileQuotaDelivery(f.ctx, cycle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := guard.ApplyClaudeIdentity(f.ctx, IdentityObservation{State: IdentitySignedOut}, time.Time{}, time.Time{})
+	if err != nil || identity.Outcome != WriteCommitted || identity.Invalidation != InvalidatedSignedOut {
+		t.Fatalf("signed-out transition = %+v, %v", identity, err)
+	}
+	if generation, _, _ := f.row(t, ClientClaude, sampleActive); generation != "" {
+		t.Fatal("identity invalidation kept a sample from the old context")
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatal(err)
+	}
+
+	f.run(t, SampleStart, ClientClaude, "selected", "")
+	state, seq, err := readClaudeContext(f.ctx, writer.db)
+	if err != nil || state.Generation != identity.Generation || state.Gate != CaptureBlocked ||
+		state.ConfirmedGeneration != -1 || state.Invalidation != "" || seq <= cycle.seq {
+		t.Fatalf("usage-only sample should publish without confirming or reopening capture: %+v seq=%d, %v", state, seq, err)
+	}
+	var windowGeneration Generation
+	if err := writer.db.QueryRow("SELECT context_generation FROM quota_windows_v2 WHERE client='claude'").Scan(&windowGeneration); err != nil ||
+		windowGeneration != state.Generation {
+		t.Fatalf("sample cache window generation=%d, want %d: %v", windowGeneration, state.Generation, err)
 	}
 }
 

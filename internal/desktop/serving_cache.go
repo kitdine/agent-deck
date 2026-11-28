@@ -171,6 +171,13 @@ func (s Service) ReadOrBootstrapServingSnapshot(ctx context.Context, request Req
 		return ServingSnapshot{}, err
 	}
 	if snapshot, err := s.ReadServingSnapshot(ctx); err == nil {
+		s.refreshLockHealth(&snapshot.Payload.Data.Health)
+		// A persisted publication may carry null or absent checks; native
+		// readers decode them as a required array. Serve [] without
+		// touching the summary or the persisted bytes.
+		if snapshot.Payload.Data.Health.Checks == nil {
+			snapshot.Payload.Data.Health.Checks = []HealthCheck{}
+		}
 		sessions := &snapshot.Payload.Data.Sessions
 		if view := snapshot.Payload.Data.SessionScopeView; view != nil && request.RecentLimit < len(view.Recent) {
 			view.Recent = view.Recent[:request.RecentLimit]
@@ -404,6 +411,15 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 	}
 	if valid, err := snapshot.Payload.Data.Pricing.ValidAt(now); err != nil || !valid {
 		snapshot.Header.Freshness = "stale"
+	}
+	// The cached subscription can predate an identity invalidation even at
+	// the same schema. Only this section is disposable on reprojection failure.
+	snapshot.Payload.Data.Subscription = unavailableSubscription()
+	if core, err := store.OpenReadOnly(ctx, s.StateRoot); err == nil {
+		defer core.Close()
+		if sub, err := s.BuildSubscription(ctx, core, time.Time{}); err == nil && (sub.Projection == nil || sub.Projection.CoreEpoch == final.CoreEpoch) {
+			snapshot.Payload.Data.Subscription = sub
+		}
 	}
 	// Revision differences retain readable, honestly dated data. Native consumers
 	// use the committed generation and coverage rather than treating it as fresh.

@@ -1,7 +1,6 @@
 package quota
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,10 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
-	"strings"
 	"time"
-
-	"github.com/kitdine/agent-deck/internal/buildinfo"
 )
 
 // DefaultCodexTimeout bounds the full three-step handshake (architecture.md
@@ -30,6 +26,7 @@ const DefaultCodexTimeout = 5 * time.Second
 // distinct from no bucketed view existing at all, and yields zero windows.
 // Neither case is ever a probe failure.
 type CodexResult struct {
+	planUnsafe     bool
 	Windows        []Observation
 	ResetAllowance ResetAllowance
 	Plan           string
@@ -91,7 +88,7 @@ type CodexFailureError struct {
 }
 
 func (e *CodexFailureError) Error() string {
-	return fmt.Sprintf("codex probe failed (%s): %v", e.Kind, e.Err)
+	return "codex probe failed (" + e.Kind.String() + ")"
 }
 
 func (e *CodexFailureError) Unwrap() error { return e.Err }
@@ -119,149 +116,11 @@ func newCodexCommand(ctx context.Context) *exec.Cmd {
 // it against an injected fake process (via codexCommandArgs), never the
 // real codex binary.
 func ProbeCodex(ctx context.Context, observedAt time.Time, timeout time.Duration) (CodexResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	cmd := newCodexCommand(ctx)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return CodexResult{}, &CodexFailureError{Kind: CodexFailureSpawn, Err: err}
+	cycle, failure := probeCodexCycle(ctx, observedAt, false, true, timeout, codexIdentityTimeout, nil)
+	if failure != nil {
+		return CodexResult{}, failure
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return CodexResult{}, &CodexFailureError{Kind: CodexFailureSpawn, Err: err}
-	}
-	if err := cmd.Start(); err != nil {
-		return CodexResult{}, &CodexFailureError{Kind: CodexFailureSpawn, Err: err}
-	}
-
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-
-	kill := func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}
-
-	// A write failure here means the process has already started but is no
-	// longer accepting input (e.g. it already exited) — that is an exit
-	// failure, not a spawn failure (CA-R1-F2): spawn is reserved for never
-	// having started at all.
-	write := func(v any) *CodexFailureError {
-		line, err := json.Marshal(v)
-		if err != nil {
-			return &CodexFailureError{Kind: CodexFailureExit, Err: err}
-		}
-		line = append(line, '\n')
-		if _, err := stdin.Write(line); err != nil {
-			return &CodexFailureError{Kind: CodexFailureExit, Err: err}
-		}
-		return nil
-	}
-
-	if failErr := write(map[string]any{
-		"method": "initialize", "id": 1,
-		"params": map[string]any{"clientInfo": map[string]any{"name": "agentdeck", "version": buildinfo.Version}},
-	}); failErr != nil {
-		kill()
-		return CodexResult{}, failErr
-	}
-
-	if _, failErr := readJSONRPCResult(ctx, scanner, 1); failErr != nil {
-		kill()
-		return CodexResult{}, failErr
-	}
-
-	if failErr := write(map[string]any{"method": "initialized"}); failErr != nil {
-		kill()
-		return CodexResult{}, failErr
-	}
-	if failErr := write(map[string]any{"method": "account/rateLimits/read", "id": 2}); failErr != nil {
-		kill()
-		return CodexResult{}, failErr
-	}
-
-	resultBytes, failErr := readJSONRPCResult(ctx, scanner, 2)
-	if failErr != nil {
-		kill()
-		return CodexResult{}, failErr
-	}
-
-	_ = stdin.Close()
-	// Codex PR #5 sixth review, P2: a matching JSON-RPC response arriving
-	// before the process's own exit does not prove the process finished
-	// cleanly. Discarding cmd.Wait()'s error here let a crash after printing
-	// the response still parse and persist that response as a successful
-	// current reading -- bypassing this adapter's own documented nonzero-exit
-	// classification -- and could replace retained data with output from a
-	// crashed process. Classified and returned before parsing, mirroring
-	// readJSONRPCResult's own deadline/exit classification.
-	if waitErr := cmd.Wait(); waitErr != nil {
-		if ctx.Err() != nil {
-			return CodexResult{}, &CodexFailureError{Kind: CodexFailureDeadline, Err: ctx.Err()}
-		}
-		return CodexResult{}, &CodexFailureError{Kind: CodexFailureExit, Err: waitErr}
-	}
-
-	result, err := parseCodexResult(resultBytes, observedAt)
-	if err != nil {
-		return CodexResult{}, &CodexFailureError{Kind: CodexFailureMalformed, Err: err}
-	}
-	return result, nil
-}
-
-type jsonrpcEnvelope struct {
-	ID     *int            `json:"id"`
-	Result json.RawMessage `json:"result"`
-	Error  json.RawMessage `json:"error"`
-}
-
-// readJSONRPCResult scans lines until the response for id arrives.
-//
-//   - A line that fails to decode as a JSON-RPC envelope is classified
-//     malformed immediately, rather than skipped: envelope decoding already
-//     guarantees any *matching* real response is well-formed JSON, so an
-//     undecodable line while waiting for one is transport corruption, not
-//     routine noise (CA-R1-F2).
-//   - A matching id whose "error" member is present and non-null is a
-//     server-reported failure (e.g. not logged in): probe_failed, not
-//     malformed.
-//   - Process exit (scanner.Scan() returns false) before either arrives is
-//     classified by whether the context deadline had already expired.
-func readJSONRPCResult(ctx context.Context, scanner *bufio.Scanner, id int) (json.RawMessage, *CodexFailureError) {
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var env jsonrpcEnvelope
-		if err := json.Unmarshal(line, &env); err != nil {
-			return nil, &CodexFailureError{Kind: CodexFailureMalformed, Err: err}
-		}
-		if env.ID == nil || *env.ID != id {
-			continue
-		}
-		if len(env.Error) > 0 && !bytes.Equal(env.Error, []byte("null")) {
-			var serverError struct {
-				Message string `json:"message"`
-			}
-			if id == 2 && json.Unmarshal(env.Error, &serverError) == nil &&
-				strings.EqualFold(strings.TrimSpace(serverError.Message), "not logged in") {
-				return nil, &CodexFailureError{Kind: CodexFailureServerError, Err: errProbeAuthentication}
-			}
-			return nil, &CodexFailureError{Kind: CodexFailureServerError, Err: fmt.Errorf("codex app-server returned an error response: %s", env.Error)}
-		}
-		out := make(json.RawMessage, len(env.Result))
-		copy(out, env.Result)
-		return out, nil
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, &CodexFailureError{Kind: CodexFailureExit, Err: err}
-	}
-	if ctx.Err() != nil {
-		return nil, &CodexFailureError{Kind: CodexFailureDeadline, Err: ctx.Err()}
-	}
-	return nil, &CodexFailureError{Kind: CodexFailureExit, Err: errors.New("codex app-server exited before answering")}
+	return *cycle.Usage, nil
 }
 
 // The types below mirror GetAccountRateLimitsResponse as generated by
@@ -379,9 +238,14 @@ func decodeOrderedLimits(raw json.RawMessage) ([]orderedLimitEntry, error) {
 // explicit empty object it does not, yielding no Windows. Neither is a
 // probe failure.
 func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
+	result, _, err := parseScreenedLimits(raw, observedAt, nil)
+	return result, err
+}
+
+func parseScreenedLimits(raw []byte, observedAt time.Time, forbidden identityForbiddenSet) (CodexResult, bool, error) {
 	var resp codexRateLimitsResult
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return CodexResult{}, err
+		return CodexResult{}, false, errors.New("invalid Codex quota result")
 	}
 
 	// Codex PR #5 sixth review, P1: an absent or null accountId must not
@@ -393,14 +257,23 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 	// that has no confirmed account -- while the wire still reports Codex
 	// attribution as confirmed.
 	if resp.AccountID == nil || *resp.AccountID == "" {
-		return CodexResult{}, errors.New("codex account/rateLimits/read: missing accountId")
+		return CodexResult{}, false, errors.New("codex account/rateLimits/read: missing accountId")
 	}
 
+	forbidden = append(forbidden, newIdentityForbiddenSet("", *resp.AccountID)...)
+	var plan planField
 	result := CodexResult{AccountID: *resp.AccountID}
 
 	if resp.RateLimits != nil {
+		if resp.RateLimits.LimitID != nil && forbidden.rejects(*resp.RateLimits.LimitID) {
+			return CodexResult{}, false, errors.New("unsafe Codex quota window")
+		}
 		if resp.RateLimits.PlanType != nil {
-			result.Plan = *resp.RateLimits.PlanType // opaque: never branched on
+			plan = sanitizeIdentityPlan(*resp.RateLimits.PlanType, forbidden)
+			result.Plan = plan.value
+			if result.Plan == "" {
+				result.PlanReason = ReasonNotReported
+			}
 		} else {
 			result.PlanReason = ReasonNotReported
 		}
@@ -419,6 +292,12 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 		}
 		for _, c := range resp.RateLimitResetCredits.Credits {
 			credit := ResetCredit{Title: c.Title, Status: c.Status}
+			if forbidden.rejects(credit.Title) {
+				credit.Title = ""
+			}
+			if forbidden.rejects(credit.Status) {
+				credit.Status = ""
+			}
 			if c.GrantedAt != nil {
 				credit.GrantedAt = time.Unix(*c.GrantedAt, 0).UTC()
 			}
@@ -436,22 +315,28 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 		// view" per the schema: fall back to it rather than reporting zero
 		// windows, per the operator's decision on this open question.
 		if resp.RateLimits != nil {
+			if forbidden.rejects(resolveCodexLimitID(resp.RateLimits)) {
+				return CodexResult{}, false, errors.New("unsafe Codex quota window")
+			}
 			windows, err := appendCodexSnapshotWindows(nil, resolveCodexLimitID(resp.RateLimits), *resp.RateLimits, observedAt, 0)
 			if err != nil {
-				return CodexResult{}, err
+				return CodexResult{}, false, errors.New("invalid Codex quota result")
 			}
 			result.Windows = windows
 		}
 	} else {
 		entries, err := decodeOrderedLimits(resp.RateLimitsByLimitID)
 		if err != nil {
-			return CodexResult{}, err
+			return CodexResult{}, false, errors.New("invalid Codex quota result")
 		}
 		order := 0
 		for _, entry := range entries {
+			if forbidden.rejects(entry.LimitID) || (entry.Snapshot.LimitID != nil && forbidden.rejects(*entry.Snapshot.LimitID)) {
+				return CodexResult{}, false, errors.New("unsafe Codex quota window")
+			}
 			windows, err := appendCodexSnapshotWindows(result.Windows, entry.LimitID, entry.Snapshot, observedAt, order)
 			if err != nil {
-				return CodexResult{}, err
+				return CodexResult{}, false, errors.New("invalid Codex quota result")
 			}
 			result.Windows = windows
 			order = len(result.Windows)
@@ -459,10 +344,16 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 	}
 
 	for i := range result.Windows {
+		if forbidden.rejects(result.Windows[i].WindowKey) {
+			return CodexResult{}, false, errors.New("unsafe Codex quota window")
+		}
+		if forbidden.rejects(result.Windows[i].Label) {
+			result.Windows[i].Label = ""
+		}
 		result.Windows[i].AccountID = result.AccountID
 	}
 
-	return result, nil
+	return result, plan.rejected, nil
 }
 
 // codexFallbackLimitID is the window_key limitId used for the

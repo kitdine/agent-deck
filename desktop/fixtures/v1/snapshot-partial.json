@@ -92,6 +92,7 @@
       ]
     },
     "subscription": {
+      "projection": null,
       "available": false,
       "reading": true,
       "clients": []

@@ -254,10 +254,16 @@ func TestSessionCLIListAndShowPaginationContracts(t *testing.T) {
 	if err = run([]string{"--state-dir", state, "session", "show", "a", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &showText); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"SHOWING", "1-2 of 3", "--client 'codex'", "--page 2", "--limit 2"} {
+	for _, want := range []string{"SHOWING", "1-2 of 3", "NEXT PAGE"} {
 		if !strings.Contains(showText.String(), want) {
 			t.Fatalf("show text missing %q: %s", want, showText.String())
 		}
+	}
+	// The NEXT PAGE field wraps at the display width, and where it wraps depends on
+	// the length of the temporary state path, so compare the whole command.
+	wantShowNext := fmt.Sprintf("agentdeck --state-dir %s session show 'a' --client 'codex' --page 2 --limit 2", shellQuote(state))
+	if !sessionShowNextPageMatches(showText.String(), wantShowNext) {
+		t.Fatalf("show next command does not match %q:\n%s", wantShowNext, showText.String())
 	}
 
 	for _, args := range [][]string{
@@ -1708,6 +1714,16 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = database.Exec(ctx, `
+		DROP TRIGGER quota_samples_on_session_delete;
+		DROP TRIGGER quota_samples_on_provider_selection;
+		DROP TRIGGER quota_samples_on_observed_provider;
+		DROP TABLE quota_session_samples;
+		DROP TABLE usage_request_facts;
+		DROP TABLE price_rule_sets;`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
 	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE 'derived_snapshot_generation_%' OR name LIKE 'usage_partition_%')`)
 	if err != nil {
 		database.Close()
@@ -1733,12 +1749,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	const dropQuotaSampleStorage = `
-		DROP TRIGGER quota_samples_on_session_delete;
-		DROP TRIGGER quota_samples_on_provider_selection;
-		DROP TRIGGER quota_samples_on_observed_provider;
-		DROP TABLE quota_session_samples;`
-	if _, err = database.Exec(ctx, dropQuotaSampleStorage+"DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows_v2; DROP TABLE quota_envelopes_v2; DROP TABLE quota_alert_notices_v2; DROP TABLE quota_identities; DROP TABLE quota_cycle; DROP TABLE quota_projection_revision; DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update; DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE; DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update; DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE; DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -70,23 +71,40 @@ func TestParseClaudeProseFullMapping(t *testing.T) {
 	}
 }
 
+const claudeSonnetWeekLine = "Current week (Sonnet): 99% used · resets Sep 18 at 6pm (UTC)\n"
+
 func TestParseClaudeProseDiscardsContributingSection(t *testing.T) {
-	// The "what's contributing" lines must not produce windows or otherwise
-	// affect the two known lines' parse (C4).
-	withNoise := claudeProseSample + "\nCurrent something else: 99% used · resets Jan 1 at 1:00am (UTC)\n"
-	result, err := ParseClaudeProse(withNoise, time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC))
+	observedAt := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+	want, err := ParseClaudeProse(claudeProseSample, observedAt)
 	if err != nil {
-		t.Fatalf("ParseClaudeProse: %v", err)
+		t.Fatalf("ParseClaudeProse baseline: %v", err)
 	}
-	if len(result.Windows) != 2 {
-		t.Fatalf("Windows = %d, want exactly 2 (noise must be discarded): %+v", len(result.Windows), result.Windows)
+	got, err := ParseClaudeProse(claudeProseSample+claudeSonnetWeekLine, observedAt)
+	if err != nil {
+		t.Fatalf("ParseClaudeProse with model-only week: %v", err)
+	}
+	if len(got.Windows) != 2 || !reflect.DeepEqual(got.Windows, want.Windows) {
+		t.Fatalf("windows changed with a model-only week: got %+v, want %+v", got.Windows, want.Windows)
 	}
 }
 
 func TestParseClaudeProseAllOrNothingOnMissingLine(t *testing.T) {
 	onlySession := "Current session: 22% used · resets Sep 9 at 1:50am (America/Los_Angeles)\n"
-	if _, err := ParseClaudeProse(onlySession, time.Now()); err == nil {
-		t.Fatal("a missing week line must fail the whole result, not emit a partial one")
+	for _, tc := range []struct {
+		name string
+		week string
+	}{
+		{name: "no weekly line"},
+		{name: "model-only weekly line", week: claudeSonnetWeekLine},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			observedAt := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+			result, err := ParseClaudeProse(onlySession+tc.week, observedAt)
+			var parseErr *ProseParseError
+			if !errors.As(err, &parseErr) || parseErr.Detail != DetailMissingLine || len(result.Windows) != 0 {
+				t.Fatalf("without an all-models week: windows=%+v, error=%v; want no windows and missing_line", result.Windows, err)
+			}
+		})
 	}
 }
 

@@ -22,15 +22,32 @@ func (r clientGuardResolver) Resolve() platform.InstallationIdentity {
 	return platform.InstallationIdentity{Reason: "receipt_missing"}
 }
 
+// Model the protected account separately from the temporary homes used by the
+// shell configuration tests, even when TMPDIR is under the operator's home.
+func TestMain(m *testing.M) {
+	account, err := os.MkdirTemp("", "agentdeck-shellconfig-account-")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("HOME", account); err != nil {
+		panic(err)
+	}
+	platform.SetInstallationResolver(clientGuardResolver{account: account})
+	code := m.Run()
+	_ = os.RemoveAll(account)
+	os.Exit(code)
+}
+
 func injectAccount(t *testing.T, installed bool) string {
 	t.Helper()
 	account, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	previous := platform.CurrentInstallationResolver()
 	platform.SetInstallationResolver(clientGuardResolver{account: account, installed: installed})
 	t.Cleanup(func() {
-		platform.SetInstallationResolver(nil) // this package installs no resolver
+		platform.SetInstallationResolver(previous)
 	})
 	return account
 }

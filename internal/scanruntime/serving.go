@@ -3,6 +3,7 @@ package scanruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -132,21 +133,48 @@ func (r *round) desktopService(stateRoot string) desktop.Service {
 	return desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow, Vault: vault}
 }
 
+func domainStage(step string, sessions bool) string {
+	if sessions {
+		return step + " sessions"
+	}
+	return step + " core"
+}
+
+// recordFailure keeps the stage and a structured description of a failure
+// of domain ("usage", "session" or both) in the worker's private log under
+// this round's id. The public result carries only the classified code.
+func (r *round) recordFailure(domain string, err error) {
+	if r.diagnostics != nil {
+		_ = r.diagnostics.record(r.id, r.inventoryID, domain, err)
+	}
+}
+
+func (r *round) failUsage(err error, duration int64) {
+	r.recordFailure("usage", err)
+	r.setUsage(failedUsage(err, duration))
+}
+
+func (r *round) failSession(err error, duration int64) {
+	r.recordFailure("session", err)
+	r.setSession(failedSession(err, duration))
+}
+
 // The caller owns the scan lock and has sealed the accepted inventory.
 func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, started time.Time, sources []ingest.Source) {
 	fail := func(err error) {
+		r.recordFailure("usage,session", err)
 		r.setUsage(failedUsage(err, time.Since(started).Milliseconds()))
 		r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 	}
 	core, err := store.Open(ctx, stateRoot)
 	if err != nil {
-		fail(err)
+		fail(withStage("open_core", err))
 		return
 	}
 	defer core.Close()
 	sessions, err := store.OpenSessions(ctx, stateRoot)
 	if err != nil {
-		fail(err)
+		fail(withStage("open_sessions", err))
 		return
 	}
 	defer sessions.Close()
@@ -154,7 +182,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	for _, db := range []*store.Store{core, sessions} {
 		exists, err := db.AbandonRoundInventories(ctx, r.id)
 		if err != nil {
-			fail(err)
+			fail(withStage("abandon_round_inventories", err))
 			return
 		}
 		accepted = accepted || exists
@@ -165,7 +193,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		session bool
 	}{{core, false}, {sessions, true}} {
 		if err = acceptDomainInventory(ctx, domain.db, r.inventoryID, sources, domain.session, started); err != nil {
-			fail(err)
+			fail(withStage(domainStage("accept_inventory", domain.session), err))
 			return
 		}
 	}
@@ -173,7 +201,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	service.PreparedSources = sources
 	fullInventory, err := service.Inventory(ctx)
 	if err != nil {
-		fail(err)
+		fail(withStage("usage_inventory", err))
 		return
 	}
 	entries := map[string]usage.InventoryEntry{}
@@ -191,7 +219,7 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		if checkErr != nil {
 			finishDomainInventory(core, r.inventoryID, checkErr)
 			finishDomainInventory(sessions, r.inventoryID, checkErr)
-			fail(checkErr)
+			fail(withStage("unchanged_check", checkErr))
 			return
 		}
 		if unchanged && len(sources) > 0 {
@@ -204,18 +232,20 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		// No batch will call ScanInventory, but removed sources still require
 		// detach/reconciliation before coverage can become complete 0/0.
 		changes, err = service.ScanInventory(ctx, fullInventory)
+		err = withStage("usage_removed_scan", err)
 	}
 	scan := session.ScanResult{}
 	r.setProgressStage("importing")
 	finishIngest := perftrace.Span(perftrace.IngestRead)
 	for index, batch := range batches {
-		if err = ctx.Err(); err != nil {
+		batchStage := func(step string) string { return fmt.Sprintf("batch %d of %d %s", index+1, len(batches), step) }
+		if err = withStage(batchStage("start"), ctx.Err()); err != nil {
 			break
 		}
 		if r.beforeServingBatch != nil {
 			r.beforeServingBatch(index)
 		}
-		if err = ctx.Err(); err != nil {
+		if err = withStage(batchStage("start"), ctx.Err()); err != nil {
 			break
 		}
 		coordinator := ingest.NewCoordinator(batch, ingest.Options{RequirePlans: true, Metrics: r.metrics})
@@ -227,8 +257,9 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		// Planning discovers differences using the full accepted set. Only this
 		// batch's plans must be sealed before its shared reader can start.
 		_, err = batchService.PlanForCoordinator(ctx, coordinator)
+		err = withStage(batchStage("plan_usage"), err)
 		if err == nil {
-			err = session.PlanForCoordinator(ctx, sessions.DB, r.home, batch, coordinator)
+			err = withStage(batchStage("plan_session"), session.PlanForCoordinator(ctx, sessions.DB, r.home, batch, coordinator))
 		}
 		if err != nil {
 			coordinator.Close()
@@ -263,11 +294,16 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		wait.Wait()
 		coordinator.Close()
 		if usageErr != nil {
-			err = usageErr
+			err = withStage(batchStage("scan_usage"), usageErr)
+			if sessionErr != nil {
+				// The public outcome keeps the usage error; the session error
+				// of the same batch is kept only in the private log.
+				r.recordFailure("session", withStage(batchStage("scan_session"), sessionErr))
+			}
 			break
 		}
 		if sessionErr != nil {
-			err = sessionErr
+			err = withStage(batchStage("scan_session"), sessionErr)
 			break
 		}
 		for key, value := range batchChanges {
@@ -279,8 +315,8 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 		scan.Documents += batchScan.Documents
 		scan.Skipped += batchScan.Skipped
 		if metadataOnly {
-			if err = finishUsageInventory(ctx, core, service, r.inventoryID); err == nil {
-				err = finishAcceptedInventory(ctx, sessions, r.inventoryID)
+			if err = withStage(batchStage("finish_usage_inventory"), finishUsageInventory(ctx, core, service, r.inventoryID)); err == nil {
+				err = withStage(batchStage("finish_session_inventory"), finishAcceptedInventory(ctx, sessions, r.inventoryID))
 			}
 			if err != nil {
 				break
@@ -300,24 +336,25 @@ func (r *round) executeServingDiscovered(ctx context.Context, stateRoot string, 
 	}
 	if err == nil {
 		finishFinalize := perftrace.Span(perftrace.ScanUsage)
-		err = service.FinalizeInventory(ctx, fullInventory)
+		err = withStage("finalize_usage", service.FinalizeInventory(ctx, fullInventory))
 		finishFinalize()
 	}
 	if err == nil {
 		finishSession := perftrace.Span(perftrace.ScanSession)
 		_, err = session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, CoverageInventoryID: r.inventoryID})
+		err = withStage("full_session_scan", err)
 		finishSession()
 	}
 	if err == nil && !metadataOnly {
-		err = finishUsageInventory(ctx, core, service, r.inventoryID)
+		err = withStage("finish_usage_inventory", finishUsageInventory(ctx, core, service, r.inventoryID))
 	}
 	if err == nil && !metadataOnly {
-		err = finishAcceptedInventory(ctx, sessions, r.inventoryID)
+		err = withStage("finish_session_inventory", finishAcceptedInventory(ctx, sessions, r.inventoryID))
 	}
 	if err == nil || errors.Is(err, store.ErrTelemetrySourceIdentityPending) {
 		// Source identities were prepared when the usage inventory finished;
 		// an unsettled pass left that inventory partial and retries next round.
-		err = errors.Join(err, r.settleAndClassify(ctx, stateRoot, core, sessions, service))
+		err = errors.Join(err, withStage("settle_and_classify", r.settleAndClassify(ctx, stateRoot, core, sessions, service)))
 	}
 	if err != nil {
 		finishDomainInventory(core, r.inventoryID, err)

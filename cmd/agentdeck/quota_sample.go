@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
+const quotaSampleLockTimeout = 20 * time.Second
+
 func newLocalQuotaSampleCommand(opts *commandOptions) *cobra.Command {
 	return newQuotaSampleCommand(opts, func(ctx context.Context, action quota.SampleAction, client quota.Client, sessionID string) (quota.SampleResult, error) {
 		core, stateRoot, err := opts.openStore(ctx)
@@ -22,7 +25,7 @@ func newLocalQuotaSampleCommand(opts *commandOptions) *cobra.Command {
 		}
 		defer core.Close()
 		service := quotaRefreshService(stateRoot, "")
-		result, err := service.SampleQuota(ctx, core, quotaRefreshLockTimeout, action, client, sessionID)
+		result, err := service.SampleQuota(ctx, core, quotaSampleLockTimeout, action, client, sessionID)
 		if err != nil || action != quota.SampleFinish {
 			return result, err
 		}

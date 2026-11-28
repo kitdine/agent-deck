@@ -168,8 +168,9 @@ func (s Snapshot) SessionFilter() *usage.SessionFilter {
 }
 
 // Reader assembles selections from read-only stores. Verify reads the
-// current serving vector over a fresh connection; when nil it reads
-// StateRoot's serving generation.
+// current serving vector over a fresh connection; when nil it verifies
+// StateRoot's serving generation under the same bound as the selection's own
+// reads, not the startup identity budget.
 type Reader struct {
 	Core      *store.Store
 	Sessions  *store.Store
@@ -193,7 +194,7 @@ func (r Reader) Select(ctx context.Context, selection Selection, attach func(con
 	verify := r.Verify
 	if verify == nil {
 		verify = func(ctx context.Context) (store.ServingGeneration, error) {
-			return store.ReadServingGeneration(ctx, r.StateRoot)
+			return store.VerifyServingGeneration(ctx, r.StateRoot)
 		}
 	}
 	for attempt := 0; attempt <= MaxSelectionRetries; attempt++ {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,6 +21,118 @@ func withTestHome(t *testing.T, home string) {
 	old := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = old })
+}
+
+type firstCaptureRead struct {
+	before func()
+	io.Reader
+}
+
+func (r *firstCaptureRead) Read(b []byte) (int, error) {
+	if r.before != nil {
+		r.before()
+		r.before = nil
+	}
+	return r.Reader.Read(b)
+}
+
+func TestQuotaCaptureCLIEntryBeforeStdinAndPublication(t *testing.T) {
+	ctx := context.Background()
+	home, state := t.TempDir(), t.TempDir()
+	withTestHome(t, home)
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	settings := quota.DefaultSettings()
+	settings.ProbeEnabled, settings.StatusLineConsent = true, true
+	if err := quota.SaveSettings(ctx, core, settings); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"statusLine":{"type":"command","command":"cat"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := usagehook.New(usagehook.Environment{Home: home, StateDir: state}).SetupStatusLine(); err != nil {
+		t.Fatal(err)
+	}
+	const raw = " \n" + `{"rate_limits":{"five_hour":{"used_percentage":20},"seven_day":{"used_percentage":30}}}` + "\t\n"
+	invoke := func(before func()) {
+		t.Helper()
+		var output bytes.Buffer
+		if err := run([]string{"--state-dir", state, "quota", "capture"}, &firstCaptureRead{before, strings.NewReader(raw)}, &output); err != nil || output.String() != raw {
+			t.Fatal("chain output differs", err)
+		}
+	}
+	count := func(want int) {
+		t.Helper()
+		var rows int
+		if err := core.DB.QueryRow("SELECT count(*) FROM quota_windows_v2").Scan(&rows); err != nil || rows != want {
+			t.Fatal(rows, err)
+		}
+	}
+	// Publish twice while stdin is still pending. Finish with an open gate:
+	// looking only at the final gate, or sampling after stdin, would admit it.
+	invoke(func() {
+		for gen := 1; gen <= 2; gen++ {
+			_, err := core.DB.Exec(`INSERT INTO quota_envelopes_v2(client,context_generation,confirmed_generation,capture_gate) VALUES('claude',?,-1,'blocked')
+				ON CONFLICT(client) DO UPDATE SET context_generation=excluded.context_generation,confirmed_generation=-1,capture_gate='blocked'`, gen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stamp := quota.BeginStatusLineCapture().BootStamp()
+			if stamp == nil {
+				t.Skip("boot/monotonic source unavailable")
+			}
+			if _, err := core.DB.Exec(`UPDATE quota_envelopes_v2 SET confirmed_generation=?,capture_gate='open',capture_open_boot=?,capture_open_mono=? WHERE client='claude'`, gen, stamp.Boot, stamp.Mono); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	count(0)
+	var stdinAt time.Time
+	invoke(func() { stdinAt = time.Now() })
+	count(2)
+	windows, err := quota.NewStore(core.DB).Windows(ctx, quota.ClientClaude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, window := range windows {
+		if window.ObservedAt.After(stdinAt) {
+			t.Fatal("used post-stdin wall time")
+		}
+	}
+	if _, err := core.DB.Exec(`DELETE FROM quota_windows_v2`); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := core.DB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	invoke(nil)
+	elapsed := time.Since(start)
+	if _, err := conn.ExecContext(ctx, "ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("CLI capture blocked on writer for %s", elapsed)
+	}
+	count(0)
+	settings.StatusLineConsent = false
+	if err := quota.SaveSettings(ctx, core, settings); err != nil {
+		t.Fatal(err)
+	}
+	invoke(nil)
+	count(0)
 }
 
 func TestRunQuotaCaptureChainsAndPersists(t *testing.T) {

@@ -35,7 +35,7 @@ created: 2026-11-18
 
 ### 2. `quota-sample-storage`
 
-- 依赖 `quota-window-valuation` 和已验收的计价持久化候选。当前开发基线为签名计价提交 `d772a79edb20dc8d7a041a30cec24bb6937b0488`，计价 schema 为 36，额度迁移为 37。按本地组合核对实际 quota 表、Store/Windows/Envelope 接口、跨进程锁和归档清理，并复用现有机制。
+- 依赖 `quota-window-valuation` 和已验收的计价持久化候选。当前开发基线为签名计价提交 `d772a79edb20dc8d7a041a30cec24bb6937b0488`，计价 schema 为 36，额度迁移为 37。v0.8.0 第一批装配把 `main`（含已发布 v0.7.5 的迁移 36）合入本分支后，计价迁移顺延为 37，本主题迁移顺延为 38，即 `P+1 = 38`。按本地组合核对实际 quota 表、Store/Windows/Envelope 接口、跨进程锁和归档清理，并复用现有机制。
 - 本任务负责上述共享存储边界、`internal/quota/scheduler.go`、`cmd/agentdeck/quota.go` 以及清除用量或删除会话时清理采样引用的既有入口。按代次原子写入，使用既有跨进程刷新锁、已授权探测及门禁。打包时去除私有样本，恢复时清理，验证失败可重试。
 - 先完成独立的采样存储、备份和命令测试。用量数据清除或会话删除若必须改动计价已拥有的 `internal/usage/usage.go` 或会话入口，在其计价实现验收并交接后修订；能由本次迁移安装的数据层清理机制完成时，沿用该机制。
 - `P+1` 的正式迁移和桌面共享文件在计价 `pricing-reporting` 候选验收并交接后同步。共享范围为 `internal/desktop/serving_schema.go`、`apps/macos/AgentDeckShared/DesktopWire.swift` 的 core schema 边界、`apps/macos/AgentDeckVerification/main.swift`、`apps/macos/AgentDeckTests/DesktopWireTests.swift` 及 `desktop/fixtures/v1/` 金标。在该候选上重新生成金标并跑相关 Go/Swift 验收。已有 `P` 的 serving 负载只按这个方向兼容，会话估值走只读样本入口，原生验收保持旧 App Group 金额口径。

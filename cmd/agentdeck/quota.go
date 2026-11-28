@@ -23,11 +23,6 @@ import (
 // quotaMaxBackoff bounds C9's geometric backoff for the desktop quota refresh.
 const quotaMaxBackoff = time.Hour
 
-// A refresh probes Codex (5s) and Claude (10s) sequentially. A small margin
-// lets a second helper process join the serialized refresh boundary without
-// ever allowing an older completion to replace a newer process's state.
-const quotaRefreshLockTimeout = 20 * time.Second
-
 // Seam so tests never spawn a real client. The helper posts no notification:
 // due alerts are returned to the app, which delivers them (C10).
 var quotaRefreshService = func(stateRoot, home string) desktop.Service {
@@ -95,7 +90,7 @@ func loadQuotaSubscription(ctx context.Context, opts *commandOptions) (desktop.S
 		return desktop.SubscriptionSnapshot{}, err
 	}
 	defer core.Close()
-	return desktop.Service{StateRoot: stateRoot, Home: home}.BuildSubscription(ctx, core, time.Now())
+	return desktop.Service{StateRoot: stateRoot, Home: home}.BuildSubscription(ctx, core, time.Time{})
 }
 
 func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) error {
@@ -314,6 +309,7 @@ func quotaStatusLineManager(opts *commandOptions, stateRoot string) (*usagehook.
 }
 
 type desktopQuotaRefreshResult struct {
+	StateRootID string              `json:"state_root_id,omitempty"`
 	GateReasons map[string]*string  `json:"gate_reasons"`
 	Alerts      []desktopQuotaAlert `json:"alerts"`
 }
@@ -322,19 +318,60 @@ type desktopQuotaRefreshResult struct {
 // present only for a threshold notice; label is the vendor's window label, and
 // window_minutes is null when the length is not reported.
 type desktopQuotaAlert struct {
-	ID            string   `json:"id"`
-	Kind          string   `json:"kind"`
-	Client        string   `json:"client"`
-	Label         string   `json:"label,omitempty"`
-	WindowMinutes *int     `json:"window_minutes"`
-	UsedPercent   float64  `json:"used_percent"`
-	Threshold     *float64 `json:"threshold,omitempty"`
+	Generation    quota.Generation `json:"generation"`
+	ID            string           `json:"id"`
+	Kind          string           `json:"kind"`
+	Client        string           `json:"client"`
+	Label         string           `json:"label,omitempty"`
+	WindowMinutes *int             `json:"window_minutes"`
+	UsedPercent   float64          `json:"used_percent"`
+	Threshold     *float64         `json:"threshold,omitempty"`
 }
 
-func desktopQuotaAlerts(due []quota.DueAlert) []desktopQuotaAlert {
+func desktopQuotaAlertEnvelope(ctx context.Context, ledger *quota.Store, cycle quota.RefreshCycle, guard *quota.QuotaDeliveryGuard, settings quota.Settings, outcome map[quota.Client]quota.Reason, now time.Time) (desktopQuotaRefreshResult, error) {
+	// Do not start a prune that can consume the time reserved for output.
+	// Keep the gate reasons and a valid empty envelope on this fail-open path.
+	budgetOK := true
+	if d, ok := ctx.Deadline(); ok {
+		budgetOK = ctx.Err() == nil && time.Until(d) >= quota.RefreshReportBudget
+	}
+	ctx, cancel := context.WithTimeout(ctx, quota.RefreshReportBudget)
+	defer cancel()
+	var rootID string
+	var proofErr error
+	if reason, allowed := outcome[quota.ClientClaude]; budgetOK && allowed && reason == "" {
+		rootID, proofErr = ledger.AlertStateRootID(ctx, cycle, guard)
+	}
+	officialClients := map[quota.Client]bool{}
+	for client, reason := range outcome {
+		officialClients[client] = reason == "" && (client != quota.ClientClaude || rootID != "")
+	}
+	var due []quota.DueAlert
+	var err error
+	if budgetOK {
+		due, err = quota.DueAlerts(ctx, ledger, settings.ProbeEnabled, officialClients, settings.AlertConfig(), now)
+		if rootID != "" {
+			// Issue the proof against the guard as it exists after collecting
+			// alerts. This check uses the same report deadline and takes no lock.
+			rootID, proofErr = ledger.AlertStateRootID(ctx, cycle, guard)
+			if rootID == "" && proofErr == nil {
+				// A previously valid cycle or refresh lock disappeared during collection.
+				proofErr = quota.ErrQuotaDeliveryUnavailable
+			}
+		}
+	} else {
+		err = store.ErrStateBusy
+	}
 	alerts := make([]desktopQuotaAlert, 0, len(due))
+	resultRoot := ""
 	for _, alert := range due {
-		item := desktopQuotaAlert{ID: alert.ID, Kind: string(alert.Kind), Client: string(alert.Client), Label: alert.Label, UsedPercent: alert.UsedPercent}
+		if alert.Client == quota.ClientClaude {
+			if rootID == "" {
+				continue
+			}
+			resultRoot = rootID
+		}
+		item := desktopQuotaAlert{ID: alert.ID, Kind: string(alert.Kind), Client: string(alert.Client), Label: alert.Label, UsedPercent: alert.UsedPercent, Generation: alert.Generation}
 		if alert.WindowMinutes > 0 {
 			minutes := alert.WindowMinutes
 			item.WindowMinutes = &minutes
@@ -345,7 +382,16 @@ func desktopQuotaAlerts(due []quota.DueAlert) []desktopQuotaAlert {
 		}
 		alerts = append(alerts, item)
 	}
-	return alerts
+	result := desktopQuotaRefreshResult{StateRootID: resultRoot, Alerts: alerts, GateReasons: map[string]*string{}}
+	for client, reason := range outcome {
+		var text *string
+		if reason != "" {
+			value := string(reason)
+			text = &value
+		}
+		result.GateReasons[string(client)] = text
+	}
+	return result, errors.Join(err, proofErr)
 }
 
 func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
@@ -370,15 +416,29 @@ func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
 // the app to deliver; nothing is recorded as sent here. With reading off
 // neither probes nor evaluates anything.
 func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bool) (err error) {
-	core, stateRoot, err := opts.openStore(ctx)
+	ctx, cancel := context.WithTimeout(ctx, quota.RefreshTimeout)
+	defer cancel()
+	if quota.RefreshLockWait(ctx) <= 0 {
+		return store.ErrStateBusy
+	}
+	stateRoot, err := opts.stateRoot()
 	if err != nil {
 		return err
 	}
-	defer core.Close()
+	root, err := quota.OpenRefreshCore(ctx, stateRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	core := root.Core()
 	// AcquireQuotaRefreshLock intentionally returns plain ErrStateBusy without wrapping
 	// it in ErrLockContention. On contention, the command error path projects it as
 	// resource: unknown in schema-version-1 CLI output.
-	refreshLock, err := store.AcquireQuotaRefreshLock(ctx, stateRoot, quotaRefreshLockTimeout)
+	cutoff := quota.RefreshLockDeadline(ctx)
+	if !time.Now().Before(cutoff) {
+		return store.ErrStateBusy
+	}
+	refreshLock, err := store.AcquireQuotaRefreshLockBefore(ctx, root.Root(), cutoff)
 	if err != nil {
 		return err
 	}
@@ -399,7 +459,11 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	if manual {
 		trigger = quota.TriggerManual
 	}
-	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeClients, settings.ProbeInterval, quotaMaxBackoff)
+	outcome, cycle, guard, err := quotaRefreshService(root.Root(), home).RefreshQuotaCycle(ctx, root, refreshLock, home, trigger, settings, quotaMaxBackoff)
+	guardFailed := errors.Is(err, quota.ErrQuotaDeliveryUnavailable) || errors.Is(err, quota.ErrQuotaDeliveryBusy)
+	if err != nil && !guardFailed {
+		return err
+	}
 
 	warnings := []string{}
 	// outcome's empty reason means this cycle's C1 gate passed for that
@@ -408,22 +472,9 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	// unknown gate is not a confirmed official one either) -- means the gate
 	// did not affirmatively pass, and its retained windows must not generate
 	// alerts until it does.
-	officialClients := map[quota.Client]bool{
-		quota.ClientCodex:  outcome[quota.ClientCodex] == "",
-		quota.ClientClaude: outcome[quota.ClientClaude] == "",
-	}
-	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, officialClients, settings.AlertConfig(), time.Now())
-	if err != nil {
+	result, err := desktopQuotaAlertEnvelope(ctx, root.Store(), cycle, guard, settings, outcome, time.Now())
+	if err != nil || guardFailed {
 		warnings = append(warnings, "quota_alerts_failed")
-	}
-	result := desktopQuotaRefreshResult{GateReasons: map[string]*string{}, Alerts: desktopQuotaAlerts(due)}
-	for client, reason := range outcome {
-		var text *string
-		if reason != "" {
-			value := string(reason)
-			text = &value
-		}
-		result.GateReasons[string(client)] = text
 	}
 	return writeEnvelope(opts.stdout, opts.format, "desktop.quota-refresh", result, len(warnings) > 0, warnings)
 }
@@ -467,13 +518,11 @@ func runDesktopQuotaAlertsAck(ctx context.Context, opts *commandOptions, ids []s
 	}
 	defer core.Close()
 	store := quota.NewStore(core.DB)
-	now := time.Now()
-	for _, id := range ids {
-		if err := quota.AcknowledgeAlert(ctx, store, id, now); err != nil {
-			return err
-		}
+	accepted, err := store.AcknowledgeAlerts(ctx, ids, time.Now())
+	if err != nil {
+		return err
 	}
-	return writeResult(opts.stdout, opts.format, "desktop.quota-alerts.ack", desktopQuotaAlertsAckResult{Acknowledged: len(ids)})
+	return writeResult(opts.stdout, opts.format, "desktop.quota-alerts.ack", desktopQuotaAlertsAckResult{Acknowledged: accepted})
 }
 
 type desktopQuotaSettingsView struct {

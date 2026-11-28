@@ -284,15 +284,45 @@ func (s Service) checkProjectAttributionGate(
 	})
 }
 
+// lockRows are the doctor's lock checks in report order: check name, lock file
+// and the resource it guards.
+var lockRows = [][3]string{{"state_lock", "state.lock", "state"}, {"scan_lock", "scan.lock", "scan"}}
+
 func (s Service) checkLock(report *Report) {
-	s.checkNamedLock(report, "state_lock", "state.lock", "state")
-	s.checkNamedLock(report, "scan_lock", "scan.lock", "scan")
+	for _, row := range lockRows {
+		s.checkNamedLock(report, row[0], row[1], row[2])
+	}
+}
+
+// LockCheck re-evaluates one lock row ("state_lock" or "scan_lock") as Check
+// would now. Lock ownership changes without any data change, so consumers of
+// persisted health refresh these rows instead of trusting a past observation.
+func (s Service) LockCheck(name string) (Check, bool) {
+	for _, row := range lockRows {
+		if row[0] == name {
+			root, err := platform.GuardStateRoot(s.StateRoot)
+			if err != nil {
+				return Check{}, false
+			}
+			s.StateRoot = root
+			var report Report
+			s.checkNamedLock(&report, row[0], row[1], row[2])
+			return report.Checks[0], true
+		}
+	}
+	return Check{}, false
 }
 
 func (s Service) checkNamedLock(report *Report, checkName, fileName, resource string) {
 	path := filepath.Join(s.StateRoot, fileName)
-	reason, err := store.ClassifyLock(path, s.LockProcessCheck)
+	reason, owned, err := store.ClassifyLockOwnership(path, s.LockProcessCheck)
 	if errors.Is(err, fs.ErrNotExist) {
+		report.add(Check{Name: checkName, Status: "ok"})
+		return
+	}
+	if reason == store.LockReasonLive && owned {
+		// The diagnosing process holds this lock itself, as a scan worker
+		// does while it publishes: there is no other owner to wait for.
 		report.add(Check{Name: checkName, Status: "ok"})
 		return
 	}

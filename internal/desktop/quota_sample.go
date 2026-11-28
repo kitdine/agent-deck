@@ -17,7 +17,7 @@ func (s Service) SampleQuota(ctx context.Context, core *store.Store, lockTimeout
 	sampler := quota.Sampler{
 		StateRoot: s.StateRoot, LockTimeout: lockTimeout,
 		Scheduler: quota.Scheduler{
-			Store: quota.NewStore(core.DB), Now: s.now,
+			Store: quota.NewWritableStore(core), Now: s.now,
 			ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
 		},
 		Gate: quotaSampleGate,

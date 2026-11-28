@@ -332,6 +332,7 @@ var migrations = []migration{
 	// a stored classification reason (otel-version-tolerant-metering). It
 	// changes no canonical usage fact.
 	{version: 35, apply: applySourceThreadsAndDefaultWork},
+	{version: QuotaIdentitySchemaVersion, apply: migrateQuotaIdentity},
 	{version: PricingFactsSchemaVersion, statements: []string{
 		`CREATE TABLE price_rule_sets (
 			catalog_version TEXT NOT NULL PRIMARY KEY REFERENCES price_catalogs(version) ON DELETE CASCADE,
@@ -354,6 +355,150 @@ const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (
 	notified_at TEXT NOT NULL,
 	PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
 )`
+
+// migrateQuotaIdentity replaces the old table names so even an already-open
+// older writer cannot bypass the new generation protocol.
+func migrateQuotaIdentity(ctx context.Context, tx *sql.Tx) error {
+	for _, statement := range []string{
+		`CREATE TABLE quota_windows_v2 (
+			client TEXT NOT NULL,
+			account_id TEXT NOT NULL DEFAULT '',
+			window_key TEXT NOT NULL,
+			source TEXT NOT NULL,
+			observed_at TEXT NOT NULL,
+			vendor_order INTEGER NOT NULL DEFAULT 0,
+			window_minutes INTEGER NOT NULL DEFAULT 0,
+			window_minutes_reason TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			used_percent REAL NOT NULL,
+			resets_at TEXT NOT NULL,
+			observed_reset_at TEXT NOT NULL DEFAULT '',
+			prior_used_percent REAL,
+			prior_observed_at TEXT,
+			context_generation INTEGER NOT NULL DEFAULT 0,
+			cycle_seq INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (client, account_id, window_key)
+		)`,
+		`INSERT INTO quota_windows_v2 (client, account_id, window_key, source, observed_at, vendor_order, window_minutes, window_minutes_reason, label, used_percent, resets_at, observed_reset_at, prior_used_percent, prior_observed_at)
+			SELECT client, account_id, window_key, source, observed_at, vendor_order, window_minutes, window_minutes_reason, label, used_percent, resets_at, observed_reset_at, prior_used_percent, prior_observed_at FROM quota_windows`,
+		`DROP TABLE quota_windows`,
+		`CREATE TABLE quota_envelopes_v2 (
+			client TEXT PRIMARY KEY,
+			account_id TEXT NOT NULL DEFAULT '',
+			applicable INTEGER NOT NULL DEFAULT 0,
+			applicable_reason TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT '',
+			observed_at TEXT NOT NULL DEFAULT '',
+			plan TEXT NOT NULL DEFAULT '',
+			plan_reason TEXT NOT NULL DEFAULT '',
+			reset_allowance_reason TEXT NOT NULL DEFAULT '',
+			reset_total INTEGER NOT NULL DEFAULT 0,
+			reset_total_reason TEXT NOT NULL DEFAULT '',
+			reset_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_has_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_credits_json TEXT NOT NULL DEFAULT '[]',
+			billing_balance REAL NOT NULL DEFAULT 0,
+			billing_has_balance INTEGER NOT NULL DEFAULT 0,
+			failure TEXT NOT NULL DEFAULT '',
+			failure_at TEXT NOT NULL DEFAULT '',
+			backoff_until TEXT NOT NULL DEFAULT '',
+			failure_observed_at TEXT NOT NULL DEFAULT '',
+			failure_detail TEXT NOT NULL DEFAULT '',
+			cycle_seq INTEGER NOT NULL DEFAULT 0,
+			context_generation INTEGER NOT NULL DEFAULT 0,
+			invalidated_at TEXT NOT NULL DEFAULT '',
+			invalidated_reason TEXT NOT NULL DEFAULT '',
+			capture_gate TEXT NOT NULL DEFAULT 'open_initial' CHECK(capture_gate IN ('open_initial','blocked','open')),
+			confirmed_generation INTEGER NOT NULL DEFAULT -1,
+			capture_open_boot TEXT NOT NULL DEFAULT '',
+			capture_open_mono INTEGER NOT NULL DEFAULT 0,
+			plan_unsafe INTEGER NOT NULL DEFAULT 0 CHECK(plan_unsafe IN (0,1))
+		)`,
+		`INSERT INTO quota_envelopes_v2 (
+            client, account_id, applicable, applicable_reason, source, observed_at, plan, plan_reason,
+            reset_allowance_reason, reset_total, reset_total_reason, reset_remaining, reset_has_remaining,
+            reset_credits_json, billing_balance, billing_has_balance, failure, failure_at, backoff_until,
+            failure_observed_at, plan_unsafe
+        )
+        SELECT client, account_id, applicable, applicable_reason, source, observed_at,
+            CASE WHEN rejected THEN '' ELSE plan END,
+            CASE WHEN rejected THEN 'not_reported' ELSE plan_reason END,
+            reset_allowance_reason, reset_total, reset_total_reason, reset_remaining, reset_has_remaining,
+            reset_credits_json, billing_balance, billing_has_balance, failure, failure_at, backoff_until,
+            failure_observed_at, rejected
+        FROM (SELECT *, (client='codex' AND plan<>'' AND (
+            length(plan)>32 OR instr(plan,char(0))>0 OR
+            plan NOT GLOB '[A-Za-z0-9]*' OR plan GLOB '*[^A-Za-z0-9._-]*'
+        )) AS rejected FROM quota_envelopes)`,
+		`DROP TABLE quota_envelopes`,
+		`CREATE TABLE quota_alert_notices_v2 (
+			client TEXT NOT NULL,
+			window_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			threshold REAL NOT NULL DEFAULT 0,
+			instance_unix INTEGER NOT NULL,
+			notified_at TEXT NOT NULL,
+			context_generation INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (client, window_key, kind, threshold, instance_unix, context_generation)
+		)`,
+		`INSERT INTO quota_alert_notices_v2 (client, window_key, kind, threshold, instance_unix, notified_at)
+			SELECT client, window_key, kind, threshold, instance_unix, notified_at FROM quota_alert_notices`,
+		`DROP TABLE quota_alert_notices`,
+		`CREATE TABLE quota_cycle (singleton INTEGER PRIMARY KEY CHECK(singleton=1), seq INTEGER NOT NULL DEFAULT 0, revalidate_seq INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO quota_cycle(singleton) VALUES (1)`,
+		`CREATE TABLE quota_projection_revision (singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO quota_projection_revision(singleton) VALUES (1)`,
+		`CREATE TABLE quota_identities (
+            client TEXT PRIMARY KEY,
+            attempt_cycle_seq INTEGER NOT NULL DEFAULT 0,
+            attempted_at TEXT NOT NULL DEFAULT '',
+            attempt_failure TEXT NOT NULL DEFAULT '',
+            failure_cycle_seq INTEGER NOT NULL DEFAULT 0,
+            backoff_base_at TEXT NOT NULL DEFAULT '',
+            backoff_until TEXT NOT NULL DEFAULT '',
+            success_cycle_seq INTEGER NOT NULL DEFAULT 0,
+            success_state TEXT NOT NULL DEFAULT '',
+            success_observed_at TEXT NOT NULL DEFAULT '',
+            account_kind TEXT NOT NULL DEFAULT '',
+            email_masked TEXT NOT NULL DEFAULT '',
+            org_kind TEXT NOT NULL DEFAULT '',
+            org_name TEXT NOT NULL DEFAULT '',
+            plan_sources_json TEXT NOT NULL DEFAULT '',
+            baseline_kind TEXT NOT NULL DEFAULT '',
+            baseline_correlation TEXT NOT NULL DEFAULT '',
+            baseline_key_id TEXT NOT NULL DEFAULT '',
+            baseline_observed_at TEXT NOT NULL DEFAULT '',
+            association TEXT NOT NULL DEFAULT '',
+            association_cycle_seq INTEGER NOT NULL DEFAULT 0
+        )`,
+		`CREATE TRIGGER quota_revalidate_selection_insert AFTER INSERT ON provider_selections
+        BEGIN UPDATE quota_cycle SET revalidate_seq=seq WHERE singleton=1; END`,
+		`CREATE TRIGGER quota_revalidate_selection_update AFTER UPDATE ON provider_selections
+        BEGIN UPDATE quota_cycle SET revalidate_seq=seq WHERE singleton=1; END`,
+		`CREATE TRIGGER quota_revalidate_setting_insert AFTER INSERT ON settings
+        WHEN NEW.key IN ('quota.probe','quota.probe.clients')
+        BEGIN UPDATE quota_cycle SET revalidate_seq=seq WHERE singleton=1; END`,
+		`CREATE TRIGGER quota_revalidate_setting_update AFTER UPDATE ON settings
+        WHEN NEW.key IN ('quota.probe','quota.probe.clients') AND OLD.value IS NOT NEW.value
+        BEGIN UPDATE quota_cycle SET revalidate_seq=seq WHERE singleton=1; END`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	if err := installServingRevisionTriggers(ctx, tx, []string{"quota_envelopes_v2", "quota_identities"}); err != nil {
+		return err
+	}
+	for _, table := range []string{"quota_windows_v2", "quota_envelopes_v2", "quota_identities", "settings", "provider_selections", "usage_session_observations"} {
+		for _, operation := range []string{"INSERT", "UPDATE", "DELETE"} {
+			statement := fmt.Sprintf("CREATE TRIGGER quota_revision_%s_%s AFTER %s ON %s BEGIN UPDATE quota_projection_revision SET revision=revision+1 WHERE singleton=1; END", table, operation, operation, table)
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 type quotaAlertNoticeColumn struct {
 	name         string
@@ -603,8 +748,8 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 	if err != nil {
 		return err
 	}
-	if version > CurrentSchemaVersion {
-		return &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
+	if err := checkSchemaAhead(version, CurrentSchemaVersion); err != nil {
+		return err
 	}
 	for _, migration := range ordered {
 		if migration.version <= version {
@@ -637,6 +782,13 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 			return fmt.Errorf("migration %d: %w", migration.version, err)
 		}
 		version = migration.version
+	}
+	return nil
+}
+
+func checkSchemaAhead(version, supported int) error {
+	if version > supported {
+		return &SchemaAhead{Stored: version, Supported: supported}
 	}
 	return nil
 }

@@ -115,31 +115,33 @@ func requireSampleChange(result sql.Result, err error) error {
 	return nil
 }
 
-func deleteClientSamples(ctx context.Context, tx *sql.Tx, client Client) error {
+func deleteClientSamples(ctx context.Context, tx quotaSQL, client Client) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM quota_session_samples WHERE client=?`, client)
 	return err
 }
 
-func sampleTableExists(ctx context.Context, tx *sql.Tx) (bool, error) {
+func sampleTableExists(ctx context.Context, tx quotaSQL) (bool, error) {
 	var installed bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_schema
 		WHERE type='table' AND name='quota_session_samples')`).Scan(&installed)
 	return installed, err
 }
 
-func (s *Store) invalidateSamples(ctx context.Context, client Client) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := invalidateSamplesIfInstalled(ctx, tx, client); err != nil {
-		return err
-	}
-	return tx.Commit()
+func (s *Store) invalidateSampleCycle(ctx context.Context, cycle RefreshCycle, client Client, expected Generation) error {
+	_, err := s.cycleWrite(ctx, cycle, func(ctx context.Context, conn *sql.Conn) (bool, error) {
+		if client == ClientClaude {
+			state, seq, err := readClaudeContext(ctx, conn)
+			if err != nil || state.Generation != expected || seq >= cycle.seq {
+				return false, err
+			}
+		}
+		err := deleteClientSamples(ctx, conn, client)
+		return err == nil, err
+	})
+	return err
 }
 
-func invalidateSamplesIfInstalled(ctx context.Context, tx *sql.Tx, client Client) error {
+func invalidateSamplesIfInstalled(ctx context.Context, tx quotaSQL, client Client) error {
 	installed, err := sampleTableExists(ctx, tx)
 	if err != nil || !installed {
 		return err
@@ -150,7 +152,7 @@ func invalidateSamplesIfInstalled(ctx context.Context, tx *sql.Tx, client Client
 // Compared with checking only the most recent cache account, comparing the
 // saved digest still detects a change after an intervening anonymous probe.
 // The optional table check keeps the ordinary cache usable on pre-sample cores.
-func invalidateSamplesForAccount(ctx context.Context, tx *sql.Tx, client Client, digest string) (bool, error) {
+func invalidateSamplesForAccount(ctx context.Context, tx quotaSQL, client Client, digest string) (bool, error) {
 	if digest == "" {
 		return false, nil
 	}

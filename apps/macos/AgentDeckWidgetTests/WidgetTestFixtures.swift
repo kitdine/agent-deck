@@ -228,6 +228,23 @@ func snapshotWithModels(
 
 private final class WidgetFixtureBundleMarker {}
 
+func identityWidgetFixture(_ edit: (inout [[String: Any]]) -> Void = { _ in }) throws -> WidgetDesktopSnapshotV1 {
+	let original = try widgetFixture("snapshot-complete")
+	var root = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+	var sub = try XCTUnwrap(root["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(sub["clients"] as? [[String: Any]])
+	for i in clients.indices {
+		clients[i]["identity"] = [
+			"state": "identified", "freshness": "current", "current_until": "2026-08-13T10:00:30Z",
+			"email_masked": "a***e@\(String(repeating: "long.", count: 20))example.test",
+		]
+	}
+	edit(&clients)
+	sub["clients"] = clients
+	root["subscription"] = sub
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: root))
+}
+
 /// Parts of one scope+period's totals: (tokens, input, output, cacheRead, cacheWrite).
 typealias WidgetTokenParts = (tokens: Int64, input: Int64, output: Int64, cacheRead: Int64, cacheWrite: Int64)
 

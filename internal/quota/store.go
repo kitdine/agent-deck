@@ -8,17 +8,20 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 // Store persists the latest observation per (client, account_id, window_key)
 // plus one prior (C7 — no time series), and the latest per-client envelope,
 // on a caller-provided *sql.DB. The schema is owned by
-// internal/store/migrations.go (version 27: quota_windows, quota_envelopes),
+// internal/store/migrations.go (version 27: quota_windows_v2, quota_envelopes_v2),
 // like every other production table, so a caller obtains db from
 // store.Open's already-migrated *store.Store.DB (QD-R1-F5) rather than from
 // this package. Store itself only owns the C5/C7/C8 query and write rules.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	core *store.Store
 }
 
 // NewStore wraps an already-open, already-migrated database handle.
@@ -26,10 +29,15 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// NewWritableStore binds guarded operations to the core's refresh lock.
+func NewWritableStore(core *store.Store) *Store {
+	return &Store{db: core.DB, core: core}
+}
+
 const timeLayout = time.RFC3339Nano
 
 // MinSchemaVersion is the first internal/store/migrations.go version whose
-// database has quota_windows and quota_envelopes. A read-only caller that
+// database has quota_windows_v2 and quota_envelopes_v2. A read-only caller that
 // cannot migrate (store.OpenReadOnly accepts any version up to and including
 // store.CurrentSchemaVersion) must check this before querying either table,
 // rather than let an older, still-supported install's "no such table" surface
@@ -44,7 +52,7 @@ const accountDigestDomain = "agent-deck:quota:account:v1"
 // accountDigest is C8's isolation key made storage-safe (QD-R3-F2):
 // architecture.md states account_id must "never reach a surface, a log, or
 // an exported file," but the raw value previously went straight into
-// quota_windows/quota_envelopes in the core database, which internal/backup
+// quota_windows_v2/quota_envelopes_v2 in the core database, which internal/backup
 // exports verbatim with no per-table filtering. Isolation only ever needs
 // equality, never the original value, so Store persists and compares only
 // this one-way SHA-256 digest; the raw account ID reaches neither table.
@@ -67,13 +75,13 @@ func accountDigest(client Client, accountID string) string {
 //     and never reaches ApplyObservation — arrival order cannot override C5.
 //   - C7's latest-plus-one-prior retention.
 //   - C8's account-isolation discard via discardOnAccountChange, run before
-//     every Codex write regardless of whether it lands on quota_windows or
-//     quota_envelopes (QD-R2-F1) — see that function's doc.
+//     every Codex write regardless of whether it lands on quota_windows_v2 or
+//     quota_envelopes_v2 (QD-R2-F1) — see that function's doc.
 //   - C8's Claude account scoping: Claude carries no account identifier, so
 //     obs.AccountID is forced empty for Claude regardless of what the caller
 //     passed (QD-R1-F6).
 //   - C8's export boundary: only accountDigest(obs.AccountID) ever reaches
-//     quota_windows; the raw account ID is not persisted (QD-R3-F2).
+//     quota_windows_v2; the raw account ID is not persisted (QD-R3-F2).
 //
 // accepted reports whether next replaced the stored state at all. resetObserved
 // and observedResetAt report this call's own C6 reset derivation, per
@@ -85,9 +93,11 @@ func (s *Store) Record(ctx context.Context, obs Observation) (accepted, resetObs
 		return false, false, time.Time{}, err
 	}
 	defer tx.Rollback()
-
-	accepted, resetObserved, storedObservedResetAt, err = recordObservation(ctx, tx, obs)
-	if err != nil || !accepted {
+	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, obs.Client); !allowed || err != nil {
+		return false, false, time.Time{}, err
+	}
+	accepted, resetObserved, storedObservedResetAt, err = writeQuotaWindow(ctx, tx, obs, 0, 0)
+	if !accepted || err != nil {
 		return accepted, resetObserved, storedObservedResetAt, err
 	}
 	if obs.Client == ClientCodex {
@@ -101,12 +111,11 @@ func (s *Store) Record(ctx context.Context, obs Observation) (accepted, resetObs
 	return accepted, resetObserved, storedObservedResetAt, nil
 }
 
-func recordObservation(ctx context.Context, tx *sql.Tx, obs Observation) (accepted, resetObserved bool, storedObservedResetAt time.Time, err error) {
+func writeQuotaWindow(ctx context.Context, tx quotaSQL, obs Observation, generation Generation, seq CycleSeq) (bool, bool, time.Time, error) {
 	if obs.Client == ClientClaude {
 		obs.AccountID = ""
 	}
 	digest := accountDigest(obs.Client, obs.AccountID)
-
 	if err := discardOnAccountChange(ctx, tx, obs.Client, digest); err != nil {
 		return false, false, time.Time{}, err
 	}
@@ -139,20 +148,21 @@ func recordObservation(ctx context.Context, tx *sql.Tx, obs Observation) (accept
 		stickyText = newSticky.Format(timeLayout)
 	}
 
-	if _, err := tx.ExecContext(ctx, `INSERT INTO quota_windows(
+	if _, err := tx.ExecContext(ctx, `INSERT INTO quota_windows_v2(
 			client, account_id, window_key, source, observed_at, vendor_order,
 			window_minutes, window_minutes_reason, label, used_percent, resets_at,
-			observed_reset_at, prior_used_percent, prior_observed_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			observed_reset_at, prior_used_percent, prior_observed_at, context_generation, cycle_seq
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(client, account_id, window_key) DO UPDATE SET
 			source=excluded.source, observed_at=excluded.observed_at, vendor_order=excluded.vendor_order,
 			window_minutes=excluded.window_minutes, window_minutes_reason=excluded.window_minutes_reason,
 			label=excluded.label, used_percent=excluded.used_percent, resets_at=excluded.resets_at,
 			observed_reset_at=excluded.observed_reset_at,
-			prior_used_percent=excluded.prior_used_percent, prior_observed_at=excluded.prior_observed_at`,
+			prior_used_percent=excluded.prior_used_percent, prior_observed_at=excluded.prior_observed_at,
+            context_generation=excluded.context_generation, cycle_seq=excluded.cycle_seq`,
 		string(obs.Client), digest, obs.WindowKey, string(obs.Source), obs.ObservedAt.Format(timeLayout), obs.VendorOrder,
 		obs.WindowMinutes, string(obs.WindowMinutesReason), obs.Label, obs.UsedPercent, obs.ResetsAt.Format(timeLayout),
-		stickyText, priorUsedPercent, priorObservedAt,
+		stickyText, priorUsedPercent, priorObservedAt, generation, seq,
 	); err != nil {
 		return false, false, time.Time{}, err
 	}
@@ -167,7 +177,7 @@ func recordObservation(ctx context.Context, tx *sql.Tx, obs Observation) (accept
 // carries no account identifier and is never isolated by one.
 //
 // QD-R2-F1: this must run before *every* Codex write, whether it lands on
-// quota_windows (Record) or quota_envelopes (PutEnvelope) — not only before a
+// quota_windows_v2 (Record) or quota_envelopes_v2 (PutEnvelope) — not only before a
 // window write. Triggering it from Record alone left two gaps: an envelope
 // written before that cycle's window write got deleted by the window write's
 // own discard immediately afterward, and an account whose probe legitimately
@@ -176,7 +186,7 @@ func recordObservation(ctx context.Context, tx *sql.Tx, obs Observation) (accept
 // previous account's windows attached under the new account's envelope.
 // Running the same check from both entry points closes both gaps regardless
 // of call order within one probe cycle.
-func discardOnAccountChange(ctx context.Context, tx *sql.Tx, client Client, accountID string) error {
+func discardOnAccountChange(ctx context.Context, tx quotaSQL, client Client, accountID string) error {
 	if client != ClientCodex {
 		return nil
 	}
@@ -187,21 +197,26 @@ func discardOnAccountChange(ctx context.Context, tx *sql.Tx, client Client, acco
 	if !found || existing == accountID {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ?`, string(client)); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_windows_v2 WHERE client = ?`, string(client)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_alert_notices WHERE client = ?`, string(client)); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_alert_notices_v2 WHERE client = ?`, string(client)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_envelopes WHERE client = ?`, string(client)); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_envelopes_v2 WHERE client = ?`, string(client)); err != nil {
 		return err
 	}
-	return nil
+	return clearCodexAssociation(ctx, tx)
+}
+
+func clearCodexAssociation(ctx context.Context, tx quotaSQL) error {
+	_, err := tx.ExecContext(ctx, "UPDATE quota_identities SET association='', association_cycle_seq=0 WHERE client='codex' AND association_cycle_seq<>0")
+	return err
 }
 
 // currentAccount resolves the account digest already on record for a client
-// (accountDigest's output, never a raw account ID), checking quota_envelopes
-// first and falling back to quota_windows so either write path sees a
+// (accountDigest's output, never a raw account ID), checking quota_envelopes_v2
+// first and falling back to quota_windows_v2 so either write path sees a
 // consistent answer regardless of which table currently holds data for the
 // client.
 //
@@ -209,22 +224,22 @@ func discardOnAccountChange(ctx context.Context, tx *sql.Tx, client Client, acco
 // authoritative account. PutEnvelopeFailure creates exactly such a row when
 // no envelope exists yet — it writes only failure/failure_at, leaving
 // account_id at the schema default "" — and that row must not be read as
-// "the account is now unknown/empty" when quota_windows already has a real
+// "the account is now unknown/empty" when quota_windows_v2 already has a real
 // account on record: doing so made the next successful observation for that
 // same account look like a change, discarding its own still-good windows.
-func currentAccount(ctx context.Context, tx *sql.Tx, client Client) (accountID string, found bool, err error) {
-	row := tx.QueryRowContext(ctx, `SELECT account_id, observed_at FROM quota_envelopes WHERE client = ?`, string(client))
+func currentAccount(ctx context.Context, tx quotaSQL, client Client) (accountID string, found bool, err error) {
+	row := tx.QueryRowContext(ctx, `SELECT account_id, observed_at FROM quota_envelopes_v2 WHERE client = ?`, string(client))
 	var observedAtText string
 	switch scanErr := row.Scan(&accountID, &observedAtText); {
 	case scanErr == nil:
 		if observedAtText != "" {
 			return accountID, true, nil
 		}
-		// Failure-only row; fall through to quota_windows below.
+		// Failure-only row; fall through to quota_windows_v2 below.
 	case scanErr != sql.ErrNoRows:
 		return "", false, scanErr
 	}
-	row = tx.QueryRowContext(ctx, `SELECT account_id FROM quota_windows WHERE client = ? LIMIT 1`, string(client))
+	row = tx.QueryRowContext(ctx, `SELECT account_id FROM quota_windows_v2 WHERE client = ? LIMIT 1`, string(client))
 	switch scanErr := row.Scan(&accountID); {
 	case scanErr == nil:
 		return accountID, true, nil
@@ -240,10 +255,10 @@ func currentAccount(ctx context.Context, tx *sql.Tx, client Client) (accountID s
 // observed_reset_at as an error rather than silently treating it as absent
 // (QD-R1-F8). accountID here is an accountDigest output, and the returned
 // Observation.AccountID carries that same digest, not a raw value (QD-R3-F2).
-func queryStored(ctx context.Context, tx *sql.Tx, client Client, accountID, windowKey string) (stored *Stored, sticky time.Time, err error) {
+func queryStored(ctx context.Context, tx quotaSQL, client Client, accountID, windowKey string) (stored *Stored, sticky time.Time, err error) {
 	row := tx.QueryRowContext(ctx, `SELECT source, observed_at, vendor_order, window_minutes, window_minutes_reason,
 			label, used_percent, resets_at, observed_reset_at
-		FROM quota_windows WHERE client = ? AND account_id = ? AND window_key = ?`,
+		FROM quota_windows_v2 WHERE client = ? AND account_id = ? AND window_key = ?`,
 		string(client), accountID, windowKey)
 
 	var source, observedAtText, minutesReason, label, resetsAtText, observedResetAtText string
@@ -283,9 +298,22 @@ func queryStored(ctx context.Context, tx *sql.Tx, client Client, accountID, wind
 // Window values ready for envelope assembly, ordered by VendorOrder (C11 —
 // QD-R1-F3) rather than by key.
 func (s *Store) Windows(ctx context.Context, client Client) ([]Window, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT window_key, source, observed_at, vendor_order, window_minutes,
+	return readQuota(s.db, ctx, func(r *SnapshotReader) ([]Window, error) {
+		return r.Windows(ctx, client)
+	})
+}
+
+func (r *SnapshotReader) Windows(ctx context.Context, client Client) ([]Window, error) {
+	if r.version.Schema < MinSchemaVersion {
+		return nil, nil
+	}
+	table := "quota_windows"
+	if r.version.Schema >= identitySchemaVersion {
+		table = "quota_windows_v2"
+	}
+	rows, err := r.tx.QueryContext(ctx, `SELECT window_key, source, observed_at, vendor_order, window_minutes,
 			window_minutes_reason, label, used_percent, resets_at, observed_reset_at
-		FROM quota_windows WHERE client = ? ORDER BY vendor_order`, string(client))
+		FROM `+table+` WHERE client = ? ORDER BY vendor_order`, string(client))
 	if err != nil {
 		return nil, err
 	}
@@ -329,15 +357,24 @@ func (s *Store) Windows(ctx context.Context, client Client) ([]Window, error) {
 // write (QD-R3-F2). Claude's forced-empty AccountID digests to the same ""
 // sentinel Record uses, so this is safe to call unconditionally per client.
 func (s *Store) PruneWindows(ctx context.Context, client Client, accountID string, keep []string) error {
-	return pruneWindows(ctx, s.db, client, accountID, keep)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, client); !allowed || err != nil {
+		return err
+	}
+	if err := pruneWindows(ctx, tx, client, accountID, keep); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func pruneWindows(ctx context.Context, db interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, client Client, accountID string, keep []string) error {
+func pruneWindows(ctx context.Context, tx quotaSQL, client Client, accountID string, keep []string) error {
 	digest := accountDigest(client, accountID)
 	if len(keep) == 0 {
-		_, err := db.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ? AND account_id = ?`,
+		_, err := tx.ExecContext(ctx, `DELETE FROM quota_windows_v2 WHERE client = ? AND account_id = ?`,
 			string(client), digest)
 		return err
 	}
@@ -346,9 +383,9 @@ func pruneWindows(ctx context.Context, db interface {
 	for _, key := range keep {
 		args = append(args, key)
 	}
-	query := `DELETE FROM quota_windows WHERE client = ? AND account_id = ? AND window_key NOT IN (` +
+	query := `DELETE FROM quota_windows_v2 WHERE client = ? AND account_id = ? AND window_key NOT IN (` +
 		strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + `)`
-	_, err := db.ExecContext(ctx, query, args...)
+	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -366,7 +403,7 @@ func pruneWindows(ctx context.Context, db interface {
 // carrying only Failure would zero every other field, erasing the last
 // known-good state a temporary failure must leave alone (QD-R2-F2).
 //
-// Only accountDigest(rec.AccountID) ever reaches quota_envelopes; the raw
+// Only accountDigest(rec.AccountID) ever reaches quota_envelopes_v2; the raw
 // account ID is not persisted (QD-R3-F2).
 func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -374,27 +411,33 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 		return err
 	}
 	defer tx.Rollback()
+	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, rec.Client); !allowed || err != nil {
+		return err
+	}
 	if rec.Client == ClientCodex {
 		if _, err := invalidateSamplesForAccount(ctx, tx, rec.Client, accountDigest(rec.Client, rec.AccountID)); err != nil {
 			return err
 		}
 	}
-	if err := putEnvelope(ctx, tx, rec); err != nil {
+	if err := putEnvelope(ctx, tx, rec, false, 0, 0); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func putEnvelope(ctx context.Context, tx *sql.Tx, rec EnvelopeRecord) error {
+func putEnvelope(ctx context.Context, tx quotaSQL, rec EnvelopeRecord, unsafePlan bool, generation Generation, seq CycleSeq) error {
 	if rec.Client == ClientClaude {
 		rec.AccountID = ""
+	}
+	unsafePlan = rec.Client == ClientCodex && (unsafePlan || rec.Plan != "" && !safePlanToken(rec.Plan))
+	if unsafePlan {
+		rec.Plan, rec.PlanReason = "", ReasonNotReported
 	}
 	digest := accountDigest(rec.Client, rec.AccountID)
 	creditsJSON, err := json.Marshal(rec.ResetAllowance.Credits)
 	if err != nil {
 		return err
 	}
-
 	if err := discardOnAccountChange(ctx, tx, rec.Client, digest); err != nil {
 		return err
 	}
@@ -412,12 +455,12 @@ func putEnvelope(ctx context.Context, tx *sql.Tx, rec EnvelopeRecord) error {
 		failureObservedAtText = rec.FailureObservedAt.Format(timeLayout)
 	}
 
-	if _, err := tx.ExecContext(ctx, `INSERT INTO quota_envelopes(
+	if _, err := tx.ExecContext(ctx, `INSERT INTO quota_envelopes_v2(
 			client, account_id, applicable, applicable_reason, source, observed_at,
 			plan, plan_reason, reset_allowance_reason,
 			reset_total, reset_total_reason, reset_remaining, reset_has_remaining, reset_credits_json,
-			billing_balance, billing_has_balance, failure, failure_at, backoff_until, failure_observed_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			billing_balance, billing_has_balance, failure, failure_at, backoff_until, failure_observed_at, plan_unsafe, context_generation, cycle_seq
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(client) DO UPDATE SET
 			account_id=excluded.account_id,
 			applicable=excluded.applicable, applicable_reason=excluded.applicable_reason,
@@ -428,15 +471,19 @@ func putEnvelope(ctx context.Context, tx *sql.Tx, rec EnvelopeRecord) error {
 			reset_credits_json=excluded.reset_credits_json,
 			billing_balance=excluded.billing_balance, billing_has_balance=excluded.billing_has_balance,
 			failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until,
-			failure_observed_at=excluded.failure_observed_at`,
+			failure_observed_at=excluded.failure_observed_at, plan_unsafe=excluded.plan_unsafe,
+            context_generation=excluded.context_generation, cycle_seq=excluded.cycle_seq, failure_detail=''`,
 		string(rec.Client), digest, boolToInt(rec.Applicable), string(rec.ApplicableReason), string(rec.Source), rec.ObservedAt.Format(timeLayout),
 		rec.Plan, string(rec.PlanReason), string(rec.ResetAllowanceReason),
 		rec.ResetAllowance.Total, string(rec.ResetAllowance.TotalReason), rec.ResetAllowance.Remaining, boolToInt(rec.ResetAllowance.HasRemaining), string(creditsJSON),
-		rec.Billing.Balance, boolToInt(rec.Billing.HasBalance), string(rec.Failure), failureAtText, backoffUntilText, failureObservedAtText,
+		rec.Billing.Balance, boolToInt(rec.Billing.HasBalance), string(rec.Failure), failureAtText, backoffUntilText, failureObservedAtText, boolToInt(unsafePlan), generation, seq,
 	); err != nil {
 		return err
 	}
 
+	if rec.Client == ClientCodex {
+		return clearCodexAssociation(ctx, tx)
+	}
 	return nil
 }
 
@@ -480,10 +527,10 @@ func (s *Store) putEnvelopeFailure(ctx context.Context, client Client, failure R
 	if !failureObservedAt.IsZero() {
 		failureObservedAtText = failureObservedAt.Format(timeLayout)
 	}
-	const query = `INSERT INTO quota_envelopes(client, failure, failure_at, backoff_until, failure_observed_at)
-		VALUES (?,?,?,?,?)
+	const query = `INSERT INTO quota_envelopes_v2(client, failure, failure_at, backoff_until, failure_observed_at)
+		SELECT ?,?,?,?,? WHERE ? <> 'claude' OR NOT EXISTS (SELECT 1 FROM quota_envelopes_v2 WHERE client='claude' AND (context_generation<>0 OR cycle_seq<>0))
 		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`
-	args := []any{string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText}
+	args := []any{string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText, string(client)}
 	if !authenticationFailed {
 		_, err := s.db.ExecContext(ctx, query, args...)
 		return err
@@ -493,6 +540,9 @@ func (s *Store) putEnvelopeFailure(ctx context.Context, client Client, failure R
 		return err
 	}
 	defer tx.Rollback()
+	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, client); !allowed || err != nil {
+		return err
+	}
 	if err := invalidateSamplesIfInstalled(ctx, tx, client); err != nil {
 		return err
 	}
@@ -507,11 +557,38 @@ func (s *Store) putEnvelopeFailure(ctx context.Context, client Client, failure R
 // accountDigest's output, not the raw account ID (QD-R3-F2) — Store never
 // persists or returns the original value.
 func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord, ok bool, err error) {
-	row := s.db.QueryRowContext(ctx, `SELECT account_id, applicable, applicable_reason, source, observed_at,
-			plan, plan_reason, reset_allowance_reason,
-			reset_total, reset_total_reason, reset_remaining, reset_has_remaining, reset_credits_json,
-			billing_balance, billing_has_balance, failure, failure_at, backoff_until, failure_observed_at
-		FROM quota_envelopes WHERE client = ?`, string(client))
+	read, err := readQuota(s.db, ctx, func(r *SnapshotReader) (UsageRecord, error) {
+		usage, _, err := r.Usage(ctx, client)
+		return usage, err
+	})
+	return read.Envelope, read.present, err
+}
+
+func (r *SnapshotReader) Usage(ctx context.Context, client Client) (usage UsageRecord, present bool, err error) {
+	if r.version.Schema < MinSchemaVersion {
+		return usage, false, nil
+	}
+	table := "quota_envelopes"
+	backoff, failureOrder := "''", "''"
+	extras := "0,0,0,'','','open_initial',-1,'',0,''"
+	if r.version.Schema >= 28 {
+		backoff = "backoff_until"
+	}
+	if r.version.Schema >= 30 {
+		failureOrder = "failure_observed_at"
+	}
+	if r.version.Schema >= identitySchemaVersion {
+		table = "quota_envelopes_v2"
+		extras = "plan_unsafe,cycle_seq,context_generation,invalidated_at,invalidated_reason,capture_gate,confirmed_generation,capture_open_boot,capture_open_mono,failure_detail"
+	}
+	row := r.tx.QueryRowContext(ctx, `SELECT account_id, applicable, applicable_reason, source, observed_at,
+            plan, plan_reason, reset_allowance_reason,
+            reset_total, reset_total_reason, reset_remaining, reset_has_remaining, reset_credits_json,
+            billing_balance, billing_has_balance, failure, failure_at,`+backoff+`,`+failureOrder+`,`+extras+
+		` FROM `+table+` WHERE client = ?`, string(client))
+	var rec EnvelopeRecord
+	var planUnsafe bool
+	var invalidatedAt string
 
 	rec.Client = client
 	var applicableInt, hasRemainingInt, hasBalanceInt int
@@ -519,11 +596,13 @@ func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord
 	switch scanErr := row.Scan(&rec.AccountID, &applicableInt, &applicableReason, &source, &observedAtText,
 		&rec.Plan, &planReason, &resetAllowanceReason,
 		&rec.ResetAllowance.Total, &totalReason, &rec.ResetAllowance.Remaining, &hasRemainingInt, &creditsJSON,
-		&rec.Billing.Balance, &hasBalanceInt, &failure, &failureAtText, &backoffUntilText, &failureObservedAtText); {
+		&rec.Billing.Balance, &hasBalanceInt, &failure, &failureAtText, &backoffUntilText, &failureObservedAtText, &planUnsafe, &usage.Seq, &usage.Claude.Generation,
+		&invalidatedAt, &usage.Claude.Invalidation, &usage.Claude.Gate, &usage.Claude.ConfirmedGeneration,
+		&usage.Claude.OpenedAt.Boot, &usage.Claude.OpenedAt.Mono, &usage.Detail); {
 	case scanErr == sql.ErrNoRows:
-		return EnvelopeRecord{}, false, nil
+		return UsageRecord{}, false, nil
 	case scanErr != nil:
-		return EnvelopeRecord{}, false, scanErr
+		return UsageRecord{}, false, scanErr
 	}
 
 	rec.Applicable = applicableInt != 0
@@ -533,7 +612,7 @@ func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord
 		// Empty when the client has only ever had a PutEnvelopeFailure write
 		// (no successful observation yet): ObservedAt correctly stays zero.
 		if rec.ObservedAt, err = time.Parse(timeLayout, observedAtText); err != nil {
-			return EnvelopeRecord{}, false, err
+			return UsageRecord{}, false, err
 		}
 	}
 	rec.PlanReason = Reason(planReason)
@@ -544,24 +623,35 @@ func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord
 	rec.Failure = Reason(failure)
 	if failureAtText != "" {
 		if rec.FailureAt, err = time.Parse(timeLayout, failureAtText); err != nil {
-			return EnvelopeRecord{}, false, err
+			return UsageRecord{}, false, err
 		}
 	}
 	if backoffUntilText != "" {
 		if rec.BackoffUntil, err = time.Parse(timeLayout, backoffUntilText); err != nil {
-			return EnvelopeRecord{}, false, err
+			return UsageRecord{}, false, err
 		}
 	}
 	if failureObservedAtText != "" {
 		if rec.FailureObservedAt, err = time.Parse(timeLayout, failureObservedAtText); err != nil {
-			return EnvelopeRecord{}, false, err
+			return UsageRecord{}, false, err
 		}
 	}
 	if err := json.Unmarshal([]byte(creditsJSON), &rec.ResetAllowance.Credits); err != nil {
-		return EnvelopeRecord{}, false, err
+		return UsageRecord{}, false, err
 	}
 
-	return rec, true, nil
+	if invalidatedAt != "" {
+		if usage.Claude.InvalidatedAt, err = time.Parse(timeLayout, invalidatedAt); err != nil {
+			return UsageRecord{}, false, err
+		}
+	}
+	if client == ClientCodex && rec.Plan != "" && !safePlanToken(rec.Plan) {
+		rec.Plan, rec.PlanReason, planUnsafe = "", ReasonNotReported, true
+	}
+	usage.FailureOrderKnown = !rec.FailureObservedAt.IsZero()
+	usage.Plan = PlanSources{planType: planField{value: rec.Plan, rejected: planUnsafe}}
+	usage.Envelope, usage.present = rec, true
+	return usage, true, nil
 }
 
 func boolToInt(b bool) int {

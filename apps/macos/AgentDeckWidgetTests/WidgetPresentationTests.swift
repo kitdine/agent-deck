@@ -35,6 +35,160 @@ final class WidgetPresentationTests: XCTestCase {
 		XCTAssertGreaterThan(WidgetLayoutContract.canvas(.systemLarge).height, WidgetLayoutContract.canvas(.systemMedium).height * 2)
 	}
 
+	@MainActor
+	func testCurrentCodexLoginWithoutAssociationShowsAndSpeaksTheHint() throws {
+		try assertCodexLoginHint(association: nil, expected: true)
+	}
+
+	@MainActor
+	func testOnlyExactCodexConfirmationSuppressesVisibleAndSpokenHint() throws {
+		try assertCodexLoginHint(association: "confirmed", expected: false)
+		try assertCodexLoginHint(association: "future", expected: true)
+	}
+
+	@MainActor
+	private func assertCodexLoginHint(association: String?, expected: Bool,
+		file: StaticString = #filePath, line: UInt = #line) throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients.removeAll { $0["client"] as? String != "codex" }
+			var identity = clients[0]["identity"] as! [String: Any]
+			identity["email_masked"] = "a***e@example.test"
+			identity["quota_association"] = association
+			clients[0]["identity"] = identity
+		}
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		let entry = AgentDeckWidgetEntry(date: now, outcome: .loaded(snapshot), kind: .quota, client: .codex, period: .today)
+		let chinese = WidgetCopy.resourceBundle.preferredLocalizations.first?.hasPrefix("zh") == true
+		let hint = chinese ? "与额度关联未确认" : "quota unconfirmed"
+		let spoken = chinese ? "当前登录 a 部分隐藏 e@example.test" : "Signed in a partly hidden e@example.test"
+		let labels = try ocrLines(entry: entry, family: .systemLarge, recognitionLanguages: [chinese ? "zh-Hans" : "en-US"])
+		let visible = labels.joined(separator: " ").lowercased().filter { !$0.isWhitespace }
+		XCTAssertTrue(visible.contains(chinese ? "当前登录" : "signedin"), "\(labels)", file: file, line: line)
+		XCTAssertEqual(visible.contains(hint.filter { !$0.isWhitespace }), expected, "\(labels)", file: file, line: line)
+
+		let model = WidgetSurfaceModel(entry: entry, now: now)
+		let client = try XCTUnwrap(snapshot.subscription.clients.first)
+		let login = try XCTUnwrap(model.quotaLogin(client, family: .systemLarge))
+		XCTAssertEqual(WidgetCopy.spokenLogin(login), spoken + (expected ? ", " + hint : ""), file: file, line: line)
+	}
+
+
+	@MainActor
+	private func ocrLines(entry: AgentDeckWidgetEntry, family: WidgetFamily, recognitionLanguages: [String]? = nil) throws -> [String] {
+		let size = WidgetLayoutContract.canvas(family)
+		let content = AgentDeckWidgetView(entry: entry, familyOverride: family, reduceMotionOverride: true)
+			.environment(\.colorScheme, .dark)
+			.frame(width: size.width, height: size.height)
+			.background(Color(red: 0.071, green: 0.082, blue: 0.110))
+		if let recognitionLanguages {
+			let renderer = ImageRenderer(content: content)
+			renderer.scale = 5
+			let cgImage = try XCTUnwrap(renderer.cgImage)
+			return try recognizedLines(cgImage, languages: recognitionLanguages)
+		}
+		let hosting = NSHostingView(rootView: content)
+		hosting.frame = NSRect(origin: .zero, size: size)
+		hosting.layoutSubtreeIfNeeded()
+		hosting.displayIfNeeded()
+		let scale = 2
+		let bitmap = try XCTUnwrap(NSBitmapImageRep(
+			bitmapDataPlanes: nil,
+			pixelsWide: Int(size.width) * scale,
+			pixelsHigh: Int(size.height) * scale,
+			bitsPerSample: 8,
+			samplesPerPixel: 4,
+			hasAlpha: true,
+			isPlanar: false,
+			colorSpaceName: .deviceRGB,
+			bytesPerRow: 0,
+			bitsPerPixel: 0
+		))
+		bitmap.size = size
+		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+		let cgImage = try XCTUnwrap(bitmap.cgImage)
+		return try recognizedLines(cgImage, languages: nil)
+	}
+
+	private func recognizedLines(_ image: CGImage, languages: [String]?) throws -> [String] {
+		let request = VNRecognizeTextRequest()
+		request.recognitionLevel = .accurate
+		request.usesLanguageCorrection = false
+		if let languages { request.recognitionLanguages = languages }
+		try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+		return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+	}
+
+	@MainActor
+	func testQuotaLoginAndWindowsStayWithinEachNativeSize() throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients[0]["plan_display"] = ["state": "raw_only", "short_name": String(repeating: "W", count: 64)]
+		}
+		let date = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+			for selection in [WidgetClient.codex, .claude] {
+				let entry = AgentDeckWidgetEntry(date: date, outcome: .loaded(snapshot), kind: .quota, client: selection, period: .today)
+				let capture = QuotaGeometryCapture()
+				let size = WidgetLayoutContract.canvas(family)
+				let view = QuotaGeometryProbe(content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+					.frame(width: size.width, height: size.height)
+					.background(GeometryReader { proxy in
+						Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self, value: ["canvas": proxy.frame(in: .global)])
+					}), capture: capture)
+				_ = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+				let canvas = try XCTUnwrap(capture.frames["canvas"]).insetBy(dx: -1, dy: -1)
+				for name in ["codex", "claude"] {
+					let shown = family == .systemLarge || selection.rawValue == name
+					let plan = capture.frames["plan.\(name).absolute"]
+					XCTAssertEqual(plan != nil, family == .systemLarge && name == "codex")
+					if let plan { XCTAssertTrue(canvas.contains(plan)); XCTAssertGreaterThan(plan.width, 0) }
+					let login = capture.frames["login.\(name).absolute"]
+					XCTAssertEqual(login != nil, family == .systemLarge)
+					if let login {
+						XCTAssertGreaterThan(login.width, 0)
+						XCTAssertTrue(canvas.contains(login), "\(family) \(name) login \(login) / \(canvas)")
+					}
+					let percentages = capture.frames.filter { $0.key.hasPrefix("percent.\(name).") && $0.key.hasSuffix(".absolute") }
+					XCTAssertEqual(!percentages.isEmpty, shown)
+					for (_, frame) in percentages {
+						XCTAssertTrue(canvas.contains(frame), "\(family) \(name) percentage \(frame) / \(canvas)")
+					}
+				}
+				if selection == .claude || family == .systemLarge {
+					let attribution = try XCTUnwrap(capture.frames["attribution.claude.absolute"])
+					XCTAssertTrue(canvas.contains(attribution))
+				}
+			}
+		}
+	}
+
+	@MainActor
+	func testInvalidatedQuotaFootersFitAndPreferTheKnownReason() throws {
+		let snapshot = try identityWidgetFixture { clients in
+			clients[0]["quota_context"] = ["reason": "new-reason"]
+			clients[1]["quota_context"] = ["reason": "identity_key_reset"]
+		}
+		let date = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		print("Task 6 rendered footer: \(WidgetCopy.text("Prior quota unlinked"))")
+		for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+			let entry = AgentDeckWidgetEntry(date: date, outcome: .loaded(snapshot), kind: .quota, client: .claude, period: .today)
+			let model = WidgetSurfaceModel(entry: entry, now: date)
+			XCTAssertEqual(model.quotaContextFooter(family: family), "Prior quota unlinked")
+			XCTAssertFalse(model.qualifiers(family: family).contains(.empty))
+			let size = WidgetLayoutContract.canvas(family)
+			let capture = QuotaGeometryCapture()
+			let view = QuotaGeometryProbe(content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+				.frame(width: size.width, height: size.height)
+				.background(GeometryReader { proxy in
+					Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self, value: ["canvas": proxy.frame(in: .global)])
+				}), capture: capture)
+			_ = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+			let footer = try XCTUnwrap(capture.frames["contextFooter"])
+			let canvas = try XCTUnwrap(capture.frames["canvas"])
+			XCTAssertTrue(canvas.insetBy(dx: -1, dy: -1).contains(footer))
+			XCTAssertGreaterThan(footer.width, 0)
+		}
+	}
+
 	func testPrototypeNumberFormattingDropsFalsePrecision() {
 		XCTAssertEqual(WidgetFormat.share("100.00"), "100%")
 		XCTAssertEqual(WidgetFormat.share("59.24"), "59.2%")
@@ -1401,39 +1555,6 @@ extension WidgetPresentationTests {
 		])
 		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
 
-		func ocrLines(entry: AgentDeckWidgetEntry, family: WidgetFamily) throws -> [String] {
-			let size = WidgetLayoutContract.canvas(family)
-			let content = AgentDeckWidgetView(entry: entry, familyOverride: family, reduceMotionOverride: true)
-				.environment(\.colorScheme, .dark)
-				.frame(width: size.width, height: size.height)
-				.background(Color(red: 0.071, green: 0.082, blue: 0.110))
-			let hosting = NSHostingView(rootView: content)
-			hosting.frame = NSRect(origin: .zero, size: size)
-			hosting.layoutSubtreeIfNeeded()
-			hosting.displayIfNeeded()
-			let scale = 2
-			let bitmap = try XCTUnwrap(NSBitmapImageRep(
-				bitmapDataPlanes: nil,
-				pixelsWide: Int(size.width) * scale,
-				pixelsHigh: Int(size.height) * scale,
-				bitsPerSample: 8,
-				samplesPerPixel: 4,
-				hasAlpha: true,
-				isPlanar: false,
-				colorSpaceName: .deviceRGB,
-				bytesPerRow: 0,
-				bitsPerPixel: 0
-			))
-			bitmap.size = size
-			hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-			let cgImage = try XCTUnwrap(bitmap.cgImage)
-			let request = VNRecognizeTextRequest()
-			request.recognitionLevel = .accurate
-			request.usesLanguageCorrection = false
-			let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-			try handler.perform([request])
-			return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-		}
 
 		func matchesModelPrefix(_ line: String) -> Bool {
 			line.contains("gpt-6-luna") || line.contains("gpt-b-luna") || line.contains("gpt-6") || line.contains("gpt-b")

@@ -428,7 +428,7 @@ func verifyFixture(at path: String) throws -> DesktopWireEnvelopeV1 {
               !envelope.data.provider.available, !envelope.data.usage.available,
               !envelope.data.sessions.available, envelope.data.health.available,
               envelope.warnings.contains("sessions_unavailable"),
-              schema?.count == 99, schema?.supportedCount == 37,
+              schema?.count == 99, schema?.supportedCount == 38,
               schema?.recoveryCommand == nil, hook?.count == 2,
               hook?.supportedCount == nil, hook?.recoveryCommand == nil
         else { throw DesktopWireError.invalidEnvelope("invalid schema-ahead fixture") }

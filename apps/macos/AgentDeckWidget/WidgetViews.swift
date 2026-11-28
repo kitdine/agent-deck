@@ -291,7 +291,8 @@ struct AgentDeckWidgetView: View {
 			entry: entry, qualifiers: model.qualifiers(family: family), family: family,
 			quotaObservedAt: entry.kind == .quota ? model.quotaFooterObservedAt(family: family) : nil,
 			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil,
-			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil
+			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil,
+			fixedFooterText: entry.kind == .quota ? model.quotaContextFooter(family: family).map { WidgetCopy.text($0) } : nil
 		) {
 			switch entry.kind {
 			case .magnitude: MagnitudeWidgetView(model: model, family: family)
@@ -452,7 +453,7 @@ private struct QuotaWidgetView: View {
 		let clients = model.presentedQuotaClients(family: family)
 		let layout = QuotaWidgetLayoutContract.presentation(family: family, clientCount: clients.count)
 		if clients.isEmpty {
-			UnavailableWidget(kind: .quota)
+			Text(WidgetCopy.text("No quota data")).font(.caption).foregroundStyle(.secondary)
 		} else if layout.axis == .vertical {
 			VStack(alignment: .leading, spacing: 0) {
 				ForEach(Array(clients.enumerated()), id: \.element.client) { index, client in
@@ -504,13 +505,18 @@ private struct QuotaWidgetView: View {
 		}
 	}
 
-	private func clientBlock(_ client: DesktopSubscriptionClientV1, includesAttribution: Bool = true) -> some View {
+	private func clientBlock(_ client: AppGroupQuotaClient, includesAttribution: Bool = true) -> some View {
 		let selected = model.quotaWindows(for: client, family: family)
 		return VStack(alignment: .leading, spacing: 5) {
 			HStack {
-				Text(client.client.capitalized).font(.system(size: 11, weight: .semibold))
-				Spacer()
-				if let plan = client.plan { Text(plan).font(.system(size: 9)).foregroundStyle(.secondary) }
+				Text(DesktopPresentationModelV1.clientDisplayLabel(client.client)).font(.system(size: 11, weight: .semibold))
+				if let plan = model.quotaPlan(client, family: family) {
+					Text(verbatim: plan).font(.system(size: 10)).foregroundStyle(.secondary)
+						.lineLimit(1).truncationMode(.tail)
+						.background(quotaGeometry("plan.\(client.client)"))
+				}
+				if family == .systemLarge, needsQuotaAttribution(client) { quotaAttribution(client) }
+				Spacer(minLength: 0)
 			}
 			if selected.isEmpty {
 				// Codex PR #5 fifth review, P2: two clients in the large
@@ -528,6 +534,8 @@ private struct QuotaWidgetView: View {
 							}
 							Spacer()
 							Text(quotaPercentText(window.usedPercent)).monospacedDigit()
+								.fixedSize(horizontal: true, vertical: false)
+								.background(quotaGeometry("percent.\(client.client).\(window.key)"))
 						}
 						.font(.system(size: 9.5)).lineLimit(1)
 						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
@@ -539,16 +547,29 @@ private struct QuotaWidgetView: View {
 					}
 				}
 			}
-			if includesAttribution, needsQuotaAttribution(client) { quotaAttribution(client) }
+			if family != .systemLarge, includesAttribution, needsQuotaAttribution(client) { quotaAttribution(client) }
+			if let login = model.quotaLogin(client, family: family) {
+				Divider()
+				HStack(spacing: 3) {
+					Text(WidgetCopy.format("Signed in %@", value: login.email)).truncationMode(.middle)
+					if login.associationUnconfirmed {
+						Text(WidgetCopy.text("quota unconfirmed")).fixedSize(horizontal: true, vertical: false)
+					}
+				}
+				.font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel(WidgetCopy.spokenLogin(login))
+				.background(quotaGeometry("login.\(client.client)"))
+			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
-	private func needsQuotaAttribution(_ client: DesktopSubscriptionClientV1) -> Bool {
-		client.client == "claude" && !client.attributionConfirmed && client.failure != .probeDisabled
+	private func needsQuotaAttribution(_ client: AppGroupQuotaClient) -> Bool {
+		client.client == "claude" && client.failure != .probeDisabled
 	}
 
-	private func quotaAttribution(_ client: DesktopSubscriptionClientV1) -> some View {
+	private func quotaAttribution(_ client: AppGroupQuotaClient) -> some View {
 		Text(WidgetCopy.text("Account attribution unconfirmed"))
 			.font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
 			.background(quotaGeometry("attribution.\(client.client)"))
@@ -595,7 +616,7 @@ struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {
 /// -- mirrors MenuBarPanelViews' primaryReason. observedAt distinguishes a
 /// successful probe that legitimately returned no windows (.notReported)
 /// from a client that has never been probed at all (.neverProbed).
-func quotaClientReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1 {
+func quotaClientReason(_ client: AppGroupQuotaClient) -> DesktopQuotaReasonV1 {
 	if !client.applicable { return client.applicableReason ?? .notOfficial }
 	if let failure = client.failure { return failure }
 	return client.observedAt != nil ? .notReported : .neverProbed
@@ -625,6 +646,14 @@ private struct WidgetFooter: View {
 		)
 		HStack(spacing: 5) {
 			Text(presentation.updateText)
+				.background {
+					if entry.kind == .quota, fixedText != nil {
+						GeometryReader { proxy in
+							Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self,
+								value: ["contextFooter": proxy.frame(in: .global)])
+						}
+					}
+				}
 				.foregroundStyle(presentation.isOld ? WidgetPalette.warn : Color.secondary)
 			Spacer(minLength: 3)
 			if !presentation.qualifierText.isEmpty {

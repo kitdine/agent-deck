@@ -116,12 +116,13 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 		s.AfterCoreSnapshot()
 	}
 	// Only the private snapshot is cleaned; the live core is never written.
-	if err = scrubPrivateCore(ctx, coreSnapshot, append([]string{quotaSampleTable}, originNonPortableTables...)); err != nil {
+	compactSnapshot := filepath.Join(staging, "core.compact.sqlite3")
+	if err = preparePortableCore(ctx, coreSnapshot, compactSnapshot); err != nil {
 		return Manifest{}, fmt.Errorf("prepare core snapshot: %w", err)
 	}
 
 	entries := make(map[string][]byte)
-	if entries[coreName], err = os.ReadFile(coreSnapshot); err != nil {
+	if entries[coreName], err = os.ReadFile(compactSnapshot); err != nil {
 		return Manifest{}, err
 	}
 	snapshot, err := store.OpenReadOnly(ctx, staging)
@@ -195,11 +196,9 @@ var originNonPortableTables = []string{"origin_mutations", "session_origins", "o
 
 const quotaSampleTable = "quota_session_samples"
 
-// scrubPrivateCore cleans a private snapshot or an unpublished restore target.
-// secure_delete erases deleted records in live pages. A database with sample
-// history can also contain remnants of old generations in free pages, so
-// rebuild that private file before truncating its write-ahead log.
-func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string) (err error) {
+// preparePortableCore scrubs a private snapshot and archives a rebuilt copy
+// so rows previously removed from the source cannot survive in unused bytes.
+func preparePortableCore(ctx context.Context, snapshotPath, compactPath string) (err error) {
 	database, err := sql.Open("sqlite", "file:"+snapshotPath+"?mode=rw")
 	if err != nil {
 		return err
@@ -230,8 +229,7 @@ func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string)
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
 		}
 	}()
-	rebuild := false
-	for _, table := range tables {
+	for _, table := range append([]string{quotaSampleTable}, originNonPortableTables...) {
 		var present int
 		if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
 			return err
@@ -239,8 +237,21 @@ func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string)
 		if present == 0 {
 			continue
 		}
-		rebuild = rebuild || table == quotaSampleTable
 		if _, err = conn.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	for _, statement := range []string{
+		"DELETE FROM quota_identities",
+		"UPDATE quota_cycle SET seq=0,revalidate_seq=0",
+		`UPDATE quota_envelopes_v2 SET cycle_seq=0,context_generation=0,invalidated_at='',invalidated_reason='',
+            capture_gate='open_initial',confirmed_generation=-1,capture_open_boot='',capture_open_mono=0,
+            failure_detail='',plan_unsafe=0`,
+		"UPDATE quota_windows_v2 SET cycle_seq=0,context_generation=0",
+		// A generation reset can collapse multiple notice keys.
+		"DELETE FROM quota_alert_notices_v2 WHERE context_generation<>0",
+	} {
+		if _, err = conn.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
@@ -248,11 +259,6 @@ func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string)
 		return err
 	}
 	committed = true
-	if rebuild {
-		if _, err = conn.ExecContext(ctx, "VACUUM"); err != nil {
-			return err
-		}
-	}
 	// Fold the write-ahead log into the main file that becomes the archive entry.
 	var busy, logFrames, checkpointed int
 	if err = conn.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
@@ -260,6 +266,43 @@ func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string)
 	}
 	if busy != 0 {
 		return errors.New("core snapshot checkpoint did not complete")
+	}
+	if _, err = conn.ExecContext(ctx, "VACUUM INTO ?", compactPath); err != nil {
+		return err
+	}
+	return validatePortableQuotaCore(ctx, compactPath)
+}
+
+func validatePortableQuotaCore(ctx context.Context, path string) error {
+	if _, err := os.Lstat(path + "-wal"); !errors.Is(err, fs.ErrNotExist) {
+		return errors.New("unexpected portable core WAL")
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var integrity string
+	var free, identities, samples, version int
+	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil {
+		return err
+	}
+	if err := db.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&free); err != nil {
+		return err
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM quota_identities").Scan(&identities); err != nil {
+		return err
+	}
+	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&version); err != nil {
+		return err
+	}
+	if version >= store.QuotaSessionSamplesSchemaVersion {
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM "+quotaSampleTable).Scan(&samples); err != nil {
+			return err
+		}
+	}
+	if integrity != "ok" || free != 0 || identities != 0 || samples != 0 {
+		return errors.New("portable core did not pass quota cleanup checks")
 	}
 	return nil
 }
@@ -466,7 +509,7 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 	if err = json.Unmarshal(entries[credentialsName], &credentials); err != nil {
 		return Manifest{}, fmt.Errorf("%w: credentials", ErrInvalidArchive)
 	}
-	referenceOwners, err := validateCoreSnapshot(ctx, entries[coreName], manifest.DatabaseSchemas[coreName])
+	referenceOwners, portableSchema, err := validateCoreSnapshot(ctx, entries[coreName], manifest.DatabaseSchemas[coreName])
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -563,6 +606,11 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 			}
 		}
 	}
+	if portableSchema.prematureIdentityTable {
+		if err := dropPrematureQuotaIdentityTable(ctx, corePath); err != nil {
+			return Manifest{}, err
+		}
+	}
 	database, openErr := store.OpenWithLockHeld(ctx, targetRoot)
 	if openErr != nil {
 		err = openErr
@@ -630,11 +678,9 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 	// the source account's last-known figures visible there. Clear both clients,
 	// including Claude whose observations have no account identifier. Any error
 	// follows Restore's existing rollback of the newly created target files.
-	for _, table := range []string{"quota_windows", "quota_envelopes", "quota_alert_notices"} {
-		if _, err = database.DB.ExecContext(ctx, "DELETE FROM "+table); err != nil {
-			_ = database.Close()
-			return Manifest{}, err
-		}
+	if err = clearRestoredQuotaState(ctx, database.DB, portableSchema.compact); err != nil {
+		_ = database.Close()
+		return Manifest{}, err
 	}
 	// Codex PR #5 twelfth review, P2: quota.statusline asserts a capture
 	// route this restore never installs -- ~/.claude/settings.json and the
@@ -659,10 +705,6 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		}
 	}
 	if err = database.Close(); err != nil {
-		return Manifest{}, err
-	}
-	if err = scrubPrivateCore(ctx, corePath, []string{quotaSampleTable}); err != nil {
-		err = fmt.Errorf("clear private quota samples: %w", err)
 		return Manifest{}, err
 	}
 	if _, included := entries[sessionsName]; included {
@@ -829,40 +871,123 @@ func readEncrypted(path, passphrase string) (Manifest, map[string][]byte, error)
 	return manifest, entries, nil
 }
 
-func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[string]int64, error) {
+func clearRestoredQuotaState(ctx context.Context, db *sql.DB, compact bool) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if compact {
+		if _, err := conn.ExecContext(ctx, "PRAGMA secure_delete=ON"); err != nil {
+			return err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+		}
+	}()
+	for _, statement := range []string{
+		"DELETE FROM quota_windows_v2", "DELETE FROM quota_envelopes_v2",
+		"DELETE FROM quota_alert_notices_v2", "DELETE FROM quota_identities",
+		"DELETE FROM " + quotaSampleTable,
+		"UPDATE quota_cycle SET seq=0,revalidate_seq=0",
+	} {
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	if !compact {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, "VACUUM"); err != nil {
+		return err
+	}
+	var busy, frames, written int
+	if err := conn.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &written); err != nil {
+		return err
+	}
+	if busy != 0 {
+		return errors.New("restored core checkpoint did not complete")
+	}
+	return nil
+}
+
+type portableCoreSchema struct {
+	compact                bool
+	prematureIdentityTable bool
+}
+
+// Some external archives carry the identity table before advertising its
+// schema. Recreate it through the ordered migration and compact afterward.
+func dropPrematureQuotaIdentityTable(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rw")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.ExecContext(ctx, "DROP TABLE quota_identities")
+	return err
+}
+
+func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[string]int64, portableCoreSchema, error) {
 	root, err := os.MkdirTemp("", "agentdeck-restore-validate-")
 	if err != nil {
-		return nil, err
+		return nil, portableCoreSchema{}, err
 	}
 	defer os.RemoveAll(root)
 	if err = os.Chmod(root, platform.DirectoryMode); err != nil {
-		return nil, err
+		return nil, portableCoreSchema{}, err
 	}
 	if err = os.WriteFile(filepath.Join(root, coreName), data, platform.FileMode); err != nil {
-		return nil, err
+		return nil, portableCoreSchema{}, err
 	}
 	database, err := store.OpenReadOnly(ctx, root)
 	if err != nil {
-		return nil, fmt.Errorf("%w: core database", ErrInvalidArchive)
+		return nil, portableCoreSchema{}, fmt.Errorf("%w: core database", ErrInvalidArchive)
 	}
 	version, err := database.SchemaVersion(ctx)
 	if err != nil || version != expected || version > store.CurrentSchemaVersion {
-		return nil, fmt.Errorf("%w: database schema", ErrInvalidArchive)
+		_ = database.Close()
+		return nil, portableCoreSchema{}, fmt.Errorf("%w: database schema", ErrInvalidArchive)
+	}
+	var hasIdentityTable bool
+	if err := database.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master
+        WHERE type='table' AND name='quota_identities')`).Scan(&hasIdentityTable); err != nil {
+		_ = database.Close()
+		return nil, portableCoreSchema{}, err
+	}
+	schema := portableCoreSchema{
+		compact:                version >= store.QuotaIdentitySchemaVersion || hasIdentityTable,
+		prematureIdentityTable: version < store.QuotaIdentitySchemaVersion && hasIdentityTable,
 	}
 	if err = database.Close(); err != nil {
-		return nil, err
+		return nil, portableCoreSchema{}, err
+	}
+	if schema.prematureIdentityTable {
+		if err := dropPrematureQuotaIdentityTable(ctx, filepath.Join(root, coreName)); err != nil {
+			return nil, portableCoreSchema{}, err
+		}
 	}
 	database, err = store.Open(ctx, root)
 	if err != nil {
-		return nil, fmt.Errorf("%w: core database migration", ErrInvalidArchive)
+		return nil, portableCoreSchema{}, fmt.Errorf("%w: core database migration", ErrInvalidArchive)
 	}
 	defer database.Close()
 	if err = validateOriginState(ctx, database); err != nil {
-		return nil, err
+		return nil, portableCoreSchema{}, err
 	}
 	providers, err := database.ListProviders(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%w: provider records", ErrInvalidArchive)
+		return nil, portableCoreSchema{}, fmt.Errorf("%w: provider records", ErrInvalidArchive)
 	}
 	referenceSet := make(map[string]int64, len(providers))
 	for _, provider := range providers {
@@ -872,7 +997,7 @@ func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[s
 			}
 		}
 	}
-	return referenceSet, nil
+	return referenceSet, schema, nil
 }
 
 func sortedReferenceOwners(values map[string]int64) []string {

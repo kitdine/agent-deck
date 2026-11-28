@@ -81,6 +81,7 @@
 		A10000000000000000000054 /* SessionOriginTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000054 /* SessionOriginTransport.swift */; };
 		A10000000000000000000055 /* SessionOriginSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000055 /* SessionOriginSettingsController.swift */; };
 		A10000000000000000000056 /* SessionOriginSettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */; };
+		A10000000000000000000060 /* SettingsWindowLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000060 /* SettingsWindowLifecycleTests.swift */; };
 		A10000000000000000000057 /* SessionOriginTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000057 /* SessionOriginTransportTests.swift */; };
 		A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* QuotaAlertNotifier.swift */; };
 		A1000000000000000000003E /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
@@ -143,6 +144,7 @@
 		A20000000000000000000054 /* SessionOriginTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginTransport.swift; sourceTree = "<group>"; };
 		A20000000000000000000055 /* SessionOriginSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginSettingsController.swift; sourceTree = "<group>"; };
 		A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginSettingsControllerTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000060 /* SettingsWindowLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowLifecycleTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000057 /* SessionOriginTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOriginTransportTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 				A20000000000000000000051 /* TelemetrySettingsControllerTests.swift */,
 				A20000000000000000000053 /* SessionScopeControllerTests.swift */,
 				A20000000000000000000056 /* SessionOriginSettingsControllerTests.swift */,
+				A20000000000000000000060 /* SettingsWindowLifecycleTests.swift */,
 			);
 			path = AgentDeckAppTests;
 			sourceTree = "<group>";
@@ -668,6 +671,7 @@
 				A10000000000000000000051 /* TelemetrySettingsControllerTests.swift in Sources */,
 				A10000000000000000000053 /* SessionScopeControllerTests.swift in Sources */,
 				A10000000000000000000056 /* SessionOriginSettingsControllerTests.swift in Sources */,
+				A10000000000000000000060 /* SettingsWindowLifecycleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

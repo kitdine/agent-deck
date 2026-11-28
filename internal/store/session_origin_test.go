@@ -97,11 +97,8 @@ func TestOriginReadOnlyPathsNeverCreateOrMigrate(t *testing.T) {
 		t.Fatalf("read-only open created the state root: %v", err)
 	}
 	// A core that predates migration 34 is read as having no origin facts.
-	core, err := Open(ctx, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	downgradeToSchema33(t, core)
+	core := openCoreAtVersion(t, root, 33)
+	var err error
 	if err = core.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -123,23 +120,6 @@ func TestOriginReadOnlyPathsNeverCreateOrMigrate(t *testing.T) {
 	}
 	if _, err = readOnly.ApplyOriginMutation(ctx, clearMutation("ro", 0)); !errors.Is(err, ErrDerivedSnapshotGenerationReadOnly) {
 		t.Fatalf("read-only mutation err = %v", err)
-	}
-}
-
-func downgradeToSchema33(t *testing.T, core *Store) {
-	t.Helper()
-	for _, op := range []string{"insert", "update", "delete"} {
-		if _, err := core.DB.Exec("DROP TRIGGER derived_snapshot_generation_telemetry_sessions_" + op); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := core.DB.Exec(`
-		DROP TRIGGER quota_samples_on_session_delete;
-		DROP TRIGGER quota_samples_on_provider_selection;
-		DROP TRIGGER quota_samples_on_observed_provider;
-		DROP TABLE quota_session_samples;
-		DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; UPDATE schema_metadata SET version=33`); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -502,8 +482,8 @@ func TestOriginWritesKeepPrivatePermissions(t *testing.T) {
 
 func TestOriginMigrationFailureRollsBackAndSchemaAheadRefuses(t *testing.T) {
 	ctx := context.Background()
-	root, core := originTestStore(t)
-	downgradeToSchema33(t, core)
+	root := t.TempDir()
+	core := openCoreAtVersion(t, root, 33)
 	if _, err := core.DB.Exec(`CREATE TABLE origin_preferences (unexpected TEXT)`); err != nil {
 		t.Fatal(err)
 	}

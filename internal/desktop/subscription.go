@@ -2,13 +2,12 @@ package desktop
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/store"
-	"github.com/kitdine/agent-deck/internal/usage"
 )
 
 // SubscriptionSnapshot is architecture.md C11's additive section. It is also
@@ -16,15 +15,20 @@ import (
 // section could not be built at all; every per-client state, including the
 // gate and reading off, is a client record rather than a missing section.
 type SubscriptionSnapshot struct {
-	Available bool                 `json:"available"`
-	Reading   bool                 `json:"reading"`
-	Clients   []SubscriptionClient `json:"clients"`
+	Projection *SubscriptionProjection `json:"projection"`
+	Available  bool                    `json:"available"`
+	Reading    bool                    `json:"reading"`
+	Clients    []SubscriptionClient    `json:"clients"`
 }
 
 // SubscriptionClient follows the prototype's quota fixture: an absent field is
 // null with a *_reason from C6's closed set. It carries no account identifier
 // and no billing balance (C11).
 type SubscriptionClient struct {
+	PlanDisplay          *SubscriptionPlan           `json:"plan_display"`
+	Identity             *SubscriptionIdentity       `json:"identity"`
+	FailureDetail        *string                     `json:"failure_detail"`
+	QuotaContext         *SubscriptionContext        `json:"quota_context"`
 	Client               string                      `json:"client"`
 	Applicable           bool                        `json:"applicable"`
 	ApplicableReason     *string                     `json:"applicable_reason"`
@@ -102,15 +106,16 @@ func unavailableSubscription() SubscriptionSnapshot {
 func ReadingOffSubscription() SubscriptionSnapshot {
 	clients := make([]SubscriptionClient, 0, 2)
 	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
-		entry, _ := subscriptionClient(context.Background(), nil, client, false, quota.ReasonProbeDisabled, 0, time.Time{})
+		entry, _ := subscriptionClient(context.Background(), nil, nil, client, false, quota.ReasonProbeDisabled, 0, time.Time{})
 		clients = append(clients, entry)
 	}
 	return SubscriptionSnapshot{Available: true, Reading: false, Clients: clients}
 }
 
-func (s Service) loadSubscription(ctx context.Context, core *store.Store, now time.Time, result *Result) {
-	subscription, err := s.BuildSubscription(ctx, core, now)
+func (s Service) loadSubscription(ctx context.Context, core *store.Store, _ time.Time, result *Result) {
+	subscription, err := s.BuildSubscription(ctx, core, time.Time{})
 	if err != nil {
+		result.Snapshot.Subscription = unavailableSubscription()
 		result.warn("subscription_unavailable")
 		return
 	}
@@ -121,50 +126,49 @@ func (s Service) loadSubscription(ctx context.Context, core *store.Store, now ti
 // read-only: it reads the quota settings, the provider gate's inputs, and the
 // stored quota state, and writes nothing.
 func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now time.Time) (SubscriptionSnapshot, error) {
-	// core may be opened read-only (store.OpenReadOnly never migrates) and can
-	// therefore still be on a schema version older than quota.MinSchemaVersion
-	// -- an existing install that has not yet run any write command since
-	// upgrading. Querying quota_windows/quota_envelopes on such a database
-	// would fail with "no such table"; report the same reading-off default a
-	// fresh install reports instead (Codex PR #5 sixth review, P1).
-	version, err := core.SchemaVersion(ctx)
+	tx, err := core.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return unavailableSubscription(), err
 	}
-	if version < quota.MinSchemaVersion {
+	defer tx.Rollback()
+	reader, err := quota.NewSnapshotReader(ctx, tx)
+	if err != nil {
+		return unavailableSubscription(), err
+	}
+	version := reader.ReadVersion()
+	clock := quota.BeginStatusLineCapture()
+	stamp := clock.BootStamp()
+	if now.IsZero() {
+		now = clock.ObservedAt
+		if s.Now != nil {
+			now = s.Now()
+		}
+	}
+	if version.Schema < quota.MinSchemaVersion {
 		return ReadingOffSubscription(), nil
 	}
-	settings, err := quota.LoadSettings(ctx, core)
+	var projection *SubscriptionProjection
+	if stamp != nil {
+		projection = &SubscriptionProjection{version.CoreEpoch, version.Revision, stamp.Boot, stamp.Mono}
+	}
+	inputs := subscriptionInputs{tx}
+	settings, err := quota.LoadSettings(ctx, inputs)
 	if err != nil {
 		return unavailableSubscription(), err
 	}
-	// Codex PR #5 ninth review, P2: Current already treats "no selection
-	// recorded" (sql.ErrNoRows) as a normal, errorless empty result --
-	// continuing past it inside the loop -- so a non-nil error here is a
-	// genuine read failure (unreadable provider tables, a transient
-	// database error), not the ordinary "nothing selected yet" case.
-	// Swallowing it made both clients read as recordedOfficial=false, so
-	// agentdeck quota exited successfully claiming "provider is not
-	// official" -- a specific, false accusation -- while also hiding any
-	// retained quota windows the subscription would otherwise still show.
-	selections, err := (provider.Service{Store: core}).Current(ctx)
-	if err != nil {
-		return unavailableSubscription(), err
-	}
-	usageService := usage.New(core, s.Home)
-	quotaStore := quota.NewStore(core.DB)
 	clients := make([]SubscriptionClient, 0, len(settings.ProbeClients))
 	for _, client := range settings.ProbeClients {
-		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
-		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
-		allowed, reason := quota.Allowed(settings.ProbeEnabled, recordedOfficial, observedKnown, observedOfficial)
-		entry, err := subscriptionClient(ctx, quotaStore, client, allowed, reason, settings.ProbeInterval, now)
+		allowed, reason, err := inputs.gate(ctx, client, settings.ProbeEnabled)
+		if err != nil {
+			return unavailableSubscription(), err
+		}
+		entry, err := subscriptionClient(ctx, reader, tx, client, allowed, reason, settings.ProbeInterval, now)
 		if err != nil {
 			return unavailableSubscription(), err
 		}
 		clients = append(clients, entry)
 	}
-	return SubscriptionSnapshot{Available: true, Reading: settings.ProbeEnabled, Clients: clients}, nil
+	return SubscriptionSnapshot{Available: true, Reading: settings.ProbeEnabled, Clients: clients, Projection: projection}, nil
 }
 
 // subscriptionClient projects one client. Reading off keeps applicable true
@@ -173,7 +177,7 @@ func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now t
 // applicable. A parse failure after the last success presents no figure
 // (requirements.md clause 6); a probe failure keeps the last figure with its
 // real age (C9).
-func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Client, allowed bool, gateReason quota.Reason, interval time.Duration, now time.Time) (SubscriptionClient, error) {
+func subscriptionClient(ctx context.Context, qs *quota.SnapshotReader, tx *sql.Tx, client quota.Client, allowed bool, gateReason quota.Reason, interval time.Duration, now time.Time) (SubscriptionClient, error) {
 	out := SubscriptionClient{
 		Client:               string(client),
 		Applicable:           true,
@@ -207,8 +211,12 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 	if err != nil {
 		return SubscriptionClient{}, err
 	}
-	rec, hasRecord, err := qs.Envelope(ctx, client)
+	usage, hasRecord, err := qs.Usage(ctx, client)
+	rec := usage.Envelope
 	if err != nil {
+		return SubscriptionClient{}, err
+	}
+	if err := projectSubscriptionFacts(ctx, &out, qs, tx, client, usage, now, interval); err != nil {
 		return SubscriptionClient{}, err
 	}
 	windowSource, windowObservedAt := newestWindowSource(windows)
@@ -233,8 +241,14 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 	// older than a later prose failure was wrongly read as superseding that
 	// failure, hiding it even though the failure is the freshest thing that
 	// happened.
-	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && windowObservedAt.After(rec.FailureObservedAt)
+	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && usage.FailureOrderKnown && windowObservedAt.After(rec.FailureObservedAt)
 	failed := hasRecord && rec.Failure != "" && !supersededByStatusLine
+	if failed && client == quota.ClientClaude && rec.Failure == quota.ReasonParseFailed {
+		switch usage.Detail {
+		case quota.DetailMissingLine, quota.DetailShapeInvalid, quota.DetailTimezoneUnresolved:
+			out.FailureDetail = optional(string(usage.Detail))
+		}
+	}
 
 	switch {
 	case observedAt.IsZero() && !failed:
@@ -249,6 +263,9 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 		// (WC-R2-F1) — requirements.md clause 6's "observation instant of the
 		// failed attempt".
 		out.ObservedAt = timeText(rec.FailureObservedAt)
+		if out.ObservedAt == nil {
+			out.ObservedAt = timeText(rec.FailureAt)
+		}
 		// The envelope records only these probe routes. Retained windows name
 		// the last successful observation, not this failure-only attempt.
 		failureSource := quota.SourceCodex

@@ -20,7 +20,7 @@ created: 2026-11-18
 
 ### 采样存储和事务
 
-在 (35 → 36 → 37) 的当前合成升级路径中，36 为计价主题迁移，37 为本主题。移到已含其他迁移的目标时，在计价结果所在主线的当前最高 schema 后按 [迁移规则](../../../.agent-instructions/branching.md) 顺延，对组合升级后的编号、原生识别和恢复重新验证。
+v0.8.0 第一批装配后，升级路径为 35 → 36 → 37 → 38：36 为 v0.7.5 已发布的额度身份迁移，37 为计价主题迁移，38 为本主题。装配前的合成路径曾为 35 → 36 → 37，其中 36 为计价、37 为本主题。移到已含其他迁移的目标时，在计价结果所在主线的当前最高 schema 后按 [迁移规则](../../../.agent-instructions/branching.md) 顺延，对组合升级后的编号、原生识别和恢复重新验证。
 
 新表 `quota_session_samples` 的键为 `(client, slot)`，`slot` 只能为 `active` 或 `latest`。列为 `client`、`slot`、`generation`（随机、唯一且非空的本次标识）、`session_id`（选中本机用量会话键）、`started_at`、可空 `finished_at`、非空 `start_json`、可空 `finish_json`。时间用 UTC RFC3339Nano。`active` 只有首端点，`latest` 包含两端。每端使用带 `version=1` 的白名单结构，字段为 `probe_started_at`、`probe_completed_at`、`source`、可空 `account_digest`、`windows[]`。窗口字段为 `window_key`、`pool`、`slot`、`window_minutes`、`used_percent`、`resets_at`、可空 `observed_reset_at`、可空 `precision_pp`；精度字段仅用于已知四舍五入的供应商读数。金额与估值按当前可读事实推导。
 

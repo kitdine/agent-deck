@@ -9,10 +9,10 @@ import (
 )
 
 func TestServingCoreSchemaCompatibility(t *testing.T) {
-	for current := 30; current <= 38; current++ {
-		for stored := 30; stored <= 38; stored++ {
+	for current := 30; current <= store.CurrentSchemaVersion+1; current++ {
+		for stored := 30; stored <= store.CurrentSchemaVersion+1; stored++ {
 			want := (stored == current && current <= store.QuotaSessionSamplesSchemaVersion) ||
-				(current >= 32 && current <= 35 && stored >= 31 && stored < current) ||
+				(current >= 32 && current <= store.QuotaIdentitySchemaVersion && stored >= 31 && stored < current) ||
 				(stored == store.PricingFactsSchemaVersion && current == store.QuotaSessionSamplesSchemaVersion)
 			if got := compatibleServingCoreSchema(stored, current); got != want {
 				t.Errorf("stored %d, current %d: compatible=%v, want %v", stored, current, got, want)
@@ -31,6 +31,10 @@ func TestServingQuotaSamplesSchemaRetainsPricingPredecessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	full.Header.Generation.CoreSchema = store.PricingFactsSchemaVersion
+	unsafePlan := "legacy-unsafe@example.test"
+	full.Payload.Data.Subscription = SubscriptionSnapshot{
+		Available: true, Reading: true, Clients: []SubscriptionClient{{Client: "codex", Plan: &unsafePlan}},
+	}
 	retained, err := encodeServingSnapshot(full)
 	if err != nil {
 		t.Fatal(err)
@@ -38,10 +42,16 @@ func TestServingQuotaSamplesSchemaRetainsPricingPredecessor(t *testing.T) {
 	if err := writeServingSnapshot(s.StateRoot, retained); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReadServingSnapshot(ctx); err != nil {
+	old, err := s.ReadServingSnapshot(ctx)
+	if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
 		t.Fatalf("pricing predecessor publication should remain readable: %v", err)
 	}
-	for _, schema := range []int{30, 31, 32, 33, 34, 35, store.QuotaSessionSamplesSchemaVersion + 1} {
+	for _, client := range old.Payload.Data.Subscription.Clients {
+		if client.Plan != nil && *client.Plan == unsafePlan {
+			t.Fatal("retained cached plan instead of reprojecting subscription")
+		}
+	}
+	for _, schema := range []int{30, 31, 32, 33, 34, 35, store.QuotaIdentitySchemaVersion, store.QuotaSessionSamplesSchemaVersion + 1} {
 		full.Header.Generation.CoreSchema = schema
 		data, err := encodeServingSnapshot(full)
 		if err != nil {

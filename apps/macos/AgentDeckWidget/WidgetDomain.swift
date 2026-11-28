@@ -242,7 +242,7 @@ struct WidgetSurfaceModel {
 				result.append(.aging)
 			}
 		}
-		if isEmpty(family: family) {
+		if isEmpty(family: family), entry.kind != .quota || quotaContextFooter(family: family) == nil {
 			result.append(.empty)
 		}
 		return result
@@ -274,22 +274,66 @@ struct WidgetSurfaceModel {
 		}
 	}
 
-	var quotaClients: [DesktopSubscriptionClientV1] {
+	var quotaClients: [AppGroupQuotaClient] {
 		guard let subscription = entry.snapshot?.subscription else { return [] }
 		if entry.client == .all { return subscription.clients }
 		return subscription.clients.filter { $0.client == entry.client.rawValue }
 	}
 
-	func presentedQuotaClients(family: WidgetFamily) -> [DesktopSubscriptionClientV1] {
+	func presentedQuotaClients(family: WidgetFamily) -> [AppGroupQuotaClient] {
 		guard let all = entry.snapshot?.subscription.clients else { return [] }
 		if family == .systemLarge {
 			// The wire reports one explicit state per client. A client with no
 			// windows is still meaningful (not official, never probed, parse
 			// failed, reading off, and so on), so preserve it for the large
 			// widget's per-client reason instead of silently dropping the card.
+			if all.contains(where: { $0.quotaContext.value != nil }) {
+				return all.filter { $0.quotaContext.value == nil && !$0.windows.isEmpty }
+			}
 			return Array(all.prefix(2))
 		}
-		return Array(quotaClients.prefix(1))
+		return quotaClients.prefix(1).filter { $0.quotaContext.value == nil }
+	}
+
+	func quotaContextFooter(family: WidgetFamily) -> String? {
+		guard presentedQuotaClients(family: family).isEmpty else { return nil }
+		let candidates = family == .systemLarge ? entry.snapshot?.subscription.clients ?? [] : Array(quotaClients.prefix(1))
+		let reasons = candidates.compactMap { $0.quotaContext.value?.reason }
+		switch reasons.first(where: { $0 != .unrecognized }) ?? reasons.first {
+		case .contextChanged, .signedOut, .nonSubscription: return "Sign-in changed"
+		case .identityKeyReset: return "Prior quota unlinked"
+		case .unrecognized: return "Data unavailable"
+		case nil: return nil
+		}
+	}
+
+	func quotaPlan(_ client: AppGroupQuotaClient, family: WidgetFamily) -> String? {
+		guard family == .systemLarge, client.client == "codex",
+			entry.snapshot?.subscription.reading == true, client.applicable,
+			client.failure != .probeDisabled, client.quotaContext.value == nil else { return nil }
+		switch client.planDisplay {
+		case .absent: return client.plan
+		case .null: return nil
+		case let .value(plan):
+			return plan.state == .known || plan.state == .rawOnly ? plan.shortName.value : nil
+		}
+	}
+
+	struct Login {
+		let email: String
+		let expires: Date
+		let associationUnconfirmed: Bool
+	}
+
+	func quotaLogin(_ client: AppGroupQuotaClient, family: WidgetFamily) -> Login? {
+		guard family == .systemLarge, surface == .data, entry.snapshot?.subscription.reading == true,
+			client.applicable, client.failure != .probeDisabled, client.quotaContext.value == nil, !client.windows.isEmpty,
+			let id = client.identity.value, id.state == .identified, id.freshness == .current,
+			let email = id.emailMasked.value, let raw = id.currentUntil.value,
+			let expires = AppGroupQuotaClient.timestamp(raw), entry.date < expires
+		else { return nil }
+		return Login(email: email, expires: expires,
+			associationUnconfirmed: client.client == "codex" && id.quotaAssociation.value != .confirmed)
 	}
 
 	/// The header's scope label for a quota widget. Small and medium narrow
@@ -334,7 +378,7 @@ struct WidgetSurfaceModel {
 		return shown.compactMap { !$0.applicable ? ($0.applicableReason ?? .notOfficial) : $0.failure }.first ?? .neverProbed
 	}
 
-	func quotaWindows(for client: DesktopSubscriptionClientV1, family: WidgetFamily) -> [DesktopSubscriptionWindowV1] {
+	func quotaWindows(for client: AppGroupQuotaClient, family: WidgetFamily) -> [DesktopSubscriptionWindowV1] {
 		if family == .systemSmall {
 			// The wire resolves the tightest window once, from vendor order
 			// (C11); recomputing a tie-break here by key could disagree with

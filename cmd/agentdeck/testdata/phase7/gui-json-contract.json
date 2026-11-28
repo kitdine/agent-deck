@@ -838,10 +838,14 @@
                 "attribution_confirmed": "boolean",
                 "client": "string",
                 "failure": "string",
+                "failure_detail": null,
+                "identity": null,
                 "observed_at": null,
                 "observed_reset_at": null,
                 "plan": null,
+                "plan_display": null,
                 "plan_reason": "string",
+                "quota_context": null,
                 "reset_allowance": null,
                 "reset_allowance_reason": "string",
                 "source": null,
@@ -850,6 +854,12 @@
                 "windows": []
               }
             ],
+            "projection": {
+              "boot": "string",
+              "core_epoch": "number",
+              "mono": "number",
+              "revision": "number"
+            },
             "reading": "boolean"
           },
           "usage": {
@@ -1867,58 +1877,6 @@
                     "mode": "string",
                     "tokens": "number"
                   },
-                  "endpoints": [
-                    "string"
-                  ],
-                  "models": [
-                    "string"
-                  ],
-                  "provider": "string",
-                  "regions": [
-                    "string"
-                  ],
-                  "service_tier": "string"
-                },
-                "source": {
-                  "kind": "string",
-                  "revision": "string",
-                  "url": "string",
-                  "verified_on": "string"
-                },
-                "sources": [
-                  {
-                    "kind": "string",
-                    "revision": "string",
-                    "url": "string",
-                    "verified_on": "string"
-                  }
-                ],
-                "unit": "string",
-                "validity": {
-                  "basis": "string",
-                  "from": {
-                    "precision": "string",
-                    "value": "string"
-                  },
-                  "to": {
-                    "precision": "string",
-                    "value": "string"
-                  }
-                }
-              },
-              {
-                "applicability": "string",
-                "currency": "string",
-                "id": "string",
-                "rates": {
-                  "cache_read": "string",
-                  "input": "string",
-                  "output": "string"
-                },
-                "rule_set": "string",
-                "selector": {
-                  "channel": "string",
-                  "eligibility": "string",
                   "endpoints": [
                     "string"
                   ],

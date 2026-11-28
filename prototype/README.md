@@ -73,7 +73,7 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `state=normal|empty|aged|partial|pending|unavailable|schema|schemaStacked`、
 `width=420|280`、`tab=usage|breakdown|attribution|sessions|quota`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
-`quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
+`quota=normal|bothOfficial|codexPlus|prose|parseFailed|parseFailedMissingLine|parseFailedTimezone|stale|neverProbed|readingOff|identityUnconfirmed|identityConfirmed|identityUnknown|expiredMailbox|contextChanged|claudeApiKey|contextKeyReset|contextRecovered|signedOut|planConflict|longPlan`、
 `refresh=idle|refreshing|failed|storageFailed|wake|recovered|firstFailure`、
 `health=baseline|stateLive|scanLive|legacy|ownerUnknown|extensionStale|discoveryFailed|syncIncomplete|combined`、
 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|missing|containerUnavailable|readFailed|unsupported|recovered`、

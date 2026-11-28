@@ -196,7 +196,9 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("price.override", "", "price", "override", "--file", overridePath)
 	runJSON("price.history", "", "price", "history")
 	runJSON("price.status", "", "price", "status")
-	runJSON("price.list", "", "price", "list")
+	// The bundled tariffs have validity boundaries; freeze the projection date
+	// so the wire contract does not change as those tariffs expire.
+	runJSON("price.list", "", "price", "list", "--at", "2026-11-27T12:00:00Z")
 	runJSON("session.scan", "", "session", "scan")
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")

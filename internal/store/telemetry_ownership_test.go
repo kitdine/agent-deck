@@ -208,9 +208,7 @@ func TestSchema35PreservesFactsAndRestoresInvalidationTriggers(t *testing.T) {
 	if n := ownershipCount(t, restored.DB, `SELECT count(*) FROM origin_overrides`); n != 1 {
 		t.Fatal("backup lost override")
 	}
-	if _, err = restored.DB.ExecContext(ctx, `UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1); err != nil {
-		t.Fatal(err)
-	}
+	ownershipExec(t, restored.DB, `UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1)
 	restored.Close()
 	if ahead, err := Open(ctx, restoredRoot); err == nil {
 		ahead.Close()

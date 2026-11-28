@@ -38,7 +38,7 @@ created: 2026-11-18
 
 ### 2. `pricing-facts-storage`
 
-- 依赖 `tariff-catalog`。负责 `internal/store/migrations.go`、`internal/store/store.go`、`internal/usage/price_update.go` 和 `internal/usage` 内逐调用事实的解析、写入和读回。实现期间由本任务独占 `usage.go` 写入。规则表和逐调用可空证据使用同一段迁移 `P`。观察到的主线为 35，未交付的 v0.7.5 账号识别候选使用 36，JSONL 会话身份还有待合成分配的 core 迁移。主控记录实际合成基线后分配并复核 `P`。导入失败继续使用原版本；保留原事件键和旧库。只接入可证明的实际执行档、TTL 和已授权来源中可唯一关联的活动证据。
+- 依赖 `tariff-catalog`。负责 `internal/store/migrations.go`、`internal/store/store.go`、`internal/usage/price_update.go` 和 `internal/usage` 内逐调用事实的解析、写入和读回。实现期间由本任务独占 `usage.go` 写入。规则表和逐调用可空证据使用同一段迁移 `P`。观察到的主线为 35，未交付的 v0.7.5 账号识别候选使用 36，JSONL 会话身份还有待合成分配的 core 迁移。主控记录实际合成基线后分配并复核 `P`。v0.8.0 第一批装配的实际基线是含已发布 v0.7.5 迁移 36 的 `main`，因此 `P = 37`。导入失败继续使用原版本；保留原事件键和旧库。只接入可证明的实际执行档、TTL 和已授权来源中可唯一关联的活动证据。
 - 同一任务负责 `internal/desktop/serving_schema.go`、`apps/macos/AgentDeckShared/DesktopWire.swift` 的 core schema 读取边界、`apps/macos/AgentDeckVerification/main.swift`、`apps/macos/AgentDeckTests/DesktopWireTests.swift` 及匹配 fixture。新费率与事实使旧 serving 发布不能代表迁移后当前计价，`P` 签入的新读者拒收旧 schema 保留发布并通过既有刷新路径重建。已有 App Group v1 内容按现行策略留供旧金额读取，Widget Swift UI 和发布格式属于现有边界。
 - 验收 L3。升级、旧 JSONL、同轮多调用、delta / last 不一致、重复扫描、崩溃重试、失败导入和备份恢复均有隔离断言。核对 Go/Swift 对新 schema、旧发布失效与高版本拒绝的矩阵一致，原生验证器和对应金标同候选可用。覆盖 Guardian 未采集的事实。
 

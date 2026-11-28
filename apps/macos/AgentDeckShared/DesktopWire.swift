@@ -1736,22 +1736,24 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 37
+	public static let maximumSupportedCoreSchema = 38
 
 	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
 	// session-origin storage; 35 adds a source thread identity column and
 	// rebuilds the derived classification table. None changes the canonical
 	// facts in a retained schema-31/32/33/34 publication.
-	// Schema 36 adds pricing rules and request facts. A migrated core must
-	// rebuild an older publication. Schema 37 adds local quota samples and can
-	// retain a schema-36 publication. Keep these exceptions aligned with Go.
+	// Schema 36 replaces quota storage; Go reprojects subscriptions on read.
+	// Schema 37 adds pricing rules and request facts and requires a rebuild.
+	// Schema 38 adds local quota samples and can retain a schema-37 publication.
+	// Keep these exceptions aligned with Go.
 	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
 		guard stored > 0, current <= maximumSupportedCoreSchema else { return false }
 		return stored == current || (stored == 31 && current == 32)
 			|| ((stored == 31 || stored == 32) && current == 33)
 			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
 			|| ((31...34).contains(stored) && current == 35)
-			|| (stored == 36 && current == 37)
+			|| ((31...35).contains(stored) && current == 36)
+			|| (stored == 37 && current == 38)
 	}
 	public let stateIdentity: String
 	public let coreEpoch: Int64
@@ -1903,6 +1905,103 @@ public func decodeProviderUseEnvelopeV1(_ data: Data) throws -> ProviderUseEnvel
 	try JSONDecoder().decode(ProviderUseEnvelopeV1.self, from: data)
 }
 
+/// Optional wire members distinguish an older producer from a current
+/// producer that explicitly withheld a value.
+public enum WireField<T: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+	case absent, null, value(T)
+
+	public var value: T? { if case let .value(value) = self { value } else { nil } }
+
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.singleValueContainer()
+		self = c.decodeNil() ? .null : .value(try c.decode(T.self))
+	}
+	public func encode(to encoder: Encoder) throws {
+		var c = encoder.singleValueContainer()
+		if case let .value(v) = self { try c.encode(v) } else { try c.encodeNil() }
+	}
+}
+
+private extension KeyedDecodingContainer {
+	func decode<T>(_ type: WireField<T>.Type, forKey key: Key) throws -> WireField<T> {
+		guard contains(key) else { return .absent }
+		return try decodeNil(forKey: key) ? .null : .value(decode(T.self, forKey: key))
+	}
+}
+private extension KeyedEncodingContainer {
+	mutating func encode<T>(_ field: WireField<T>, forKey key: Key) throws {
+		switch field {
+		case .absent: break
+		case .null: try encodeNil(forKey: key)
+		case let .value(v): try encode(v, forKey: key)
+		}
+	}
+}
+
+public protocol QuotaWireToken: RawRepresentable, Codable, Equatable, Sendable where RawValue == String {
+	static var unrecognized: Self { get }
+}
+public extension QuotaWireToken {
+	init(from decoder: Decoder) throws {
+		self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unrecognized
+	}
+	func encode(to encoder: Encoder) throws {
+		var c = encoder.singleValueContainer()
+		try c.encode(rawValue)
+	}
+}
+
+public struct DesktopQuotaProjectionV1: Codable, Equatable, Sendable {
+	public let coreEpoch, revision: Int64
+	public let boot: String
+	public let mono: Int64
+	enum CodingKeys: String, CodingKey { case coreEpoch = "core_epoch", revision, boot, mono }
+}
+public struct DesktopPlanDisplayV1: Codable, Equatable, Sendable {
+	public enum State: String, QuotaWireToken { case known, rawOnly = "raw_only", conflict, missing, unrecognized }
+	public enum Basis: String, QuotaWireToken { case mapping, raw, vendorDisplayName = "vendor_display_name", unrecognized }
+	public enum Reason: String, QuotaWireToken { case notReported = "not_reported", unsafeValue = "unsafe_value", unrecognized }
+	public enum Source: String, QuotaWireToken { case codexRateLimits = "codex_rate_limits", codexAccountRead = "codex_account_read", claudeAuthStatus = "claude_auth_status", unrecognized }
+	public struct Raw: Codable, Equatable, Sendable { public let field, value: String }
+	public let state: State
+	public let name, shortName: WireField<String>
+	public let basis: WireField<Basis>
+	public let source: Source
+	public let raw: [Raw]
+	public let reason: WireField<Reason>
+	enum CodingKeys: String, CodingKey { case state, name, shortName = "short_name", basis, source, raw, reason }
+}
+public enum DesktopQuotaFailureDetailV1: String, QuotaWireToken {
+	case missingLine = "missing_line", shapeInvalid = "shape_invalid", timezoneUnresolved = "timezone_unresolved", unrecognized
+}
+public struct DesktopQuotaContextV1: Codable, Equatable, Sendable {
+	public enum Reason: String, QuotaWireToken { case contextChanged = "context_changed", signedOut = "signed_out", nonSubscription = "non_subscription", identityKeyReset = "identity_key_reset", unrecognized }
+	public let invalidatedAt: String
+	public let reason: Reason
+	enum CodingKeys: String, CodingKey { case invalidatedAt = "invalidated_at", reason }
+}
+public struct DesktopQuotaIdentityV1: Codable, Equatable, Sendable {
+	public enum State: String, QuotaWireToken { case identified, signedOut = "signed_out", nonSubscription = "non_subscription", unknown, unrecognized }
+	public enum Freshness: String, QuotaWireToken { case current, lastRead = "last_read", unrecognized }
+	public enum Failure: String, QuotaWireToken { case neverProbed = "never_probed", probeFailed = "probe_failed", parseFailed = "parse_failed", incomparable, unrecognized }
+	public enum Organization: String, QuotaWireToken { case organization, workspace, personal, unknown, unrecognized }
+	public enum Association: String, QuotaWireToken { case confirmed, unconfirmed, unrecognized }
+	public let state: State
+	public let freshness: Freshness
+	public let unknownReason, failure: WireField<Failure>
+	public let currentUntil, observedAt, attemptedAt, failureAt, emailMasked, organizationName: WireField<String>
+	public let organizationKind: WireField<Organization>
+	public let source: DesktopPlanDisplayV1.Source
+	public let planDisplay: WireField<DesktopPlanDisplayV1>
+	public let quotaAssociation: WireField<Association>
+	enum CodingKeys: String, CodingKey {
+		case state, freshness, failure, source, unknownReason = "unknown_reason", currentUntil = "current_until",
+		     observedAt = "observed_at", attemptedAt = "attempted_at", failureAt = "failure_at",
+		     emailMasked = "email_masked", organizationName = "organization_name", organizationKind = "organization_kind",
+		     planDisplay = "plan_display", quotaAssociation = "quota_association"
+	}
+}
+
 /// C11's additive subscription section. `available` is false only when the
 /// producer could not build it; every per-client state, including the gate and
 /// reading off, is a client record.
@@ -1915,10 +2014,25 @@ public struct DesktopSubscriptionSnapshotV1: Codable, Equatable, Sendable {
 	public let available: Bool
 	public let reading: Bool
 	public let clients: [DesktopSubscriptionClientV1]
+	public let projection: WireField<DesktopQuotaProjectionV1>
 
-	private enum CodingKeys: String, CodingKey { case available, reading, clients }
+	// Until the Widget's allowlisted identity model is installed, publish
+	// only its existing quota fields. Never persist the helper's full identity.
+	var legacyWidgetSubscription: Self {
+		Self(available: available, reading: reading, clients: clients.map {
+			var legacy = $0
+			legacy.identity = .absent
+			legacy.planDisplay = .absent
+			legacy.quotaContext = .absent
+			legacy.failureDetail = .absent
+			return legacy
+		})
+	}
 
-	public init(available: Bool, reading: Bool = true, clients: [DesktopSubscriptionClientV1]) {
+	private enum CodingKeys: String, CodingKey { case available, reading, clients, projection }
+
+	public init(available: Bool, reading: Bool = true, clients: [DesktopSubscriptionClientV1], projection: WireField<DesktopQuotaProjectionV1> = .absent) {
+		self.projection = projection
 		self.available = available
 		self.reading = reading
 		self.clients = clients
@@ -1929,6 +2043,7 @@ public struct DesktopSubscriptionSnapshotV1: Codable, Equatable, Sendable {
 		available = try container.decode(Bool.self, forKey: .available)
 		reading = try container.decodeIfPresent(Bool.self, forKey: .reading) ?? true
 		clients = try container.decode([DesktopSubscriptionClientV1].self, forKey: .clients)
+		projection = try container.decode(WireField<DesktopQuotaProjectionV1>.self, forKey: .projection)
 	}
 }
 
@@ -1950,6 +2065,18 @@ public enum DesktopQuotaSourceV1: String, Codable, Equatable, Sendable {
 }
 
 public struct DesktopSubscriptionClientV1: Codable, Equatable, Sendable {
+	public fileprivate(set) var identity: WireField<DesktopQuotaIdentityV1>
+	public fileprivate(set) var planDisplay: WireField<DesktopPlanDisplayV1>
+	public fileprivate(set) var quotaContext: WireField<DesktopQuotaContextV1>
+	public fileprivate(set) var failureDetail: WireField<DesktopQuotaFailureDetailV1>
+
+	public var displayPlanShortName: String? {
+		switch planDisplay {
+		case .absent: return plan
+		case .null: return nil
+		case let .value(p): return p.state == .known || p.state == .rawOnly ? p.shortName.value : nil
+		}
+	}
 	public let client: String
 	public let applicable: Bool
 	public let applicableReason: DesktopQuotaReasonV1?
@@ -1969,6 +2096,7 @@ public struct DesktopSubscriptionClientV1: Codable, Equatable, Sendable {
 	public let failure: DesktopQuotaReasonV1?
 
 	enum CodingKeys: String, CodingKey {
+		case identity, planDisplay = "plan_display", quotaContext = "quota_context", failureDetail = "failure_detail"
 		case client
 		case applicable
 		case applicableReason = "applicable_reason"
@@ -1989,6 +2117,10 @@ public struct DesktopSubscriptionClientV1: Codable, Equatable, Sendable {
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		client = try container.decode(String.self, forKey: .client)
+		identity = try container.decode(WireField<DesktopQuotaIdentityV1>.self, forKey: .identity)
+		planDisplay = try container.decode(WireField<DesktopPlanDisplayV1>.self, forKey: .planDisplay)
+		quotaContext = try container.decode(WireField<DesktopQuotaContextV1>.self, forKey: .quotaContext)
+		failureDetail = try container.decode(WireField<DesktopQuotaFailureDetailV1>.self, forKey: .failureDetail)
 		guard client == "codex" || client == "claude" else {
 			throw DecodingError.dataCorruptedError(forKey: .client, in: container, debugDescription: "unknown quota client")
 		}

@@ -182,12 +182,15 @@ a:focus-visible {
 }
 
 .stage-group > span {
+  flex: 0 0 auto;
   color: var(--dim);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .stage-group > div {
   display: flex;
+  flex-wrap: wrap;
   padding: 2px;
   border-radius: 8px;
   background: var(--surface-2);
@@ -200,6 +203,7 @@ a:focus-visible {
   color: var(--muted);
   background: transparent;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .stage-group button.active {
@@ -2869,6 +2873,12 @@ button.notice:hover {
 /* 套餐是个不透明标签：厂商取值集合未知，所以只显示不分支，
    样式上也不按取值变色，避免暗示一套并不存在的等级。 */
 .quota-plan {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 6px;
   border: 1px solid var(--line-soft);
   border-radius: 999px;
@@ -2880,12 +2890,32 @@ button.notice:hover {
 
 .quota-client .card-head {
   align-items: center;
+  min-width: 0;
+}
+
+.quota-client .card-head strong {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .quota-client .card-head small {
+  flex: 0 0 auto;
   margin-left: auto;
   color: var(--dim);
   text-align: right;
+  white-space: nowrap;
+}
+
+.popover.narrow .quota-client .card-head small {
+  flex: 0 0 auto;
+  max-width: 115px;
+  white-space: normal;
+}
+
+.popover.narrow .quota-client .card-head:has(.quota-plan:not(.is-compact)) small {
+  flex: 0 0 auto;
+  max-width: 115px;
+  white-space: normal;
 }
 
 /* 官方重置次数与本地观察到的重置：两行同构但各带标题，
@@ -3066,6 +3096,10 @@ button.notice:hover {
   line-height: 1.4;
 }
 
+.quota-missing .quota-missing-detail {
+  color: var(--muted);
+}
+
 /* 账号归属声明。它是这一端所有数字的性质，不是某一行的缺失，所以不用
    .quota-missing 的三段式，也不带上下分隔线——一条横线会把它读成又一个
    缺失字段。位置紧贴 card-head，因为它限定的正是上面那行来源与年龄。 */
@@ -3074,6 +3108,128 @@ button.notice:hover {
   color: var(--dim);
   font-size: 10px;
   line-height: 1.4;
+}
+
+/* 当前登录区域：放在卡片底部，上方一条分隔线，与额度读取时间隔离。
+   不点击、不弹层、不复制完整邮箱。 */
+.quota-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+}
+
+.quota-identity-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quota-identity-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* CSS 无原生的单节点中间省略（byTruncatingMiddle），此处与面板其余文本
+   一致采用尾部省略 text-overflow: ellipsis；原生 SwiftUI/AppKit 实现使用
+   middle truncation 保住首尾与顶级域。 */
+.quota-identity-email {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 560;
+  color: var(--text);
+}
+
+.quota-identity-email.is-dim {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.quota-identity-status {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.quota-identity-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 5px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.quota-identity-org {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quota-identity-sep {
+  flex: 0 0 auto;
+  color: var(--dim);
+}
+
+.quota-identity-plan {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.quota-identity-plan.is-conflict {
+  color: var(--warn);
+}
+
+.quota-identity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 5px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
+.quota-identity-meta.is-adjacent {
+  color: var(--muted);
+}
+
+.quota-identity-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.quota-identity-reason {
+  min-width: 0;
+}
+
+.quota-identity-assoc {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
+/* 280 pt 窄边界：保留可见的简短标签，长邮箱按规则省略。 */
+.popover.narrow .quota-identity-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .quota-alerts-note {
@@ -3094,7 +3250,9 @@ button.notice:hover {
 }
 
 .w-quota-client header .w-attribution {
+  flex: 0 0 auto;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 /* 额度小组件：small 只显示配置中选定的一端；medium / large 按端分块、上下排列。
@@ -3116,6 +3274,7 @@ button.notice:hover {
 
 .w-quota-split {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: 1fr;
   gap: 8px;
   /* flex:1 是「上下等分」成立的前提：没有它，grid 只有内容那么高，
@@ -3138,6 +3297,7 @@ button.notice:hover {
   flex-direction: column;
   justify-content: center;
   min-height: 0;
+  min-width: 0;
 }
 
 /* 左侧色条 + 淡底 + 明文端名共同区分两端；颜色不是唯一载体。 */
@@ -3160,18 +3320,26 @@ button.notice:hover {
 .w-quota-client > header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 6px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .w-quota-client > header strong {
+  flex: 0 0 auto;
   color: var(--text);
   font-size: 10px;
   font-weight: 650;
+  white-space: nowrap;
 }
 
-.w-quota-client > header small {
+.w-quota-client > header .w-quota-plan {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--dim);
   font-size: 9px;
 }
@@ -3216,6 +3384,45 @@ button.notice:hover {
 
 .w-quota-row .w-track {
   margin-top: 1px;
+}
+
+.w-quota-signed-in {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 3px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  min-width: 0;
+}
+
+/* 新行使用 --muted（暗色 Claude #202131 为 6.21:1、Codex #261f20 为 6.32:1；
+   浅色 Claude #f9f5fd 为 5.09:1、Codex #f9f1ec 为 4.94:1），满足 4.5:1 且不改动既有次级文字令牌。 */
+.w-quota-signed-in-text {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.w-quota-signed-in-assoc {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.w-quota-client:has(.w-quota-signed-in) .w-quota-client-windows {
+  gap: 3px;
+}
+
+.w-quota-client:has(.w-quota-signed-in) .w-quota-row > div:first-child {
+  line-height: 1.3;
 }
 
 .w-quota-none {

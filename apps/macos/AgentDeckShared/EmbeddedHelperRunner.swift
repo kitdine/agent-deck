@@ -1025,10 +1025,11 @@ public struct EmbeddedHelperRunner: Sendable {
 								let event = try JSONDecoder().decode(DesktopBootstrapProgress.self, from: line)
 								progress(event.data)
 							case "terminal":
+								guard let event = try? JSONDecoder().decode(DesktopBootstrapTerminal.self, from: line),
+									event.data.usage.state == "completed", event.data.session.state == "completed"
+								else { break }
 								capture.finish()
-								if let event = try? JSONDecoder().decode(DesktopBootstrapTerminal.self, from: line),
-									event.data.usage.state == "completed", event.data.session.state == "completed",
-									capture.isComplete, let latest = capture.latest {
+								if capture.isComplete, let latest = capture.latest {
 									delivered.expect(token, publication: latest.header.publicationID)
 									settlement.resume(.success(latest))
 								}
@@ -1960,7 +1961,12 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 		if manual { arguments.append("--manual") }
 		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments, requestTimeout: Self.quotaRefreshTimeout)
 		guard case let .decoded(result) = outcome else { return [] }
-		return result.alerts
+		// Bind candidates to this response only. The proof is never a path.
+		return result.alerts.map {
+			var alert = $0
+			alert.stateRootID = result.stateRootID
+			return alert
+		}
 	}
 
 	public func acknowledgeQuotaAlerts(ids: [String]) async {
@@ -1977,15 +1983,18 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 }
 
 public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
+	public let stateRootID: String?
 	public let gateReasons: [String: String?]
 	public let alerts: [DesktopQuotaAlertV1]
 
 	enum CodingKeys: String, CodingKey {
 		case gateReasons = "gate_reasons"
+		case stateRootID = "state_root_id"
 		case alerts
 	}
 
-	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1]) {
+	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1], stateRootID: String? = nil) {
+		self.stateRootID = stateRootID
 		self.gateReasons = gateReasons
 		self.alerts = alerts
 	}
@@ -1993,6 +2002,7 @@ public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		gateReasons = try container.decodeIfPresent([String: String?].self, forKey: .gateReasons) ?? [:]
+		stateRootID = try? container.decode(String.self, forKey: .stateRootID)
 		alerts = try container.decodeIfPresent([DesktopQuotaAlertV1].self, forKey: .alerts) ?? []
 	}
 }
@@ -2013,14 +2023,26 @@ public struct DesktopQuotaAlertV1: Codable, Equatable, Sendable {
 	public let windowMinutes: Int?
 	public let usedPercent: Double
 	public let threshold: Double?
+	public let generation: Int64?
+	public fileprivate(set) var stateRootID: String? = nil
 
 	enum CodingKeys: String, CodingKey {
-		case id, kind, client, label, threshold
+		case id, kind, client, label, threshold, generation
 		case windowMinutes = "window_minutes"
 		case usedPercent = "used_percent"
 	}
 
-	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil) {
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		self.init(id: try c.decode(String.self, forKey: .id), kind: try c.decode(Kind.self, forKey: .kind),
+		          client: try c.decode(String.self, forKey: .client), label: try c.decodeIfPresent(String.self, forKey: .label),
+		          windowMinutes: try c.decodeIfPresent(Int.self, forKey: .windowMinutes), usedPercent: try c.decode(Double.self, forKey: .usedPercent),
+		          threshold: try c.decodeIfPresent(Double.self, forKey: .threshold), generation: try? c.decode(Int64.self, forKey: .generation))
+	}
+
+	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil, generation: Int64? = nil, stateRootID: String? = nil) {
+		self.generation = generation
+		self.stateRootID = stateRootID
 		self.id = id
 		self.kind = kind
 		self.client = client
@@ -2498,13 +2520,8 @@ public enum DesktopFullRefreshTrigger: Int, Equatable, Sendable {
 	// A running update may have frozen its inventory before the event, so each
 	// of these leaves exactly one follow-up; any burst of them merges into it.
 	var requestsFollowUp: Bool { self == .wake || self == .sourceChange || self == .manual || self == .providerSwitch }
+	var bypassesAutomaticLimits: Bool { self == .manual || self == .providerSwitch }
 	var quotaIsManual: Bool { self == .manual || self == .providerSwitch }
-
-	static func merged(_ current: Self?, _ incoming: Self) -> Self? {
-		guard incoming.requestsFollowUp else { return current }
-		guard let current else { return incoming }
-		return current.rawValue >= incoming.rawValue ? current : incoming
-	}
 }
 
 public enum DesktopFullAttemptState: Equatable, Sendable {
@@ -2543,6 +2560,45 @@ private enum QuotaPublicationMode: Sendable {
 private struct QuotaOperationResult: Sendable {
 	let id: QuotaOperationID
 	let subscription: DesktopSubscriptionSnapshotV1?
+}
+
+private struct DesktopFullRefreshRequest {
+	var trigger: DesktopFullRefreshTrigger
+	var recentLimit: Int
+	var includesSourceChange: Bool
+	var bypassesAutomaticLimits: Bool
+
+	mutating func merge(_ incoming: Self) {
+		if incoming.trigger.rawValue > trigger.rawValue { trigger = incoming.trigger }
+		recentLimit = max(recentLimit, incoming.recentLimit)
+		includesSourceChange = includesSourceChange || incoming.includesSourceChange
+		bypassesAutomaticLimits = bypassesAutomaticLimits || incoming.bypassesAutomaticLimits
+	}
+}
+
+private struct PendingDesktopFullRefresh {
+	var watcherNotification: DesktopFullRefreshRequest?
+	private var independentNotification: DesktopFullRefreshRequest?
+	var waiterRequests: [UUID: DesktopFullRefreshRequest] = [:]
+
+	mutating func mergeNotification(_ request: DesktopFullRefreshRequest, fromWatcher: Bool) {
+		if fromWatcher {
+			if watcherNotification == nil { watcherNotification = request } else { watcherNotification?.merge(request) }
+		} else {
+			if independentNotification == nil { independentNotification = request } else { independentNotification?.merge(request) }
+		}
+	}
+
+	var mergedRequest: DesktopFullRefreshRequest? {
+		var merged = watcherNotification
+		if let independentNotification {
+			if merged == nil { merged = independentNotification } else { merged?.merge(independentNotification) }
+		}
+		for request in waiterRequests.values {
+			if merged == nil { merged = request } else { merged?.merge(request) }
+		}
+		return merged
+	}
 }
 
 @MainActor
@@ -2585,7 +2641,14 @@ public final class DesktopRefreshCoordinator {
 	@ObservationIgnored private var heldPublication: DesktopServingSnapshotV2?
 	@ObservationIgnored private var activeQuotaOperation: Task<QuotaOperationResult, Never>?
 	@ObservationIgnored private var activeQuotaID: QuotaOperationID?
-	@ObservationIgnored private var pendingFullTrigger: DesktopFullRefreshTrigger?
+	@ObservationIgnored var refreshClock = DesktopRefreshClock.continuous
+	@ObservationIgnored private var refreshTiming = DesktopRefreshTiming()
+	@ObservationIgnored private var pendingFullRefresh = PendingDesktopFullRefresh()
+	@ObservationIgnored private var fullRefreshWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+	@ObservationIgnored private var activeFullWaiterIDs: Set<UUID> = []
+	@ObservationIgnored private var deferredRefresh: (deadline: ContinuousClock.Instant, id: UInt64, cancel: DesktopRefreshClock.Cancel)?
+	@ObservationIgnored private var deferredRefreshID: UInt64 = 0
+	@ObservationIgnored private var appWorkStopped = false
 	@ObservationIgnored private var pendingQuotaPriority: QuotaRequestPriority?
 	@ObservationIgnored private var activeFullGeneration: Int?
 	@ObservationIgnored private var fullQuotaPhaseCompleted = false
@@ -2611,6 +2674,11 @@ public final class DesktopRefreshCoordinator {
 		self.alertDeliverer = alertDeliverer
 		self.wallNow = wallNow
 		snapshotPublisher = snapshotStore.map { WidgetSnapshotPublisher(store: $0) }
+	}
+
+	isolated deinit {
+		deferredRefresh?.cancel()
+		fullRefreshWaiters.values.forEach { $0.resume() }
 	}
 
 	public func setFullAttemptTerminalHandler(_ handler: @escaping @MainActor @Sendable () -> Void) {
@@ -2652,6 +2720,7 @@ public final class DesktopRefreshCoordinator {
 		}
 		return Task { [weak self] in
 			await self?.waitForStartupSettled()
+			guard !Task.isCancelled else { return }
 			await self?.requestFullRefresh(trigger: .startup)
 		}
 	}
@@ -2678,10 +2747,16 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	public func stopAppWork() {
+		appWorkStopped = true
 		activeRestore?.cancel()
 		activeRefresh?.cancel()
 		activeQuotaOperation?.cancel()
-		pendingFullTrigger = nil
+		cancelDeferredRefresh()
+		pendingFullRefresh = PendingDesktopFullRefresh()
+		activeFullWaiterIDs.removeAll()
+		let waiters = fullRefreshWaiters
+		fullRefreshWaiters.removeAll()
+		waiters.values.forEach { $0.resume() }
 		pendingQuotaPriority = nil
 	}
 
@@ -2705,15 +2780,10 @@ public final class DesktopRefreshCoordinator {
 		publicationHolds = max(0, publicationHolds - 1)
 		guard publicationHolds == 0, let prepared = heldPublication else { return }
 		heldPublication = nil
-		installServingPublication(prepared)
-		// A refresh that finished while held published its success and widget
-		// snapshot with the previous data; bring the widget up to date.
-		if case .succeeded = fullAttempt, let latestSnapshot {
-			Task { await publishWidgetSnapshot(latestSnapshot) }
-		}
+		installServingPublication(prepared, releasingHold: true)
 	}
 
-	private func installServingPublication(_ prepared: DesktopServingSnapshotV2) {
+	private func installServingPublication(_ prepared: DesktopServingSnapshotV2, releasingHold: Bool = false) {
 		if publicationHolds > 0, let current = servingHeader?.generation {
 			let new = prepared.header.generation
 			if current.stateIdentity == new.stateIdentity, current.coreEpoch == new.coreEpoch,
@@ -2754,11 +2824,21 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		update(\.servingHeader, prepared.header)
-		update(\.latestSnapshot, prepared.payload)
+		let installed = installSubscription(prepared.payload.data.subscription, into: prepared.payload)
+		let subscriptionChanged = latestSnapshot?.data.subscription != installed.data.subscription
+		update(\.latestSnapshot, installed)
 		if case .running = fullAttempt {
-			update(\.state, .refreshing(previous: prepared.payload))
+			update(\.state, .refreshing(previous: installed))
 		} else {
-			update(\.state, .ready(prepared.payload))
+			update(\.state, .ready(installed))
+		}
+		let publishFull: Bool
+		if releasingHold, case .succeeded = fullAttempt { publishFull = true } else { publishFull = false }
+		if snapshotPublisher != nil, publishFull || (subscriptionChanged && installed.data.subscription.projection.value != nil) {
+			Task {
+				guard latestSnapshot == installed else { return }
+				await publishWidgetSnapshot(installed, collectsSessionScope: publishFull)
+			}
 		}
 		PerfTrace.end(.servingInstall, since: installStarted)
 		markPublicationBound()
@@ -2816,35 +2896,131 @@ public final class DesktopRefreshCoordinator {
 		trigger: DesktopFullRefreshTrigger,
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit
 	) async {
-		if trigger == .sourceChange { PerfTrace.mark(.jobEnqueue) }
-		if let activeRefresh {
-			pendingFullTrigger = DesktopFullRefreshTrigger.merged(pendingFullTrigger, trigger)
-			await activeRefresh.value
-			return
-		}
-
-		let task = Task { [weak self] in
-			guard let self else { return }
-			await self.runFullSequence(first: trigger, recentLimit: recentLimit)
-		}
-		activeRefresh = task
-		await task.value
+		await waitForFullRefresh(
+			DesktopFullRefreshRequest(trigger: trigger, recentLimit: recentLimit,
+				includesSourceChange: trigger == .sourceChange, bypassesAutomaticLimits: trigger.bypassesAutomaticLimits),
+			requiresFollowUp: trigger.requestsFollowUp
+		)
 	}
 
-	private func runFullSequence(first: DesktopFullRefreshTrigger, recentLimit: Int) async {
-		var next: DesktopFullRefreshTrigger? = first
-		while let trigger = next {
-			await performFullRefresh(trigger: trigger, recentLimit: recentLimit)
-			if let pendingFullTrigger {
-				next = pendingFullTrigger
-				self.pendingFullTrigger = nil
-			} else {
-				next = nil
+	/// Explicit settings refreshes keep their existing follow-up policy and quota priority.
+	@_spi(DesktopApp) public func requestSettingsRefresh(requiresFollowUp: Bool) async {
+		await waitForFullRefresh(
+			DesktopFullRefreshRequest(trigger: .periodic, recentLimit: EmbeddedHelperRunner.defaultRecentLimit,
+				includesSourceChange: false, bypassesAutomaticLimits: true),
+			requiresFollowUp: requiresFollowUp
+		)
+	}
+
+	private func waitForFullRefresh(_ request: DesktopFullRefreshRequest, requiresFollowUp: Bool) async {
+		let id = UUID()
+		await withTaskCancellationHandler {
+			await withCheckedContinuation { waiter in
+				guard !appWorkStopped, !Task.isCancelled else {
+					waiter.resume()
+					return
+				}
+				fullRefreshWaiters[id] = waiter
+				if activeRefresh != nil, !requiresFollowUp {
+					activeFullWaiterIDs.insert(id)
+				} else {
+					if request.includesSourceChange { PerfTrace.mark(.jobEnqueue) }
+					pendingFullRefresh.waiterRequests[id] = request
+					startPendingFullRefreshWhenDue()
+				}
 			}
+		} onCancel: {
+			Task { @MainActor [weak self] in self?.cancelFullRefreshWaiter(id) }
+		}
+	}
+
+	private func cancelFullRefreshWaiter(_ id: UUID) {
+		fullRefreshWaiters.removeValue(forKey: id)?.resume()
+		activeFullWaiterIDs.remove(id)
+		if pendingFullRefresh.waiterRequests.removeValue(forKey: id) != nil {
+			startPendingFullRefreshWhenDue()
+		}
+	}
+
+	/// Source notifications can arrive throughout a cooldown and need no waiter.
+	@_spi(DesktopApp) public func enqueueAutomaticRefresh(trigger: DesktopFullRefreshTrigger, fromWatcher: Bool) {
+		guard !appWorkStopped, trigger == .sourceChange || trigger == .wake else { return }
+		if trigger == .sourceChange { PerfTrace.mark(.jobEnqueue) }
+		pendingFullRefresh.mergeNotification(
+			DesktopFullRefreshRequest(trigger: trigger, recentLimit: EmbeddedHelperRunner.defaultRecentLimit,
+				includesSourceChange: trigger == .sourceChange, bypassesAutomaticLimits: false),
+			fromWatcher: fromWatcher
+		)
+		startPendingFullRefreshWhenDue()
+	}
+
+	@_spi(DesktopApp) public func cancelBackgroundRefresh() {
+		pendingFullRefresh.watcherNotification = nil
+		startPendingFullRefreshWhenDue()
+	}
+
+	@discardableResult
+	private func startPendingFullRefreshWhenDue() -> Task<Void, Never>? {
+		guard activeRefresh == nil, let request = takePendingFullRefreshWhenDue() else { return nil }
+		let task = Task { [weak self] in
+			guard let self else { return }
+			await self.runFullRefresh(request)
+		}
+		activeRefresh = task
+		return task
+	}
+
+	private func takePendingFullRefreshWhenDue() -> DesktopFullRefreshRequest? {
+		guard !appWorkStopped else { return nil }
+		guard let request = pendingFullRefresh.mergedRequest else {
+			cancelDeferredRefresh()
+			return nil
+		}
+		let now = refreshClock.now()
+		let deadline = request.bypassesAutomaticLimits ? now
+			: refreshTiming.deadline(includesSourceChange: request.includesSourceChange, now: now)
+		if deadline <= now {
+			cancelDeferredRefresh()
+			activeFullWaiterIDs.formUnion(pendingFullRefresh.waiterRequests.keys)
+			pendingFullRefresh = PendingDesktopFullRefresh()
+			return request
+		}
+		// New writes during this interval share the existing deadline.
+		guard deferredRefresh?.deadline != deadline else { return nil }
+		cancelDeferredRefresh()
+		deferredRefreshID &+= 1
+		let id = deferredRefreshID
+		let cancel = refreshClock.schedule(deadline) { [weak self] in
+			guard let self, self.deferredRefresh?.id == id else { return nil }
+			self.deferredRefresh = nil
+			return self.startPendingFullRefreshWhenDue()
+		}
+		deferredRefresh = (deadline, id, cancel)
+		return nil
+	}
+
+	private func cancelDeferredRefresh() {
+		deferredRefresh?.cancel()
+		deferredRefresh = nil
+	}
+
+	private func runFullRefresh(_ request: DesktopFullRefreshRequest) async {
+		// Keep quota callers waiting on activeRefresh through every ready round.
+		var next: DesktopFullRefreshRequest? = request
+		while !Task.isCancelled, let request = next {
+			refreshTiming.lastStart = refreshClock.now()
+			await performFullRefresh(trigger: request.trigger, recentLimit: request.recentLimit)
+			next = Task.isCancelled ? nil : takePendingFullRefreshWhenDue()
 		}
 		activeFullGeneration = nil
 		fullQuotaPhaseCompleted = false
 		activeRefresh = nil
+		let completedWaiterIDs = activeFullWaiterIDs
+		activeFullWaiterIDs.removeAll()
+		defer {
+			for id in completedWaiterIDs { fullRefreshWaiters.removeValue(forKey: id)?.resume() }
+		}
+		guard !appWorkStopped, !Task.isCancelled else { return }
 		fullAttemptTerminalHandler?()
 		await drainPendingQuotaIfPossible()
 	}
@@ -2885,14 +3061,15 @@ public final class DesktopRefreshCoordinator {
 						publishFailure(.unavailable, generation: currentGeneration)
 					}
 			} catch {
-				if !Task.isCancelled {
+				if !Task.isCancelled, !(error is CancellationError), (error as? HelperExecutionError) != .cancelled {
 					publishFailure(.helper((error as? HelperExecutionError) ?? .malformedOutput), generation: currentGeneration)
 				}
 			}
 			fullQuotaPhaseCompleted = true
 			if let result = await quotaTask.value, let subscription = result.subscription,
 				currentGeneration == generation, !Task.isCancelled, let baseline = latestSnapshot {
-				let updated = baseline.replacingSubscription(subscription)
+				let updated = installSubscription(subscription, into: baseline)
+				guard updated != baseline else { return }
 				update(\.latestSnapshot, updated)
 				switch state {
 				case .ready: update(\.state, .ready(updated))
@@ -2906,7 +3083,7 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		let quotaStarted = PerfTrace.begin()
-		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
+		let quotaResult = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
 		PerfTrace.end(.quota, since: quotaStarted)
 		fullQuotaPhaseCompleted = true
 		guard currentGeneration == generation, !Task.isCancelled else { return }
@@ -2918,7 +3095,11 @@ public final class DesktopRefreshCoordinator {
 				}
 			}
 			guard currentGeneration == generation, !Task.isCancelled else { return }
-			await publishSuccess(envelope, generation: currentGeneration)
+			var installed = installSubscription(envelope.data.subscription, into: envelope)
+			if let candidate = quotaResult.subscription, candidate.projection.value != nil {
+				installed = installSubscription(candidate, into: installed, current: installed.data.subscription)
+			}
+			await publishSuccess(installed, generation: currentGeneration)
 		} catch is CancellationError {
 			return
 		} catch let error as HelperExecutionError {
@@ -2941,10 +3122,9 @@ public final class DesktopRefreshCoordinator {
 
 		quotaOperationSequence &+= 1
 		let id = QuotaOperationID(rawValue: quotaOperationSequence)
-		let baseline = latestSnapshot
 		let task = Task { @MainActor [weak self] in
 			guard let self else { return QuotaOperationResult(id: id, subscription: nil) }
-			return await self.performQuotaOperation(id: id, priority: priority, mode: mode, baseline: baseline)
+			return await self.performQuotaOperation(id: id, priority: priority, mode: mode)
 		}
 		activeQuotaID = id
 		activeQuotaOperation = task
@@ -2959,8 +3139,7 @@ public final class DesktopRefreshCoordinator {
 	private func performQuotaOperation(
 		id: QuotaOperationID,
 		priority: QuotaRequestPriority,
-		mode: QuotaPublicationMode,
-		baseline: DesktopWireEnvelopeV1?
+		mode: QuotaPublicationMode
 	) async -> QuotaOperationResult {
 		guard let quotaRefresher else {
 			return QuotaOperationResult(id: id, subscription: nil)
@@ -2973,20 +3152,50 @@ public final class DesktopRefreshCoordinator {
 		let subscription = await quotaRefresher.fetchSubscription()
 		let result = QuotaOperationResult(id: id, subscription: subscription)
 		if case .standalone = mode {
-			await publishStandaloneQuota(result, baseline: baseline)
+			await publishStandaloneQuota(result)
 		}
 		return result
 	}
 
-	private func publishStandaloneQuota(
-		_ result: QuotaOperationResult,
-		baseline: DesktopWireEnvelopeV1?
-	) async {
+	private func installSubscription(_ candidate: DesktopSubscriptionSnapshotV1, into envelope: DesktopWireEnvelopeV1,
+	                                 current: DesktopSubscriptionSnapshotV1? = nil) -> DesktopWireEnvelopeV1 {
+		let installed = current ?? latestSnapshot?.data.subscription
+		let previous = installed?.projection.value
+		let accept: Bool
+		if let key = candidate.projection.value {
+			if let epoch = servingHeader?.generation.coreEpoch, epoch != key.coreEpoch {
+				accept = false
+			} else if let previous {
+				if key.coreEpoch != previous.coreEpoch {
+					accept = servingHeader?.generation.coreEpoch == key.coreEpoch
+				} else {
+					accept = key.revision > previous.revision || (key.revision == previous.revision
+						&& key.boot == previous.boot && key.mono > previous.mono)
+				}
+			} else { accept = true }
+		} else {
+			accept = previous == nil
+		}
+		return envelope.replacingSubscription(accept ? candidate : installed ?? .unavailable)
+	}
+
+	private func publishStandaloneQuota(_ result: QuotaOperationResult) async {
 		guard let subscription = result.subscription,
-			let baseline,
-			latestSnapshot == baseline
+			let baseline = latestSnapshot
 		else { return }
-		let updated = baseline.replacingSubscription(subscription)
+		let updated = installSubscription(subscription, into: baseline)
+		guard updated != baseline else {
+			// A rejected older response isn't a retry. An equal response can
+			// finish a write that failed after the menu data was installed.
+			if subscription == baseline.data.subscription {
+				switch widgetPublication {
+				case .failedBeforeCommit, .indeterminateAfterCommit:
+					await publishWidgetSnapshot(baseline, collectsSessionScope: false)
+				default: break
+				}
+			}
+			return
+		}
 		update(\.latestSnapshot, updated)
 		switch state {
 		case .ready:
@@ -3046,6 +3255,7 @@ public final class DesktopRefreshCoordinator {
 		update(\.scanProgress, nil)
 		update(\.state, .ready(envelope))
 		markPublicationBound()
+		refreshTiming.recordSuccess()
 		update(\.fullAttempt, .succeeded(generation: generation, completedAt: wallNow()))
 		await publishWidgetSnapshot(envelope)
 		scheduleSuccessReset(generation: generation)
@@ -3142,6 +3352,7 @@ public final class DesktopRefreshCoordinator {
 			PerfTrace.mark(.refreshFailed, PerfCount("issue", code), PerfCount("helper_kind", helperKind),
 				PerfCount("exit_status", exitStatus))
 		}
+		refreshTiming.recordFailure(at: refreshClock.now())
 		update(\.fullAttempt, .failed(generation: generation, issue: issue, completedAt: wallNow()))
 		update(\.state, .degraded(previous: latestSnapshot, issue: issue))
 		// A retained terminal progress report (e.g. completed with a domain

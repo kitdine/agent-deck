@@ -13,8 +13,10 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
@@ -616,11 +618,11 @@ func TestMigrationsAdoptExactPreassemblyQuotaAlertTable(t *testing.T) {
 		t.Fatalf("schema version = %d, %v, want %d", version, versionErr, CurrentSchemaVersion)
 	}
 	var notices int
-	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices_v2 WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
 		t.Fatalf("preserved notices = %d, %v, want 1", notices, err)
 	}
 	var failureObservedAtColumns int
-	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('quota_envelopes') WHERE name='failure_observed_at'`).Scan(&failureObservedAtColumns); err != nil || failureObservedAtColumns != 1 {
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('quota_envelopes_v2') WHERE name='failure_observed_at'`).Scan(&failureObservedAtColumns); err != nil || failureObservedAtColumns != 1 {
 		t.Fatalf("failure_observed_at columns = %d, %v, want 1", failureObservedAtColumns, err)
 	}
 }
@@ -2301,5 +2303,223 @@ func TestWrapLockContentionFallsBackToOwnerUnknownOnStatRace(t *testing.T) {
 	}
 	if contention.ActionKind != nil {
 		t.Fatalf("contention.ActionKind = %v, want nil", contention.ActionKind)
+	}
+}
+
+func TestLockOwnedByCurrentProcessTracksRealAcquisitionAndIdentity(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	otherRoot := t.TempDir()
+	scanPath := filepath.Join(root, "scan.lock")
+	statePath := filepath.Join(root, "state.lock")
+	otherScanPath := filepath.Join(otherRoot, "scan.lock")
+
+	lock, err := AcquireScanLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("held scan.lock was not recognized as owned by current process")
+	}
+	if _, err := AcquireScanLock(ctx, root, 0); !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expected ErrStateBusy while holding real lock, got %v", err)
+	}
+
+	tokenBytes, err := os.ReadFile(scanPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Copied token to another root or another lock name must not be owned.
+	if err := os.WriteFile(otherScanPath, tokenBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(otherScanPath) {
+		t.Fatal("copied token in another root reported as owned")
+	}
+	if err := os.WriteFile(statePath, tokenBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(statePath) {
+		t.Fatal("copied token on state.lock reported as owned")
+	}
+	_ = os.Remove(statePath)
+
+	// Hardlink of the held lock file to another path must not be owned.
+	hardlinkPath := filepath.Join(otherRoot, "hardlink.lock")
+	if err := os.Link(scanPath, hardlinkPath); err == nil {
+		defer os.Remove(hardlinkPath)
+		if LockOwnedByCurrentProcess(hardlinkPath) {
+			t.Fatal("hardlinked token at another path reported as owned")
+		}
+	}
+
+	// Concurrent Release calls must release only once and never delete a later lock.
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = lock.Release()
+		}()
+	}
+	wg.Wait()
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("released scan.lock still reported as owned")
+	}
+
+	// Replacing a released lock at the same path and releasing the old handle again
+	// must not touch the replacement lock.
+	nextLock, err := AcquireScanLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("second Release on already-released lock returned error: %v", err)
+	}
+	if !LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("stale Release removed or unregistered replacement lock")
+	}
+
+	// Recreating the file at the same path with the exact same registered token
+	// produces a different file identity (inode) and must not be treated as owned.
+	nextToken, err := os.ReadFile(scanPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(scanPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scanPath, nextToken, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("replaced inode with copied token reported as owned")
+	}
+	if err := nextLock.Release(); !errors.Is(err, ErrLockLost) {
+		t.Fatalf("Release after inode replacement = %v, want ErrLockLost", err)
+	}
+	if _, err := os.Stat(scanPath); err != nil {
+		t.Fatalf("Release removed replaced file with different inode: %v", err)
+	}
+	_ = os.Remove(scanPath)
+
+	// Unregistered same-PID nonce and foreign PID must both return false.
+	unregistered := fmt.Sprintf("v1:%d:%032x", os.Getpid(), 99)
+	if err := os.WriteFile(scanPath, []byte(unregistered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("unregistered same-PID token reported as owned")
+	}
+	foreign := fmt.Sprintf("v1:%d:%032x", os.Getpid()+100000, 99)
+	if err := os.WriteFile(scanPath, []byte(foreign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if LockOwnedByCurrentProcess(scanPath) {
+		t.Fatal("foreign PID token reported as owned")
+	}
+}
+
+func TestQuotaRefreshLockCannotStartAfterCutoff(t *testing.T) {
+	root := t.TempDir()
+	cutoff := time.Now().Add(-time.Nanosecond)
+	lock, err := AcquireQuotaRefreshLockBefore(context.Background(), root, cutoff)
+	if lock != nil || !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expired cutoff acquired %v: %v", lock, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "quota-refresh.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected lock file: %v", err)
+	}
+}
+
+func TestQuotaRefreshLockCannotRetryAfterCutoff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		root := t.TempDir()
+		holder, err := AcquireQuotaRefreshLock(ctx, root, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer holder.Release()
+
+		cutoff := time.Now().Add(time.Second)
+		wakes := 0
+		after := func(time.Duration) <-chan time.Time {
+			wakes++
+			if contents, err := os.ReadFile(holder.path); err != nil || string(contents) != holder.token {
+				t.Fatalf("expected the original holder at the first retry: %v", err)
+			}
+			// Advance only the synctest clock, then make the lock available
+			// before the delayed retry resumes.
+			time.Sleep(time.Until(cutoff) + time.Nanosecond)
+			if err := holder.Release(); err != nil {
+				t.Fatal(err)
+			}
+			return time.After(0)
+		}
+		lock, err := acquireNamedLockBefore(ctx, root, "quota-refresh.lock", time.Until(cutoff),
+			lockProcessAlive, tryLockReclaimFile, cutoff, after)
+		if lock != nil {
+			defer lock.Release()
+		}
+		if wakes != 1 || !time.Now().After(cutoff) {
+			t.Fatalf("expected one retry wake after cutoff, got %d at %v relative to cutoff", wakes, time.Since(cutoff))
+		}
+		if lock != nil || !errors.Is(err, ErrStateBusy) {
+			t.Errorf("retry after cutoff acquired %v: %v", lock != nil, err)
+		}
+		if _, err := os.Lstat(holder.path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("retry after cutoff left a lock file: %v", err)
+		}
+	})
+}
+
+func TestQuotaRefreshLockBeforeRecordsOwnership(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, "quota-refresh.lock")
+		lock, err := AcquireQuotaRefreshLockBefore(t.Context(), root, time.Now().Add(time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !LockOwnedByCurrentProcess(path) {
+			t.Error("quota refresh lock acquired before the cutoff was not recognized as owned")
+		}
+		if err := lock.Release(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("quota refresh lock still exists or could not be checked after release: %v", err)
+		}
+	})
+}
+
+func TestQuotaRefreshProofRequiresOriginalLockEntry(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	core, err := Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	lock, err := AcquireQuotaRefreshLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	if err := core.CheckQuotaRefreshLock(lock); err != nil {
+		t.Fatalf("original quota lock: %v", err)
+	}
+
+	// Keep the acquired inode alive while replacing the entry at its old name.
+	if err := os.Rename(lock.path, lock.path+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock.path, []byte(lock.token), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := core.CheckQuotaRefreshLock(lock); !errors.Is(err, ErrLockLost) {
+		t.Fatalf("refresh proof for a replaced lock entry = %v, want ErrLockLost", err)
 	}
 }

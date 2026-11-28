@@ -422,7 +422,7 @@ func (f *quotaCLIFixture) readOnlyState() [4][32]byte {
 }
 
 func TestQuotaSessionReportLegacySchemaIsReadOnly(t *testing.T) {
-	for _, schema := range []int{30, 31, 35, 36} {
+	for _, schema := range []int{30, 31, 35, store.QuotaIdentitySchemaVersion, store.PricingFactsSchemaVersion} {
 		t.Run(fmt.Sprint(schema), func(t *testing.T) {
 			f := newQuotaCLIFixture(t, quota.ClientCodex)
 			f.event("legacy", quotaFixtureSession, f.baseline, 0, 1_000_000, f.eligible(), true)
@@ -625,7 +625,7 @@ func TestQuotaSessionReportPreservesObservedWindowsWithLimits(t *testing.T) {
 func TestCompletedQuotaReportRequiresReturnedGeneration(t *testing.T) {
 	f := newQuotaCLIFixture(t, quota.ClientCodex)
 	completed := f.startAndComplete()
-	actual, err := f.probeService(f.state, "").SampleQuota(f.ctx, f.core, quotaRefreshLockTimeout, quota.SampleFinish, f.client, quotaFixtureSession)
+	actual, err := f.probeService(f.state, "").SampleQuota(f.ctx, f.core, quotaSampleLockTimeout, quota.SampleFinish, f.client, quotaFixtureSession)
 	if err != nil || actual.Completion() == nil {
 		t.Fatalf("finish replay=%+v, %v", actual, err)
 	}

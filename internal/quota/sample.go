@@ -103,6 +103,10 @@ func (s Sampler) Run(ctx context.Context, action SampleAction, client Client, se
 		(client != ClientCodex && client != ClientClaude) || sessionID == "" {
 		return result, errors.New("invalid quota sample selection")
 	}
+	writer := s.Scheduler.Store
+	if writer == nil || writer.core == nil {
+		return result, errors.New("quota sampling requires a writable core")
+	}
 	lock, err := store.AcquireQuotaRefreshLock(ctx, s.StateRoot, s.LockTimeout)
 	if err != nil {
 		return result, err
@@ -112,6 +116,9 @@ func (s Sampler) Run(ctx context.Context, action SampleAction, client Client, se
 			err = releaseErr
 		}
 	}()
+	if err := writer.core.CheckQuotaRefreshLock(lock); err != nil {
+		return result, err
+	}
 
 	result = SampleResult{Action: action, Status: MeasurementMissing}
 	active, beforeUsage, done, err := s.prepare(ctx, action, client, sessionID, &result)
@@ -127,16 +134,33 @@ func (s Sampler) Run(ctx context.Context, action SampleAction, client Client, se
 		return result, store.ErrStateBusy
 	}
 	defer quotaProbeInFlight.Delete(client)
+	cycle, err := writer.BeginRefreshCycle(ctx, lock, started)
+	if err != nil {
+		return result, err
+	}
+	var generation Generation
+	if client == ClientClaude {
+		// An explicit sample is a usage-only cycle. Reconcile the delivery
+		// epoch and pin the generation before probing, as for ordinary prose.
+		if _, err := writer.ReconcileQuotaDelivery(ctx, cycle); err != nil {
+			return result, err
+		}
+		state, err := writer.CommittedClaudeContext(ctx, cycle)
+		if err != nil {
+			return result, err
+		}
+		generation = state.Generation
+	}
 	readings, err := s.probe(ctx, client, started)
 	if err != nil {
 		if probeAuthenticationFailed(err) {
-			if invalidateErr := s.Scheduler.Store.invalidateSamples(ctx, client); invalidateErr != nil {
+			if invalidateErr := writer.invalidateSampleCycle(ctx, cycle, client, generation); invalidateErr != nil {
 				return result, invalidateErr
 			}
 		}
 		return result, &SampleError{Code: SampleProbeFailed}
 	}
-	return s.publish(ctx, action, client, sessionID, active, beforeUsage, readings)
+	return s.publish(ctx, cycle, generation, action, client, sessionID, active, beforeUsage, readings)
 }
 
 func (s Sampler) prepare(ctx context.Context, action SampleAction, client Client, sessionID string, result *SampleResult) (*sampleRow, sampleUsageState, bool, error) {
@@ -315,10 +339,11 @@ func (s Sampler) checkPending(ctx context.Context, tx *sql.Tx, client Client, se
 }
 
 type sampleProbe struct {
-	started   time.Time
-	completed time.Time
-	envelope  EnvelopeRecord
-	windows   []Observation
+	started    time.Time
+	completed  time.Time
+	envelope   EnvelopeRecord
+	windows    []Observation
+	planUnsafe bool
 }
 
 func (s Sampler) probe(ctx context.Context, client Client, started time.Time) (sampleProbe, error) {
@@ -333,6 +358,7 @@ func (s Sampler) probe(ctx context.Context, client Client, started time.Time) (s
 		probe.envelope.Plan, probe.envelope.PlanReason = result.Plan, result.PlanReason
 		probe.envelope.ResetAllowance, probe.envelope.Billing = result.ResetAllowance, result.Billing
 		probe.windows = result.Windows
+		probe.planUnsafe = result.planUnsafe
 	case ClientClaude:
 		result, err := s.Scheduler.probeClaudeProse(ctx, started)
 		if err != nil {
@@ -347,13 +373,21 @@ func (s Sampler) probe(ctx context.Context, client Client, started time.Time) (s
 	return probe, nil
 }
 
-func (s Sampler) publish(ctx context.Context, action SampleAction, client Client, sessionID string, active *sampleRow, beforeUsage sampleUsageState, probe sampleProbe) (SampleResult, error) {
+func (s Sampler) publish(ctx context.Context, cycle RefreshCycle, contextGeneration Generation, action SampleAction, client Client, sessionID string, active *sampleRow, beforeUsage sampleUsageState, probe sampleProbe) (SampleResult, error) {
 	result := SampleResult{Action: action, Status: MeasurementActive, StartedAt: &probe.started}
+	if err := s.Scheduler.Store.checkCycle(cycle); err != nil {
+		return result, err
+	}
 	tx, err := s.Scheduler.Store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback()
+	if current, err := currentQuotaCycle(ctx, tx, cycle); err != nil {
+		return result, err
+	} else if !current {
+		return result, &SampleError{Code: SampleConflict}
+	}
 	lastCallAt, err := selectedSession(ctx, tx, client, sessionID)
 	if err != nil {
 		return result, err
@@ -370,7 +404,7 @@ func (s Sampler) publish(ctx context.Context, action SampleAction, client Client
 	}
 
 	digest := accountDigest(client, probe.envelope.AccountID)
-	endpoint, err := recordSampleEndpoint(ctx, tx, probe, digest)
+	endpoint, err := recordSampleEndpoint(ctx, tx, cycle, contextGeneration, probe, digest)
 	if err != nil {
 		return result, err
 	}
@@ -424,7 +458,7 @@ func sameSampleGeneration(before, after *sampleRow) bool {
 	return before.generation == after.generation && before.sessionID == after.sessionID
 }
 
-func recordSampleEndpoint(ctx context.Context, tx *sql.Tx, probe sampleProbe, digest string) (sampleEndpoint, error) {
+func recordSampleEndpoint(ctx context.Context, tx *sql.Tx, cycle RefreshCycle, expected Generation, probe sampleProbe, digest string) (sampleEndpoint, error) {
 	client := probe.envelope.Client
 	endpoint := sampleEndpoint{
 		Version: 1, ProbeStartedAt: probe.started, ProbeCompletedAt: probe.completed,
@@ -432,9 +466,17 @@ func recordSampleEndpoint(ctx context.Context, tx *sql.Tx, probe sampleProbe, di
 	}
 	var previousAt string
 	var previousSource Source
-	err := tx.QueryRowContext(ctx, `SELECT observed_at, source FROM quota_envelopes WHERE client=?`, client).Scan(&previousAt, &previousSource)
+	var previousSeq CycleSeq
+	var generation Generation
+	confirmed := Generation(-1)
+	err := tx.QueryRowContext(ctx, `SELECT observed_at, source, cycle_seq, context_generation, confirmed_generation
+		FROM quota_envelopes_v2 WHERE client=?`, client).
+		Scan(&previousAt, &previousSource, &previousSeq, &generation, &confirmed)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return sampleEndpoint{}, err
+	}
+	if generation != expected || cycle.seq <= previousSeq {
+		return sampleEndpoint{}, &SampleError{Code: SampleConflict}
 	}
 	cacheCurrent := true
 	if previousAt != "" {
@@ -454,7 +496,7 @@ func recordSampleEndpoint(ctx context.Context, tx *sql.Tx, probe sampleProbe, di
 		}
 		if cacheCurrent {
 			obs.AccountID, obs.ObservedAt = probe.envelope.AccountID, probe.started
-			_, _, resetAt, err := recordObservation(ctx, tx, obs)
+			_, _, resetAt, err := writeQuotaWindow(ctx, tx, obs, generation, cycle.seq)
 			if err != nil {
 				return sampleEndpoint{}, err
 			}
@@ -472,8 +514,13 @@ func recordSampleEndpoint(ctx context.Context, tx *sql.Tx, probe sampleProbe, di
 		if err := pruneWindows(ctx, tx, client, probe.envelope.AccountID, observedWindowKeys(probe.windows)); err != nil {
 			return sampleEndpoint{}, err
 		}
-		if err := putEnvelope(ctx, tx, probe.envelope); err != nil {
+		if err := putEnvelope(ctx, tx, probe.envelope, probe.planUnsafe, generation, cycle.seq); err != nil {
 			return sampleEndpoint{}, err
+		}
+		if client == ClientClaude {
+			if err := finishClaudeUsage(ctx, tx, confirmed); err != nil {
+				return sampleEndpoint{}, err
+			}
 		}
 	}
 	return endpoint, nil

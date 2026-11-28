@@ -89,6 +89,10 @@ const (
 
 func encodeFixture(t *testing.T, result Result) string {
 	t.Helper()
+	if p := result.Snapshot.Subscription.Projection; p != nil {
+		// Boot, monotonic time and core epoch are local to the fixture run.
+		result.Snapshot.Subscription.Projection = &SubscriptionProjection{CoreEpoch: 1, Revision: p.Revision, Boot: "fixture-boot", Mono: 1}
+	}
 	if view := result.Snapshot.SessionScopeView; view != nil && view.PublicationID != nil {
 		normalized := *view
 		id := fixtureSessionScopePublication

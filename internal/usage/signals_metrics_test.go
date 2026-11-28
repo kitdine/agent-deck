@@ -121,7 +121,9 @@ func TestWorkflowMetricsCountOnlyWrittenFileRows(t *testing.T) {
 
 	lines := codexTurn("t1", "2026-08-27T00:00:00Z", "implement the merge")
 	lines = append(lines,
-		codexShell("c1", "2026-08-27T00:00:01Z", "cat "+read1+" "+read2+" > "+written),
+		// Quote each path: t.TempDir() may contain spaces, and an unquoted
+		// path would be split into several shell words.
+		codexShell("c1", "2026-08-27T00:00:01Z", "cat '"+read1+"' '"+read2+"' > '"+written+"'"),
 		codexTokens("2026-08-27T00:00:02Z"),
 	)
 	writeSource(t, filepath.Join(home, ".codex", "sessions", "files.jsonl"),

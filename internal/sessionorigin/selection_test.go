@@ -821,11 +821,23 @@ func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = s.core.DB.Exec(`
-		DROP TRIGGER quota_samples_on_session_delete;
-		DROP TRIGGER quota_samples_on_provider_selection;
-		DROP TRIGGER quota_samples_on_observed_provider;
-		DROP TABLE quota_session_samples;
-		DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; UPDATE schema_metadata SET version=34`); err != nil {
+         DROP TRIGGER quota_samples_on_session_delete;
+         DROP TRIGGER quota_samples_on_provider_selection;
+         DROP TRIGGER quota_samples_on_observed_provider;
+         DROP TABLE quota_session_samples;
+         DROP TABLE usage_request_facts; DROP TABLE price_rule_sets;
+         ALTER TABLE usage_source_files DROP COLUMN thread_id;
+        ALTER TABLE quota_windows_v2 RENAME TO quota_windows;
+        ALTER TABLE quota_envelopes_v2 RENAME TO quota_envelopes;
+        ALTER TABLE quota_alert_notices_v2 RENAME TO quota_alert_notices;
+        DROP TABLE quota_identities;
+        DROP TRIGGER quota_revalidate_selection_insert; DROP TRIGGER quota_revalidate_selection_update;
+        DROP TRIGGER quota_revalidate_setting_insert; DROP TRIGGER quota_revalidate_setting_update;
+        DROP TRIGGER quota_revision_settings_INSERT; DROP TRIGGER quota_revision_settings_UPDATE; DROP TRIGGER quota_revision_settings_DELETE;
+        DROP TRIGGER quota_revision_provider_selections_INSERT; DROP TRIGGER quota_revision_provider_selections_UPDATE; DROP TRIGGER quota_revision_provider_selections_DELETE;
+        DROP TRIGGER quota_revision_usage_session_observations_INSERT; DROP TRIGGER quota_revision_usage_session_observations_UPDATE; DROP TRIGGER quota_revision_usage_session_observations_DELETE;
+        DROP TABLE quota_cycle; DROP TABLE quota_projection_revision;
+        UPDATE schema_metadata SET version=34`); err != nil {
 		t.Fatal(err)
 	}
 	s.core.Close()

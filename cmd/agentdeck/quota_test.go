@@ -380,6 +380,12 @@ func TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver(t *testing.T) {
 		t.Fatalf("probes = codex %d, claude %d, want one each", fake.codexCalls, fake.claudeCalls)
 	}
 	alerts := quotaRefreshAlerts(t, data)
+	if _, ok := data["state_root_id"]; ok {
+		t.Fatal("unguarded refresh emitted root proof")
+	}
+	if len(alerts) != 1 || alerts[0]["generation"] != 0.0 || !strings.HasPrefix(fmt.Sprint(alerts[0]["id"]), "qa2.") {
+		t.Fatal("incorrect Codex generation or ID", alerts)
+	}
 	if len(alerts) != 1 || alerts[0]["client"] != "codex" || alerts[0]["kind"] != "threshold" || alerts[0]["threshold"] != 75.0 ||
 		alerts[0]["used_percent"] != 80.0 || alerts[0]["window_minutes"] != 300.0 || alerts[0]["id"] == "" {
 		t.Fatalf("alerts = %+v, want one Codex threshold notice at 75 naming the window length and figure", alerts)
@@ -405,6 +411,88 @@ func TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver(t *testing.T) {
 	if after := quotaRefreshAlerts(t, runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")); len(after) != 0 {
 		t.Fatalf("alerts after acknowledgement = %+v, want none", after)
 	}
+}
+
+func TestDesktopQuotaAlertEnvelopeCycleBinding(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	lock, err := store.AcquireQuotaRefreshLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	s := quota.NewWritableStore(core)
+	now := time.Now().UTC()
+	cycle, err := s.BeginRefreshCycle(ctx, lock, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := s.ReconcileQuotaDelivery(ctx, cycle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := g.ApplyClaudeIdentity(ctx, quota.IdentityObservation{State: quota.IdentitySignedOut}, time.Time{}, time.Time{})
+	if err != nil || identity.Generation != 1 {
+		t.Fatal(identity, err)
+	}
+	out, err := s.CommitClaudeUsage(ctx, cycle, 1, quota.ClaudeProseResult{Windows: []quota.Observation{{WindowKey: "five_hour", UsedPercent: 90, ResetsAt: now.Add(time.Hour)}}}, identity)
+	if err != nil || out != quota.WriteCommitted {
+		t.Fatal(out, err)
+	}
+	due, err := quota.DueAlerts(ctx, s, true, map[quota.Client]bool{quota.ClientClaude: true}, quota.AlertConfig{Enabled: true, Thresholds: []float64{75}}, now)
+	if err != nil || len(due) != 1 {
+		t.Fatal(due, err)
+	}
+	settings := quota.Settings{ProbeEnabled: true, AlertsEnabled: true, AlertThresholds: []float64{75}}
+	check := func(c quota.RefreshCycle, guard *quota.QuotaDeliveryGuard, wantProof bool) {
+		t.Helper()
+		var buf bytes.Buffer
+		result, err := desktopQuotaAlertEnvelope(ctx, s, c, guard, settings, map[quota.Client]quota.Reason{quota.ClientClaude: ""}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeEnvelope(&buf, "json", "desktop.quota-refresh", result, false, nil); err != nil {
+			t.Fatal(err)
+		}
+		var wire struct {
+			Data struct {
+				Root   *string `json:"state_root_id"`
+				Alerts []struct {
+					ID         string
+					Generation *int64
+				}
+			}
+		}
+		if err := json.Unmarshal(buf.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		if !wantProof {
+			if wire.Data.Root != nil || len(wire.Data.Alerts) != 0 {
+				t.Fatal("unbound Claude proof", buf.String())
+			}
+			return
+		}
+		if wire.Data.Root == nil || *wire.Data.Root != g.StateRootID() || len(wire.Data.Alerts) != 1 || wire.Data.Alerts[0].Generation == nil || *wire.Data.Alerts[0].Generation != 1 || wire.Data.Alerts[0].ID != due[0].ID {
+			t.Fatal(buf.String())
+		}
+	}
+	check(cycle, g, true)
+	missing, err := desktopQuotaAlertEnvelope(ctx, s, cycle, g, settings, nil, now)
+	if err != nil || len(missing.Alerts) != 0 {
+		t.Fatalf("missing provider outcome emitted alerts: %+v: %v", missing.Alerts, err)
+	}
+	check(cycle, nil, false)
+	next, err := s.BeginRefreshCycle(ctx, lock, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(next, g, false)
+	check(cycle, g, false)
 }
 
 func TestDesktopQuotaRefreshWithReadingOffProbesAndEvaluatesNothing(t *testing.T) {
