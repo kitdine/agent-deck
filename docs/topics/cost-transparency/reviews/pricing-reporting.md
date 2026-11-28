@@ -73,3 +73,11 @@ CEv1 WorkUnit `cost-transparency:pricing-reporting`，ContentState `cost-transpa
 #### 任务检查点
 
 本地签名提交包含 40 个已评审的实现、夹具、测试和 CLI 手册文件，以及本评审记录和任务矩阵的任务 4 状态。提交并核对证据后，按实际组合基线交接额度采样的正式迁移、生产命令和原生兼容。
+
+#### 计价工作树的 CLI 金标补验（2026-11-19）
+
+主控在签名提交 `d772a79edb20dc8d7a041a30cec24bb6937b0488` 上复现 `TestIsolatedEndToEndFlow` 的旧空时段结构差异，并在计价工作树用端到端生产者重生成 GUI JSON 金标。仅 `usage.stats` 和 `desktop.snapshot` 的成功结构更新，空时段使用既有完整零金额输出。这两部分与额度采样 R2 独立复评核对通过的金标完全相同。
+
+金标 `cmd/agentdeck/testdata/phase7/gui-json-contract.json` 的 Git blob 为 `cdbe44f8056fd2e0b20eea800645c77fd6c1f34e`。在现有工作树以 Go 1.27.1 运行 `TestIsolatedEndToEndFlow`、`TestGUIJSONContractFixture` 和 `TestEveryLeafSyntaxErrorUsesStableJSON`，三项通过。原生与发布路径的证据仍绑定相同实现。
+
+本地内容指纹 `bd46a72e2d1a74d8e7d18cf06062a8f06039400ff6d23bf5e20e1a64ef8348a4` 对应的 `cost-transparency:pricing-reporting` 门禁为 `VERIFIED 3/3`，`cost-transparency` 专题门禁为 `VERIFIED 1/1`。金标和本补验记录形成待单独授权的本地提交范围。

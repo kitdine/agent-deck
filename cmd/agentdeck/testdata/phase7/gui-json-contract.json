@@ -590,12 +590,6 @@
                 "client": "string",
                 "daily": [],
                 "hourly": [],
-                "periods": []
-              },
-              {
-                "client": "string",
-                "daily": [],
-                "hourly": [],
                 "periods": [
                   {
                     "models": [],
@@ -603,9 +597,9 @@
                     "period": "string",
                     "pricing": {
                       "api_equivalent": {
-                        "amount": null,
+                        "amount": "string",
                         "currency": "string",
-                        "known_amount": null,
+                        "known_amount": "string",
                         "status": "string"
                       },
                       "provider_estimate": null,
@@ -619,9 +613,9 @@
                         "key": "string",
                         "pricing": {
                           "api_equivalent": {
-                            "amount": null,
+                            "amount": "string",
                             "currency": "string",
-                            "known_amount": null,
+                            "known_amount": "string",
                             "status": "string"
                           },
                           "provider_estimate": null,
@@ -4851,20 +4845,14 @@
               "metric_value": "string",
               "pricing": {
                 "api_equivalent": {
-                  "amount": null,
+                  "amount": "string",
                   "currency": "string",
-                  "known_amount": null,
+                  "known_amount": "string",
                   "status": "string"
                 },
                 "provider_estimate": null,
-                "reasons": [
-                  "string"
-                ],
-                "reference": {
-                  "amount": "string",
-                  "basis": "string",
-                  "currency": "string"
-                },
+                "reasons": [],
+                "reference": null,
                 "rule_set": "string",
                 "version": "number"
               },
@@ -4886,8 +4874,14 @@
                   "status": "string"
                 },
                 "provider_estimate": null,
-                "reasons": [],
-                "reference": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
                 "rule_set": "string",
                 "version": "number"
               },
@@ -4911,20 +4905,14 @@
               "output_tokens": "number",
               "pricing": {
                 "api_equivalent": {
-                  "amount": null,
+                  "amount": "string",
                   "currency": "string",
-                  "known_amount": null,
+                  "known_amount": "string",
                   "status": "string"
                 },
                 "provider_estimate": null,
-                "reasons": [
-                  "string"
-                ],
-                "reference": {
-                  "amount": "string",
-                  "basis": "string",
-                  "currency": "string"
-                },
+                "reasons": [],
+                "reference": null,
                 "rule_set": "string",
                 "version": "number"
               },
@@ -4952,8 +4940,14 @@
                   "status": "string"
                 },
                 "provider_estimate": null,
-                "reasons": [],
-                "reference": null,
+                "reasons": [
+                  "string"
+                ],
+                "reference": {
+                  "amount": "string",
+                  "basis": "string",
+                  "currency": "string"
+                },
                 "rule_set": "string",
                 "version": "number"
               },
