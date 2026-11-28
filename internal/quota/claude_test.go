@@ -220,6 +220,26 @@ func TestProbeClaudeProseNonZeroExitIsProbeFailed(t *testing.T) {
 	}
 }
 
+func TestProbeClaudeProseRequiresExplicitLoginEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, reply string
+		want        bool
+	}{
+		{"stderr login prompt", "printf 'Not logged in. Please run /login\n' >&2; exit 1", true},
+		{"stdout login prompt", "printf 'Not logged in · Please run /login\n'", true},
+		{"generic refusal", "printf 'Unable to reach provider, not logged in status unavailable\n' >&2; exit 1", false},
+		{"long refusal", "{ printf 'Not logged in'; printf '%300s' ' '; printf 'mentions login'; } >&2; exit 1", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withFakeClaude(t, tc.reply)
+			_, err := ProbeClaudeProse(context.Background(), time.Now(), 5*time.Second)
+			if err == nil || probeAuthenticationFailed(err) != tc.want {
+				t.Fatalf("authentication evidence = %t: %v", probeAuthenticationFailed(err), err)
+			}
+		})
+	}
+}
+
 func TestProbeClaudeProseShapeChangeIsParseFailed(t *testing.T) {
 	withFakeClaude(t, `printf 'the output format changed completely\n'`)
 	_, err := ProbeClaudeProse(context.Background(), time.Now(), 5*time.Second)

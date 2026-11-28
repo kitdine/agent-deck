@@ -375,8 +375,8 @@ done
 	if !errors.As(err, &failure) {
 		t.Fatalf("err = %v, want a *CodexFailureError", err)
 	}
-	if failure.Kind != CodexFailureServerError || failure.Kind.Reason() != ReasonProbeFailed {
-		t.Fatalf("Kind = %v, want server_error mapping to probe_failed", failure.Kind)
+	if failure.Kind != CodexFailureServerError || failure.Kind.Reason() != ReasonProbeFailed || !probeAuthenticationFailed(err) {
+		t.Fatalf("Kind = %v, want server_error mapping to probe_failed with explicit authentication evidence", failure.Kind)
 	}
 }
 

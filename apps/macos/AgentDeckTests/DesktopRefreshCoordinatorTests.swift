@@ -37,12 +37,15 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
-	func testServingAcceptsPricingFactsSchemaAndRejectsUnknownFutureSchema() throws {
+	func testServingAcceptsQuotaSamplesAndPricingFactsSchemas() throws {
 		let snapshot = try servingCoordinatorFixture(id: "pricing-facts-schema", full: true,
 			generationChanges: ["core_schema": 36])
 		XCTAssertEqual(snapshot.header.generation.coreSchema, 36)
+		let quota = try servingCoordinatorFixture(id: "quota-samples-schema", full: true,
+			generationChanges: ["core_schema": 37])
+		XCTAssertEqual(quota.header.generation.coreSchema, 37)
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
-			generationChanges: ["core_schema": 37]))
+			generationChanges: ["core_schema": 38]))
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "missing-schema", full: true,
 			generationChanges: ["core_schema": 0]))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
@@ -60,7 +63,11 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		}
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 36))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35))
-		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 37))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 37))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 37))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 37))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 36))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 38, current: 38))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {

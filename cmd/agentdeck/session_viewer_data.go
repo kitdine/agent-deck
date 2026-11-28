@@ -266,6 +266,7 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 	return sessionViewerPage{
 		Rows:    rows,
 		Summary: summaryLines,
+		Quota:   quotaValuationFields(summary.QuotaValuation),
 		Empty:   "No normalized token invocations are indexed for this session.",
 		Page:    max(1, pagination.Page),
 		Total:   pagination.Total,

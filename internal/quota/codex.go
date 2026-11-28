@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/buildinfo"
@@ -241,6 +242,13 @@ func readJSONRPCResult(ctx context.Context, scanner *bufio.Scanner, id int) (jso
 			continue
 		}
 		if len(env.Error) > 0 && !bytes.Equal(env.Error, []byte("null")) {
+			var serverError struct {
+				Message string `json:"message"`
+			}
+			if id == 2 && json.Unmarshal(env.Error, &serverError) == nil &&
+				strings.EqualFold(strings.TrimSpace(serverError.Message), "not logged in") {
+				return nil, &CodexFailureError{Kind: CodexFailureServerError, Err: errProbeAuthentication}
+			}
 			return nil, &CodexFailureError{Kind: CodexFailureServerError, Err: fmt.Errorf("codex app-server returned an error response: %s", env.Error)}
 		}
 		out := make(json.RawMessage, len(env.Result))
@@ -520,11 +528,15 @@ func mapCodexBilling(credits *codexCredits) Billing {
 // is malformed, never a silent 0% (see codexWindow's doc).
 func mapCodexWindow(limitID string, secondary bool, w codexWindow, label string, observedAt time.Time, vendorOrder int) (Observation, error) {
 	windowKey := CodexWindowKey(limitID, secondary)
+	slot := "primary"
+	if secondary {
+		slot = "secondary"
+	}
 	if w.UsedPercent == nil {
 		return Observation{}, fmt.Errorf("codex window %q: missing usedPercent", windowKey)
 	}
 	obs := Observation{
-		Client: ClientCodex, WindowKey: windowKey,
+		Client: ClientCodex, WindowKey: windowKey, Pool: limitID, Slot: slot,
 		Source: SourceCodex, ObservedAt: observedAt, VendorOrder: vendorOrder,
 		UsedPercent: *w.UsedPercent, Label: label,
 	}

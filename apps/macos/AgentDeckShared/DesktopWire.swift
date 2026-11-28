@@ -1736,20 +1736,22 @@ public struct DesktopSourceCoverageV2: Codable, Equatable, Sendable {
 }
 
 public struct DesktopServingGenerationV2: Codable, Equatable, Sendable {
-	public static let maximumSupportedCoreSchema = 36
+	public static let maximumSupportedCoreSchema = 37
 
 	// Schema 32 adds derived caches; 33 adds telemetry observations; 34 adds
 	// session-origin storage; 35 adds a source thread identity column and
 	// rebuilds the derived classification table. None changes the canonical
 	// facts in a retained schema-31/32/33/34 publication.
 	// Schema 36 adds pricing rules and request facts. A migrated core must
-	// rebuild an older publication. Keep these exceptions aligned with Go.
+	// rebuild an older publication. Schema 37 adds local quota samples and can
+	// retain a schema-36 publication. Keep these exceptions aligned with Go.
 	public static func compatibleCoreSchema(stored: Int, current: Int) -> Bool {
 		guard stored > 0, current <= maximumSupportedCoreSchema else { return false }
 		return stored == current || (stored == 31 && current == 32)
 			|| ((stored == 31 || stored == 32) && current == 33)
 			|| ((stored == 31 || stored == 32 || stored == 33) && current == 34)
 			|| ((31...34).contains(stored) && current == 35)
+			|| (stored == 36 && current == 37)
 	}
 	public let stateIdentity: String
 	public let coreEpoch: Int64

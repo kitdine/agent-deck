@@ -61,6 +61,9 @@
     "provider.use",
     "quota",
     "quota.capture",
+    "quota.sample.cancel",
+    "quota.sample.finish",
+    "quota.sample.start",
     "run",
     "scan",
     "session.classify",
@@ -3789,6 +3792,117 @@
       },
       "error_code": "invalid_argument",
       "error_command": "quota.capture"
+    },
+    "quota.sample.cancel": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "action": "string",
+          "status": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "quota.sample.cancel"
+    },
+    "quota.sample.finish": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "action": "string",
+          "finished_at": "string",
+          "quota_valuation": {
+            "coverage": "string",
+            "finished_at": "string",
+            "started_at": "string",
+            "status": "string",
+            "version": "number",
+            "windows": [
+              {
+                "after": {
+                  "observed_at": "string",
+                  "source": "string",
+                  "used_percent": "number"
+                },
+                "assumptions": [],
+                "before": {
+                  "observed_at": "string",
+                  "source": "string",
+                  "used_percent": "number"
+                },
+                "label": "string",
+                "pool": "string",
+                "reason": "string",
+                "window_key": "string",
+                "window_minutes": "number"
+              }
+            ]
+          },
+          "started_at": "string",
+          "status": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "quota.sample.finish"
+    },
+    "quota.sample.start": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "action": "string",
+          "started_at": "string",
+          "status": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "quota.sample.start"
     },
     "run.claude": {
       "success_schema": {

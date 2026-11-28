@@ -9,7 +9,8 @@ import "github.com/kitdine/agent-deck/internal/store"
 // identity column and rebuilds the derived classification table. A saved
 // schema-31 to -34 publication still describes the same canonical facts.
 // Migration 36 adds rule and request evidence storage, so older publications
-// must be rebuilt for a migrated core.
+// must be rebuilt for a migrated core. Migration 37 adds local sampling state
+// and can retain a schema-36 publication.
 func compatibleServingCoreSchema(stored, current int) bool {
 	if stored <= 0 || current > store.CurrentSchemaVersion {
 		return false
@@ -26,6 +27,8 @@ func compatibleServingCoreSchema(stored, current int) bool {
 		return stored == 31 || stored == 32 || stored == 33
 	case 35:
 		return stored >= 31 && stored <= 34
+	case store.QuotaSessionSamplesSchemaVersion:
+		return stored == store.PricingFactsSchemaVersion
 	}
 	return false
 }

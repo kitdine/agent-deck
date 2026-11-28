@@ -28,6 +28,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/perftrace"
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -108,18 +109,19 @@ type ModelCoverage struct {
 }
 
 type SessionSummary struct {
-	Pricing              *PricingReport   `json:"pricing,omitempty"`
-	Client               string           `json:"client"`
-	SessionID            string           `json:"session_id"`
-	FirstAt              string           `json:"first_at"`
-	LastAt               string           `json:"last_at"`
-	Tokens               map[string]int64 `json:"tokens"`
-	CatalogBaseCost      *string          `json:"catalog_base_cost"`
-	ProviderCost         *string          `json:"provider_cost"`
-	KnownCatalogBaseCost *string          `json:"known_catalog_base_cost"`
-	KnownProviderCost    *string          `json:"known_provider_cost"`
-	Unpriced             []string         `json:"unpriced_components"`
-	Warnings             []string         `json:"warnings"`
+	QuotaValuation       *quota.ValuationResult `json:"quota_valuation,omitempty"`
+	Pricing              *PricingReport         `json:"pricing,omitempty"`
+	Client               string                 `json:"client"`
+	SessionID            string                 `json:"session_id"`
+	FirstAt              string                 `json:"first_at"`
+	LastAt               string                 `json:"last_at"`
+	Tokens               map[string]int64       `json:"tokens"`
+	CatalogBaseCost      *string                `json:"catalog_base_cost"`
+	ProviderCost         *string                `json:"provider_cost"`
+	KnownCatalogBaseCost *string                `json:"known_catalog_base_cost"`
+	KnownProviderCost    *string                `json:"known_provider_cost"`
+	Unpriced             []string               `json:"unpriced_components"`
+	Warnings             []string               `json:"warnings"`
 }
 
 type StatsOptions struct {

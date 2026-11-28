@@ -185,17 +185,8 @@ type pricingRead struct {
 	revision  int64
 }
 
-// The timeline comes from the existing reader. Its metadata revision must
-// agree with the transaction before any rows can be returned.
+// Provider history, request facts, and the catalog come from one read snapshot.
 func (s *Service) openPricingRead(ctx context.Context, cutoff time.Time) (*pricingRead, error) {
-	revision, err := s.Store.UsageProjectionMetadataRevision(ctx)
-	if err != nil {
-		return nil, err
-	}
-	timeline, err := s.Store.LoadProviderTimeline(ctx)
-	if err != nil {
-		return nil, err
-	}
 	tx, err := s.Store.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
@@ -206,18 +197,22 @@ func (s *Service) openPricingRead(ctx context.Context, cutoff time.Time) (*prici
 			tx.Rollback()
 		}
 	}()
-	var snapshotRevision int64
-	err = tx.QueryRowContext(ctx, "SELECT revision FROM usage_derived_metadata WHERE singleton=1").Scan(&snapshotRevision)
+	var schema int
+	if err := tx.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&schema); err != nil {
+		return nil, err
+	}
+	// Schema 32 added the revision used by the derived publication cache.
+	var revision int64
+	if schema >= 32 {
+		if err := tx.QueryRowContext(ctx, "SELECT revision FROM usage_derived_metadata WHERE singleton=1").Scan(&revision); err != nil {
+			return nil, err
+		}
+	}
+	timeline, err := store.ReadProviderTimeline(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	if revision != snapshotRevision {
-		return nil, store.ErrUsagePartitionChanged
-	}
-	supported, err := pricingRulesSupported(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
+	supported := schema >= store.PricingFactsSchemaVersion
 	resolver, err := loadReadPriceRows(ctx, tx, cutoff, timeline)
 	if err != nil {
 		return nil, err

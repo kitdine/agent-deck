@@ -9,6 +9,7 @@ import (
 )
 
 func TestPricingFactsSchema35MigrationRollsBackAndRetries(t *testing.T) {
+	const schemaBeforePricing = 35
 	ctx := context.Background()
 	root := t.TempDir()
 	path := filepath.Join(root, "agentdeck.sqlite3")
@@ -17,7 +18,7 @@ func TestPricingFactsSchema35MigrationRollsBackAndRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err = migrate(ctx, db, migrations[:len(migrations)-1]); err != nil {
+	if err = migrate(ctx, db, migrations[:schemaBeforePricing]); err != nil {
 		t.Fatal(err)
 	}
 	ownershipExec(t, db, `INSERT INTO price_catalogs VALUES('legacy','official','https://openai.example/catalog','','hash','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1);
@@ -29,7 +30,7 @@ CREATE TABLE usage_request_facts(failure_fixture INTEGER);`)
 	if err = migrate(ctx, db, migrations); err == nil || !strings.Contains(err.Error(), "migration 36") {
 		t.Fatalf("expected migration rollback, got %v", err)
 	}
-	if version, err := schemaVersion(ctx, db); err != nil || version != 35 {
+	if version, err := schemaVersion(ctx, db); err != nil || version != schemaBeforePricing {
 		t.Fatalf("schema after failed transaction: %d, %v", version, err)
 	}
 	if count := ownershipCount(t, db, `SELECT count(*) FROM sqlite_schema WHERE name='price_rule_sets'`); count != 0 {
@@ -44,7 +45,7 @@ CREATE TABLE usage_request_facts(failure_fixture INTEGER);`)
 		t.Fatal(err)
 	}
 	defer upgraded.Close()
-	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 36 {
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
 		t.Fatalf("retried version: %d, %v", version, err)
 	}
 	for _, query := range []string{

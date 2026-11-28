@@ -100,7 +100,9 @@ func ProbeClaudeProse(ctx context.Context, observedAt time.Time, timeout time.Du
 	}
 	cmd := exec.CommandContext(ctx, executable, claudeProseCommandArgs[1:]...)
 	var stdout bytes.Buffer
+	var stderr claudeAuthOutput
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureSpawn, Err: err}
 	}
@@ -108,14 +110,50 @@ func ProbeClaudeProse(ctx context.Context, observedAt time.Time, timeout time.Du
 		kind := ClaudeFailureExit
 		if ctx.Err() != nil {
 			kind = ClaudeFailureDeadline
+		} else if claudeLoginRequired(stdout.String()) || stderr.loginRequired() {
+			err = errProbeAuthentication
 		}
 		return ClaudeProseResult{}, &ClaudeFailureError{Kind: kind, Err: err}
+	}
+	if claudeLoginRequired(stdout.String()) || stderr.loginRequired() {
+		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureExit, Err: errProbeAuthentication}
 	}
 	result, parseErr := ParseClaudeProse(stdout.String(), observedAt)
 	if parseErr != nil {
 		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureParse, Err: parseErr}
 	}
 	return result, nil
+}
+
+// Only the explicit login prompt establishes authentication failure. The
+// stderr capture is bounded and longer output cannot match the prompt.
+type claudeAuthOutput struct {
+	buffer    bytes.Buffer
+	truncated bool
+}
+
+func (o *claudeAuthOutput) Write(p []byte) (int, error) {
+	const maxBytes = 256
+	if !o.truncated {
+		remaining := maxBytes - o.buffer.Len()
+		o.truncated = len(p) > remaining
+		_, _ = o.buffer.Write(p[:min(len(p), remaining)])
+	}
+	return len(p), nil
+}
+
+func (o *claudeAuthOutput) loginRequired() bool {
+	return !o.truncated && claudeLoginRequired(o.buffer.String())
+}
+
+func claudeLoginRequired(output string) bool {
+	text := strings.ToLower(strings.TrimSpace(output))
+	switch strings.TrimPrefix(text, "error: ") {
+	case "not logged in", "not logged in. please run /login", "not logged in · please run /login":
+		return true
+	default:
+		return false
+	}
 }
 
 // claudeProseLinePattern matches one of the two known lines, e.g.:
@@ -248,7 +286,7 @@ func resolveClaudeProseInstant(dateText, timeText string, location *time.Locatio
 func mapClaudeProseWindow(line claudeProseLine, observedAt time.Time, vendorOrder int) Observation {
 	minutes, reason := ClaudeWindowMinutes(line.windowKey)
 	return Observation{
-		Client: ClientClaude, WindowKey: line.windowKey, Source: SourceClaudeProse,
+		Client: ClientClaude, WindowKey: line.windowKey, Pool: "claude", Slot: line.windowKey, Source: SourceClaudeProse,
 		ObservedAt: observedAt, WindowMinutes: minutes, WindowMinutesReason: reason,
 		VendorOrder: vendorOrder, UsedPercent: line.usedPercent, ResetsAt: line.resetsAt,
 	}

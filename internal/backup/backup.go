@@ -116,7 +116,7 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 		s.AfterCoreSnapshot()
 	}
 	// Only the private snapshot is cleaned; the live core is never written.
-	if err = removeNonPortableOriginState(ctx, coreSnapshot); err != nil {
+	if err = scrubPrivateCore(ctx, coreSnapshot, append([]string{quotaSampleTable}, originNonPortableTables...)); err != nil {
 		return Manifest{}, fmt.Errorf("prepare core snapshot: %w", err)
 	}
 
@@ -193,12 +193,13 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 // archive carries.
 var originNonPortableTables = []string{"origin_mutations", "session_origins", "origin_evidence", "origin_adapter_runs"}
 
-// removeNonPortableOriginState empties the non-portable origin tables of a
-// private core snapshot, before its digest is computed. secure_delete zeroes
-// the freed pages, so the archive does not keep the removed rows in free space.
-// The machine-local origin-source configuration lives outside every database
-// and is never part of a snapshot.
-func removeNonPortableOriginState(ctx context.Context, snapshotPath string) (err error) {
+const quotaSampleTable = "quota_session_samples"
+
+// scrubPrivateCore cleans a private snapshot or an unpublished restore target.
+// secure_delete erases deleted records in live pages. A database with sample
+// history can also contain remnants of old generations in free pages, so
+// rebuild that private file before truncating its write-ahead log.
+func scrubPrivateCore(ctx context.Context, snapshotPath string, tables []string) (err error) {
 	database, err := sql.Open("sqlite", "file:"+snapshotPath+"?mode=rw")
 	if err != nil {
 		return err
@@ -229,7 +230,8 @@ func removeNonPortableOriginState(ctx context.Context, snapshotPath string) (err
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
 		}
 	}()
-	for _, table := range originNonPortableTables {
+	rebuild := false
+	for _, table := range tables {
 		var present int
 		if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
 			return err
@@ -237,6 +239,7 @@ func removeNonPortableOriginState(ctx context.Context, snapshotPath string) (err
 		if present == 0 {
 			continue
 		}
+		rebuild = rebuild || table == quotaSampleTable
 		if _, err = conn.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -245,6 +248,11 @@ func removeNonPortableOriginState(ctx context.Context, snapshotPath string) (err
 		return err
 	}
 	committed = true
+	if rebuild {
+		if _, err = conn.ExecContext(ctx, "VACUUM"); err != nil {
+			return err
+		}
+	}
 	// Fold the write-ahead log into the main file that becomes the archive entry.
 	var busy, logFrames, checkpointed int
 	if err = conn.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
@@ -651,6 +659,10 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		}
 	}
 	if err = database.Close(); err != nil {
+		return Manifest{}, err
+	}
+	if err = scrubPrivateCore(ctx, corePath, []string{quotaSampleTable}); err != nil {
+		err = fmt.Errorf("clear private quota samples: %w", err)
 		return Manifest{}, err
 	}
 	if _, included := entries[sessionsName]; included {

@@ -134,6 +134,8 @@ type ValuationResult struct {
 
 	// Period is the exact bracket used for matching requests.
 	Period *ObservationPeriod `json:"-"`
+	// ProbeDisabled is a local advisory for a missing measurement.
+	ProbeDisabled bool `json:"-"`
 }
 
 type WindowValuation struct {

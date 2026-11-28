@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/quota"
 )
 
 const maxSessionInvocationPageLimit = 1000
@@ -36,7 +38,7 @@ type InvocationPagination struct {
 
 // SessionUsageSummary returns complete aggregate usage for one logical session.
 func (s *Service) SessionUsageSummary(ctx context.Context, client, sessionID string) (SessionSummary, error) {
-	summary, _, _, err := s.readSessionUsage(ctx, client, sessionID, 1, 0, false, true)
+	summary, _, _, err := s.readSessionUsage(ctx, client, sessionID, 1, 0, false, true, false)
 	return summary, err
 }
 
@@ -46,14 +48,14 @@ func (s *Service) SessionUsagePage(ctx context.Context, client, sessionID string
 	if err := validateInvocationPage(page, limit); err != nil {
 		return SessionSummary{}, nil, InvocationPagination{}, err
 	}
-	return s.readSessionUsage(ctx, client, sessionID, page, limit, all, true)
+	return s.readSessionUsage(ctx, client, sessionID, page, limit, all, true, true)
 }
 
 func (s *Service) SessionInvocations(ctx context.Context, client, sessionID string, page, limit int, all bool) ([]SessionInvocation, InvocationPagination, error) {
 	if err := validateInvocationPage(page, limit); err != nil {
 		return nil, InvocationPagination{}, err
 	}
-	_, rows, pagination, err := s.readSessionUsage(ctx, client, sessionID, page, limit, all, false)
+	_, rows, pagination, err := s.readSessionUsage(ctx, client, sessionID, page, limit, all, false, false)
 	return rows, pagination, err
 }
 
@@ -64,12 +66,19 @@ func validateInvocationPage(page, limit int) error {
 	return nil
 }
 
-func (s *Service) readSessionUsage(ctx context.Context, client, sessionID string, page, limit int, all, includeSummary bool) (SessionSummary, []SessionInvocation, InvocationPagination, error) {
+func (s *Service) readSessionUsage(ctx context.Context, client, sessionID string, page, limit int, all, includeSummary, includeQuota bool) (SessionSummary, []SessionInvocation, InvocationPagination, error) {
 	read, err := s.openPricingRead(ctx, s.now())
 	if err != nil {
 		return SessionSummary{}, nil, InvocationPagination{}, err
 	}
 	defer read.tx.Rollback()
+	var measurement quota.ValuationInput
+	if includeQuota {
+		measurement, err = quota.ReadSessionMeasurement(ctx, read.tx, quota.Client(client), sessionID, nil)
+		if err != nil {
+			return SessionSummary{}, nil, InvocationPagination{}, err
+		}
+	}
 	summary := SessionSummary{Client: client, SessionID: sessionID, Tokens: sessionUsageTokens(), Unpriced: []string{}, Warnings: []string{}}
 	invocations := []SessionInvocation{}
 	pagination := InvocationPagination{Page: page, Limit: limit}
@@ -106,6 +115,9 @@ func (s *Service) readSessionUsage(ctx context.Context, client, sessionID string
 			summary.LastAt = event.EventAt
 			builder.add(event, attribution, priced.Legacy)
 			prices.add(event.Client, pricingContribution(priced))
+			if measurement.Before != nil && measurement.After != nil {
+				measurement.Calls = append(measurement.Calls, quotaCall(priced, at, attribution))
+			}
 		}
 		if sequence > offset && sequence-offset <= pageLimit {
 			invocations = append(invocations, sessionInvocation(sequence, event, attribution, priced))
@@ -129,6 +141,12 @@ func (s *Service) readSessionUsage(ctx context.Context, client, sessionID string
 			summary.applyUsage(builder.finish())
 		}
 		summary.Pricing = prices.result(read.rules.digest, false)
+	}
+	if includeQuota {
+		summary.QuotaValuation, err = read.sessionQuotaValuation(ctx, measurement)
+		if err != nil {
+			return SessionSummary{}, nil, InvocationPagination{}, err
+		}
 	}
 	pagination.Shown = len(invocations)
 	pagination.HasMore = offset+pagination.Shown < pagination.Total && pageLimit > 0

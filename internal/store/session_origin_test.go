@@ -133,7 +133,12 @@ func downgradeToSchema33(t *testing.T, core *Store) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := core.DB.Exec(`DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; UPDATE schema_metadata SET version=33`); err != nil {
+	if _, err := core.DB.Exec(`
+		DROP TRIGGER quota_samples_on_session_delete;
+		DROP TRIGGER quota_samples_on_provider_selection;
+		DROP TRIGGER quota_samples_on_observed_provider;
+		DROP TABLE quota_session_samples;
+		DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; UPDATE schema_metadata SET version=33`); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -534,8 +539,13 @@ func TestOriginMigrationFailureRollsBackAndSchemaAheadRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version, _ = migrated.SchemaVersion(ctx); version != CurrentSchemaVersion {
-		t.Fatalf("migrated version = %d", version)
+	if version, err = migrated.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("migrated schema version=%d, want %d: %v", version, CurrentSchemaVersion, err)
+	}
+	var quotaSamples bool
+	if err := migrated.DB.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_session_samples')`).Scan(&quotaSamples); err != nil || !quotaSamples {
+		t.Fatalf("migrated quota samples table=%t: %v", quotaSamples, err)
 	}
 	if _, err = migrated.DB.Exec(`UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1); err != nil {
 		t.Fatal(err)

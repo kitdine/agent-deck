@@ -78,6 +78,7 @@ func renderSessionShowText(
 			hasInvocations = true
 		}
 		lines = append(lines, sessionShowUsageLines(*usageSummary, hasInvocations, width)...)
+		lines = append(lines, quotaValuationLines(usageSummary.QuotaValuation, width)...)
 		lines = sessionShowSection(lines, "INVOCATIONS", width)
 		lines = append(lines, sessionShowInvocationLines(invocations, width)...)
 		if page, found := pagination["invocations"]; found {

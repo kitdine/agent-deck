@@ -1733,7 +1733,12 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	const dropQuotaSampleStorage = `
+		DROP TRIGGER quota_samples_on_session_delete;
+		DROP TRIGGER quota_samples_on_provider_selection;
+		DROP TRIGGER quota_samples_on_observed_provider;
+		DROP TABLE quota_session_samples;`
+	if _, err = database.Exec(ctx, dropQuotaSampleStorage+"DROP TABLE usage_request_facts; DROP TABLE price_rule_sets; ALTER TABLE usage_source_files DROP COLUMN thread_id; DROP TABLE origin_preferences; DROP TABLE origin_overrides; DROP TABLE origin_mutations; DROP TABLE session_origins; DROP TABLE origin_evidence; DROP TABLE origin_adapter_runs; DROP TRIGGER telemetry_jsonl_retracts_otel; DROP TABLE telemetry_contributions; DROP TABLE telemetry_sessions; DROP TABLE telemetry_observations; DROP TABLE telemetry_journal_cursor; DROP TABLE telemetry_coverage; DROP TABLE usage_derived_invalidations; DROP TABLE usage_derived_partitions; DROP TABLE usage_derived_metadata; DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -1756,16 +1761,19 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 		database.Close()
 		t.Fatal(err)
 	}
-	var tableCount int
-	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='usage_tool_calls'").Scan(&tableCount); err != nil {
+	var toolCalls, quotaSamples bool
+	if err = database.DB.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='usage_tool_calls'),
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_session_samples')`).Scan(&toolCalls, &quotaSamples); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if version != store.CurrentSchemaVersion || tableCount != 1 {
-		t.Fatalf("migrated schema version=%d tool table count=%d", version, tableCount)
+	if version != store.CurrentSchemaVersion || !toolCalls || !quotaSamples {
+		t.Fatalf("migrated schema version=%d, want %d, tool calls table=%t, quota samples table=%t",
+			version, store.CurrentSchemaVersion, toolCalls, quotaSamples)
 	}
 	var jsonOutput bytes.Buffer
 	if err = run([]string{"--state-dir", state, "--format", "json", "state", "migrate"}, bytes.NewReader(nil), &jsonOutput); err != nil {

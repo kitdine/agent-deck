@@ -342,6 +342,7 @@ var migrations = []migration{
 			facts_json TEXT NOT NULL
 		)`,
 	}, apply: initializePricingFacts},
+	{version: QuotaSessionSamplesSchemaVersion, apply: applyQuotaSessionSamples},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (

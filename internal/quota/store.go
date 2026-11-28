@@ -80,16 +80,32 @@ func accountDigest(client Client, accountID string) string {
 // ApplyObservation, valid only when accepted. storedObservedResetAt is the
 // sticky value now on record for this key regardless of acceptance.
 func (s *Store) Record(ctx context.Context, obs Observation) (accepted, resetObserved bool, storedObservedResetAt time.Time, err error) {
-	if obs.Client == ClientClaude {
-		obs.AccountID = ""
-	}
-	digest := accountDigest(obs.Client, obs.AccountID)
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, false, time.Time{}, err
 	}
 	defer tx.Rollback()
+
+	accepted, resetObserved, storedObservedResetAt, err = recordObservation(ctx, tx, obs)
+	if err != nil || !accepted {
+		return accepted, resetObserved, storedObservedResetAt, err
+	}
+	if obs.Client == ClientCodex {
+		if _, err := invalidateSamplesForAccount(ctx, tx, obs.Client, accountDigest(obs.Client, obs.AccountID)); err != nil {
+			return false, false, time.Time{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, false, time.Time{}, err
+	}
+	return accepted, resetObserved, storedObservedResetAt, nil
+}
+
+func recordObservation(ctx context.Context, tx *sql.Tx, obs Observation) (accepted, resetObserved bool, storedObservedResetAt time.Time, err error) {
+	if obs.Client == ClientClaude {
+		obs.AccountID = ""
+	}
+	digest := accountDigest(obs.Client, obs.AccountID)
 
 	if err := discardOnAccountChange(ctx, tx, obs.Client, digest); err != nil {
 		return false, false, time.Time{}, err
@@ -141,9 +157,6 @@ func (s *Store) Record(ctx context.Context, obs Observation) (accepted, resetObs
 		return false, false, time.Time{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return false, false, time.Time{}, err
-	}
 	return true, reset, newSticky, nil
 }
 
@@ -316,9 +329,15 @@ func (s *Store) Windows(ctx context.Context, client Client) ([]Window, error) {
 // write (QD-R3-F2). Claude's forced-empty AccountID digests to the same ""
 // sentinel Record uses, so this is safe to call unconditionally per client.
 func (s *Store) PruneWindows(ctx context.Context, client Client, accountID string, keep []string) error {
+	return pruneWindows(ctx, s.db, client, accountID, keep)
+}
+
+func pruneWindows(ctx context.Context, db interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, client Client, accountID string, keep []string) error {
 	digest := accountDigest(client, accountID)
 	if len(keep) == 0 {
-		_, err := s.db.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ? AND account_id = ?`,
+		_, err := db.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ? AND account_id = ?`,
 			string(client), digest)
 		return err
 	}
@@ -329,7 +348,7 @@ func (s *Store) PruneWindows(ctx context.Context, client Client, accountID strin
 	}
 	query := `DELETE FROM quota_windows WHERE client = ? AND account_id = ? AND window_key NOT IN (` +
 		strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + `)`
-	_, err := s.db.ExecContext(ctx, query, args...)
+	_, err := db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -350,6 +369,23 @@ func (s *Store) PruneWindows(ctx context.Context, client Client, accountID strin
 // Only accountDigest(rec.AccountID) ever reaches quota_envelopes; the raw
 // account ID is not persisted (QD-R3-F2).
 func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if rec.Client == ClientCodex {
+		if _, err := invalidateSamplesForAccount(ctx, tx, rec.Client, accountDigest(rec.Client, rec.AccountID)); err != nil {
+			return err
+		}
+	}
+	if err := putEnvelope(ctx, tx, rec); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func putEnvelope(ctx context.Context, tx *sql.Tx, rec EnvelopeRecord) error {
 	if rec.Client == ClientClaude {
 		rec.AccountID = ""
 	}
@@ -358,12 +394,6 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 	if err != nil {
 		return err
 	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 
 	if err := discardOnAccountChange(ctx, tx, rec.Client, digest); err != nil {
 		return err
@@ -407,7 +437,7 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 		return err
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // PutEnvelopeFailure records that a probe attempt for client failed, without
@@ -434,6 +464,10 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 // carries no backoff-chain meaning, so a manual failure need not leave it
 // untouched the way it must leave failureAt and backoffUntil untouched.
 func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil, failureObservedAt time.Time) error {
+	return s.putEnvelopeFailure(ctx, client, failure, failureAt, backoffUntil, failureObservedAt, false)
+}
+
+func (s *Store) putEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil, failureObservedAt time.Time, authenticationFailed bool) error {
 	failureAtText := ""
 	if !failureAt.IsZero() {
 		failureAtText = failureAt.Format(timeLayout)
@@ -446,12 +480,26 @@ func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure R
 	if !failureObservedAt.IsZero() {
 		failureObservedAtText = failureObservedAt.Format(timeLayout)
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO quota_envelopes(client, failure, failure_at, backoff_until, failure_observed_at)
+	const query = `INSERT INTO quota_envelopes(client, failure, failure_at, backoff_until, failure_observed_at)
 		VALUES (?,?,?,?,?)
-		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`,
-		string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText,
-	)
-	return err
+		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`
+	args := []any{string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText}
+	if !authenticationFailed {
+		_, err := s.db.ExecContext(ctx, query, args...)
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := invalidateSamplesIfInstalled(ctx, tx, client); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Envelope reads the persisted client-level envelope. ok is false when

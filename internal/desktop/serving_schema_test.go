@@ -9,9 +9,11 @@ import (
 )
 
 func TestServingCoreSchemaCompatibility(t *testing.T) {
-	for current := 30; current <= 37; current++ {
-		for stored := 30; stored <= 37; stored++ {
-			want := stored == current && current <= 36 || current >= 32 && current <= 35 && stored >= 31 && stored < current
+	for current := 30; current <= 38; current++ {
+		for stored := 30; stored <= 38; stored++ {
+			want := (stored == current && current <= store.QuotaSessionSamplesSchemaVersion) ||
+				(current >= 32 && current <= 35 && stored >= 31 && stored < current) ||
+				(stored == store.PricingFactsSchemaVersion && current == store.QuotaSessionSamplesSchemaVersion)
 			if got := compatibleServingCoreSchema(stored, current); got != want {
 				t.Errorf("stored %d, current %d: compatible=%v, want %v", stored, current, got, want)
 			}
@@ -19,7 +21,7 @@ func TestServingCoreSchemaCompatibility(t *testing.T) {
 	}
 }
 
-func TestServingPricingFactsSchemaRejectsAndRebuildsRetainedPublication(t *testing.T) {
+func TestServingQuotaSamplesSchemaRetainsPricingPredecessor(t *testing.T) {
 	s, core, _ := newServingFixture(t)
 	seedServingUsage(t, s, core)
 	ctx := context.Background()
@@ -28,7 +30,18 @@ func TestServingPricingFactsSchemaRejectsAndRebuildsRetainedPublication(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, schema := range []int{30, 31, 32, 33, 34, 35, 37} {
+	full.Header.Generation.CoreSchema = store.PricingFactsSchemaVersion
+	retained, err := encodeServingSnapshot(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeServingSnapshot(s.StateRoot, retained); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadServingSnapshot(ctx); err != nil {
+		t.Fatalf("pricing predecessor publication should remain readable: %v", err)
+	}
+	for _, schema := range []int{30, 31, 32, 33, 34, 35, store.QuotaSessionSamplesSchemaVersion + 1} {
 		full.Header.Generation.CoreSchema = schema
 		data, err := encodeServingSnapshot(full)
 		if err != nil {
@@ -42,7 +55,7 @@ func TestServingPricingFactsSchemaRejectsAndRebuildsRetainedPublication(t *testi
 		}
 	}
 	bootstrap, err := s.ReadOrBootstrapServingSnapshot(ctx, request)
-	if err != nil || bootstrap.Header.Generation.CoreSchema != 36 || bootstrap.Header.PublicationID == full.Header.PublicationID {
+	if err != nil || bootstrap.Header.Generation.CoreSchema != store.QuotaSessionSamplesSchemaVersion || bootstrap.Header.PublicationID == full.Header.PublicationID {
 		t.Fatalf("existing bootstrap used old publication: %v", err)
 	}
 	rebuilt, err := s.PublishServingSnapshot(ctx, request, false)
@@ -50,10 +63,10 @@ func TestServingPricingFactsSchemaRejectsAndRebuildsRetainedPublication(t *testi
 		t.Fatal(err)
 	}
 	read, err := s.ReadServingSnapshot(ctx)
-	if err != nil || read.Header.Generation.CoreSchema != 36 || read.Header.PublicationID != rebuilt.Header.PublicationID {
+	if err != nil || read.Header.Generation.CoreSchema != store.QuotaSessionSamplesSchemaVersion || read.Header.PublicationID != rebuilt.Header.PublicationID {
 		t.Fatalf("rebuilt current publication was not readable: schema %d, err %v", read.Header.Generation.CoreSchema, err)
 	}
-	if _, err := core.DB.ExecContext(ctx, `UPDATE schema_metadata SET version=37`); err != nil {
+	if _, err := core.DB.ExecContext(ctx, `UPDATE schema_metadata SET version=?`, store.QuotaSessionSamplesSchemaVersion+1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.ReadServingSnapshot(ctx); !errors.Is(err, store.ErrSchemaAhead) {

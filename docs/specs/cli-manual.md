@@ -974,6 +974,27 @@ Text/JSON 的 progress 使用英文 stderr，最多每秒五次：等待当前�
 未知、乱序、损坏、截断或超限事件视为失败。事件仅含 aggregate state/count，绝不
 包含 source path、session 文本、credential 或猜测百分比。
 
+## Quota
+
+`agentdeck quota` 查看已存的订阅额度。要测量某个用量会话对应的额度变化，
+使用 `quota sample start|finish|cancel --client <codex|claude> --session <id>`。
+每个客户端同时保留一个进行中的测量。开始与结束可发起实时探测，还需启用
+额度读取并满足官方渠道门禁。重复开始或结束会返回已有测量。取消只清除匹配的
+进行中测量。
+
+`agentdeck --format json quota sample start --client codex --session <id>`
+返回 `data.action`、`data.status` 和 `data.started_at`。结束返回首尾时间及
+`data.quota_valuation`，取消只返回动作和状态。
+未入账用量返回 `unsettled` 并保留进行中的测量。换号导致测量失效时返回
+`measurement_missing`，消息说明账号已变化。其他拒绝原因通过统一错误 envelope
+返回。
+
+`agentdeck session show <id> --client <codex|claude> --tokens` 读取已存测量，
+在全会话 API 等价金额下显示额度窗口的观测变化和条件估值。交互 Tokens 页使用同一
+结果，`--page` 只改变逐笔调用列表。测量片段会标记其范围，窗口缺少可比端点、
+适用价格或独占使用证据时显示可用读数及原因。JSON 位于
+`data.usage.quota_valuation`，其中 `observed_delta_pp` 以百分点计。
+
 ## Desktop
 
 `desktop snapshot` 是 macOS host 每次刷新调用的稳定 JSON-only helper

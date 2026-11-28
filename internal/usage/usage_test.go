@@ -1700,8 +1700,9 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	if err != nil || summary.Counts["events"] != 1003 {
 		t.Fatalf("Summary = %#v, err:%v", summary, err)
 	}
-	if got := queries.Load(); got != 9 {
-		t.Fatalf("Summary SQL queries for 1003 events = %d, want 9 snapshot queries", got)
+	// The revision and provider timeline are read inside the same snapshot.
+	if got := queries.Load(); got != 8 {
+		t.Fatalf("Summary SQL queries for 1003 events = %d, want 8 snapshot queries", got)
 	}
 
 	queries.Store(0)
@@ -1710,8 +1711,8 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 		t.Fatalf("Sessions = %#v, err:%v", sessions, err)
 	}
 	// Sessions adds one bounded query for session metadata to the shared read.
-	if got := queries.Load(); got != 10 {
-		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 10 snapshot queries", got)
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 9 snapshot queries", got)
 	}
 }
 
@@ -3999,8 +4000,8 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 		t.Fatalf("stats providers = %#v", report.Providers)
 	}
 	// Stats reads the same bounded token pricing snapshot plus tool activity.
-	if got := queries.Load(); got != 10 {
-		t.Fatalf("stats SQL queries for 3 events = %d, want 10", got)
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("stats SQL queries for 3 events = %d, want 9", got)
 	}
 	queries.Store(0)
 	tx, err := countedStore.DB.BeginTx(ctx, nil)
@@ -4036,8 +4037,8 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if large.Totals.Events != 1003 {
 		t.Fatalf("large stats events = %d, want 1003", large.Totals.Events)
 	}
-	if got := queries.Load(); got != 10 {
-		t.Fatalf("stats SQL queries for 1003 events = %d, want 10", got)
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("stats SQL queries for 1003 events = %d, want 9", got)
 	}
 	queries.Store(0)
 	today, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Location: location, Timezone: "Asia/Shanghai"})

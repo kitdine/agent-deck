@@ -699,6 +699,9 @@ func errorCode(err error) string {
 	if code, _, _, _, ok := originErrorFields(err); ok {
 		return code
 	}
+	if code := quotaSampleErrorCode(err); code != "" {
+		return code
+	}
 	var notFound *errdefs.NotFound
 	var scanDomain *scanruntime.DomainError
 	var syncIncomplete *extension.ErrExtensionSyncIncomplete
@@ -2716,20 +2719,29 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err = platform.EnsureStateRoot(stateDir); err != nil {
-				return err
-			}
-			lock, err := store.AcquireLock(command.Context(), stateDir, 5*time.Second)
-			if err != nil {
-				return err
+			interactive := command.Name() == "show" && showInteractive || command == cmd && sessionInteractive
+			readOnly := command.Name() == "show" && showTokens || interactive
+			var lock *store.Lock
+			if !readOnly {
+				if err = platform.EnsureStateRoot(stateDir); err != nil {
+					return err
+				}
+				lock, err = store.AcquireLock(command.Context(), stateDir, 5*time.Second)
+				if err != nil {
+					return err
+				}
 			}
 			lockReleased := false
 			defer func() {
-				if !lockReleased {
+				if lock != nil && !lockReleased {
 					_ = lock.Release()
 				}
 			}()
-			sessions, err := store.OpenSessions(command.Context(), stateDir)
+			openSessions := store.OpenSessions
+			if readOnly {
+				openSessions = store.OpenSessionsReadOnly
+			}
+			sessions, err := openSessions(command.Context(), stateDir)
 			switch {
 			case err == nil:
 				defer sessions.Close()
@@ -2739,6 +2751,9 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				// command failing before the terminal owner starts.
 				sessions = nil
 				command.SetContext(context.WithValue(command.Context(), sessionIndexOpenErrorKey{}, err))
+			case readOnly && command.Name() == "show" && errors.Is(err, os.ErrNotExist):
+				client, _ := command.Flags().GetString("client")
+				return sessionShowNotFound(command.Context(), opts, client, args[0])
 			default:
 				return err
 			}
@@ -2746,8 +2761,12 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if (command.Name() == "show" && (showTokens || showActivity || showInteractive)) || (command == cmd && sessionInteractive) {
-				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
+			if command.Name() == "show" && showActivity || readOnly {
+				openCore := store.OpenWithLockHeld
+				if readOnly {
+					openCore = store.OpenReadOnly
+				}
+				core, err := openCore(command.Context(), stateDir)
 				switch {
 				case err == nil:
 					defer core.Close()
@@ -2758,12 +2777,6 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				default:
 					return err
 				}
-			}
-			if (command.Name() == "show" && showInteractive) || (command == cmd && sessionInteractive) {
-				if releaseErr := lock.Release(); releaseErr != nil {
-					return releaseErr
-				}
-				lockReleased = true
 			}
 			data, err := run(command.Context(), sessions, home, args)
 			if err != nil {

@@ -23,10 +23,11 @@ import (
 )
 
 const (
-	PricingFactsSchemaVersion = 36
-	CurrentSchemaVersion      = PricingFactsSchemaVersion
-	CodeProviderNotFound      = "provider_not_found"
-	CodeCredentialNotFound    = "credential_not_found"
+	PricingFactsSchemaVersion        = 36
+	QuotaSessionSamplesSchemaVersion = PricingFactsSchemaVersion + 1
+	CurrentSchemaVersion             = QuotaSessionSamplesSchemaVersion
+	CodeProviderNotFound             = "provider_not_found"
+	CodeCredentialNotFound           = "credential_not_found"
 )
 
 // writablePragmas also keeps SQLite statement journals in memory. A file-backed
@@ -488,8 +489,21 @@ func (s *Store) Exec(ctx context.Context, query string, args ...any) (sql.Result
 }
 
 func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
+	return readSetting(ctx, s.DB, key)
+}
+
+// TransactionSettings reads settings from a caller's SQLite snapshot.
+type TransactionSettings struct{ Tx *sql.Tx }
+
+func (s TransactionSettings) Setting(ctx context.Context, key string) (string, bool, error) {
+	return readSetting(ctx, s.Tx, key)
+}
+
+func readSetting(ctx context.Context, db interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, key string) (string, bool, error) {
 	var value string
-	err := s.DB.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", key).Scan(&value)
+	err := db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}

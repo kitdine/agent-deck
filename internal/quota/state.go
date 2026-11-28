@@ -11,7 +11,12 @@ type Observation struct {
 	Client    Client
 	AccountID string
 	WindowKey string
-	Source    Source
+
+	// Pool and Slot retain vendor window identity for explicit samples.
+	// The ordinary rolling cache only needs WindowKey.
+	Pool   string
+	Slot   string
+	Source Source
 
 	ObservedAt time.Time
 
