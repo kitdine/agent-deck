@@ -59,6 +59,7 @@ created: 2026-11-17
 | ~~Batch 3 / P2~~ | `codex-subagent-jsonl-session-identity` | 2026-11-27 用户决定停止推进并移出 v0.7.5，Beads 转为 deferred，现有工作树、分支与验收材料保留供后续重做。本版本不交付该项。 | 不纳入本版本集成。 |
 | 新增 / P1 | `desktop-scan-failed-retry-loop` | A（2026-11-27 用户确认）；原为发布门禁，用户改为本版本直接修复：自动刷新失败退避与来源变化最小间隔、FTS 批量清理、结构化诊断日志。修复记录 `docs/archive/fixes/desktop-scan-failed-retry-loop.md`。 | Swift 刷新调度、`internal/session`、`internal/scanruntime`；PR 86。 |
 | 新增 / P1 | `6d5i`（Beads `ad-6d5i`） | A（2026-11-27 用户确认）；1x 显示器上设置窗口布局无限振荡、主线程持续满载，关闭窗口后不停止。修复记录 `docs/archive/fixes/settings-window-layout-oscillation.md`。 | 设置窗口视图与控制器及测试；PR 85。 |
+| 新增 / P3 | `health-copy-reset-test-timing`（Beads `ad-58gc`） | A，test-only；健康项复制用例固定等待只给 1.6 s 复位任务留 100 ms，负载高的 CI 上失败并阻塞 PR 87；改为有界轮询，产品代码不变。修复记录 `docs/archive/fixes/health-copy-reset-test-timing.md`。 | `apps/macos/AgentDeckAppTests/MenuBarViewModelTests.swift`；PR 88。 |
 | Batch 3 / P2 | `cask-uninstall-unregistered-widget` | 保留 deferred；新模板已交付不等于旧 Cask 首次升级验证通过。记录仍未验证的路径和处置，执行真实安装操作前另需授权。 | 当前仅文档与只读核验；未来限定 Homebrew 模板及安装验收，L3。 |
 | Batch 4 / P3 | `watch-interrupt-mid-round-exit-1` | A；轮内调用者取消与既有轮间正常停止一致。独立运行错误、emit 错误及锁释放失败保持失败，不产生虚假成功 fingerprint。 | `internal/watch/` 及必要 cmd 信号/退出码测试；L3。 |
 | Batch 4 / P3 | `native-ownership-query-test-readiness` | A，test-only；continuation 安装后显式确认就绪，替代固定 yield 次数；保留锁、释放和取消断言及有界 teardown。 | `AgentDeckTests/EmbeddedHelperRunnerTests.swift`；L1，受控延迟调度。 |
