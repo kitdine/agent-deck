@@ -2123,11 +2123,15 @@ extension MenuBarChromeTests {
 	/// long values are truncated, and the AX tree proves each identity area is
 	/// one element named by the presentation's spoken text.
 	func testQuotaIdentityCardsRenderAtNativeWidthsInBothLanguagesAndThemes() throws {
-		let now = Date()
 		let long = String(repeating: "W", count: 64)
 		let longMailbox = "averyveryverylongmailboxname***e@subdomain.example.org"
+		// The view and the expected AX label read the clock when they render, and the
+		// whole matrix takes tens of seconds on a loaded host. Stamp each panel set
+		// against its own render time so the one-minute ages stay clear of the
+		// relative-time rounding boundary.
 		func panels() throws -> [(name: String, cards: [DesktopSubscriptionClientV1])] {
-			[
+			let now = Date()
+			return [
 				("long-and-discarded", [
 					try quotaClient("codex", extra: [
 						"plan_display": planJSON("known", name: long, short: long, source: "codex_rate_limits", raw: [("planType", "w")]),
