@@ -1,0 +1,73 @@
+.pricing-specimens {
+  min-height: 100vh;
+  padding: 20px;
+  color: var(--text);
+  background: var(--stage-bg);
+  font-size: 13px;
+}
+
+.pricing-menu-board {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.pricing-menu-column {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-menu-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.pricing-amount {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pricing-amount strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-basis,
+.pricing-menu-card p {
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+
+.pricing-menu-card p {
+  margin: 4px 0 0;
+}
+
+.pricing-rows {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.pricing-rows div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.pricing-rows dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-diagnostics strong {
+  display: inline-block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

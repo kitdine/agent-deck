@@ -45,10 +45,16 @@ func (s *Store) CommitClaudeUsage(ctx context.Context, cycle RefreshCycle, expec
 				confirmed = expected
 			}
 		}
-		_, err = conn.ExecContext(ctx, `UPDATE quota_envelopes_v2 SET invalidated_at='',invalidated_reason='',
-			confirmed_generation=? WHERE client='claude'`, confirmed)
+		err = finishClaudeUsage(ctx, conn, confirmed)
 		return err == nil, err
 	})
+}
+
+// Usage alone clears the invalidation notice but never confirms a generation.
+func finishClaudeUsage(ctx context.Context, q quotaSQL, confirmed Generation) error {
+	_, err := q.ExecContext(ctx, `UPDATE quota_envelopes_v2 SET invalidated_at='',invalidated_reason='',
+		confirmed_generation=? WHERE client='claude'`, confirmed)
+	return err
 }
 
 func (s *Store) CommitClaudeUsageFailure(ctx context.Context, cycle RefreshCycle, expected Generation, failure UsageFailure) (WriteOutcome, error) {
@@ -82,6 +88,11 @@ func validateUsageFailure(client Client, f UsageFailure) error {
 }
 
 func writeUsageFailure(ctx context.Context, q quotaSQL, client Client, seq CycleSeq, gen Generation, f UsageFailure) error {
+	if f.authenticationFailed {
+		if err := invalidateSamplesIfInstalled(ctx, q, client); err != nil {
+			return err
+		}
+	}
 	background := f.Trigger == TriggerBackground
 	if !background {
 		f.FailureAt, f.BackoffUntil = time.Time{}, time.Time{}
@@ -213,6 +224,9 @@ func (s *Store) CommitCodexCycle(ctx context.Context, cycle RefreshCycle, result
 
 func writeCodexUsage(ctx context.Context, conn *sql.Conn, cycle RefreshCycle, result CodexCycleResult) error {
 	usage := result.Usage
+	if _, err := invalidateSamplesForAccount(ctx, conn, ClientCodex, accountDigest(ClientCodex, usage.AccountID)); err != nil {
+		return err
+	}
 	for _, window := range usage.Windows {
 		window.Client, window.Source, window.ObservedAt = ClientCodex, SourceCodex, cycle.at
 		window.AccountID = usage.AccountID
@@ -227,5 +241,5 @@ func writeCodexUsage(ctx context.Context, conn *sql.Conn, cycle RefreshCycle, re
 		Client: ClientCodex, AccountID: usage.AccountID, Applicable: true,
 		Source: SourceCodex, ObservedAt: cycle.at, Plan: usage.Plan, PlanReason: usage.PlanReason,
 		Billing: usage.Billing, ResetAllowance: usage.ResetAllowance,
-	}, result.planUnsafe, 0, cycle.seq)
+	}, usage.planUnsafe, 0, cycle.seq)
 }

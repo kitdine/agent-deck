@@ -96,6 +96,12 @@ func (s Scheduler) now() time.Time {
 // must still agree on what is in flight.
 var quotaProbeInFlight sync.Map
 
+var errProbeAuthentication = errors.New("quota probe requires login")
+
+func probeAuthenticationFailed(err error) bool {
+	return errors.Is(err, errProbeAuthentication)
+}
+
 // Run executes C9's schedule for one client. allowed is C1's already-computed
 // gate result (see Allowed) — Run does not compute it itself, so its own
 // tests never need to fake provider or usage services. With allowed false,
@@ -155,7 +161,7 @@ func (s Scheduler) due(trigger Trigger, rec EnvelopeRecord, hasRecord bool, now 
 func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
 	result, err := s.probeCodex(ctx, observedAt)
 	if err != nil {
-		s.recordFailure(ctx, ClientCodex, codexFailureReason(err), observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientCodex, codexFailureReason(err), observedAt, rec, hasRecord, trigger, probeAuthenticationFailed(err))
 		return
 	}
 	if s.staleAgainstCurrent(ctx, ClientCodex, observedAt) {
@@ -171,7 +177,7 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 	// instead.
 	for _, obs := range result.Windows {
 		if _, _, _, err := s.Store.Record(ctx, obs); err != nil {
-			s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+			s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 			return
 		}
 	}
@@ -182,7 +188,7 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 	// stays visible under its stale values while PutEnvelope still records
 	// the cycle as a clean success.
 	if err := s.Store.PruneWindows(ctx, ClientCodex, result.AccountID, observedWindowKeys(result.Windows)); err != nil {
-		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 		return
 	}
 	// Codex PR #5 ninth review, P2: unlike Record/PruneWindows above, the
@@ -199,7 +205,7 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 		ResetAllowance: result.ResetAllowance,
 		Billing:        result.Billing,
 	}); err != nil {
-		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 	}
 }
 
@@ -237,7 +243,7 @@ func observedWindowKeys(windows []Observation) []string {
 func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
 	result, err := s.probeClaudeProse(ctx, observedAt)
 	if err != nil {
-		s.recordFailure(ctx, ClientClaude, claudeFailureReason(err), observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientClaude, claudeFailureReason(err), observedAt, rec, hasRecord, trigger, probeAuthenticationFailed(err))
 		return
 	}
 	if s.staleAgainstCurrent(ctx, ClientClaude, observedAt) {
@@ -247,14 +253,14 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	// same false-success effect.
 	for _, obs := range result.Windows {
 		if _, _, _, err := s.Store.Record(ctx, obs); err != nil {
-			s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+			s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 			return
 		}
 	}
 	// See runCodex's matching comment: PruneWindows is a separate
 	// persistence step Record's own check does not cover.
 	if err := s.Store.PruneWindows(ctx, ClientClaude, "", observedWindowKeys(result.Windows)); err != nil {
-		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 		return
 	}
 	// Claude has neither Plan nor Billing nor ResetAllowance (C6: the reset
@@ -265,7 +271,7 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 		Client: ClientClaude, Applicable: true,
 		Source: SourceClaudeProse, ObservedAt: observedAt,
 	}); err != nil {
-		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger, false)
 	}
 }
 
@@ -283,7 +289,7 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 // FailureAt alone, as an earlier version of this fix did, shrinks or
 // inverts that derived step and corrupts every later background failure's
 // doubling. Only a background failure advances the chain.
-func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reason, attemptedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
+func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reason, attemptedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger, authenticationFailed bool) {
 	failureAt := attemptedAt
 	backoffUntil := rec.BackoffUntil
 	if trigger != TriggerManual {
@@ -301,7 +307,7 @@ func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reas
 		// failure's to move.
 		failureAt = rec.FailureAt
 	}
-	_ = s.Store.PutEnvelopeFailure(ctx, client, reason, failureAt, backoffUntil, attemptedAt)
+	_ = s.Store.putEnvelopeFailure(ctx, client, reason, failureAt, backoffUntil, attemptedAt, authenticationFailed)
 }
 
 // nextBackoff computes C9's next backoff step: the interval on the first

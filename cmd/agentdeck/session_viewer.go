@@ -35,6 +35,7 @@ type sessionViewerRow struct {
 type sessionViewerPage struct {
 	Rows    []sessionViewerRow
 	Summary []string
+	Quota   quotaValuationText
 	Empty   string
 
 	// Lines is retained as an internal compatibility adapter for terminal tests
@@ -253,7 +254,11 @@ func renderSessionViewer(w io.Writer, width, height int, state *sessionViewerSta
 
 	// lines[0] is clear/home control with no visual row.
 	bodyBudget := max(1, height-(len(lines)-1)-2)
-	lines = append(lines, sessionViewerBody(state, canvasWidth, bodyBudget, p)...)
+	quotaLines := sessionViewerQuotaLines(state.current.Quota, canvasWidth, bodyBudget-1)
+	for _, line := range quotaLines {
+		lines = append(lines, p.style(line, usageColorInfo))
+	}
+	lines = append(lines, sessionViewerBody(state, canvasWidth, bodyBudget-len(quotaLines), p)...)
 	lines = append(lines,
 		sessionViewerStatus(state, canvasWidth, p),
 		statsFit("←/→ tab · ↑/↓ select · pgup/pgdn page · home/end · q/esc back", canvasWidth),
@@ -304,6 +309,28 @@ func sessionViewerAdvisories(page sessionViewerPage, p usageTextPrimitives) []st
 		if strings.TrimSpace(summary) != "" {
 			lines = append(lines, p.style(summary, usageColorInfo))
 		}
+	}
+	return lines
+}
+
+func sessionViewerQuotaLines(report quotaValuationText, width, budget int) []string {
+	if budget <= 0 || len(report.summary) == 0 {
+		return nil
+	}
+	var lines []string
+	for _, field := range report.summary {
+		lines = append(lines, statsFit(sessionShowSafe(field.label+" · "+field.value), width))
+		if len(lines) == budget {
+			return lines
+		}
+	}
+	// Leave room for the selected invocation and its detail when possible.
+	for _, field := range report.details {
+		detail := sessionShowPricingFieldLines(field, width)
+		if len(lines)+len(detail) > budget-3 {
+			break
+		}
+		lines = append(lines, detail...)
 	}
 	return lines
 }

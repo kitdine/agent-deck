@@ -185,7 +185,9 @@ func TestQuotaIdentityPlanSafetySurvivesReopenAndFailure(t *testing.T) {
 	safe("synthetic-a", "prolite")
 	record("prolite", false)
 	cycle := startIdentityCycle(t, ctx, s, lock, at)
-	out, err := s.CommitCodexCycle(ctx, cycle, CodexCycleResult{Usage: &CodexResult{AccountID: "synthetic-a", Plan: "forbidden-token"}, planUnsafe: true}, time.Time{}, time.Time{})
+	out, err := s.CommitCodexCycle(ctx, cycle, CodexCycleResult{
+		Usage: &CodexResult{AccountID: "synthetic-a", Plan: "forbidden-token", planUnsafe: true},
+	}, time.Time{}, time.Time{})
 	requireQuotaOutcome(t, out, err, WriteCommitted)
 	record("", true)
 	failed := startIdentityCycle(t, ctx, s, lock, at.Add(time.Minute))

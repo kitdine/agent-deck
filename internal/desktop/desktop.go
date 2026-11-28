@@ -48,13 +48,14 @@ func (r Request) Validate() error {
 }
 
 type Snapshot struct {
-	WireVersion   int              `json:"wire_version"`
-	GeneratedAt   string           `json:"generated_at"`
-	NextRefreshAt string           `json:"next_refresh_at"`
-	Provider      ProviderSnapshot `json:"provider"`
-	Usage         UsageSnapshot    `json:"usage"`
-	Sessions      SessionsSnapshot `json:"sessions"`
-	Health        HealthSnapshot   `json:"health"`
+	WireVersion   int                        `json:"wire_version"`
+	GeneratedAt   string                     `json:"generated_at"`
+	NextRefreshAt string                     `json:"next_refresh_at"`
+	Provider      ProviderSnapshot           `json:"provider"`
+	Usage         UsageSnapshot              `json:"usage"`
+	Pricing       *usage.PricingPresentation `json:"pricing,omitempty"`
+	Sessions      SessionsSnapshot           `json:"sessions"`
+	Health        HealthSnapshot             `json:"health"`
 	// Subscription is architecture.md C11's additive section; WireVersion is
 	// unchanged because an older consumer ignores the key.
 	Subscription SubscriptionSnapshot `json:"subscription"`
@@ -259,6 +260,7 @@ type Service struct {
 }
 
 type Result struct {
+	usageErr        error
 	Snapshot        Snapshot
 	Partial         bool
 	Warnings        []string
@@ -622,11 +624,13 @@ func (s Service) loadUsage(ctx context.Context, core *store.Store, now time.Time
 	service.Now = func() time.Time { return now }
 	presentation, err := service.Presentation(ctx, now, s.location())
 	if err != nil {
+		result.usageErr = err
 		result.warn("usage_unavailable")
 		return
 	}
 	result.Snapshot.Usage = usageSnapshot(presentation.Summary, from, to)
 	result.Snapshot.Usage.Presentation = presentation
+	result.Snapshot.Pricing = presentation.RequestPricing
 }
 
 func usageSnapshot(summary usage.Summary, from, to time.Time) UsageSnapshot {

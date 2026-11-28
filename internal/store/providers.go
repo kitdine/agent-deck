@@ -127,8 +127,18 @@ type ProviderTimeline struct {
 }
 
 func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, error) {
+	return ReadProviderTimeline(ctx, s.DB)
+}
+
+type providerTimelineReader interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// ReadProviderTimeline accepts a transaction when the provider history must
+// agree with other facts read from the same database snapshot.
+func ReadProviderTimeline(ctx context.Context, db providerTimelineReader) (ProviderTimeline, error) {
 	timeline := ProviderTimeline{operationStates: map[string]string{}}
-	operationRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,COALESCE(client,''),state,started_at,updated_at FROM operations WHERE kind='provider.use'`)
+	operationRows, err := db.QueryContext(ctx, `SELECT id,provider_id,COALESCE(client,''),state,started_at,updated_at FROM operations WHERE kind='provider.use'`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}
@@ -155,7 +165,7 @@ func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, err
 	if err = operationRows.Close(); err != nil {
 		return ProviderTimeline{}, err
 	}
-	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at,prior_keyed FROM provider_selections`)
+	selectionRows, err := db.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at,prior_keyed FROM provider_selections`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}
@@ -904,17 +914,28 @@ func (s *Store) DeleteProviderCredential(ctx context.Context, providerName, name
 }
 
 func (s *Store) CurrentProviderSnapshot(ctx context.Context, client string) (ProviderSnapshot, error) {
-	return s.providerSnapshot(ctx, client, nil)
+	return providerSnapshot(ctx, s.DB, client, nil)
 }
 
 func (s *Store) ProviderSnapshotAt(ctx context.Context, client string, at time.Time) (ProviderSnapshot, error) {
-	return s.providerSnapshot(ctx, client, &at)
+	return providerSnapshot(ctx, s.DB, client, &at)
 }
 
-func (s *Store) providerSnapshot(ctx context.Context, client string, at *time.Time) (ProviderSnapshot, error) {
-	operation, err := s.latestCompletedProviderOperation(ctx, client, at)
+// CurrentProviderSnapshotTx uses the same completed-selection rules in a
+// caller's transaction.
+func CurrentProviderSnapshotTx(ctx context.Context, tx *sql.Tx, client string) (ProviderSnapshot, error) {
+	return providerSnapshot(ctx, tx, client, nil)
+}
+
+type providerSnapshotReader interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func providerSnapshot(ctx context.Context, db providerSnapshotReader, client string, at *time.Time) (ProviderSnapshot, error) {
+	operation, err := latestCompletedProviderOperation(ctx, db, client, at)
 	if err == nil {
-		if snapshot, selectionErr := s.providerSelectionForOperation(ctx, operation.id); selectionErr == nil {
+		if snapshot, selectionErr := providerSelectionForOperation(ctx, db, operation.id); selectionErr == nil {
 			return snapshot, nil
 		} else if !errors.Is(selectionErr, sql.ErrNoRows) {
 			return ProviderSnapshot{}, selectionErr
@@ -925,7 +946,7 @@ func (s *Store) providerSnapshot(ctx context.Context, client string, at *time.Ti
 			return ProviderSnapshot{Name: "official", Multiplier: "1", SelectedAt: operation.updatedAt, Official: true}, nil
 		}
 		providerID := operation.providerID.Int64
-		snapshot, selectionErr := s.latestProviderSelection(ctx, client, &providerID, &operation.startedAt, &operation.updatedAt)
+		snapshot, selectionErr := latestProviderSelection(ctx, db, client, &providerID, &operation.startedAt, &operation.updatedAt)
 		if selectionErr == nil {
 			return snapshot, nil
 		}
@@ -936,14 +957,14 @@ func (s *Store) providerSnapshot(ctx context.Context, client string, at *time.Ti
 		return ProviderSnapshot{}, err
 	}
 
-	return s.latestProviderSelection(ctx, client, nil, nil, at)
+	return latestProviderSelection(ctx, db, client, nil, nil, at)
 }
 
-func (s *Store) providerSelectionForOperation(ctx context.Context, operationID string) (ProviderSnapshot, error) {
+func providerSelectionForOperation(ctx context.Context, db providerSnapshotReader, operationID string) (ProviderSnapshot, error) {
 	var snapshot ProviderSnapshot
 	var selected string
 	var viaWrapper int64
-	err := s.DB.QueryRowContext(ctx, `SELECT provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,selected_at FROM provider_selections WHERE operation_id=?`, operationID).Scan(&snapshot.Name, &snapshot.Endpoint, &snapshot.Multiplier, &snapshot.Credential, &viaWrapper, &selected)
+	err := db.QueryRowContext(ctx, `SELECT provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,selected_at FROM provider_selections WHERE operation_id=?`, operationID).Scan(&snapshot.Name, &snapshot.Endpoint, &snapshot.Multiplier, &snapshot.Credential, &viaWrapper, &selected)
 	if err != nil {
 		return ProviderSnapshot{}, err
 	}
@@ -960,8 +981,8 @@ type completedProviderOperation struct {
 	updatedAt  time.Time
 }
 
-func (s *Store) latestCompletedProviderOperation(ctx context.Context, client string, at *time.Time) (completedProviderOperation, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,started_at,updated_at FROM operations WHERE kind='provider.use' AND state='completed' AND client=?`, client)
+func latestCompletedProviderOperation(ctx context.Context, db providerSnapshotReader, client string, at *time.Time) (completedProviderOperation, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id,provider_id,started_at,updated_at FROM operations WHERE kind='provider.use' AND state='completed' AND client=?`, client)
 	if err != nil {
 		return completedProviderOperation{}, err
 	}
@@ -999,14 +1020,14 @@ func (s *Store) latestCompletedProviderOperation(ctx context.Context, client str
 	return *latest, nil
 }
 
-func (s *Store) latestProviderSelection(ctx context.Context, client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, error) {
+func latestProviderSelection(ctx context.Context, db providerSnapshotReader, client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, error) {
 	query := `SELECT ps.id,ps.provider_name_snapshot,ps.endpoint_snapshot,ps.multiplier_snapshot,ps.credential_name_snapshot,ps.via_wrapper,ps.selected_at FROM provider_selections ps LEFT JOIN operations o ON o.id=ps.operation_id WHERE ps.client=? AND (ps.operation_id IS NULL OR o.state='completed')`
 	args := []any{client}
 	if providerID != nil {
 		query += ` AND ps.provider_id=?`
 		args = append(args, *providerID)
 	}
-	rows, err := s.DB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return ProviderSnapshot{}, err
 	}

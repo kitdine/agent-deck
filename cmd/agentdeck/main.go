@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -696,6 +697,9 @@ func errorCode(err error) string {
 		return "install_claim_refused"
 	}
 	if code, _, _, _, ok := originErrorFields(err); ok {
+		return code
+	}
+	if code := quotaSampleErrorCode(err); code != "" {
 		return code
 	}
 	var notFound *errdefs.NotFound
@@ -2715,20 +2719,29 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err = platform.EnsureStateRoot(stateDir); err != nil {
-				return err
-			}
-			lock, err := store.AcquireLock(command.Context(), stateDir, 5*time.Second)
-			if err != nil {
-				return err
+			interactive := command.Name() == "show" && showInteractive || command == cmd && sessionInteractive
+			readOnly := command.Name() == "show" && showTokens || interactive
+			var lock *store.Lock
+			if !readOnly {
+				if err = platform.EnsureStateRoot(stateDir); err != nil {
+					return err
+				}
+				lock, err = store.AcquireLock(command.Context(), stateDir, 5*time.Second)
+				if err != nil {
+					return err
+				}
 			}
 			lockReleased := false
 			defer func() {
-				if !lockReleased {
+				if lock != nil && !lockReleased {
 					_ = lock.Release()
 				}
 			}()
-			sessions, err := store.OpenSessions(command.Context(), stateDir)
+			openSessions := store.OpenSessions
+			if readOnly {
+				openSessions = store.OpenSessionsReadOnly
+			}
+			sessions, err := openSessions(command.Context(), stateDir)
 			switch {
 			case err == nil:
 				defer sessions.Close()
@@ -2738,6 +2751,9 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				// command failing before the terminal owner starts.
 				sessions = nil
 				command.SetContext(context.WithValue(command.Context(), sessionIndexOpenErrorKey{}, err))
+			case readOnly && command.Name() == "show" && errors.Is(err, os.ErrNotExist):
+				client, _ := command.Flags().GetString("client")
+				return sessionShowNotFound(command.Context(), opts, client, args[0])
 			default:
 				return err
 			}
@@ -2745,8 +2761,12 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if (command.Name() == "show" && (showTokens || showActivity || showInteractive)) || (command == cmd && sessionInteractive) {
-				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
+			if command.Name() == "show" && showActivity || readOnly {
+				openCore := store.OpenWithLockHeld
+				if readOnly {
+					openCore = store.OpenReadOnly
+				}
+				core, err := openCore(command.Context(), stateDir)
 				switch {
 				case err == nil:
 					defer core.Close()
@@ -2757,12 +2777,6 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				default:
 					return err
 				}
-			}
-			if (command.Name() == "show" && showInteractive) || (command == cmd && sessionInteractive) {
-				if releaseErr := lock.Release(); releaseErr != nil {
-					return releaseErr
-				}
-				lockReleased = true
 			}
 			data, err := run(command.Context(), sessions, home, args)
 			if err != nil {
@@ -3012,16 +3026,12 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if !ok {
 				return nil, errors.New("session usage service unavailable")
 			}
-			summary, usageErr := service.SessionUsageSummary(ctx, client, args[0])
+			pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
+			summary, pageInvocations, page, usageErr := service.SessionUsagePage(ctx, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
 			if usageErr != nil {
 				return nil, usageErr
 			}
-			var page usage.InvocationPagination
-			pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
-			invocations, page, usageErr = service.SessionInvocations(ctx, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
-			if usageErr != nil {
-				return nil, &inputError{err: usageErr}
-			}
+			invocations = pageInvocations
 			sessionUsage = &summary
 			invocationPagination = session.Pagination{Page: page.Page, Limit: page.Limit, Total: page.Total, Shown: page.Shown, HasMore: page.HasMore, NextPage: page.NextPage}
 		}
@@ -4465,7 +4475,7 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		}
 	}
 	price := &cobra.Command{Use: "price", Short: "Manage price catalogs"}
-	var listProvider string
+	var listProvider, listAt string
 	list := &cobra.Command{Use: "list [model]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
 		if listProvider != "" && listProvider != "openai" && listProvider != "anthropic" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("price provider must be openai or anthropic")}
@@ -4474,10 +4484,24 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		if len(args) == 1 {
 			model = args[0]
 		}
-		data, err := s.PriceList(ctx, listProvider, model)
+		var data []usage.EffectivePrice
+		var err error
+		if listAt == "" {
+			data, err = s.PriceList(ctx, listProvider, model)
+		} else {
+			at, parseErr := time.Parse(time.RFC3339Nano, listAt)
+			if parseErr != nil {
+				at, parseErr = time.Parse(time.DateOnly, listAt)
+			}
+			if parseErr != nil {
+				return nil, false, nil, &inputError{err: fmt.Errorf("price --at must be a UTC date or RFC 3339 timestamp")}
+			}
+			data, err = s.PriceListAt(ctx, listProvider, model, at)
+		}
 		return data, false, nil, err
 	})}
 	list.Flags().StringVar(&listProvider, "provider", "", "Filter by openai or anthropic")
+	list.Flags().StringVar(&listAt, "at", "", "Tariff query date (UTC) or RFC 3339 timestamp")
 	price.AddCommand(
 		&cobra.Command{Use: "history", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.PriceHistory(ctx)
@@ -4511,6 +4535,24 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, false, nil, err
 		}
+		if bytes.HasPrefix(bytes.TrimSpace(contents), []byte("{")) {
+			var catalog struct {
+				Version string                     `json:"catalog_version"`
+				Models  map[string]json.RawMessage `json:"models"`
+				Sources []struct {
+					URL string `json:"url"`
+				} `json:"sources"`
+			}
+			if err := json.Unmarshal(contents, &catalog); err != nil {
+				return nil, false, nil, err
+			}
+			var sourceURL string
+			if len(catalog.Sources) > 0 {
+				sourceURL = strings.TrimSpace(catalog.Sources[0].URL)
+			}
+			err := s.ImportOfficialCatalog(ctx, contents, sourceURL)
+			return map[string]any{"version": catalog.Version, "models": len(catalog.Models)}, false, nil, err
+		}
 		var values []usage.OfficialOverride
 		if err = json.Unmarshal(contents, &values); err != nil {
 			return nil, false, nil, err
@@ -4518,7 +4560,7 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 		err = s.ImportOfficialOverrides(ctx, values)
 		return map[string]any{"overrides": len(values)}, false, nil, err
 	})}
-	override.Flags().String("file", "", "Official component override JSON")
+	override.Flags().String("file", "", "Official component override array or price catalog JSON")
 	_ = override.MarkFlagRequired("file")
 	price.AddCommand(override)
 	return price
@@ -5303,6 +5345,14 @@ func renderPriceHistory(w io.Writer, values []usage.PriceCatalog, verbose bool) 
 	if verbose {
 		headers = append(headers, "COMMIT", "SHA256", "URL")
 	}
+	for _, value := range values {
+		if value.TariffDigest == "" {
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%s · %d tariff rules · %s\n", value.Version, value.TariffRules, value.TariffDigest); err != nil {
+			return err
+		}
+	}
 	return output.WriteASCIITable(w, headers, rows)
 }
 
@@ -5363,7 +5413,14 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 			rows[index] = append(rows[index], marker)
 		}
 	}
-	if _, err := fmt.Fprintln(w, "USD / 1M tokens"); err != nil {
+	unit := "USD / 1M tokens"
+	for _, value := range values {
+		if len(value.Tariffs) > 0 {
+			unit += " · Legacy catalog reference"
+			break
+		}
+	}
+	if _, err := fmt.Fprintln(w, unit); err != nil {
 		return err
 	}
 	if err := output.WriteASCIITable(w, headers, rows); err != nil {
@@ -5371,6 +5428,14 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 	}
 	if err := renderEstimatedPriceNotes(w, estimated); err != nil {
 		return err
+	}
+	for _, value := range values {
+		for _, tariff := range value.Tariffs {
+			text := value.Provider + " / " + value.Model + " · " + priceTariffText(tariff)
+			if _, err := fmt.Fprintln(w, strings.Join(statsWrap(text, min(estimatedPriceNoteWidth, sessionShowTextWidth(w))), "\n")); err != nil {
+				return err
+			}
+		}
 	}
 	if !verbose {
 		return nil
@@ -5752,7 +5817,7 @@ func statsPercentText(complete *string, known string) string {
 
 func usageSessionStatus(value usage.SessionSummary) string {
 	parts := append([]string{}, value.Warnings...)
-	if len(value.Unpriced) > 0 {
+	if value.Pricing == nil && len(value.Unpriced) > 0 {
 		parts = append(parts, "partial cost: "+textList(value.Unpriced))
 	}
 	return textList(parts)

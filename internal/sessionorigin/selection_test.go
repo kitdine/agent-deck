@@ -820,7 +820,13 @@ func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
 	if _, err = s.core.DB.Exec(`UPDATE session_origins SET automatic='auxiliary',reason_code='maintenance_origin',rule_version='codex-otel-background-v1',input_token=?`, token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.core.DB.Exec(`ALTER TABLE usage_source_files DROP COLUMN thread_id;
+	if _, err = s.core.DB.Exec(`
+         DROP TRIGGER quota_samples_on_session_delete;
+         DROP TRIGGER quota_samples_on_provider_selection;
+         DROP TRIGGER quota_samples_on_observed_provider;
+         DROP TABLE quota_session_samples;
+         DROP TABLE usage_request_facts; DROP TABLE price_rule_sets;
+         ALTER TABLE usage_source_files DROP COLUMN thread_id;
         ALTER TABLE quota_windows_v2 RENAME TO quota_windows;
         ALTER TABLE quota_envelopes_v2 RENAME TO quota_envelopes;
         ALTER TABLE quota_alert_notices_v2 RENAME TO quota_alert_notices;
@@ -852,6 +858,14 @@ func TestSchema34ReadOnlyKeepsLegacyOriginUntilNormalUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer upgraded.Close()
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != store.CurrentSchemaVersion {
+		t.Fatalf("upgraded schema version=%d, want %d: %v", version, store.CurrentSchemaVersion, err)
+	}
+	var quotaSamples bool
+	if err := upgraded.DB.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_session_samples')`).Scan(&quotaSamples); err != nil || !quotaSamples {
+		t.Fatalf("upgraded quota samples table=%t: %v", quotaSamples, err)
+	}
 	s.core = upgraded
 	s.reconcile(t, ReconcileOptions{})
 	s.wantOrigin(t, "codex", "legacy-exec", ClassWork, ReasonDefaultWork, RuleCodexOTelExecWorkV1)

@@ -332,7 +332,18 @@ var migrations = []migration{
 	// a stored classification reason (otel-version-tolerant-metering). It
 	// changes no canonical usage fact.
 	{version: 35, apply: applySourceThreadsAndDefaultWork},
-	{version: 36, apply: migrateQuotaIdentity},
+	{version: QuotaIdentitySchemaVersion, apply: migrateQuotaIdentity},
+	{version: PricingFactsSchemaVersion, statements: []string{
+		`CREATE TABLE price_rule_sets (
+			catalog_version TEXT NOT NULL PRIMARY KEY REFERENCES price_catalogs(version) ON DELETE CASCADE,
+			rules_json TEXT NOT NULL
+		)`,
+		`CREATE TABLE usage_request_facts (
+			event_key TEXT NOT NULL PRIMARY KEY REFERENCES usage_events(event_key) ON DELETE CASCADE,
+			facts_json TEXT NOT NULL
+		)`,
+	}, apply: initializePricingFacts},
+	{version: QuotaSessionSamplesSchemaVersion, apply: applyQuotaSessionSamples},
 }
 
 const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (
@@ -582,11 +593,11 @@ func initializeDerivedSnapshotGeneration(ctx context.Context, tx *sql.Tx) error 
 	if _, err = tx.ExecContext(ctx, `INSERT INTO derived_snapshot_generation(singleton,epoch,revision,dirty) VALUES (1,?,0,1)`, epoch); err != nil {
 		return err
 	}
-	return installDerivedSnapshotGenerationTriggers(ctx, tx)
+	return installDerivedSnapshotGenerationTriggers(ctx, tx, derivedSnapshotGenerationTables...)
 }
 
-func installDerivedSnapshotGenerationTriggers(ctx context.Context, tx *sql.Tx) error {
-	for _, table := range derivedSnapshotGenerationTables {
+func installDerivedSnapshotGenerationTriggers(ctx context.Context, tx *sql.Tx, tables ...string) error {
+	for _, table := range tables {
 		for _, operation := range []struct {
 			name  string
 			event string
@@ -607,6 +618,38 @@ END`, table, operation.name, operation.event, table)
 		}
 	}
 	return nil
+}
+
+func initializePricingFacts(ctx context.Context, tx *sql.Tx) error {
+	tables := []string{"price_rule_sets", "usage_request_facts"}
+	if err := installDerivedSnapshotGenerationTriggers(ctx, tx, tables...); err != nil {
+		return err
+	}
+	if err := installServingRevisionTriggers(ctx, tx, tables); err != nil {
+		return err
+	}
+	const invalidatePricing = `UPDATE usage_derived_metadata SET revision=revision+1 WHERE singleton=1;
+INSERT INTO usage_derived_invalidations(kind,client,key) VALUES('global','','') ON CONFLICT(kind,client,key) DO NOTHING;`
+	for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
+		if err := installUsagePartitionTrigger(ctx, tx, "price_rule_sets", op, "", invalidatePricing); err != nil {
+			return err
+		}
+		alias := "NEW"
+		if op == "DELETE" {
+			alias = "OLD"
+		}
+		body := `UPDATE usage_derived_partitions SET revision=revision+1,dirty=1 WHERE dirty=0
+AND (client,model,day) IN (SELECT client,model,substr(event_at,1,10) FROM usage_events WHERE event_key=` + alias + `.event_key);`
+		if err := installUsagePartitionTrigger(ctx, tx, "usage_request_facts", op, "", body); err != nil {
+			return err
+		}
+	}
+	// Dirty retained partitions immediately as part of the upgrade. A fresh
+	// core has no prior projection and needs no pending global marker.
+	_, err := tx.ExecContext(ctx, `UPDATE usage_derived_metadata SET revision=revision+1
+WHERE singleton=1 AND EXISTS (SELECT 1 FROM usage_derived_partitions);
+UPDATE usage_derived_partitions SET revision=revision+1,dirty=1 WHERE dirty=0;`)
+	return err
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

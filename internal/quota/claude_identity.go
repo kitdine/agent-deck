@@ -50,7 +50,7 @@ func (p *ClaudeProbe) ProbeIdentity(ctx context.Context, stateRoot string) Ident
 
 func (p *ClaudeProbe) probeIdentity(ctx context.Context, stateRoot string, timeout time.Duration) IdentityObservation {
 	var stdout claudeAuthOutput
-	err := p.run(ctx, timeout, &stdout, "auth", "status", "--json")
+	err := p.run(ctx, timeout, &stdout, io.Discard, "auth", "status", "--json")
 	if err != nil {
 		// The captured 2.1.325 sample only proves successful signed-in exit.
 		// A nonzero status is not evidence of a signed-out account.
@@ -74,8 +74,15 @@ func (p *ClaudeProbe) ProbeUsage(ctx context.Context, observedAt time.Time) (Cla
 
 func (p *ClaudeProbe) probeUsage(ctx context.Context, observedAt time.Time, timeout time.Duration) (ClaudeProseResult, error) {
 	var stdout bytes.Buffer
-	if err := p.run(ctx, timeout, &stdout, p.usageArgs...); err != nil {
-		return ClaudeProseResult{}, err
+	var stderr claudeLoginOutput
+	runErr := p.run(ctx, timeout, &stdout, &stderr, p.usageArgs...)
+	var failure *ClaudeFailureError
+	if (runErr == nil || (errors.As(runErr, &failure) && failure.Kind == ClaudeFailureExit)) &&
+		(claudeLoginRequired(stdout.String()) || stderr.loginRequired()) {
+		return ClaudeProseResult{}, &ClaudeFailureError{Kind: ClaudeFailureExit, Err: errProbeAuthentication}
+	}
+	if runErr != nil {
+		return ClaudeProseResult{}, runErr
 	}
 	result, err := ParseClaudeProse(stdout.String(), observedAt)
 	if err != nil {
@@ -84,7 +91,7 @@ func (p *ClaudeProbe) probeUsage(ctx context.Context, observedAt time.Time, time
 	return result, nil
 }
 
-func (p *ClaudeProbe) run(ctx context.Context, timeout time.Duration, stdout io.Writer, args ...string) error {
+func (p *ClaudeProbe) run(ctx context.Context, timeout time.Duration, stdout, stderr io.Writer, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -92,7 +99,7 @@ func (p *ClaudeProbe) run(ctx context.Context, timeout time.Duration, stdout io.
 	}
 	cmd := exec.CommandContext(ctx, p.path, args...)
 	cmd.Env, cmd.Dir = p.env, p.dir
-	cmd.Stdout, cmd.Stderr = stdout, io.Discard
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.WaitDelay = claudeProbeWaitDelay
 	if err := cmd.Start(); err != nil {
 		if cause := ctx.Err(); cause != nil {

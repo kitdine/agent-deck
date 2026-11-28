@@ -2,6 +2,8 @@
 
 产品全部界面的唯一设计真相：菜单栏面板、小组件、设置窗口，以及 CLI 的逐字符输出。
 
+计价重整的菜单栏金额标本由 `?surface=pricing-menubar` 进入。`lang=zh` 切换中文，`theme=light` 切换浅色。标本以 280/420 宽度检查 API 完整、部分、参考、零、不可用和渠道次级金额位置。
+
 ## 数据准备与可选引擎标本（scan-performance）
 
 入口 `?serving=rebuilding`，可见舞台支持 memory、disk、rebuilding、partial、first、failed、

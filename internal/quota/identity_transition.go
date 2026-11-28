@@ -168,6 +168,9 @@ func writeIdentity(ctx context.Context, q quotaSQL, client Client, cycle Refresh
 }
 
 func invalidateClaude(ctx context.Context, q quotaSQL, gen Generation, at time.Time, reason ContextInvalidation) error {
+	if err := invalidateSamplesIfInstalled(ctx, q, ClientClaude); err != nil {
+		return err
+	}
 	for _, statement := range []string{
 		"DELETE FROM quota_windows_v2 WHERE client='claude'",
 		"DELETE FROM quota_alert_notices_v2 WHERE client='claude'",

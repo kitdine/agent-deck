@@ -54,6 +54,38 @@ enum DesktopCopy {
 	static let periodToday = "Today"
 	static let period7d = "7D"
 	static let period30d = "30D"
+	static let pricingAPI = "API equivalent"
+	static let pricingKnown = "Known API cost"
+	static let pricingReference = "API reference"
+	static let pricingUnavailable = "Cost unavailable"
+	static let pricingProviderEstimate = "Provider estimate"
+	static let pricingKnownEstimate = "Known provider estimate"
+	static let pricingSeeDiagnostics = "See pricing diagnostics"
+	static let pricingGuardianCoverage = "Codex approval review usage may be missing"
+	static let pricingExecutionTiers = "Execution tiers"
+	static let pricingUnknownTier = "Unknown tier"
+	static let pricingContextAssumed = "Request-level context assumed"
+	static let pricingTTLAssumed = "%@ cache writes assumed"
+	static let pricingTierAssumed = "%@ tier assumed"
+	static let pricingRequestedTier = "%@ requested tier assumed"
+	static let pricingAsOf = "Prices as of %@"
+	static let pricingLegacyCatalog = "Legacy catalog"
+	static let pricingReferenceSubset = "Reference subset"
+	static let pricingEffectiveFrom = "From %@"
+	static let pricingEffectiveUntil = "Until %@ (exclusive)"
+	static let pricingReasonModel = "Model unresolved"
+	static let pricingReasonHistorical = "Historical tariff unavailable"
+	static let pricingReasonBoundary = "Effective boundary unverified"
+	static let pricingReasonTier = "Executed tier unverified"
+	static let pricingReasonContext = "Context pricing scope unverified"
+	static let pricingReasonInvocation = "Invocation boundary unverified"
+	static let pricingReasonTTL = "Cache write TTL unverified"
+	static let pricingReasonUnmetered = "Component not metered"
+	static let pricingReasonCounts = "Conflicting token counts"
+	static let pricingReasonRoute = "Billing path unverified"
+	static let pricingReasonActivity = "Activity unverified"
+	static let pricingReasonConflict = "Conflicting price rules"
+	static let pricingReasonSelector = "Pricing conditions unverified"
 	static let costIncomplete = "Cost incomplete · %lld unpriced"
 	static let costIncompleteAttribution = "Cost incomplete · attribution unavailable"
 	static let heroCounts = "%1$lld events · %2$lld sessions · %3$lld projects"
@@ -656,6 +688,14 @@ enum DesktopCopy {
 		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
+		pricingAPI, pricingKnown, pricingReference, pricingUnavailable,
+		pricingProviderEstimate, pricingKnownEstimate, pricingSeeDiagnostics, pricingGuardianCoverage, pricingExecutionTiers,
+		pricingUnknownTier, pricingContextAssumed, pricingTTLAssumed, pricingTierAssumed,
+		pricingRequestedTier, pricingAsOf, pricingLegacyCatalog, pricingReferenceSubset,
+		pricingEffectiveFrom, pricingEffectiveUntil, pricingReasonModel, pricingReasonHistorical,
+		pricingReasonBoundary, pricingReasonTier, pricingReasonContext, pricingReasonInvocation,
+		pricingReasonTTL, pricingReasonUnmetered, pricingReasonCounts, pricingReasonRoute,
+		pricingReasonActivity, pricingReasonConflict, pricingReasonSelector,
 		costIncomplete, costIncompleteAttribution, heroCounts, heroCountsUnknownProjects,
 		sourceCoveragePartial, sourceCoverageUnknown, sourceUpdatePending,
 		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,

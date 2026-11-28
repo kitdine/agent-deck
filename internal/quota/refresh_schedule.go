@@ -151,7 +151,7 @@ func (s Scheduler) runScheduledCodex(ctx context.Context, c RefreshCycle, trigge
 	} else {
 		usage, e := s.probeCodex(ctx, c.at)
 		if e != nil {
-			result.Failure = &UsageFailure{Reason: codexFailureReason(e)}
+			result.Failure = &UsageFailure{Reason: codexFailureReason(e), authenticationFailed: probeAuthenticationFailed(e)}
 		} else {
 			result.Usage = &usage
 		}
@@ -301,7 +301,10 @@ func (s Scheduler) runGuardedClaude(ctx context.Context, c RefreshCycle, g *Quot
 	}
 	if err != nil || len(usage.Windows) == 0 {
 		at := s.now()
-		f := UsageFailure{Trigger: trigger, Reason: claudeFailureReason(err), FailureObservedAt: at}
+		f := UsageFailure{
+			Trigger: trigger, Reason: claudeFailureReason(err), FailureObservedAt: at,
+			authenticationFailed: probeAuthenticationFailed(err),
+		}
 		var parse *ProseParseError
 		if errors.As(err, &parse) {
 			f.Detail = parse.Detail

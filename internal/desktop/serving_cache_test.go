@@ -318,3 +318,67 @@ func TestServingSnapshotHonorsTheRequestedRecentLimit(t *testing.T) {
 		t.Fatalf("a request's limit changed the publication: %+v %v", kept.Header, err)
 	}
 }
+
+func TestServingRequestPricingRefreshRetainsPreviousPublicationOnReadFailure(t *testing.T) {
+	s, core, _ := newServingFixture(t)
+	seedServingUsage(t, s, core)
+	ctx := context.Background()
+	request := Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}
+	first, err := s.PublishServingSnapshot(ctx, request, true)
+	if err != nil || first.Payload.Data.Pricing == nil {
+		t.Fatalf("initial pricing publication: %v", err)
+	}
+	pricing := first.Payload.Data.Pricing.Scopes[0].Periods[0].Pricing
+	if pricing == nil || pricing.RuleSet == "" || len(first.Payload.Data.Usage.Presentation.Scopes) != 3 {
+		t.Fatalf("pricing/legacy usage unavailable: %+v", first.Payload.Data.Pricing)
+	}
+	dbErr := func() error {
+		_, err := core.DB.ExecContext(ctx, `INSERT INTO usage_request_facts(event_key,facts_json)
+SELECT event_key,'{malformed' FROM usage_events LIMIT 1
+ON CONFLICT(event_key) DO UPDATE SET facts_json=excluded.facts_json`)
+		return err
+	}()
+	if dbErr != nil {
+		t.Fatal(dbErr)
+	}
+	if _, err := s.PublishServingSnapshot(ctx, request, false); err == nil {
+		t.Fatal("failed pricing read replaced a usable publication")
+	}
+	retained, err := s.ReadServingSnapshot(ctx)
+	if err != nil || retained.Header.PublicationID != first.Header.PublicationID || retained.Header.Freshness != "stale" ||
+		!reflect.DeepEqual(retained.Payload.Data.Pricing, first.Payload.Data.Pricing) {
+		t.Fatalf("retained pricing publication was lost or relabeled: %+v (%v)", retained.Header, err)
+	}
+	if _, err := core.DB.ExecContext(ctx, "DELETE FROM usage_request_facts"); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := s.PublishServingSnapshot(ctx, request, false)
+	if err != nil || recovered.Header.PublicationID == first.Header.PublicationID ||
+		recovered.Header.Freshness != "current" || recovered.Payload.Data.Pricing == nil {
+		t.Fatalf("fresh publication failed to recover: %+v (%v)", recovered.Header, err)
+	}
+}
+
+func TestServingRequestPricingCutoffBecomesStaleWithoutChangingLocalDay(t *testing.T) {
+	s, core, _ := newServingFixture(t)
+	seedServingUsage(t, s, core)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 12, 23, 59, 30, 0, time.UTC)
+	s.Location = time.FixedZone("fixture", -4*60*60)
+	s.Now = func() time.Time { return now }
+	request := Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}
+	initial, err := s.PublishServingSnapshot(ctx, request, true)
+	if err != nil || initial.Payload.Data.Pricing == nil {
+		t.Fatalf("initial publication = %+v (%v)", initial.Header, err)
+	}
+	now = now.Add(time.Minute)
+	retained, err := s.ReadServingSnapshot(ctx)
+	if err != nil || retained.Header.PublicationID != initial.Header.PublicationID || retained.Header.Freshness != "stale" {
+		t.Fatalf("cutoff expired but did not retain stale data: %+v (%v)", retained.Header, err)
+	}
+	next, err := s.PublishServingSnapshot(ctx, request, true)
+	if err != nil || next.Payload.Data.Pricing == nil || next.Header.Freshness != "current" ||
+		next.Payload.Data.Pricing.ValidUntil == initial.Payload.Data.Pricing.ValidUntil {
+		t.Fatalf("rebuild did not refresh pricing cutoff: %+v (%v)", next.Header, err)
+	}
+}

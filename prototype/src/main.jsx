@@ -4,6 +4,7 @@ import { App } from "./App.jsx";
 import { WidgetGallery } from "./Widgets.jsx";
 import { StateBoard } from "./States.jsx";
 import { CliSurface } from "./Cli.jsx";
+import { PricingSpecimens } from "./PricingSpecimens.jsx";
 import "./styles.css";
 import { runContract } from "./contract.js";
 import { runMeasure } from "./measure.js";
@@ -13,7 +14,8 @@ import { runHealthRecoveryProbe } from "./health-recovery-probe.js";
 
 const surface = new URLSearchParams(window.location.search).get("surface");
 const Surface =
-  surface === "widgets" ? WidgetGallery : surface === "states" ? StateBoard : surface === "cli" ? CliSurface : App;
+  surface === "pricing-menubar" ? PricingSpecimens :
+    surface === "widgets" ? WidgetGallery : surface === "states" ? StateBoard : surface === "cli" ? CliSurface : App;
 
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("widgetContrast") === "1") {
   import("./widget-contrast-probe.js").then(({ runWidgetContrastProbe }) => runWidgetContrastProbe());

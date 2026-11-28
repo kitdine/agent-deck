@@ -123,8 +123,8 @@ enum AgentDeckFoundationVerifier {
         let hook = ahead.data.health.checks.first { $0.code == "hook_deliveries_dropped" }
         try require(ahead.data.wireVersion == 1 && ahead.partial && !ahead.data.provider.available && !ahead.data.usage.available && !ahead.data.sessions.available && ahead.data.health.available, "schema-ahead section availability")
         try require(ahead.warnings.contains("sessions_unavailable"), "independent session warning survives")
-		try require(schema?.count == 99 && schema?.supportedCount == 36 && schema?.recoveryCommand == nil, "schema version pair")
-		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 36
+		try require(schema?.count == 99 && schema?.supportedCount == 38 && schema?.recoveryCommand == nil, "schema version pair")
+		try require(DesktopServingGenerationV2.maximumSupportedCoreSchema == 38
 			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 32)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 31)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 32)
@@ -136,7 +136,14 @@ enum AgentDeckFoundationVerifier {
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 34)
 			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36)
 			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 30, current: 36)
-			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35), "serving schema transition")
+			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35)
+			&& (31...36).allSatisfy { !DesktopServingGenerationV2.compatibleCoreSchema(stored: $0, current: 37) }
+			&& (31...36).allSatisfy { !DesktopServingGenerationV2.compatibleCoreSchema(stored: $0, current: 38) }
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 37)
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 38)
+			&& DesktopServingGenerationV2.compatibleCoreSchema(stored: 38, current: 38)
+			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 38, current: 37)
+			&& !DesktopServingGenerationV2.compatibleCoreSchema(stored: 39, current: 39), "serving schema transition")
         try require(hook?.count == 2 && hook?.supportedCount == nil && hook?.recoveryCommand == nil, "Hook refusal count")
 
         try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")

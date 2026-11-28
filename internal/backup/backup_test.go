@@ -1184,6 +1184,17 @@ func TestRestoreQuotaIdentityCompactsExternalEmptyTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Model an archive from the published identity schema, before either
+	// topic migration. Restore must migrate it as well as compact it.
+	if _, err := core.DB.Exec(`DROP TRIGGER quota_samples_on_session_delete;
+		DROP TRIGGER quota_samples_on_provider_selection;
+		DROP TRIGGER quota_samples_on_observed_provider;
+		DROP TABLE quota_session_samples;
+		DROP TABLE usage_request_facts;
+		DROP TABLE price_rule_sets;
+		UPDATE schema_metadata SET version=?`, store.QuotaIdentitySchemaVersion); err != nil {
+		t.Fatal(err)
+	}
 	sentinel := strings.Repeat("externally-deleted-quota-sentinel-", 800)
 	if _, err := core.DB.Exec(`PRAGMA secure_delete=OFF;
 		INSERT INTO quota_identities(client,org_name) VALUES('claude',?);
@@ -1202,7 +1213,7 @@ func TestRestoreQuotaIdentityCompactsExternalEmptyTable(t *testing.T) {
 		t.Fatal("fixture did not leave obsolete identity bytes")
 	}
 	manifest := Manifest{
-		SchemaVersion: ManifestSchemaVersion, DatabaseSchemas: map[string]int{coreName: 36},
+		SchemaVersion: ManifestSchemaVersion, DatabaseSchemas: map[string]int{coreName: store.QuotaIdentitySchemaVersion},
 		Included: []string{coreName, credentialsName},
 	}
 	entries := map[string][]byte{coreName: data, credentialsName: []byte("[]")}

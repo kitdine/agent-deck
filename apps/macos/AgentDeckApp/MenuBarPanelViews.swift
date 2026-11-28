@@ -194,6 +194,10 @@ struct ShareRowsView: View {
 							.minimumScaleFactor(0.7)
 					}
 					.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+					if let estimate = row.estimate {
+						Text(estimate).font(.caption).foregroundStyle(.secondary)
+							.fixedSize(horizontal: false, vertical: true)
+					}
 					GeometryReader { geometry in
 						Capsule()
 							.fill(DesktopVisualTheme.series[index % DesktopVisualTheme.series.count].opacity(0.68))
@@ -258,12 +262,14 @@ struct TrendChartAxis: Equatable, Sendable {
 struct TrendChart: View {
 	let buckets: [TrendBucket]
 	var height: CGFloat = 132
+	var usesRequestPricing = false
+	var peakID: String? = nil
 	@State private var interaction = TrendChartInteraction()
 	@FocusState private var chartFocused: Bool
 
 	var body: some View {
 		let maximum = max(0.000_001, buckets.map(\.magnitude).max() ?? 0)
-		let peak = buckets.max(by: { $0.magnitude < $1.magnitude })
+		let peak = usesRequestPricing ? buckets.first { $0.id == peakID } : buckets.max(by: { $0.magnitude < $1.magnitude })
 		let active = activeBucket
 		let hourlyAxis = TrendChartInteraction.hourlyAxis(bucketIDs: buckets.map(\.id))
 		VStack(alignment: .leading, spacing: 0) {
@@ -382,7 +388,7 @@ struct UsagePanelView: View {
 		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
 			if panel.available {
 				VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-					TrendChart(buckets: panel.buckets)
+					TrendChart(buckets: panel.buckets, usesRequestPricing: panel.usesRequestPricing, peakID: panel.peakID)
 					if let emptyCopy = panel.emptyCopy {
 						Text(emptyCopy)
 							.font(.caption)
@@ -415,6 +421,13 @@ struct BreakdownPanelView: View {
 					.desktopCard()
 			} else {
 				BreakdownModelsCard(rows: panel.models)
+				if !panel.tierRows.isEmpty {
+					VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+						BreakdownCardHeader(title: t(DesktopCopy.pricingExecutionTiers))
+						ShareRowsView(rows: panel.tierRows)
+					}
+					.desktopCard()
+				}
 				BreakdownTokenMixCard(rows: panel.tokenMix)
 				if !panel.clientRows.isEmpty {
 					BreakdownClientSubtotalsRow(rows: panel.clientRows)
@@ -534,6 +547,7 @@ private struct BreakdownModelRow: View {
 					.fontWeight(.medium)
 					.monospacedDigit()
 					.lineLimit(1)
+					.minimumScaleFactor(0.7)
 					.layoutPriority(1)
 				Text(row.shareText)
 					.fontWeight(.semibold)
@@ -692,6 +706,12 @@ struct AttributionPanelView: View {
 					}
 				} else {
 					UnavailableRow()
+				}
+				ForEach(Array(panel.diagnostics.enumerated()), id: \.offset) { _, text in
+					Text(text).font(.caption)
+						.foregroundStyle(.secondary)
+						.textSelection(.enabled)
+						.fixedSize(horizontal: false, vertical: true)
 				}
 			}
 		}

@@ -42,6 +42,10 @@ type queryCountingConn struct {
 	queries *atomic.Int64
 }
 
+func (c *queryCountingConn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
+	return c.Conn.(driver.ConnBeginTx).BeginTx(ctx, options)
+}
+
 func (c *queryCountingConn) Prepare(query string) (driver.Stmt, error) {
 	statement, err := c.Conn.Prepare(query)
 	if err != nil {
@@ -1696,8 +1700,9 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	if err != nil || summary.Counts["events"] != 1003 {
 		t.Fatalf("Summary = %#v, err:%v", summary, err)
 	}
-	if got := queries.Load(); got > 6 {
-		t.Fatalf("Summary SQL queries for 1003 events = %d, want at most 6", got)
+	// The revision and provider timeline are read inside the same snapshot.
+	if got := queries.Load(); got != 8 {
+		t.Fatalf("Summary SQL queries for 1003 events = %d, want 8 snapshot queries", got)
 	}
 
 	queries.Store(0)
@@ -1705,9 +1710,9 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	if err != nil || len(sessions) != 2 || sessions[0].Tokens["input_tokens"] != 502 || sessions[1].Tokens["input_tokens"] != 501 {
 		t.Fatalf("Sessions = %#v, err:%v", sessions, err)
 	}
-	// Sessions shares the same bounded provider, price, and route resolver.
-	if got := queries.Load(); got != 6 {
-		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 6", got)
+	// Sessions adds one bounded query for session metadata to the shared read.
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 9 snapshot queries", got)
 	}
 }
 
@@ -3994,9 +3999,9 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if len(report.Providers) != 1 || report.Providers[0].Client != "codex" || report.Providers[0].Name != "unknown" || report.Providers[0].Tokens != 750 {
 		t.Fatalf("stats providers = %#v", report.Providers)
 	}
-	// Stats shares the same bounded provider, price, and route resolver.
-	if got := queries.Load(); got != 6 {
-		t.Fatalf("stats SQL queries for 3 events = %d, want 6", got)
+	// Stats reads the same bounded token pricing snapshot plus tool activity.
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("stats SQL queries for 3 events = %d, want 9", got)
 	}
 	queries.Store(0)
 	tx, err := countedStore.DB.BeginTx(ctx, nil)
@@ -4032,8 +4037,8 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if large.Totals.Events != 1003 {
 		t.Fatalf("large stats events = %d, want 1003", large.Totals.Events)
 	}
-	if got := queries.Load(); got != 6 {
-		t.Fatalf("stats SQL queries for 1003 events = %d, want 6", got)
+	if got := queries.Load(); got != 9 {
+		t.Fatalf("stats SQL queries for 1003 events = %d, want 9", got)
 	}
 	queries.Store(0)
 	today, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Location: location, Timezone: "Asia/Shanghai"})

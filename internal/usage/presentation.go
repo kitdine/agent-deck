@@ -17,6 +17,7 @@ const (
 )
 
 type PresentationReport struct {
+	RequestPricing  *PricingPresentation        `json:"-"`
 	Available       bool                        `json:"available"`
 	Scopes          []PresentationScope         `json:"scopes"`
 	ClientSubtotals PresentationClientSubtotals `json:"client_subtotals"`
@@ -200,10 +201,11 @@ func (a *presentationAccumulator) add(event storedEvent, result Result, costs ..
 type presentationPeriodAccumulator struct {
 	total  *presentationAccumulator
 	models map[string]*presentationAccumulator
+	tiers  map[string]*statsAccumulator
 }
 
 func newPresentationPeriodAccumulator() *presentationPeriodAccumulator {
-	return &presentationPeriodAccumulator{total: newPresentationAccumulator(), models: map[string]*presentationAccumulator{}}
+	return &presentationPeriodAccumulator{total: newPresentationAccumulator(), models: map[string]*presentationAccumulator{}, tiers: map[string]*statsAccumulator{}}
 }
 
 type presentationScopeAccumulator struct {
@@ -281,14 +283,14 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 		periods = periods[:1]
 	}
 
-	events, pricing, err := s.presentationInputs(ctx, start90, end, now, incremental)
+	events, pricing, pricingWindow, err := s.presentationInputs(ctx, start90, end, now, incremental)
 	if err != nil {
 		return PresentationReport{}, err
 	}
 	scopes := map[string]*presentationScopeAccumulator{
 		"all": newPresentationScopeAccumulator(periods), "codex": newPresentationScopeAccumulator(periods), "claude": newPresentationScopeAccumulator(periods),
 	}
-	summary := newPresentationSummaryBuilder()
+	summary := newUsageSummaryBuilder()
 
 	for _, event := range events {
 		at, parseErr := time.Parse(time.RFC3339Nano, event.EventAt)
@@ -296,7 +298,7 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 			return PresentationReport{}, parseErr
 		}
 		at = at.In(location)
-		attribution, calculated, calculateErr := pricing(event)
+		attribution, calculated, requestedPrice, calculateErr := pricing(event)
 		if calculateErr != nil {
 			return PresentationReport{}, calculateErr
 		}
@@ -325,6 +327,7 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 			if err = scope.daily[date].add(event, aggregated, baseCost, providerCost); err != nil {
 				return PresentationReport{}, err
 			}
+			scope.daily[date].stats.pricing.add(event.Client, requestedPrice)
 			if !at.Before(today) {
 				if scope.hourly[at.Hour()] == nil {
 					scope.hourly[at.Hour()] = newPresentationAccumulator()
@@ -332,6 +335,7 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 				if err = scope.hourly[at.Hour()].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
+				scope.hourly[at.Hour()].stats.pricing.add(event.Client, requestedPrice)
 			}
 
 			if !todayOnly && !at.Before(periods[2].start) {
@@ -342,13 +346,16 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 				if err = scope.rhythm[key].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
+				if scopeName == "all" {
+					scope.rhythm[key].stats.pricing.add(event.Client, requestedPrice)
+				}
 			}
 
 			for _, period := range periods {
 				if at.Before(period.start) {
 					continue
 				}
-				if err = addPresentationQuality(scope, period.name, attribution, event, aggregated, baseCost, providerCost); err != nil {
+				if err = addPresentationQuality(scope, period.name, attribution, event, aggregated, requestedPrice, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 				if err = scope.pricing[period.name].add(event, aggregated, baseCost, providerCost); err != nil {
@@ -362,6 +369,14 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 					scope.unpriced[period.name][identifier] = struct{}{}
 				}
 				periodValue := scope.periods[period.name]
+				periodValue.total.stats.pricing.add(event.Client, requestedPrice)
+				tier := periodValue.tiers[requestedPrice.ExecutedTier]
+				if tier == nil {
+					tier = &statsAccumulator{}
+					periodValue.tiers[requestedPrice.ExecutedTier] = tier
+				}
+				tier.tokens += eventTokenTotal(event.Client, event.Tokens)
+				tier.pricing.add(event.Client, requestedPrice)
 				if err = periodValue.total.add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
@@ -372,11 +387,14 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 				if err = periodValue.models[modelKey].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
+				periodValue.models[modelKey].stats.pricing.add(event.Client, requestedPrice)
 			}
 		}
 	}
 
 	report := PresentationReport{Available: true, Scopes: make([]PresentationScope, 0, 3), ClientSubtotals: PresentationClientSubtotals{Available: true, Items: []PresentationClientSubtotal{}}, Summary: summary.finish()}
+	report.RequestPricing = buildPricingPresentation(scopes, periods, pricingWindow)
+	sort.Strings(report.Summary.Warnings)
 	for _, scopeName := range []string{"all", "codex", "claude"} {
 		report.Scopes = append(report.Scopes, buildPresentationScope(scopeName, scopes[scopeName], periods, start90, today, currentHour))
 	}
@@ -390,7 +408,7 @@ func (s *Service) presentationProjected(ctx context.Context, now time.Time, loca
 	return report, nil
 }
 
-func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result, costs ...*big.Rat) error {
+func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result, requestedPrice *PricingReport, costs ...*big.Rat) error {
 	quality := "unattributed"
 	switch attribution.quality {
 	case "exact":
@@ -416,6 +434,7 @@ func addPresentationQuality(scope *presentationScopeAccumulator, period string, 
 		if !attribution.spendEligible {
 			tier.stats.providerComplete = false
 		}
+		tier.stats.pricing.add(event.Client, requestedPrice)
 	}
 	return nil
 }
@@ -756,7 +775,7 @@ func localDateStart(value time.Time, location *time.Location) time.Time {
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
 }
 
-type presentationSummaryBuilder struct {
+type usageSummaryBuilder struct {
 	summary              Summary
 	base                 *big.Rat
 	provider             *big.Rat
@@ -769,12 +788,12 @@ type presentationSummaryBuilder struct {
 	coverage             map[string]*ModelCoverage
 }
 
-func newPresentationSummaryBuilder() *presentationSummaryBuilder {
+func newUsageSummaryBuilder() *usageSummaryBuilder {
 	reasons := make(map[string]int64, len(attributionReasons()))
 	for _, reason := range attributionReasons() {
 		reasons[reason] = 0
 	}
-	return &presentationSummaryBuilder{
+	return &usageSummaryBuilder{
 		summary: Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": 0, "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, AttributionReasons: reasons, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}},
 		base:    new(big.Rat), provider: new(big.Rat), unattributedBase: new(big.Rat),
 		complete: true, providerComplete: true, unattributedComplete: true,
@@ -782,7 +801,7 @@ func newPresentationSummaryBuilder() *presentationSummaryBuilder {
 	}
 }
 
-func (b *presentationSummaryBuilder) add(event storedEvent, attribution eventAttribution, result Result) {
+func (b *usageSummaryBuilder) add(event storedEvent, attribution eventAttribution, result Result) {
 	b.summary.Counts["events"]++
 	b.summary.Counts[attribution.quality]++
 	b.summary.AttributionReasons[attribution.reason]++
@@ -836,7 +855,7 @@ func (b *presentationSummaryBuilder) add(event storedEvent, attribution eventAtt
 	model.PricedEvents++
 }
 
-func (b *presentationSummaryBuilder) finish() Summary {
+func (b *usageSummaryBuilder) finish() Summary {
 	knownBase, knownProvider := money(b.base), money(b.provider)
 	b.summary.KnownCatalogBaseCost = &knownBase
 	b.summary.KnownProviderCost = &knownProvider
@@ -863,6 +882,5 @@ func (b *presentationSummaryBuilder) finish() Summary {
 		}
 		return b.summary.Models[i].Client < b.summary.Models[j].Client
 	})
-	sort.Strings(b.summary.Warnings)
 	return b.summary
 }

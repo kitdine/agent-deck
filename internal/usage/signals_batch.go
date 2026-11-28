@@ -79,7 +79,7 @@ func (s *Service) signalsBatch(ctx context.Context, options []SignalOptions, pro
 		var pricing projectedPricing
 		var err error
 		if projected {
-			events, pricing, err = s.presentationInputs(ctx, from, to, s.now(), true)
+			events, pricing, _, err = s.presentationInputs(ctx, from, to, s.now(), true)
 		} else {
 			events, err = s.eventsRange(ctx, from, to, "", "")
 		}
@@ -97,13 +97,13 @@ func (s *Service) signalsBatch(ctx context.Context, options []SignalOptions, pro
 				if err != nil {
 					return nil, err
 				}
-				pricing = func(event storedEvent) (eventAttribution, Result, error) {
+				pricing = func(event storedEvent) (eventAttribution, Result, *PricingReport, error) {
 					a, err := resolver.priceForEvent(event)
 					if err != nil {
-						return a, Result{}, err
+						return a, Result{}, nil, err
 					}
 					r, err := calculateAttributedEvent(event, a)
-					return a, r, err
+					return a, r, nil, err
 				}
 			}
 			for _, event := range events {
@@ -134,7 +134,7 @@ func (s *Service) signalsBatch(ctx context.Context, options []SignalOptions, pro
 				if len(selected) == 0 {
 					continue
 				}
-				_, result, err := pricing(event)
+				_, result, _, err := pricing(event)
 				if err != nil {
 					return nil, err
 				}

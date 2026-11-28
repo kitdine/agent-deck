@@ -3,6 +3,36 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+	func testOptionalRequestPricingReplaysIdenticalWidgetProjection() throws {
+		let base = try desktopFixtureData("snapshot-complete.json")
+		let legacy = try decodeDesktopWireEnvelopeV1(base)
+		var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: base) as? [String: Any])
+		var data = try XCTUnwrap(envelope["data"] as? [String: Any])
+		data["pricing"] = try JSONSerialization.jsonObject(with: desktopFixtureData("pricing-display.json"))
+		envelope["data"] = data
+		let updated = try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: envelope))
+		XCTAssertNil(legacy.data.pricing)
+		XCTAssertEqual(updated.data.wireVersion, 1)
+		let all = try XCTUnwrap(updated.data.pricing?.scope("all"))
+		XCTAssertEqual(all.period("today")?.pricing.apiEquivalent.amount, "3.512016")
+		XCTAssertEqual(all.period("7d")?.pricing.apiEquivalent.knownAmount, "1.656")
+		XCTAssertEqual(all.period("7d")?.pricing.reference?.lower, "1.856")
+		XCTAssertEqual(all.period("7d")?.pricing.reasons.filter { $0 == "activity_coverage_unavailable" }.count, 1)
+		let claude = try XCTUnwrap(updated.data.pricing?.scope("claude"))
+		XCTAssertEqual(claude.period("today")?.pricing.apiEquivalent.amount, "0")
+		XCTAssertNil(claude.period("today")?.pricing.providerEstimate)
+		XCTAssertEqual(claude.period("7d")?.pricing.reference?.amount, "0.84")
+		XCTAssertEqual(claude.period("30d")?.pricing.apiEquivalent.status, "unavailable")
+
+		let widgetBefore = AppGroupDesktopSnapshotV1(envelope: legacy)
+		let widgetAfter = AppGroupDesktopSnapshotV1(envelope: updated)
+		// This equality includes every period, subtotal, attribution row,
+		// daily/weekly trend, average, and peak handed to WidgetKit.
+		XCTAssertEqual(widgetAfter, widgetBefore)
+		XCTAssertEqual(try JSONDecoder().decode(AppGroupDesktopSnapshotV1.self, from: JSONEncoder().encode(widgetAfter)), widgetBefore)
+		XCTAssertEqual(try decodeDesktopWireEnvelopeV1(JSONEncoder().encode(updated)).data.pricing, updated.data.pricing)
+	}
+
 	func testSubscriptionGoFixtureAndNullableWireContract() throws {
 		let url = desktopFixtureURL("../../../internal/desktop/testdata/subscription-identity-v1.json").standardizedFileURL
 		let bytes = try Data(contentsOf: url)
@@ -262,7 +292,7 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(envelope.warnings.contains("sessions_unavailable"))
         let schema = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "schema_ahead" })
         XCTAssertEqual(schema.count, 99)
-		XCTAssertEqual(schema.supportedCount, 36)
+		XCTAssertEqual(schema.supportedCount, 38)
         XCTAssertNil(schema.recoveryCommand)
         let hook = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" })
         XCTAssertEqual(hook.count, 2)

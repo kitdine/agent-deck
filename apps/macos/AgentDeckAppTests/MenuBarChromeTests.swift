@@ -15,6 +15,130 @@ private final class ClientFilterBoundsCapture: @unchecked Sendable {
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
 	private static var retainedFocusWindows = [NSWindow]()
+	func testRequestPricingSpecimenRendersAt280And420InBothLanguages() async throws {
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+			.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("desktop/fixtures/v1")
+		let data = try Data(contentsOf: fixtures.appendingPathComponent("snapshot-complete.json"))
+		var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+		var snapshot = try XCTUnwrap(envelope["data"] as? [String: Any])
+		snapshot["pricing"] = try JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("pricing-display.json")))
+		envelope["data"] = snapshot
+		let update = try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: envelope))
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(update)))
+		await model.coordinator.refresh()
+		model.selectPanel(.usage)
+		let cases = [
+			("all", "today", DesktopCopy.pricingAPI), ("all", "7d", DesktopCopy.pricingKnown),
+			("claude", "7d", DesktopCopy.pricingReference), ("claude", "30d", DesktopCopy.pricingUnavailable),
+			("claude", "today", DesktopCopy.pricingAPI),
+		]
+		for locale in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", locale, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				for (client, period, label) in cases {
+					model.selectedClient = client
+					model.selectedPeriod = period
+					let hero = try XCTUnwrap(model.hero)
+					XCTAssertEqual(hero.pricingLabel ?? hero.amount, t(label))
+					XCTAssertFalse(hero.amount.hasPrefix("≈"))
+					let selectedTab = try XCTUnwrap(model.clientTabs.first { $0.id == client })
+					XCTAssertTrue(selectedTab.value?.contains(t(label)) == true)
+					XCTAssertTrue(model.clientTabs.allSatisfy { $0.value?.hasPrefix("≈") != true })
+					XCTAssertTrue(model.rhythmBlock.calendar.allSatisfy { !$0.cost.hasPrefix("≈") })
+					if client == "claude" && period == "today" { XCTAssertTrue(hero.amount.contains("0.00")) }
+					if period == "7d" && client == "all" {
+						XCTAssertEqual(model.attributionPanel.diagnostics.filter { $0 == t(DesktopCopy.pricingGuardianCoverage) }.count, 1)
+						XCTAssertTrue(model.attributionPanel.diagnostics.contains { $0.contains("30m/12h") && $0.contains("–") })
+						XCTAssertFalse(hero.amount.contains("–"))
+						XCTAssertNil(model.usagePanel.peakID)
+						XCTAssertTrue(model.breakdownPanel.tierRows.allSatisfy { $0.shareText == "—" })
+						let diagnostics = AttributionPanelView(panel: model.attributionPanel)
+							.padding(MenuBarGeometry.padding).background(DesktopVisualTheme.background)
+						let png = try renderedViewPNG(diagnostics, size: NSSize(width: CGFloat(width), height: 640))
+						XCTAssertGreaterThan(png.count, 3_000)
+						add(renderingAttachment(png, named: "Pricing diagnostics \(width) \(locale)"))
+					}
+					let surface = MenuBarSurfaceView(model: model, height: MenuBarGeometry.maximumHeight)
+					let png = try renderedViewPNG(surface, size: NSSize(width: CGFloat(width), height: 760))
+					XCTAssertGreaterThan(png.count, 3_000)
+					add(renderingAttachment(png, named: "Pricing \(client) \(period) \(width) \(locale)"))
+				}
+			}
+		}
+	}
+
+	func testEmptyRequestPricingPeriodShowsZeroInMenuBar() async throws {
+		let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+			.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("desktop/fixtures/v1")
+		let data = try Data(contentsOf: fixtures.appendingPathComponent("snapshot-complete.json"))
+		var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+		var snapshot = try XCTUnwrap(envelope["data"] as? [String: Any])
+		var usage = try XCTUnwrap(snapshot["usage"] as? [String: Any])
+		var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+		var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+		let all = try XCTUnwrap(scopes.firstIndex { $0["client"] as? String == "all" })
+		var periods = try XCTUnwrap(scopes[all]["periods"] as? [String: Any])
+		var items = try XCTUnwrap(periods["items"] as? [[String: Any]])
+		let today = try XCTUnwrap(items.firstIndex { $0["period"] as? String == "today" })
+		var totals = try XCTUnwrap(items[today]["totals"] as? [String: Any])
+		for key in ["events", "tokens", "sessions", "unpriced_components"] { totals[key] = 0 }
+		for key in ["provider_cost", "known_provider_cost"] { totals[key] = "0.000000000" }
+		totals["pricing_complete"] = true
+		items[today]["totals"] = totals
+		periods["items"] = items
+		scopes[all]["periods"] = periods
+		var hourly = try XCTUnwrap(scopes[all]["hourly"] as? [String: Any])
+		let existingHours = try XCTUnwrap(hourly["items"] as? [[String: Any]])
+		let emptyValue = try XCTUnwrap(existingHours.compactMap { $0["value"] as? [String: Any] }
+			.first { $0["events"] as? Int == 0 && $0["tokens"] as? Int == 0 })
+		XCTAssertLessThan(existingHours.count, 24)
+		hourly["items"] = existingHours.map { item in
+			var emptyHour = item
+			emptyHour["value"] = emptyValue
+			return emptyHour
+		}
+		scopes[all]["hourly"] = hourly
+		presentation["scopes"] = scopes
+		usage["presentation"] = presentation
+		snapshot["usage"] = usage
+		let emptyPricing: [String: Any] = [
+			"version": 1, "rule_set": "empty-fixture", "reasons": [String](),
+			"api_equivalent": [
+				"currency": "USD", "status": "complete", "amount": "0.000000000", "known_amount": "0.000000000",
+			],
+		]
+		let singlePeriod: [String: Any] = [
+			"period": "today", "pricing": emptyPricing, "models": [String](), "tiers": [String](), "quality": [String](),
+		]
+		let emptyScope: [String: Any] = [
+			"client": "all", "periods": [singlePeriod], "daily": [String](), "hourly": [String](),
+		]
+		snapshot["pricing"] = ["version": 1, "valid_until": "2026-08-14T00:00:00Z", "scopes": [emptyScope]]
+		envelope["data"] = snapshot
+
+		let update = try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: envelope))
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(update)))
+		await model.coordinator.refresh()
+		model.selectedClient = "all"
+		model.selectedPeriod = "today"
+		let hero = try XCTUnwrap(model.hero)
+		let zero = Decimal.zero.formatted(.currency(code: "USD").locale(DesktopLocale.current))
+		let label = t(DesktopCopy.pricingAPI)
+		XCTAssertEqual(hero.amount, zero)
+		XCTAssertEqual(hero.pricingLabel, label)
+		XCTAssertNil(hero.costIncomplete)
+		XCTAssertEqual(model.usagePanel.buckets.count, 24)
+		XCTAssertTrue(model.usagePanel.buckets.allSatisfy { $0.events == 0 && $0.cost == "\(label) \(zero)" })
+		XCTAssertNil(model.usagePanel.peakID)
+	}
+
 	func testStandaloneReloadIncludesEveryWidgetKind() {
 		XCTAssertEqual(AgentDeckMain.widgetKinds, [
 			"com.kitdine.agentdeck.widget.magnitude",

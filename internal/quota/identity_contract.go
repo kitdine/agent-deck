@@ -121,6 +121,7 @@ type UsageFailure struct {
 	Reason                                     Reason
 	Detail                                     FailureDetail
 	FailureObservedAt, FailureAt, BackoffUntil time.Time
+	authenticationFailed                       bool
 }
 
 type ContextInvalidation string
@@ -198,9 +199,8 @@ type codexAssociationProof struct {
 }
 
 type CodexCycleResult struct {
-	Identity   *IdentityObservation
-	Usage      *CodexResult
-	Failure    *UsageFailure
-	proof      codexAssociationProof
-	planUnsafe bool
+	Identity *IdentityObservation
+	Usage    *CodexResult
+	Failure  *UsageFailure
+	proof    codexAssociationProof
 }

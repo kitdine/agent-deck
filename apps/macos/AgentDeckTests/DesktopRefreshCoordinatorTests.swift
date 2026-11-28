@@ -243,16 +243,18 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		if case .succeeded = coordinator.widgetPublication {} else { XCTFail("merged widget publication did not succeed") }
 	}
 
-	func testServingAcceptsSessionOriginSchemaAndRejectsUnknownFutureSchema() throws {
-		let snapshot = try servingCoordinatorFixture(id: "session-origin-schema", full: true,
-			generationChanges: ["core_schema": 35])
-		XCTAssertEqual(snapshot.header.generation.coreSchema, 35)
+	func testServingAcceptsKnownSchemasAndRejectsUnknownFutureSchema() throws {
 		let supportedSchema = DesktopServingGenerationV2.maximumSupportedCoreSchema
-		let current = try servingCoordinatorFixture(id: "current-schema", full: true,
-			generationChanges: ["core_schema": supportedSchema])
-		XCTAssertEqual(current.header.generation.coreSchema, supportedSchema)
+		XCTAssertEqual(supportedSchema, 38)
+		for schema in 35 ... supportedSchema {
+			let snapshot = try servingCoordinatorFixture(id: "schema-\(schema)", full: true,
+				generationChanges: ["core_schema": schema])
+			XCTAssertEqual(snapshot.header.generation.coreSchema, schema)
+		}
 		XCTAssertThrowsError(try servingCoordinatorFixture(id: "future-schema", full: true,
 			generationChanges: ["core_schema": supportedSchema + 1]))
+		XCTAssertThrowsError(try servingCoordinatorFixture(id: "missing-schema", full: true,
+			generationChanges: ["core_schema": 0]))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 31, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 32, current: 33))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 33, current: 34))
@@ -265,6 +267,15 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 34))
 		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 35, current: 36))
 		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 36, current: 35))
+		for oldSchema in 31...36 {
+			XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: oldSchema, current: 37))
+			XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: oldSchema, current: 38))
+		}
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 37))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 37, current: 38))
+		XCTAssertTrue(DesktopServingGenerationV2.compatibleCoreSchema(stored: 38, current: 38))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 38, current: 37))
+		XCTAssertFalse(DesktopServingGenerationV2.compatibleCoreSchema(stored: 39, current: 39))
 	}
 
 	func testServingPartialPublicationDoesNotWaitForQuotaOrGlobalTerminal() async throws {

@@ -110,6 +110,7 @@ func (s Service) BuildToday(ctx context.Context) (Result, error) {
 	from, to := localDay(now, s.location())
 	result.Snapshot.Usage = usageSnapshot(presentation.Summary, from, to)
 	result.Snapshot.Usage.Presentation = presentation
+	result.Snapshot.Pricing = presentation.RequestPricing
 	observed, observedErr := time.Parse(time.RFC3339Nano, coverage.ObservedAt)
 	if coverage.State == "complete" && (observedErr != nil || observed.Before(from)) {
 		coverage.State = "unknown"
@@ -140,6 +141,7 @@ func withholdUnprovenZero(result *Result) {
 	}
 	result.Snapshot.Usage.Available = false
 	result.Snapshot.Usage.Presentation = usage.EmptyPresentationReport()
+	result.Snapshot.Pricing = nil
 }
 
 func coverageWarning(state string) string {
@@ -224,6 +226,9 @@ func (s Service) prepareServingSnapshot(ctx context.Context, request Request, to
 	if err != nil {
 		return ServingSnapshot{}, err
 	}
+	if result.usageErr != nil {
+		return ServingSnapshot{}, fmt.Errorf("prepare desktop usage and pricing: %w", result.usageErr)
+	}
 	core, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
 		return ServingSnapshot{}, err
@@ -262,6 +267,9 @@ func (s Service) prepareServingSnapshot(ctx context.Context, request Request, to
 		return ServingSnapshot{}, err
 	}
 	now := s.now()
+	if valid, err := result.Snapshot.Pricing.ValidAt(now); err != nil || !valid {
+		return ServingSnapshot{}, ErrServingChanged
+	}
 	start, end := localDay(now, s.location())
 	if result.Snapshot.GeneratedAt != now.UTC().Format(time.RFC3339Nano) {
 		generated, parseErr := time.Parse(time.RFC3339Nano, result.Snapshot.GeneratedAt)
@@ -382,7 +390,8 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 		snapshot.Payload.SchemaVersion != 1 || snapshot.Payload.Command != "desktop.snapshot" || snapshot.Payload.Data.WireVersion != WireVersion || snapshot.Payload.Data.GeneratedAt != header.GeneratedAt {
 		return ServingSnapshot{}, ErrServingInvalid
 	}
-	start, end := localDay(s.now(), s.location())
+	now := s.now()
+	start, end := localDay(now, s.location())
 	if header.Timezone != s.location().String() || header.WindowStart != start.UTC().Format(time.RFC3339Nano) || header.WindowEnd != end.UTC().Format(time.RFC3339Nano) {
 		return ServingSnapshot{}, ErrServingInvalid
 	}
@@ -398,6 +407,9 @@ func (s Service) ReadServingSnapshot(ctx context.Context) (ServingSnapshot, erro
 		return ServingSnapshot{}, ErrServingInvalid
 	}
 	if old.UsageRevision != final.UsageRevision || old.SessionRevision != final.SessionRevision || old.CoreSchema != final.CoreSchema {
+		snapshot.Header.Freshness = "stale"
+	}
+	if valid, err := snapshot.Payload.Data.Pricing.ValidAt(now); err != nil || !valid {
 		snapshot.Header.Freshness = "stale"
 	}
 	// The cached subscription can predate an identity invalidation even at

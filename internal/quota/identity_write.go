@@ -159,15 +159,17 @@ func (s *Store) cycleWrite(ctx context.Context, cycle RefreshCycle, write func(c
 		return WriteUnresolved, err
 	}
 	return s.refreshWrite(ctx, func(ctx context.Context, conn *sql.Conn) (bool, error) {
-		var latest CycleSeq
-		if err := conn.QueryRowContext(ctx, "SELECT seq FROM quota_cycle WHERE singleton=1").Scan(&latest); err != nil {
+		if current, err := currentQuotaCycle(ctx, conn, cycle); !current || err != nil {
 			return false, err
-		}
-		if latest != cycle.seq {
-			return false, nil
 		}
 		return write(ctx, conn)
 	})
+}
+
+func currentQuotaCycle(ctx context.Context, q quotaSQL, cycle RefreshCycle) (bool, error) {
+	var latest CycleSeq
+	err := q.QueryRowContext(ctx, "SELECT seq FROM quota_cycle WHERE singleton=1").Scan(&latest)
+	return latest == cycle.seq, err
 }
 
 // Legacy producers still operate on fresh state during the staged rollout.

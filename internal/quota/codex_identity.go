@@ -81,6 +81,11 @@ func (d *codexDispatch) read(r io.Reader) {
 			if len(e.Error) > 0 && !bytes.Equal(e.Error, []byte("null")) {
 				reply.raw = nil
 				reply.failure = &CodexFailureError{Kind: CodexFailureServerError}
+				var serverError struct{ Message string }
+				if *id == 2 && json.Unmarshal(e.Error, &serverError) == nil &&
+					strings.EqualFold(strings.TrimSpace(serverError.Message), "not logged in") {
+					reply.failure.Err = errProbeAuthentication
+				}
 			}
 			delete(d.wait, *id)
 			ch <- reply
@@ -269,13 +274,16 @@ func probeCodexCycle(parent context.Context, at time.Time, identity, usage bool,
 			if err != nil {
 				ur = errReply(CodexFailureMalformed)
 			} else {
+				value.planUnsafe = unsafe
 				result.Usage = &value
-				result.planUnsafe = unsafe
 				result.proof.matched = result.Identity != nil && result.Identity.State == IdentityIdentified && len(key) > 0 && bytes.Equal(key, []byte(value.AccountID))
 			}
 		}
 		if ur.failure != nil {
-			result.Failure = &UsageFailure{Reason: ur.failure.Kind.Reason(), FailureObservedAt: at}
+			result.Failure = &UsageFailure{
+				Reason: ur.failure.Kind.Reason(), FailureObservedAt: at,
+				authenticationFailed: probeAuthenticationFailed(ur.failure),
+			}
 		}
 	}
 	return result, ur.failure

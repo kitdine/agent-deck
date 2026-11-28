@@ -51,7 +51,7 @@ func newQuotaCommand(opts *commandOptions) *cobra.Command {
 			return runQuota(command.Context(), opts)
 		},
 	}
-	command.AddCommand(newQuotaCaptureCommand(opts))
+	command.AddCommand(newQuotaCaptureCommand(opts), newLocalQuotaSampleCommand(opts))
 	return command
 }
 

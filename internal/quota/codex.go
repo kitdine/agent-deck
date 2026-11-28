@@ -26,6 +26,7 @@ const DefaultCodexTimeout = 5 * time.Second
 // distinct from no bucketed view existing at all, and yields zero windows.
 // Neither case is ever a probe failure.
 type CodexResult struct {
+	planUnsafe     bool
 	Windows        []Observation
 	ResetAllowance ResetAllowance
 	Plan           string
@@ -418,11 +419,15 @@ func mapCodexBilling(credits *codexCredits) Billing {
 // is malformed, never a silent 0% (see codexWindow's doc).
 func mapCodexWindow(limitID string, secondary bool, w codexWindow, label string, observedAt time.Time, vendorOrder int) (Observation, error) {
 	windowKey := CodexWindowKey(limitID, secondary)
+	slot := "primary"
+	if secondary {
+		slot = "secondary"
+	}
 	if w.UsedPercent == nil {
 		return Observation{}, fmt.Errorf("codex window %q: missing usedPercent", windowKey)
 	}
 	obs := Observation{
-		Client: ClientCodex, WindowKey: windowKey,
+		Client: ClientCodex, WindowKey: windowKey, Pool: limitID, Slot: slot,
 		Source: SourceCodex, ObservedAt: observedAt, VendorOrder: vendorOrder,
 		UsedPercent: *w.UsedPercent, Label: label,
 	}

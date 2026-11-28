@@ -100,6 +100,11 @@ func (s *Store) Record(ctx context.Context, obs Observation) (accepted, resetObs
 	if !accepted || err != nil {
 		return accepted, resetObserved, storedObservedResetAt, err
 	}
+	if obs.Client == ClientCodex {
+		if _, err := invalidateSamplesForAccount(ctx, tx, obs.Client, accountDigest(obs.Client, obs.AccountID)); err != nil {
+			return false, false, time.Time{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return false, false, time.Time{}, err
 	}
@@ -409,6 +414,11 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, rec.Client); !allowed || err != nil {
 		return err
 	}
+	if rec.Client == ClientCodex {
+		if _, err := invalidateSamplesForAccount(ctx, tx, rec.Client, accountDigest(rec.Client, rec.AccountID)); err != nil {
+			return err
+		}
+	}
 	if err := putEnvelope(ctx, tx, rec, false, 0, 0); err != nil {
 		return err
 	}
@@ -501,6 +511,10 @@ func putEnvelope(ctx context.Context, tx quotaSQL, rec EnvelopeRecord, unsafePla
 // carries no backoff-chain meaning, so a manual failure need not leave it
 // untouched the way it must leave failureAt and backoffUntil untouched.
 func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil, failureObservedAt time.Time) error {
+	return s.putEnvelopeFailure(ctx, client, failure, failureAt, backoffUntil, failureObservedAt, false)
+}
+
+func (s *Store) putEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil, failureObservedAt time.Time, authenticationFailed bool) error {
 	failureAtText := ""
 	if !failureAt.IsZero() {
 		failureAtText = failureAt.Format(timeLayout)
@@ -513,12 +527,29 @@ func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure R
 	if !failureObservedAt.IsZero() {
 		failureObservedAtText = failureObservedAt.Format(timeLayout)
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO quota_envelopes_v2(client, failure, failure_at, backoff_until, failure_observed_at)
+	const query = `INSERT INTO quota_envelopes_v2(client, failure, failure_at, backoff_until, failure_observed_at)
 		SELECT ?,?,?,?,? WHERE ? <> 'claude' OR NOT EXISTS (SELECT 1 FROM quota_envelopes_v2 WHERE client='claude' AND (context_generation<>0 OR cycle_seq<>0))
-		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`,
-		string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText, string(client),
-	)
-	return err
+		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`
+	args := []any{string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText, string(client)}
+	if !authenticationFailed {
+		_, err := s.db.ExecContext(ctx, query, args...)
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if allowed, err := legacyQuotaWriteAllowed(ctx, tx, client); !allowed || err != nil {
+		return err
+	}
+	if err := invalidateSamplesIfInstalled(ctx, tx, client); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Envelope reads the persisted client-level envelope. ok is false when

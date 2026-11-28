@@ -194,6 +194,8 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 // archive carries.
 var originNonPortableTables = []string{"origin_mutations", "session_origins", "origin_evidence", "origin_adapter_runs"}
 
+const quotaSampleTable = "quota_session_samples"
+
 // preparePortableCore scrubs a private snapshot and archives a rebuilt copy
 // so rows previously removed from the source cannot survive in unused bytes.
 func preparePortableCore(ctx context.Context, snapshotPath, compactPath string) (err error) {
@@ -227,7 +229,7 @@ func preparePortableCore(ctx context.Context, snapshotPath, compactPath string) 
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
 		}
 	}()
-	for _, table := range originNonPortableTables {
+	for _, table := range append([]string{quotaSampleTable}, originNonPortableTables...) {
 		var present int
 		if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
 			return err
@@ -281,7 +283,7 @@ func validatePortableQuotaCore(ctx context.Context, path string) error {
 	}
 	defer db.Close()
 	var integrity string
-	var free, identities int
+	var free, identities, samples, version int
 	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil {
 		return err
 	}
@@ -291,7 +293,15 @@ func validatePortableQuotaCore(ctx context.Context, path string) error {
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM quota_identities").Scan(&identities); err != nil {
 		return err
 	}
-	if integrity != "ok" || free != 0 || identities != 0 {
+	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&version); err != nil {
+		return err
+	}
+	if version >= store.QuotaSessionSamplesSchemaVersion {
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM "+quotaSampleTable).Scan(&samples); err != nil {
+			return err
+		}
+	}
+	if integrity != "ok" || free != 0 || identities != 0 || samples != 0 {
 		return errors.New("portable core did not pass quota cleanup checks")
 	}
 	return nil
@@ -884,6 +894,7 @@ func clearRestoredQuotaState(ctx context.Context, db *sql.DB, compact bool) erro
 	for _, statement := range []string{
 		"DELETE FROM quota_windows_v2", "DELETE FROM quota_envelopes_v2",
 		"DELETE FROM quota_alert_notices_v2", "DELETE FROM quota_identities",
+		"DELETE FROM " + quotaSampleTable,
 		"UPDATE quota_cycle SET seq=0,revalidate_seq=0",
 	} {
 		if _, err := conn.ExecContext(ctx, statement); err != nil {
@@ -954,7 +965,10 @@ func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[s
 		_ = database.Close()
 		return nil, portableCoreSchema{}, err
 	}
-	schema := portableCoreSchema{compact: version >= 36 || hasIdentityTable, prematureIdentityTable: version < 36 && hasIdentityTable}
+	schema := portableCoreSchema{
+		compact:                version >= store.QuotaIdentitySchemaVersion || hasIdentityTable,
+		prematureIdentityTable: version < store.QuotaIdentitySchemaVersion && hasIdentityTable,
+	}
 	if err = database.Close(); err != nil {
 		return nil, portableCoreSchema{}, err
 	}

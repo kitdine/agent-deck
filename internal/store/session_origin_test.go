@@ -519,8 +519,13 @@ func TestOriginMigrationFailureRollsBackAndSchemaAheadRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version, _ = migrated.SchemaVersion(ctx); version != CurrentSchemaVersion {
-		t.Fatalf("migrated version = %d", version)
+	if version, err = migrated.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("migrated schema version=%d, want %d: %v", version, CurrentSchemaVersion, err)
+	}
+	var quotaSamples bool
+	if err := migrated.DB.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_session_samples')`).Scan(&quotaSamples); err != nil || !quotaSamples {
+		t.Fatalf("migrated quota samples table=%t: %v", quotaSamples, err)
 	}
 	if _, err = migrated.DB.Exec(`UPDATE schema_metadata SET version=?`, CurrentSchemaVersion+1); err != nil {
 		t.Fatal(err)

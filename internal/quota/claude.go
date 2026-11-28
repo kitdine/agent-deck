@@ -1,6 +1,7 @@
 package quota
 
 import (
+	"bytes"
 	"context"
 	"regexp"
 	"strconv"
@@ -96,6 +97,37 @@ func ProbeClaudeProse(ctx context.Context, observedAt time.Time, timeout time.Du
 		return ClaudeProseResult{}, err
 	}
 	return probe.probeUsage(ctx, observedAt, timeout)
+}
+
+// Only the explicit login prompt establishes authentication failure. The
+// stderr capture is bounded and longer output cannot match the prompt.
+type claudeLoginOutput struct {
+	buffer    bytes.Buffer
+	truncated bool
+}
+
+func (o *claudeLoginOutput) Write(p []byte) (int, error) {
+	const maxBytes = 256
+	if !o.truncated {
+		remaining := maxBytes - o.buffer.Len()
+		o.truncated = len(p) > remaining
+		_, _ = o.buffer.Write(p[:min(len(p), remaining)])
+	}
+	return len(p), nil
+}
+
+func (o *claudeLoginOutput) loginRequired() bool {
+	return !o.truncated && claudeLoginRequired(o.buffer.String())
+}
+
+func claudeLoginRequired(output string) bool {
+	text := strings.ToLower(strings.TrimSpace(output))
+	switch strings.TrimPrefix(text, "error: ") {
+	case "not logged in", "not logged in. please run /login", "not logged in · please run /login":
+		return true
+	default:
+		return false
+	}
 }
 
 // claudeProseLinePattern matches one of the two known lines, e.g.:
@@ -228,7 +260,7 @@ func resolveClaudeProseInstant(dateText, timeText string, location *time.Locatio
 func mapClaudeProseWindow(line claudeProseLine, observedAt time.Time, vendorOrder int) Observation {
 	minutes, reason := ClaudeWindowMinutes(line.windowKey)
 	return Observation{
-		Client: ClientClaude, WindowKey: line.windowKey, Source: SourceClaudeProse,
+		Client: ClientClaude, WindowKey: line.windowKey, Pool: "claude", Slot: line.windowKey, Source: SourceClaudeProse,
 		ObservedAt: observedAt, WindowMinutes: minutes, WindowMinutesReason: reason,
 		VendorOrder: vendorOrder, UsedPercent: line.usedPercent, ResetsAt: line.resetsAt,
 	}

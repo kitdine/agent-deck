@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -75,10 +77,10 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		userHomeDir = oldHome
 		usage.PriceHTTPClient = oldPriceHTTPClient
 	})
-	runJSON := func(command string, stdin string, args ...string) []byte {
+	runStateJSON := func(stateDir, command, stdin string, args ...string) []byte {
 		t.Helper()
 		var stdout bytes.Buffer
-		if err := run(append([]string{"--state-dir", state, "--format", "json"}, args...), bytes.NewBufferString(stdin), &stdout); err != nil {
+		if err := run(append([]string{"--state-dir", stateDir, "--format", "json"}, args...), bytes.NewBufferString(stdin), &stdout); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
 		assertJSONEnvelope(t, stdout.Bytes(), command)
@@ -86,6 +88,10 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		contract.Success = jsonSchema(t, stdout.Bytes())
 		observed[command] = contract
 		return stdout.Bytes()
+	}
+	runJSON := func(command, stdin string, args ...string) []byte {
+		t.Helper()
+		return runStateJSON(state, command, stdin, args...)
 	}
 	runJSON("state.migrate", "", "state", "migrate")
 	runJSON("provider.add", "phase7-e2e-secret\n", "provider", "add", "phase7", "--endpoint", "https://example.invalid", "--clients", "codex")
@@ -190,7 +196,9 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("price.override", "", "price", "override", "--file", overridePath)
 	runJSON("price.history", "", "price", "history")
 	runJSON("price.status", "", "price", "status")
-	runJSON("price.list", "", "price", "list")
+	// The bundled tariffs have validity boundaries; freeze the projection date
+	// so the wire contract does not change as those tariffs expire.
+	runJSON("price.list", "", "price", "list", "--at", "2026-11-27T12:00:00Z")
 	runJSON("session.scan", "", "session", "scan")
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")
@@ -297,6 +305,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	watchContract.Success = watchSchema
 	observed["watch"] = watchContract
 	captureCommandErrorContracts(t, state, observed)
+	captureQuotaSampleSuccessContracts(t, filepath.Join(root, "quota-sample-state"), runStateJSON)
 	if os.Getenv("UPDATE_AGENTDECK_GOLDEN") == "1" {
 		fixture.LeafCommands = leafCommandPaths(newRootCommand(bytes.NewReader(nil), &bytes.Buffer{}))
 		fixture.Contracts = observed
@@ -314,6 +323,67 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		if bytes.Contains(contents, []byte("phase7-e2e-secret")) {
 			t.Fatal("end-to-end output exposed credential")
 		}
+	}
+}
+
+func captureQuotaSampleSuccessContracts(t *testing.T, state string, runStateJSON func(string, string, string, ...string) []byte) {
+	t.Helper()
+	const sessionID = "phase7-private-quota-session"
+	const windowLabel = "phase7-private-quota-window"
+	ctx := context.Background()
+	now := time.Date(2026, 7, 14, 0, 1, 0, 0, time.UTC)
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	lastCallAt := now.Add(-time.Minute).Format(time.RFC3339Nano)
+	if _, err := database.Exec(ctx, `INSERT INTO usage_sessions (client, session_id, first_at, last_at) VALUES (?, ?, ?, ?)`,
+		quota.ClientClaude, sessionID, lastCallAt, lastCallAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordSelection(ctx, store.Selection{
+		Client: string(quota.ClientClaude), ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	settings := quota.DefaultSettings()
+	settings.ProbeEnabled = true
+	if err := quota.SaveSettings(ctx, database, settings); err != nil {
+		t.Fatal(err)
+	}
+
+	probes := 0
+	previousService := quotaRefreshService
+	quotaRefreshService = func(stateRoot, home string) desktop.Service {
+		return desktop.Service{
+			StateRoot: stateRoot, Home: home, Now: func() time.Time { return now },
+			QuotaProbeCodex: func(context.Context, time.Time, time.Duration) (quota.CodexResult, error) {
+				return quota.CodexResult{}, fmt.Errorf("unexpected Codex probe in quota sample contract fixture")
+			},
+			QuotaProbeClaudeProse: func(_ context.Context, at time.Time, _ time.Duration) (quota.ClaudeProseResult, error) {
+				probes++
+				now = now.Add(time.Second)
+				return quota.ClaudeProseResult{Windows: []quota.Observation{{
+					Client: quota.ClientClaude, Source: quota.SourceClaudeProse, WindowKey: quota.ClaudeWindowFiveHour,
+					Label: windowLabel, UsedPercent: float64(36 + probes*2), WindowMinutes: 300,
+					ResetsAt: at.Truncate(time.Minute).Add(time.Hour),
+				}}}, nil
+			},
+		}
+	}
+	defer func() { quotaRefreshService = previousService }()
+	for _, action := range []quota.SampleAction{quota.SampleStart, quota.SampleCancel, quota.SampleStart, quota.SampleFinish} {
+		now = now.Add(time.Second)
+		encoded := runStateJSON(state, "quota.sample."+string(action), "", "quota", "sample", string(action), "--client", "claude", "--session", sessionID)
+		for _, private := range []string{sessionID, windowLabel, "account_digest", "generation", "start_json", "finish_json"} {
+			if bytes.Contains(encoded, []byte(private)) {
+				t.Fatalf("quota sample %s exposed %q", action, private)
+			}
+		}
+	}
+	if probes != 3 {
+		t.Fatalf("quota sample contract used %d probes, want 3", probes)
 	}
 }
 

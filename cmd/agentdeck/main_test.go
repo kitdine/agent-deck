@@ -1714,6 +1714,16 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = database.Exec(ctx, `
+		DROP TRIGGER quota_samples_on_session_delete;
+		DROP TRIGGER quota_samples_on_provider_selection;
+		DROP TRIGGER quota_samples_on_observed_provider;
+		DROP TABLE quota_session_samples;
+		DROP TABLE usage_request_facts;
+		DROP TABLE price_rule_sets;`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
 	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE 'derived_snapshot_generation_%' OR name LIKE 'usage_partition_%')`)
 	if err != nil {
 		database.Close()
@@ -1762,16 +1772,19 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 		database.Close()
 		t.Fatal(err)
 	}
-	var tableCount int
-	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='usage_tool_calls'").Scan(&tableCount); err != nil {
+	var toolCalls, quotaSamples bool
+	if err = database.DB.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='usage_tool_calls'),
+		EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='quota_session_samples')`).Scan(&toolCalls, &quotaSamples); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if version != store.CurrentSchemaVersion || tableCount != 1 {
-		t.Fatalf("migrated schema version=%d tool table count=%d", version, tableCount)
+	if version != store.CurrentSchemaVersion || !toolCalls || !quotaSamples {
+		t.Fatalf("migrated schema version=%d, want %d, tool calls table=%t, quota samples table=%t",
+			version, store.CurrentSchemaVersion, toolCalls, quotaSamples)
 	}
 	var jsonOutput bytes.Buffer
 	if err = run([]string{"--state-dir", state, "--format", "json", "state", "migrate"}, bytes.NewReader(nil), &jsonOutput); err != nil {

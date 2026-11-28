@@ -4,55 +4,82 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
-func TestServingDerivedOnlySchemaUpgradeKeepsSavedPublicationReadable(t *testing.T) {
+func TestServingCoreSchemaCompatibility(t *testing.T) {
+	for current := 30; current <= store.CurrentSchemaVersion+1; current++ {
+		for stored := 30; stored <= store.CurrentSchemaVersion+1; stored++ {
+			want := (stored == current && current <= store.QuotaSessionSamplesSchemaVersion) ||
+				(current >= 32 && current <= store.QuotaIdentitySchemaVersion && stored >= 31 && stored < current) ||
+				(stored == store.PricingFactsSchemaVersion && current == store.QuotaSessionSamplesSchemaVersion)
+			if got := compatibleServingCoreSchema(stored, current); got != want {
+				t.Errorf("stored %d, current %d: compatible=%v, want %v", stored, current, got, want)
+			}
+		}
+	}
+}
+
+func TestServingQuotaSamplesSchemaRetainsPricingPredecessor(t *testing.T) {
 	s, core, _ := newServingFixture(t)
 	seedServingUsage(t, s, core)
 	ctx := context.Background()
-	full, err := s.PublishServingSnapshot(ctx, Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}, false)
+	request := Request{WireVersion: 1, RecentLimit: DefaultRecentLimit}
+	full, err := s.PublishServingSnapshot(ctx, request, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Older headers retain their usage and session publication. The quota
-	// segment itself must come from the migrated core.
+	full.Header.Generation.CoreSchema = store.PricingFactsSchemaVersion
 	unsafePlan := "legacy-unsafe@example.test"
 	full.Payload.Data.Subscription = SubscriptionSnapshot{
 		Available: true, Reading: true, Clients: []SubscriptionClient{{Client: "codex", Plan: &unsafePlan}},
 	}
-	for _, schema := range []int{31, 32, 33, 34, 35} {
-		full.Header.Generation.CoreSchema = schema
-		bytes, err := encodeServingSnapshot(full)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
-			t.Fatal(err)
-		}
-		old, err := s.ReadServingSnapshot(ctx)
-		if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
-			t.Fatalf("compatible schema %d publication lost or redated: %v", schema, err)
-		}
-		for _, client := range old.Payload.Data.Subscription.Clients {
-			if client.Plan != nil && *client.Plan == unsafePlan {
-				t.Fatalf("schema %d reused rejected cached plan", schema)
-			}
+	retained, err := encodeServingSnapshot(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeServingSnapshot(s.StateRoot, retained); err != nil {
+		t.Fatal(err)
+	}
+	old, err := s.ReadServingSnapshot(ctx)
+	if err != nil || old.Header.PublicationID != full.Header.PublicationID || old.Header.Freshness != "stale" {
+		t.Fatalf("pricing predecessor publication should remain readable: %v", err)
+	}
+	for _, client := range old.Payload.Data.Subscription.Clients {
+		if client.Plan != nil && *client.Plan == unsafePlan {
+			t.Fatal("retained cached plan instead of reprojecting subscription")
 		}
 	}
-	for _, schema := range []int{30, 37} {
+	for _, schema := range []int{30, 31, 32, 33, 34, 35, store.QuotaIdentitySchemaVersion, store.QuotaSessionSamplesSchemaVersion + 1} {
 		full.Header.Generation.CoreSchema = schema
-		bytes, err := encodeServingSnapshot(full)
+		data, err := encodeServingSnapshot(full)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := writeServingSnapshot(s.StateRoot, bytes); err != nil {
+		if err := writeServingSnapshot(s.StateRoot, data); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.ReadServingSnapshot(ctx); !errors.Is(err, ErrServingInvalid) {
-			t.Fatalf("unknown schema %d accepted: %v", schema, err)
+			t.Fatalf("stored schema %d, live schema %d: %v", schema, store.CurrentSchemaVersion, err)
 		}
 	}
-	if compatibleServingCoreSchema(32, 31) || compatibleServingCoreSchema(33, 32) || compatibleServingCoreSchema(34, 33) || compatibleServingCoreSchema(35, 34) || compatibleServingCoreSchema(30, 35) || compatibleServingCoreSchema(30, 36) || compatibleServingCoreSchema(36, 35) {
-		t.Fatal("schema exception widened to downgrade or future migration")
+	bootstrap, err := s.ReadOrBootstrapServingSnapshot(ctx, request)
+	if err != nil || bootstrap.Header.Generation.CoreSchema != store.QuotaSessionSamplesSchemaVersion || bootstrap.Header.PublicationID == full.Header.PublicationID {
+		t.Fatalf("existing bootstrap used old publication: %v", err)
+	}
+	rebuilt, err := s.PublishServingSnapshot(ctx, request, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := s.ReadServingSnapshot(ctx)
+	if err != nil || read.Header.Generation.CoreSchema != store.QuotaSessionSamplesSchemaVersion || read.Header.PublicationID != rebuilt.Header.PublicationID {
+		t.Fatalf("rebuilt current publication was not readable: schema %d, err %v", read.Header.Generation.CoreSchema, err)
+	}
+	if _, err := core.DB.ExecContext(ctx, `UPDATE schema_metadata SET version=?`, store.QuotaSessionSamplesSchemaVersion+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadServingSnapshot(ctx); !errors.Is(err, store.ErrSchemaAhead) {
+		t.Fatalf("live schema ahead: %v", err)
 	}
 }

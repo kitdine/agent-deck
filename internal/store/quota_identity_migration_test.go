@@ -94,7 +94,7 @@ func TestQuotaIdentityMigrationRejectsPreparedLegacyWriter(t *testing.T) {
 		t.Fatalf("migrated safety classification %q/%q/%v: %v", plan, reason, unsafe, err)
 	}
 	version, err := schemaVersion(ctx, legacy.DB)
-	if err != nil || version != 36 {
+	if err != nil || version != CurrentSchemaVersion {
 		t.Fatalf("reopen schema version = %d: %v", version, err)
 	}
 	if err := checkSchemaAhead(version, 35); !errors.Is(err, ErrSchemaAhead) {

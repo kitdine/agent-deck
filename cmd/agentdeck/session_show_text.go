@@ -78,6 +78,7 @@ func renderSessionShowText(
 			hasInvocations = true
 		}
 		lines = append(lines, sessionShowUsageLines(*usageSummary, hasInvocations, width)...)
+		lines = append(lines, quotaValuationLines(usageSummary.QuotaValuation, width)...)
 		lines = sessionShowSection(lines, "INVOCATIONS", width)
 		lines = append(lines, sessionShowInvocationLines(invocations, width)...)
 		if page, found := pagination["invocations"]; found {
@@ -410,10 +411,18 @@ func sessionShowUsageLines(value usage.SessionSummary, hasInvocations bool, widt
 	}
 	lines := sessionShowFieldLines("PRIMARY TOKENS", primary, width)
 	lines = append(lines, sessionShowFieldLines("CACHE TOKENS", cache, width)...)
-	lines = append(lines, sessionShowFieldLines("CATALOG COST", catalogCost, width)...)
-	lines = append(lines, sessionShowFieldLines("PROVIDER COST", providerCost, width)...)
-	lines = append(lines, sessionShowFieldLines("PRICING", pricing, width)...)
-	lines = append(lines, sessionShowFieldLines("UNPRICED", sessionShowList(value.Unpriced), width)...)
+	if value.Pricing != nil {
+		for _, field := range requestPricingFields(value.Pricing, false) {
+			lines = append(lines, sessionShowPricingFieldLines(field, width)...)
+		}
+	} else {
+		lines = append(lines, sessionShowFieldLines("CATALOG COST", catalogCost, width)...)
+		lines = append(lines, sessionShowFieldLines("PROVIDER COST", providerCost, width)...)
+		lines = append(lines, sessionShowFieldLines("PRICING", pricing, width)...)
+	}
+	if value.Pricing == nil {
+		lines = append(lines, sessionShowFieldLines("UNPRICED", sessionShowList(value.Unpriced), width)...)
+	}
 	lines = append(lines, sessionShowFieldLines("WARNINGS", sessionShowList(value.Warnings), width)...)
 	return lines
 }
@@ -444,10 +453,16 @@ func sessionShowInvocationLines(values []usage.SessionInvocation, width int) []s
 			groupedInt(value.Tokens["cache_write_1h_tokens"]),
 			groupedInt(value.Tokens["cache_write_tokens"]),
 		), width)...)
-		lines = append(lines, sessionShowFieldLines("CATALOG COST", sessionShowInvocationCost(value.CatalogBaseCost, value.KnownCatalogBaseCost, value.Unpriced), width)...)
-		lines = append(lines, sessionShowFieldLines("PROVIDER COST", sessionShowInvocationCost(value.ProviderCost, value.KnownProviderCost, value.Unpriced), width)...)
-		lines = append(lines, sessionShowFieldLines("PRICING", sessionShowInvocationPricing(value), width)...)
-		lines = append(lines, sessionShowFieldLines("UNPRICED", sessionShowList(value.Unpriced), width)...)
+		if value.Pricing != nil {
+			for _, field := range requestPricingFields(value.Pricing, true) {
+				lines = append(lines, sessionShowPricingFieldLines(field, width)...)
+			}
+		} else {
+			lines = append(lines, sessionShowFieldLines("CATALOG COST", sessionShowInvocationCost(value.CatalogBaseCost, value.KnownCatalogBaseCost, value.Unpriced), width)...)
+			lines = append(lines, sessionShowFieldLines("PROVIDER COST", sessionShowInvocationCost(value.ProviderCost, value.KnownProviderCost, value.Unpriced), width)...)
+			lines = append(lines, sessionShowFieldLines("PRICING", sessionShowInvocationPricing(value), width)...)
+			lines = append(lines, sessionShowFieldLines("UNPRICED", sessionShowList(value.Unpriced), width)...)
+		}
 		lines = append(lines, sessionShowFieldLines("WARNINGS", sessionShowList(value.Warnings), width)...)
 	}
 	return lines
@@ -472,6 +487,17 @@ func sessionShowTimestampFieldLines(label, value string, width int) []string {
 		rendered = renderDisplayTimeWithZone(value)
 	}
 	return sessionShowFieldLines(label, rendered, width)
+}
+
+func sessionShowPricingFieldLines(field priceTextField, width int) []string {
+	if width < 40 || statsVisibleWidth(field.label) <= min(16, max(10, width/5)) {
+		return sessionShowFieldLines(field.label, field.value, width)
+	}
+	lines := []string{"  " + sessionShowFit(field.label, width-2)}
+	for _, line := range sessionShowWrap(field.value, width-4) {
+		lines = append(lines, "    "+line)
+	}
+	return lines
 }
 
 func sessionShowFieldLines(label, value string, width int) []string {

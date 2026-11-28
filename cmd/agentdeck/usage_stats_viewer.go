@@ -172,9 +172,15 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 	switch s.section {
 	case usageViewerOverview:
 		costAvailable := knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent)
+		cost := compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, costAvailable)
+		costDetail := usageViewerCostDetail(s.report.Totals, s.report.Coverage)
+		if pricing := s.report.Totals.Pricing; pricing != nil {
+			cost = compactAPICost(pricing)
+			costDetail = usageViewerPricingDetail(pricing)
+		}
 		return []usageViewerRow{
 			{identity: "tokens", label: "TOKENS", value: compactNumber(float64(s.report.Totals.Tokens)), valueColor: usageColorToken, detail: usageViewerTokenDetail(s.report.Totals)},
-			{identity: "cost", label: "COST", value: compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, costAvailable), valueColor: usageCostColor(s.report.Totals.ProviderCost, costAvailable), detail: usageViewerCostDetail(s.report.Totals, s.report.Coverage)},
+			{identity: "cost", label: statsPricingLabel(s.report.Totals.Pricing), value: cost, valueColor: usageCostColor(s.report.Totals.ProviderCost, costAvailable), detail: costDetail},
 			{identity: "sessions", label: "SESSIONS", value: groupedInt(s.report.Totals.Sessions), valueColor: usageColorSession, detail: usageViewerSessionDetail(s.report.Totals)},
 			{identity: "priced", label: "PRICED", value: s.report.Coverage.Percent + "%", valueColor: usageCoverageColor(s.report.Coverage.Percent), detail: usageViewerCoverageDetail(s.report.Coverage)},
 		}
@@ -182,15 +188,21 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 		rows := make([]usageViewerRow, 0, len(s.report.Buckets))
 		peak := 0.0
 		for _, b := range s.report.Buckets {
-			v, err := strconv.ParseFloat(b.KnownMetricValue, 64)
-			available := err == nil && (metric != "COST" || knownCostAvailable(b.MetricValue, b.KnownMetricValue, b.Coverage))
+			v, available := usageViewerBucketMagnitude(b, s.report)
 			if available {
 				peak = max(peak, v)
 			}
 		}
 		for _, b := range s.report.Buckets {
-			v, err := strconv.ParseFloat(b.KnownMetricValue, 64)
-			available := err == nil && (metric != "COST" || knownCostAvailable(b.MetricValue, b.KnownMetricValue, b.Coverage))
+			v, available := usageViewerBucketMagnitude(b, s.report)
+			value := usageViewerMetric(b.MetricValue, b.KnownMetricValue, b.Coverage, metric)
+			detail := usageViewerTrendDetail(b, metric)
+			if b.Pricing != nil {
+				detail.fields = append(detail.fields, usageViewerPricingDetail(b.Pricing).fields...)
+				if metric == "COST" {
+					value = statsBucketCost(b)
+				}
+			}
 			valueColor := usageMetricColor(metric)
 			if metric == "COST" {
 				valueColor = usageCostColor(b.MetricValue, available)
@@ -198,12 +210,12 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 			rows = append(rows, usageViewerRow{
 				identity:   b.Start,
 				label:      b.Start,
-				value:      usageViewerMetric(b.MetricValue, b.KnownMetricValue, b.Coverage, metric),
+				value:      value,
 				bar:        v / max(1, peak),
 				showBar:    available && peak > 0,
 				valueColor: valueColor,
 				barColor:   valueColor,
-				detail:     usageViewerTrendDetail(b, metric),
+				detail:     detail,
 			})
 		}
 		return rows
@@ -234,8 +246,7 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 			case s.section == usageViewerProviders && d.Client != "":
 				name = statsTitle(d.Client) + "/" + d.Name
 			}
-			share, err := strconv.ParseFloat(d.KnownShare, 64)
-			available := err == nil && (metric != "COST" || knownCostAvailable(d.MetricValue, d.KnownMetricValue, d.Coverage))
+			share, available := statsDimensionShare(d, metric)
 			shareLabel := "unavailable"
 			if available {
 				shareLabel = formatPercent(share)
@@ -312,14 +323,15 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 func (s *usageViewerState) activityRows() []usageViewerRow {
 	values := make([]float64, 7*24)
 	maximum := 0.0
+	metric := s.report.Metric
+	if metric == "cost" && s.report.Totals.Pricing != nil && !statsAPIComparable(s.report) {
+		metric = "tokens"
+	}
 	for _, activity := range s.report.Activity {
 		if activity.Weekday < 0 || activity.Weekday >= 7 || activity.Hour < 0 || activity.Hour >= 24 {
 			continue
 		}
-		value, err := strconv.ParseFloat(activity.KnownMetricValue, 64)
-		if err != nil {
-			continue
-		}
+		value := statsActivityMagnitude(activity, s.report)
 		values[activity.Weekday*24+activity.Hour] = value
 		maximum = max(maximum, value)
 	}
@@ -338,11 +350,15 @@ func (s *usageViewerState) activityRows() []usageViewerRow {
 		}
 		detail := terminalDetailModel{}
 		if peakValue > 0 {
+			peakText := s.activityMetricValue(peakValue)
+			if s.report.Totals.Pricing != nil {
+				peakText = compactMetric(peakValue, metric)
+			}
 			detail.fields = append(detail.fields,
 				terminalDetailField{label: "PEAK WINDOW", value: fmt.Sprintf("%02d:00–%02d:00", peakHour, (peakHour+1)%24), role: terminalDetailRoleNeutral, priority: terminalDetailPriorityPrimary},
-				terminalDetailField{label: "PEAK " + strings.ToUpper(s.report.Metric), value: s.activityMetricValue(peakValue), role: usageViewerMetricDetailRole(s.report.Metric), priority: terminalDetailPriorityPrimary},
+				terminalDetailField{label: "PEAK " + strings.ToUpper(metric), value: peakText, role: usageViewerMetricDetailRole(metric), priority: terminalDetailPriorityPrimary},
 			)
-			detail.notes = append(detail.notes, terminalDetailNote{text: "1H BUCKETS · " + strings.ToUpper(s.report.Metric), role: terminalDetailRoleNeutral, priority: terminalDetailPrioritySecondary})
+			detail.notes = append(detail.notes, terminalDetailNote{text: "1H BUCKETS · " + strings.ToUpper(metric), role: terminalDetailRoleNeutral, priority: terminalDetailPrioritySecondary})
 		} else if strings.EqualFold(s.report.Metric, "cost") && !knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent) {
 			detail.notes = append(detail.notes, terminalDetailNote{text: "No priced events.", status: "UNAVAILABLE", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
 		}
@@ -519,7 +535,11 @@ func usageViewerMetricDetailRole(metric string) terminalDetailRole {
 func usageViewerDimensionDetail(d usage.StatsDimension) terminalDetailModel {
 	detail := terminalDetailModel{}
 	usageViewerAppendDetailField(&detail, "TOKENS", compactNumber(float64(d.Tokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, d.Tokens > 0)
-	usageViewerAppendDetailField(&detail, "PROVIDER COST", usageViewerExactCost(d.ProviderCost, d.KnownProviderCost), usageViewerCostDetailRole(d.ProviderCost), terminalDetailPriorityPrimary, usageViewerNonZeroCost(d.ProviderCost, d.KnownProviderCost))
+	if d.Pricing != nil {
+		detail.fields = append(detail.fields, usageViewerPricingDetail(d.Pricing).fields...)
+	} else {
+		usageViewerAppendDetailField(&detail, "PROVIDER COST", usageViewerExactCost(d.ProviderCost, d.KnownProviderCost), usageViewerCostDetailRole(d.ProviderCost), terminalDetailPriorityPrimary, usageViewerNonZeroCost(d.ProviderCost, d.KnownProviderCost))
+	}
 	usageViewerAppendDetailField(&detail, "SESSIONS", groupedInt(d.Sessions), terminalDetailRoleSession, terminalDetailPriorityPrimary, d.Sessions > 0)
 	usageViewerAppendDetailField(&detail, "PRICING COVERAGE", strings.TrimSpace(d.Coverage)+"%", usageViewerCoverageDetailRole(d.Coverage), terminalDetailPriorityPrimary, strings.TrimSpace(d.Coverage) != "")
 	if d.CacheHitRate != nil {
@@ -713,9 +733,13 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 
 func usageViewerKPIline(report usage.StatsReport, width int, p usageTextPrimitives) string {
 	costAvailable := knownCostAvailable(report.Totals.ProviderCost, report.Totals.KnownProviderCost, report.Coverage.Percent)
+	cost := compactCost(report.Totals.ProviderCost, report.Totals.KnownProviderCost, costAvailable)
+	if report.Totals.Pricing != nil {
+		cost = compactAPICost(report.Totals.Pricing)
+	}
 	parts := []string{
 		p.style("TOKENS "+compactNumber(float64(report.Totals.Tokens)), usageColorToken),
-		p.style("COST "+compactCost(report.Totals.ProviderCost, report.Totals.KnownProviderCost, costAvailable), usageCostColor(report.Totals.ProviderCost, costAvailable)),
+		p.style(statsPricingLabel(report.Totals.Pricing)+" "+cost, usageCostColor(report.Totals.ProviderCost, costAvailable)),
 		p.style("SESSIONS "+groupedInt(report.Totals.Sessions), usageColorSession),
 		p.style("PRICED "+report.Coverage.Percent+"%", usageCoverageColor(report.Coverage.Percent)),
 	}
@@ -878,4 +902,21 @@ func usageViewerDetailWithin(row usageViewerRow, width, limit int, p usageTextPr
 		result = append(result, line)
 	}
 	return result
+}
+
+func usageViewerPricingDetail(pricing *usage.PricingReport) terminalDetailModel {
+	var detail terminalDetailModel
+	for _, field := range requestPricingFields(pricing, true) {
+		detail.fields = append(detail.fields, terminalDetailField{label: field.label, value: field.value,
+			role: terminalDetailRoleNeutral, priority: terminalDetailPrioritySecondary})
+	}
+	return detail
+}
+
+func usageViewerBucketMagnitude(bucket usage.StatsBucket, report usage.StatsReport) (float64, bool) {
+	if bucket.Pricing != nil && report.Metric == "cost" {
+		return statsBucketMagnitude(bucket, report), true
+	}
+	value, err := strconv.ParseFloat(bucket.KnownMetricValue, 64)
+	return value, err == nil && (report.Metric != "cost" || knownCostAvailable(bucket.MetricValue, bucket.KnownMetricValue, bucket.Coverage))
 }

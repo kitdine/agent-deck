@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -252,7 +253,7 @@ func TestClaudeProbeWaitDelayBoundsInheritedStdout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), fixtureBudget)
 	defer cancel()
 	var stdout bytes.Buffer
-	err := probe.run(ctx, 2*fixtureBudget, &stdout)
+	err := probe.run(ctx, 2*fixtureBudget, &stdout, io.Discard)
 
 	data, readErr := os.ReadFile(childFile)
 	if readErr != nil {
